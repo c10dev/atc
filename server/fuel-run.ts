@@ -24,6 +24,7 @@ import { readRecords } from "./recorder.ts";
 import { readHookClaims } from "./sources/claude.ts";
 import { type FuelLimitsRecord, type FuelStatusRecord, lastRecordWith, readTail, recordsOf } from "../hooks/fuel-statusline.mjs";
 import { fleetKeyOf, regKey } from "./registration.ts";
+import { trendScanDays, usageTrend } from "./fuel-trend.ts";
 import { loadShard, pruneShards, saveShard, shardName } from "./fuel-cache.ts";
 import { type FuelFile, FuelTree } from "./fuel-tree.ts";
 
@@ -475,6 +476,23 @@ export function mountFuel(app: Hono, getSnapshot: () => Promise<Snapshot>, loadE
     const s = await getSnapshot();
     // teamPattern(ATC-137): 화면이 AIRCRAFT·관제 세션·기타를 가르는 데 쓴다. 더하는 필드라 옛 클라이언트는 무시한다
     return c.json({ ...readFuel(fuelDays(c.req.query("days")), s, loadEntries()), teamPattern: loadDispatchConfig().teamPattern });
+  });
+  // USAGE TREND(ATC-389): 이번 기간을 지난 같은 길이·최근 주와 견준다. 대화 기록을 trendScanDays(최대 60일)만큼 읽으므로 /api/fuel과 따로 둔다
+  app.get("/api/fuel/trend", async (c) => {
+    const s = await getSnapshot();
+    const now = Date.now();
+    const days = fuelDays(c.req.query("days"));
+    const scan = scanFuel(now - trendScanDays(days) * DAY_MS, s.sessions);
+    const trend = usageTrend({
+      records: scan.records.values(),
+      names: scan.names,
+      teamPattern: loadDispatchConfig().teamPattern,
+      prices: readPrices().table,
+      arrivals: loadEntries(),
+      now,
+      days,
+    });
+    return c.json({ at: new Date(now).toISOString(), ...trend });
   });
 }
 

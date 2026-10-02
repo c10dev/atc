@@ -8,6 +8,7 @@ import {
   type SortKey, summaryOf, topFlightsOf,
 } from "../fuel-overview.ts";
 import { FuelAccounts } from "./fleet/Fuel.tsx";
+import { MetricsFuelTrend } from "./MetricsFuelTrend.tsx";
 import "./MetricsFuel.css";
 import { apiGet } from "../api.ts";
 
@@ -71,6 +72,8 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
           {st.loading ? "읽는 중…" : "새로고침"}
         </button>
       </div>
+
+      <MetricsFuelTrend days={days} tick={tick} />
 
       {st.error && (
         <p className="mx-error" role="alert">

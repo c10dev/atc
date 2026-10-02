@@ -201,6 +201,20 @@ One screen for burn so far, inside METRICS: **`#metrics/fuel`** (the METRICS tab
 - **API (additive).** `GET /api/fuel` gains `byDay` (per UTC day: CAPTAIN and CREW cost, requests, unpriced tokens; only days with records, oldest first), `byModel` (requests, tokens, priced cost, unpriced requests and tokens; largest cost first) and `teamPattern`. Both aggregates come from the same pass as the rest of `summarizeFuel`; nothing is scanned twice. On 400,000 synthetic requests over 30 days `summarizeFuel` took about 490 ms against about 430–530 ms before, within run-to-run noise; the scan cost of `/api/fuel` is unchanged (ATC-83 is the fix for that). Older clients ignore the new fields.
 - **Pure view functions** are in `web/src/fuel-overview.ts` (grouping, sorting, the unpriced summary, leak rows, day bars, top FLIGHTs) and tested in `server/fuel-overview.test.ts`; `byDay` and `byModel` are tested in `server/fuel-byday.test.ts`.
 
+### USAGE TREND as built (ATC-389)
+
+A block at the top of `#metrics/fuel` that answers "how much are we using agents, and how does that compare with before". Read only; nothing about how FUEL is measured or priced changed.
+
+- **Periods.** Rolling, like the FUEL window: this period is `[now − days, now)` for the chosen 1, 7, 14 or 30 days, the previous period is the same length right before it, and the trend is 8 weeks of 7 days counted back from now (the last one is "이번 주").
+- **Numbers**, each for this period with the previous period's value and the change:
+  - FUEL: COST (same price table and `rateOf`/`costOf` rule as `byDay`; unpriced requests are left out of cost) and requests.
+  - Activity: **WORK TIME** (가동 시간) and AIRCRAFT. Work time counts 5-minute slots that hold at least one request, per CAPTAIN session and per CREW agent separately (two subagents in the same 5 minutes are 10 minutes). It is an estimate from request timestamps, not wall-clock attendance: a long tool run with no request in between is not counted, a single request counts 5 minutes. AIRCRAFT is the number of team REGISTRATIONs (`registrationOf` with the DISPATCH `teamPattern`, so `Team G` and `TEAM_G` are one) that made a request; control sessions and unnamed sessions are not counted.
+  - Results: ARRIVED (LOGBOOK `arrived` entries by `arrivedAt`), of which PRs, and COST per ARRIVED.
+- **Coverage rule.** `historyStart` is the earliest transcript record the scan found. A period's `coverage` is the share of it after `historyStart`. The change (`change.*`, computed on the server) is null unless the previous period is fully covered and non-zero; the screen then says why (`지난 기간 기록 1.1/7일뿐 · 대화 기록은 2026-09-24부터`) instead of showing a percentage. Weeks before `historyStart` are drawn as dashed empty slots, partly covered weeks are dimmed, and the table view states each week's coverage.
+- **Weekly rows.** COST, WORK TIME and ARRIVED, one row each with its own scale (no shared axis). Hover or keyboard focus on a week shows its requests, AIRCRAFT and PRs in a readout line under the rows; "표로 보기" lists every week. Change is shown in neutral ink: more use is not good or bad by itself (principle 3).
+- **API.** `GET /api/fuel/trend?days=N` (N as `/api/fuel`) returns `{at, days, historyStart, current, previous, weeks[], change}`. It reads transcripts for `max(2 × days, 56)` days (`trendScanDays`, at most 60), so it is a separate route and `/api/fuel` and the FLEET context sizes keep their shorter scan. Measured on 2026-10-02 against the real `~/.claude` (read only): about 60,000 deduplicated requests since 2026-09-24, about 48 MB of heap for the 60-day scan. The parsed records stay in the in-memory scan cache, so expect roughly 0.8 KB per request once 60 days of history exist.
+- **Code.** `server/fuel-trend.ts` (pure: `usageTrend`, `changeOf`, `coverageOf`, the two text helpers), tested in `server/fuel-trend.test.ts` with synthetic records only; the route is in `server/fuel-run.ts`; the screen is `web/src/views/MetricsFuelTrend.tsx`.
+
 ## 8. Implementation order (one issue each)
 
 | # | Issue | Depends on | Tier | Size |
