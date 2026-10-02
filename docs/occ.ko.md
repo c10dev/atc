@@ -395,6 +395,8 @@ Codex 한도 안내는 그것이 달린 PR의, 그 PR의 현재 head 뒤에 달�
 - **제외는 그대로.** `codexUnavailable`은 "Codex를 쓸 수 없다"만 뜻하고, REVIEW가 받지 않는 것은 기존 gate가 정한다. 비밀·키 경로, FLIGHT 없음, `rating:SEC`·Risk 라벨은 `excluded`로 남고, 보안 경로·키워드는 `externalReview.security`가 꺼져 있는 동안 제외다. 그런 PR은 전처럼 SUPERVISOR에게 간다.
 - **센다.** REVIEW 한 레인만으로 CLEARED가 되면(`codexUnavailable`이 있고 REVIEW의 pass가 그 head의 리뷰) `lanes.jsonl`에 한 줄(`repo`, `number`, `head`, `cause`: `lane`·`silent`·`limit`·`autoland`), PR·head마다 한 번. `GET /api/landing/lanes?days=N`이 착륙한 PR(MCC `land`, AUTOLAND `merge`, PR 서랍의 MERGE 버튼. 성공 기록만)과 이어 UTC 날짜별 `{landed, single, causes}`와 지금 조용한 저장소를 준다. DISPATCH 탭의 MISFIRE 옆 "한 레인 착륙"이 단일 레인 착륙이 있는 날을 보인다. GitHub에서 손으로 머지한 PR은 착륙 수에 들지 않는다.
 - **자율 규칙.** 한 리뷰 레인이 PR을 착륙시켜도 되는 때를 느슨하게 한다(K3, 원칙 5). SUPERVISOR가 릴리스 때 승인했다. REVIEW의 판정을 낮추지 않고(P0·P1은 그대로 막는다) 제외를 넓히지도 않는다.
+- **스위치**(ATC-393). `codex-lane.json`의 `auto`, 기본 `on`, SUPERVISOR 전용(설정 창 LANDING의 CODEX LANE, 선언은 `server/switches/codex-lane.ts`, [switches.md](switches.md)). `off`면 저장소 판단과 기록을 쉬고 지난 silent 상태도 쓰지 않아 PR마다 6시간 규칙만 남는다.
+- **범위**(ATC-393). 레인은 Codex를 쓰는 저장소에만 돈다. MCC AIRPORT의 저장소는 INSPECTION이 리뷰라서 뺀다. 한 레인 착륙 수는 AIRPORT·번호·head로 짝을 지어서, 다른 저장소의 같은 PR 번호가 한 레인 착륙으로 세어지지 않는다.
 - **만들지 않은 것:** 기다리는 시간은 고정 설정이고 배우지 않는다. 저장소가 조용해져도 DISPATCH 줄과 서버 로그(`[atc] codex lane`) 말고는 알리지 않는다.
 
 ### 9.3 Codex 지적의 등급: P3만 남은 head는 막지 않는다 (2026-09-27, ATC-28)

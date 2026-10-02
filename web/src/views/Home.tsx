@@ -263,7 +263,7 @@ function Brakes({ atfm, alertOn, now, onOpenSettings, schedule }: { atfm: Return
   const brief = atfm.brief;
   const stops = brief ? brief.groundStops.filter((s) => s.enforced).length : 0;
   const manual = brief ? brief.config.manualStops.length : 0;
-  const segs = server.state === "ready" ? modeSegments(server.data) : [];
+  const segs = server.state === "ready" ? modeSegments(server.data.switches) : [];
   const dispatchMode = mode ?? (server.state === "ready" ? (server.data.dispatchAuto?.mode ?? null) : null);
 
   const switchMode = async () => {

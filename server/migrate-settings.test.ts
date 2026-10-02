@@ -69,7 +69,8 @@ test("migrateRehearsal: 준비된 AIRPORT는 켜고 끌 수 있다(토큰 값은
   config.supabaseMigrateToken = "sbp_secret_value";
   const on = await put({ migrateRehearsal: { READY: true } });
   assert.equal(on.status, 200);
-  const view = (await on.json()) as { migrate: { tokenSet: boolean; airports: { code: string; enabled: boolean; why: string | null }[] } };
+  const body = (await on.json()) as { switches: { key: string; data?: unknown }[] };
+  const view = { migrate: body.switches.find((x) => x.key === "migrateRehearsal")!.data as { tokenSet: boolean; airports: { code: string; enabled: boolean; why: string | null }[] } };
   assert.equal(view.migrate.tokenSet, true);
   assert.deepEqual(view.migrate.airports.map((a) => [a.code, a.enabled, a.why === null]), [["READY", true, true], ["NOTEST", false, false]]);
   assert.ok(!JSON.stringify(view).includes("sbp_secret_value"));

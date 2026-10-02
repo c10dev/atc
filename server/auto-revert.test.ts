@@ -30,6 +30,7 @@ import {
 } from "./auto-revert.ts";
 import { destOf, DEST_PREFIXES } from "./supervisor-alerts.ts";
 import { modeSegments, needsConfirm } from "./settings-policy.ts";
+import { swOf, switchViews } from "./test-switch-views.ts";
 import { DEFAULT_AUTOLAND, type AutolandState, planAutoland } from "./autoland.ts";
 import type { PullRequest } from "./model.ts";
 
@@ -252,12 +253,12 @@ test("글: revert PR 제목에는 ATC key가 없고, FIX·DUTY 글은 영어다"
 });
 
 test("설정 창: 스위치 한 줄과 ⚠ 확인, 알림 목적지", () => {
-  const segs = modeSegments({ autoland: { mode: "off" }, mcc: { mode: "shadow" }, review: { security: "exclude" }, autoRevert: { mode: "on", stopped: [] } } as never);
+  const segs = modeSegments(switchViews({ autoRevert: "on" }));
   const seg = segs.find((s) => s.key === "autoRevert");
   assert.equal(seg?.value, "on");
   assert.equal(seg?.warn, true);
-  assert.equal(needsConfirm("autoRevert", "off", "on"), true);
-  assert.equal(needsConfirm("autoRevert", "on", "off"), false);
+  assert.equal(needsConfirm(swOf("autoRevert"), "off", "on"), true);
+  assert.equal(needsConfirm(swOf("autoRevert"), "on", "off"), false);
   assert.ok((DEST_PREFIXES as readonly string[]).includes("revert"));
   assert.equal(destOf({ key: "revert|stop|ATCC|2026-10-02T00:00:00.000Z" }), "alerts");
 });

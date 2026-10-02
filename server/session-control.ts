@@ -18,7 +18,7 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
-import type { K3Launch } from "./k3-allow.ts";
+import { type K3Declaration, type K3Launch, k3LaunchOf } from "./k3-allow.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { readJob, settleJob } from "./job-state.ts";
@@ -835,3 +835,13 @@ export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control
     rows: CONTROL_NAMES.filter((name) => name !== "CROSSCHECK").map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
   };
 }
+
+// launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다, ATC-393에서 index.ts에서 옮김). by는 FLIGHT RECORDER에 남는 주체. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
+export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
+  const a = s.absent?.find((x) => x.registration === reg);
+  // K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다
+  // STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다
+  const t = s.tickets.find((x) => x.key === flight);
+  const k3 = t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
+};
