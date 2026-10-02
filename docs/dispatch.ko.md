@@ -608,11 +608,11 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 4. **실전 적용.** 파일마다 한 트랜잭션: 파일의 문장들(자체 BEGIN·COMMIT은 뗌)과 그 파일의 version·name 그대로의 버전 줄.
 5. **적용 뒤 검사.** 버전 줄이 있고, `public`의 함수 본문 해시와 grant가 시험 DB와 같고, `healthUrl`이 있으면 200.
 
-- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않고, 새 head가 새 시도다. 이유는 `migrations.jsonl`, AUTOLAND 기록, `GET /api/migrate`에 보이고, FLIGHT를 새 arrow로 돌려보내는 것은 만들지 않았다(아래). 시험 DB는 되돌리지 않는다: 리허설 단계 뒤에서 멈추면 시험 DB가 실전보다 앞서 있고, 그 AIRPORT의 다음 리허설은 누군가 atc 밖에서 다시 가져올 때까지 "시험 DB가 실전과 같은 버전이 아님"에서 멈춘다.
+- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않고, 새 head가 새 시도다. 이유는 `migrations.jsonl`, AUTOLAND 기록, `GET /api/migrate`에 보이고, 멈추면 그 FLIGHT의 발권 기록도 거둔다(`releases.jsonl`의 `revoke` 줄, ATC-362): FLIGHT는 제안으로 돌아오고 이유가 RELEASE 패널에 보이며, SUPERVISOR가 다시 발권할 때까지 DISPATCH가 건너뛴다. 시험 DB는 되돌리지 않는다: 리허설 단계 뒤에서 멈추면 시험 DB가 실전보다 앞서 있고, 그 AIRPORT의 다음 리허설은 누군가 atc 밖에서 다시 가져올 때까지 "시험 DB가 실전과 같은 버전이 아님"에서 멈춘다.
 - **스위치.** AIRPORT마다 하나, `migrate.json`. `PUT /api/settings`의 `migrateRehearsal: {코드: bool}`로만 바꾼다(`fromThisApp`, `atcctl` 명령 없음, 설정 창에 MIGRATE 블록). `hostedDb.testProjectRef`와 `SUPABASE_MIGRATE_TOKEN`이 있는 AIRPORT만 켤 수 있다. 기본 꺼짐.
 - **자격 증명(K2).** `.env.local`의 `SUPABASE_MIGRATE_TOKEN`(읽기 전용 `SUPABASE_ACCESS_TOKEN`과 따로). SUPERVISOR가 둔다. 요청 머리에만 쓰고 오류·기록은 `redact`를 거친다. 출력·로그·복사·전송하지 않는다.
 - **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
-- **Not built yet.** 멈춘 뒤 FLIGHT를 새 arrow로 돌려보내기, 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
+- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
 
 ## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
 

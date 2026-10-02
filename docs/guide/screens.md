@@ -64,7 +64,7 @@ SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `doc
 - 켜면 AUTOLAND가 CLEARED PR의 새 마이그레이션을 시험 DB에 먼저 적용해 보고, 통과하면 호스팅 제공자에 이미 있는 PITR·최근 백업을 확인한 뒤(atc가 백업을 만들지는 않는다) 실전 DB에 적용한다. 그다음 PR이 머지된다.
 - 실전 적용 전에 멈추면 실전은 그대로이고 PR은 머지되지 않는다. 실전 적용이 중간에 실패하거나 적용 뒤 검사가 실패하면 실전이 바뀐 채로 남고(`live-changed`, 자동 복원 없음) 복원은 사람이 정한다.
 - 시험 DB는 실패해도 되돌리지 않는다. 멈춘 뒤에는 시험 DB를 실전에서 다시 가져와야 다음 리허설이 돈다(atc 밖에서).
-- 각 단계와 멈춘 이유는 `GET /api/migrate`와 AUTOLAND 기록에 남는다. 멈춘 FLIGHT를 새 arrow로 돌려보내는 것은 아직 없어서 SUPERVISOR가 다시 발권한다.
+- 각 단계와 멈춘 이유는 `GET /api/migrate`와 AUTOLAND 기록에 남는다. 멈추면 그 FLIGHT의 발권이 거둬져 RELEASE 패널에 이유와 함께 제안으로 돌아오고, SUPERVISOR가 다시 발권해야 한다.
 
 ## STRIPS의 진행 막대
 

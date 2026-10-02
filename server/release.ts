@@ -19,6 +19,7 @@ export type ReleaseLine =
       words?: string; // duty-chat: SUPERVISOR 글 앞부분, attested: 증언한 말
       session?: string; // attested: 증언한 세션 이름
     }
+  | { op: "revoke"; flight: string; at: string; reason: string; by: string } // 발권을 거둔다(ATC-368: 마이그레이션 리허설이 멈추면 FLIGHT는 제안으로 돌아와 다시 발권해야 한다). 이후의 발권이 다시 세운다
   | { op: "arm"; at: string; flights: number }; // 일괄 확인: 이 줄부터 발권 없는 FLIGHT는 배정하지 않는다(설정 releaseGate "auto")
 
 export interface ReleaseRecord {
@@ -33,7 +34,8 @@ export interface ReleaseRecord {
 
 export interface ReleaseView {
   armedAt: string | null;
-  records: Record<string, ReleaseRecord>; // FLIGHT key → 가장 나중 발권
+  records: Record<string, ReleaseRecord>; // FLIGHT key → 가장 나중 발권(거두면 없음)
+  revoked?: Record<string, { at: string; reason: string; by: string }>; // 거둔 발권의 이유. 다시 발권하면 지운다
 }
 
 export type ReleaseGateMode = "auto" | "on" | "off";
@@ -80,15 +82,20 @@ export function kEffectsOf(description: string | null | undefined): string | nul
 
 export function foldReleases(lines: readonly ReleaseLine[]): ReleaseView {
   const records: Record<string, ReleaseRecord> = {};
+  const revoked: NonNullable<ReleaseView["revoked"]> = {};
   let armedAt: string | null = null;
   for (const l of lines) {
     if (l.op === "arm") armedAt ??= l.at;
-    else if (l.op === "release") {
+    else if (l.op === "revoke") {
+      delete records[l.flight];
+      revoked[l.flight] = { at: l.at, reason: l.reason, by: l.by };
+    } else if (l.op === "release") {
       const { op: _op, ...r } = l;
       records[l.flight] = r;
+      delete revoked[l.flight];
     }
   }
-  return { armedAt, records };
+  return { armedAt, records, revoked };
 }
 
 // gate가 켜졌나. auto(기본): 일괄 확인(arm)을 한 뒤부터. on: 항상. off: 끔(발권 없이도 배정)

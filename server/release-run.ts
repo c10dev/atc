@@ -85,7 +85,7 @@ const readyOf = (s: Snapshot, teams: Set<string>) => {
   const typeOf = (k: string) => s.tickets.find((x) => x.key === k)?.stateType ?? null;
   return s.tickets.filter((t) => isCandidateTicket(t, teams) && !parents.has(t.key) && isReady(t.stateType, t.blockedBy.map(typeOf)));
 };
-const rowOf = (t: Ticket, state: "ready" | "unreleased" | "stale") => ({ key: t.key, title: t.title, hash: t.releaseHash ?? null, priority: t.priority, kEffects: t.kEffects ?? null, state });
+const rowOf = (t: Ticket, state: "ready" | "unreleased" | "stale", why: string | null = null) => ({ key: t.key, why, title: t.title, hash: t.releaseHash ?? null, priority: t.priority, kEffects: t.kEffects ?? null, state });
 const WEEK = 7 * 86_400_000;
 
 export function releaseView(s: Snapshot, d: ReleaseDeps) {
@@ -94,7 +94,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const cands = candidatesOf(s, d.teams());
   const unreleased = bulkTargets(cands, view).map((t) => {
     const full = cands.find((c) => c.key === t.key)!;
-    return rowOf(full, releaseStateOf(t.key, t.releaseHash, view) as "unreleased" | "stale");
+    return rowOf(full, releaseStateOf(t.key, t.releaseHash, view) as "unreleased" | "stale", view.revoked?.[t.key]?.reason ?? null);
   });
   const ready = readyOf(s, d.teams()).map((t) => rowOf(t, "ready"));
   const titleOf = (k: string) => s.tickets.find((t) => t.key === k)?.title ?? null;

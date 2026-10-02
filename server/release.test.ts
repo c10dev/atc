@@ -191,6 +191,15 @@ test("길: attest로 screen 채널을 흉내 낼 수 없다(channel 값은 읽�
   assert.ok(h.lines[0]!.op === "release" && (h.lines[0] as { channel: string }).channel === "attested");
 });
 
+test("접기: 거둔 발권은 제안으로 돌아오고 이유가 남으며, 다시 발권하면 지운다(ATC-368)", () => {
+  const v = foldReleases([rel("A-1", "h1"), { op: "revoke", flight: "A-1", at: "t", reason: "리허설 멈춤", by: "migration-rehearsal" }]);
+  assert.equal(releaseStateOf("A-1", "h1", v), "unreleased");
+  assert.equal(v.revoked?.["A-1"]?.reason, "리허설 멈춤");
+  const again = foldReleases([rel("A-1", "h1"), { op: "revoke", flight: "A-1", at: "t", reason: "x", by: "m" }, rel("A-1", "h1")]);
+  assert.equal(releaseStateOf("A-1", "h1", again), "released");
+  assert.equal(again.revoked?.["A-1"], undefined);
+});
+
 test("DUTY 채팅 글: RELEASE 줄이 있으면 duty-chat 채널로 적는다", async () => {
   const h = harness([tk("ATC-1"), tk("ATC-2", { stateType: "started" })]);
   const keys = await releaseFromChat("RELEASE ATC-1 ATC-2", h.deps.snapshot, h.deps);

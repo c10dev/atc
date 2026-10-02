@@ -17,7 +17,7 @@ import { type HostedDb, MISSING_REASON_PREFIX, migrationGateOf, migrationVersion
 import { type MigrationFile, type RehearsalIo, type RunResult, type RunStatus, rehearse, type StepRecord } from "./migration-rehearsal.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { releaseHashOf, sectionsOf } from "./release.ts";
-import { readReleaseView } from "./release-store.ts";
+import { appendReleaseLines, readReleaseView } from "./release-store.ts";
 import { listPullFiles } from "./sources/github.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { readAppliedFor } from "./sources/supabase-migrations.ts";
@@ -120,6 +120,13 @@ function ioFor(p: PullRequest, db: HostedDb, token: string): RehearsalIo {
   };
 }
 
+// 멈춘 FLIGHT는 새 arrow로 돌아온다(ATC-368): 발권을 거둬 제안으로 되돌리고, 이유를 RELEASE 패널에 보인다. 발권 기록이 없으면 할 일이 없다
+export function sendBack(flight: string | null, reason: string, at = new Date().toISOString()): boolean {
+  if (!flight || !readReleaseView().records[flight]) return false;
+  appendReleaseLines([{ op: "revoke", flight, at, reason: reason.slice(0, 200), by: "migration-rehearsal" }]);
+  return true;
+}
+
 // 한 PR. 결과는 migrations.jsonl과 AUTOLAND 기록에 남는다. 던지지 않는다
 export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb, token = config.supabaseMigrateToken, io: RehearsalIo = ioFor(p, db, token)): Promise<RunResult | null> {
   const slug = slugOfUrl(p.url);
@@ -132,13 +139,16 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   } catch (e) {
     const detail = redact(`마이그레이션 파일을 못 읽음: ${String((e as Error).message ?? e)}`, token);
     note({ kind: "run", status: "stopped", detail }, []);
+    sendBack(p.ticketKey, detail);
     return null;
   }
   const versions = files.map((f) => f.version);
   const r = await rehearse(files, io);
   for (const s of r.steps) note({ kind: "step", step: s.step, ok: s.ok, detail: redact(s.detail, token), at: s.at }, versions);
   const last = r.steps[r.steps.length - 1];
-  note({ kind: "run", status: r.status, detail: redact(r.status === "applied" ? "실전에 적용됨 — 다음 주기에 AUTOLAND 마이그레이션 게이트가 통과해 머지" : `${r.failedStep}에서 멈춤: ${last?.detail ?? ""}`, token), restorePoint: r.restorePoint }, versions);
+  const detail = redact(r.status === "applied" ? "실전에 적용됨 — 다음 주기에 AUTOLAND 마이그레이션 게이트가 통과해 머지" : `${r.failedStep}에서 멈춤: ${last?.detail ?? ""}`, token);
+  note({ kind: "run", status: r.status, detail, restorePoint: r.restorePoint }, versions);
+  if (r.status !== "applied") sendBack(p.ticketKey, `마이그레이션 리허설 ${detail}`);
   return r;
 }
 

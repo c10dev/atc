@@ -15,6 +15,7 @@ interface Row {
   priority: number;
   kEffects: string | null;
   state: "ready" | "unreleased" | "stale";
+  why?: string | null; // 발권을 거둔 이유(마이그레이션 리허설이 멈춤 등)
 }
 interface Proposal {
   id: string;
@@ -209,7 +210,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   </b>
                   <PriorityMark priority={r.priority} />
                   <span className="rl-title">{r.title}</span>
-                  <span className="faint rl-kind">{r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
+                  <span className="faint rl-kind">{r.why ? `발권 거둠 — ${r.why}` : r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
                   <KEffects text={r.kEffects} />
                   <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
                     발권
