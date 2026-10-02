@@ -94,18 +94,28 @@ export interface HolderPlanInput {
   fleet: FleetFile;
   aircraft: readonly AircraftState[];
   teamPattern?: string;
+  assigned?: readonly string[]; // 이번 계획이 ASSIGN·RESUME으로 이미 고른 AIRCRAFT(REGISTRATION). 같은 AIRCRAFT에 카드를 하나 더 얹지 않는다
   keyFromBranch: (branch: string | null) => string | null;
   now: number;
 }
 
 const repoName = (repo: string) => repo.replace(/\/+$/, "").split("/").pop() || repo;
-// 이미 카드가 있으면(거절·READBACK 뒤 포함) 같은 head·type으로 또 제안하지 않는다. SUPERVISOR가 닫은 것(superseded·expired)만 다시 가능하다
-const handled = (existing: readonly Proposal[], key: string) => existing.some((p) => p.prHolder?.key === key && p.status !== "superseded" && p.status !== "expired");
+// 같은 head·type의 카드가 어디까지 왔나. live: 판정 대기·승인·진행 중(계획에 그대로 둔다). dead: 거절·UNABLE·RECALL 등으로 끝난 카드(또 제안하지 않고 SUPERVISOR가 정한다, RELAY 카드).
+// superseded·expired는 없는 것으로 보고 다시 제안할 수 있다
+const LIVE = new Set(["proposed", "agreed", "disagreed", "approved", "sent", "accepted", "departed", "recalling"]);
+const cardOf = (existing: readonly Proposal[], key: string): { live: Proposal } | { dead: true } | null => {
+  const mine = existing.filter((p) => p.prHolder?.key === key && p.status !== "superseded" && p.status !== "expired");
+  const live = mine.find((p) => LIVE.has(p.status));
+  return live ? { live } : mine.length ? { dead: true } : null;
+};
+// 열린 제안(판정 대기·승인됨)을 쥔 AIRCRAFT. 새 PR HOLDER 카드를 얹지 않는다
+const OPEN = new Set(["proposed", "agreed", "disagreed", "approved"]);
 
 export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports" | "tickets">, x: HolderPlanInput): HolderPlans {
   const routes: HolderPlans["routes"] = new Map();
   const plans: AssignPlan[] = [];
-  const used = new Set<string>(); // 이번 계산에서 이미 고른 AIRCRAFT
+  // 이번 계산에서 이미 쓴 AIRCRAFT: 계획이 고른 것과 열린 제안(ASSIGN·RESUME·다른 PR HOLDER 카드)을 쥔 것, 그리고 아래에서 고르는 것
+  const used = new Set<string>([...(x.assigned ?? []), ...x.existing.filter((p) => p.kind === "ASSIGN" && OPEN.has(p.status)).map((p) => p.registration ?? p.aircraftName ?? "").filter(Boolean)]);
   const wsByPath = new Map(s.workspaces.map((w) => [w.path, w]));
   const base = (): HolderAircraft[] =>
     x.aircraft.map((a) => {
@@ -125,8 +135,17 @@ export function holderPlansOf(s: Pick<Snapshot, "pulls" | "claims" | "workspaces
     const key = holderKey(p.number, p.head, pick.type);
     const rkey = offerKey(p, pick.type);
     const repo = repoName(p.repo);
-    if (handled(x.existing, key)) {
-      routes.set(rkey, { kind: "assign", pr: p.number, repo, flight: p.ticketKey ?? null });
+    const card = cardOf(x.existing, key);
+    if (card) {
+      const flight = p.ticketKey ?? null;
+      if ("dead" in card) {
+        routes.set(rkey, { kind: "relay", pr: p.number, repo, flight }); // 거절된 holder: 같은 head에 또 제안하지 않고 SUPERVISOR에게(RELAY 카드)
+        continue;
+      }
+      routes.set(rkey, { kind: "assign", pr: p.number, repo, flight });
+      // 살아 있는 카드는 계획에 그대로 둬야 syncOps가 매 주기 닫지 않는다
+      const c = card.live;
+      plans.push({ kind: "ASSIGN", flight: c.flight, aircraft: c.aircraft ?? "", aircraftName: c.aircraftName ?? "", ...(c.registration ? { registration: c.registration } : {}), airport: c.airport ?? "", score: c.score, factors: c.factors, ...(c.launch ? { launch: true as const } : {}), prHolder: c.prHolder! });
       continue;
     }
     const airport = s.airports.find((a) => a.repo === p.repo)?.code ?? null;

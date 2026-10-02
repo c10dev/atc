@@ -96,7 +96,9 @@ test("쥔 세션이 있으면 카드가 없고, 하나뿐인 AIRCRAFT는 한 PR�
 test("이미 같은 head·type의 카드가 있으면(거절 포함) 또 내지 않고, superseded면 다시", () => {
   const first = holderPlansOf(snap([pr(5, ["dirty"])]), hin()).plans[0]!;
   const create = { op: "create" as const, id: "D-0001", at: iso(0), kind: "ASSIGN" as const, flight: "ATC-5", aircraft: "TEAM_B", aircraftName: "TEAM_B", airport: "ATCC", score: 0, factors: [], prHolder: first.prHolder };
-  assert.equal(holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: fold([create, { op: "reject", id: "D-0001", at: iso(1), reason: null }]) })).plans.length, 0);
+  const rejected = holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: fold([create, { op: "reject", id: "D-0001", at: iso(1), reason: null }]) }));
+  assert.equal(rejected.plans.length, 0);
+  assert.equal(rejected.routes.get(offerKey(pr(5, []), "GO AROUND"))!.kind, "relay"); // 거절하면 SUPERVISOR 몫(RELAY 카드)
   assert.equal(holderPlansOf(snap([pr(5, ["dirty"])]), hin({ existing: fold([create, { op: "supersede", id: "D-0001", at: iso(1), reason: "x" }]) })).plans.length, 1);
 });
 
@@ -143,4 +145,32 @@ test("FLIGHT PLAN에 보류 중인 글이 실리고 머지하지 말라고 적�
   assert.match(text, /Do not merge/);
   assert.match(text, /^> GO AROUND: PR #5/m);
   assert.ok(holderLines(h.prHolder!).length >= 3);
+});
+
+test("두 번째 주기: 살아 있는 카드(판정 대기·승인됨)는 계획에 남아 SUPERSEDED되지 않는다", () => {
+  const s = snap([pr(5, ["dirty"])]);
+  const tk = { tickets: [{ key: "ATC-5", state: "In Progress", stateType: "started" }], workspaces: [] } as never;
+  const run1 = holderPlansOf(s, hin());
+  const mk = (plans: typeof run1.plans): Plan => ({ at: iso(0), assign: [], release: [], hold: [], excluded: [], slots: [], aircraft: [state("TEAM_A"), state("TEAM_B")], holders: plans }) as unknown as Plan;
+  let existing = fold(syncOps([], mk(run1.plans), tk, DEFAULT_DISPATCH_CONFIG, T0, 0));
+  assert.equal(existing.length, 1);
+  for (const [min, extra] of [[5, []], [10, [{ op: "approve" as const, id: "D-0001", at: iso(6) }]], [15, []]] as const) {
+    existing = fold([...existingOps(existing), ...extra]);
+    const run = holderPlansOf(s, hin({ existing }));
+    assert.equal(run.plans.length, 1, "살아 있는 카드가 계획에 남는다");
+    assert.deepEqual(syncOps(existing, mk(run.plans), tk, DEFAULT_DISPATCH_CONFIG, T0 + min * 60_000, 1), []);
+  }
+});
+// fold된 제안을 다시 ops로(테스트용): create 한 줄과 approve를 이어 붙이기 위해
+const existingOps = (ps: ReturnType<typeof fold>) => ps.flatMap((p) => [{ op: "create" as const, id: p.id, at: p.at, kind: p.kind, flight: p.flight, aircraft: p.aircraft, aircraftName: p.aircraftName, registration: p.registration, airport: p.airport, score: p.score, factors: p.factors, prHolder: p.prHolder }, ...(p.status === "approved" ? [{ op: "approve" as const, id: p.id, at: p.statusAt }] : [])]);
+
+test("열린 제안이나 이번 계획의 ASSIGN을 쥔 AIRCRAFT에는 카드를 얹지 않는다", () => {
+  const s = snap([pr(5, ["dirty"])]);
+  const none = hin({ lastAircraft: flew, aircraft: [state("TEAM_A"), state("TEAM_B")] });
+  assert.equal(holderPlansOf(s, { ...none, assigned: ["TEAM_B"] }).plans[0]!.registration, "TEAM_A"); // 난 AIRCRAFT가 이번 계획에서 ASSIGN을 받음 → 다른 놀고 있는 것
+  assert.equal(holderPlansOf(s, { ...none, assigned: ["TEAM_A", "TEAM_B"] }).plans.length, 0);
+  const open = fold([{ op: "create", id: "D-0009", at: iso(0), kind: "ASSIGN", flight: "ATC-9", aircraft: "TEAM_B", aircraftName: "TEAM_B", registration: "TEAM_B", airport: "ATCC", score: 3, factors: [] }]);
+  assert.equal(holderPlansOf(s, { ...none, existing: open }).plans[0]!.registration, "TEAM_A"); // 열린 ASSIGN 제안
+  assert.equal(holderPlansOf(s, { ...none, existing: open, assigned: ["TEAM_A"] }).plans.length, 0);
+  assert.equal(holderPlansOf(s, { ...none, existing: open, assigned: ["TEAM_A"] }).routes.get(offerKey(pr(5, []), "GO AROUND"))!.kind, "relay");
 });
