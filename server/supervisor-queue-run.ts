@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
@@ -32,6 +33,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   const clearances = allClearances();
   return {
     proposals: allProposals(),
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     fleetPlan: openFleetPlanNow(now),
     pulls: (s.pulls ?? []).map((p) => {

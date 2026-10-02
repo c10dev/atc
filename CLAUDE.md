@@ -40,6 +40,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING 세션, 사용자와 직�
 - 팀 세션, DUTY, ENGINEERING 세션은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
   - `auto`(읽기만 하는 서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI, 외부 부작용이 있는 서버 코드): CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시킨다(2026-09-29부터, 지금은 `land+rts` 모드, `docs/mcc.md` 5.1). 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
   - `user`(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(PR을 올린 세션이 본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
+  - **user 등급이거나 ESCALATE된 PR(SUPERVISOR가 승인하는 PR)은 본문에 "Behavior change" 절을 둔다**(ATC-360). SUPERVISOR가 diff를 읽지 않고 atc의 동작이 무엇이 바뀌는지 보게 하려는 것이다. 절 안에 글자 그림 하나를 ``` 코드 블록으로 쓴다: `BEFORE`와 `AFTER` 두 줄(또는 mermaid `flowchart`)에 트리거 → 단계 → 결과를 화살표로 잇고, 바뀐 곳에 `*`를 붙인다. 이미지는 올리지 않는다(공개 저장소). PR 서랍은 코드 블록을 그대로 보인다. 동작이 바뀌지 않으면 그림 대신 한 줄 `Behavior change: none`. 그림은 diff와 같아야 한다 — MCC INSPECTION이 그림이 없는 것과 diff와 어긋난 그림을 P1로 지적한다.
 
 ## 코드
 

@@ -25,6 +25,13 @@ test("이미지는 링크 글자로만, 따옴표는 이스케이프한다", () 
   assert.ok(!/<img|<a|href/.test(renderSafeMarkdown("![a](javascript:1)")), "javascript 이미지");
 });
 
+test("Behavior change 그림(ATC-360): 화살표 글자 그림과 mermaid 블록은 코드로 그대로 보인다", () => {
+  const html = renderSafeMarkdown("## Behavior change\n```\nBEFORE: a → b\nAFTER:  a → b* → c\n```\n```mermaid\nflowchart LR\n  A --> B\n```");
+  assert.ok(html.includes("<pre><code>BEFORE: a → b\nAFTER:  a → b* → c"), html);
+  assert.ok(html.includes('<code class="language-mermaid">flowchart LR'), html);
+  assert.ok(!html.includes("<svg") && !html.includes("<script"));
+});
+
 test("코드 블록 안의 HTML도 이스케이프된다", () => {
   const html = renderSafeMarkdown("```\n<script>x</script>\n```");
   assert.ok(html.includes("&lt;script&gt;"));

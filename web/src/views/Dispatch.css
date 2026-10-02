@@ -1273,3 +1273,16 @@
   display: block;
   color: var(--muted);
 }
+
+/* 자동 운항 MISFIRE(ATC-367): 날짜별 한 줄 */
+.dp-misfire {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.dp-misfire li {
+  padding: var(--space-1) 0;
+}

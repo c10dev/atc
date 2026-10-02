@@ -71,13 +71,13 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 ## 5. 검증
 
 - `npm test`, `npx tsc --noEmit -p .`, `npx vite build`
-- 끝까지 확인할 때는 시험 서버를 띄운다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_GITHUB=off ATC_STATE_DIR=<임시 폴더> ATC_PORT=7702 exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
-  - `ATC_GITHUB=off`는 서버가 GitHub(`gh`)를 부르지 않게 한다(시험 서버가 SUPERVISOR의 토큰으로 폴링하지 않게). 확인이 실제 PR 자료를 필요로 할 때만 빼고, 그때는 짧게만 돌린다.
+- 끝까지 확인할 때는 Skill 도구로 `test-server`를 부른다(ATC-357). 그 skill의 스크립트가 빈 포트(7702-7799)와 임시 상태 폴더로 시험 서버를 띄우고, `ATC_GITHUB=off`, 저장한 PID로만 끄기, 폴더와 포트 잠금 치우기를 한꺼번에 한다. 운영 7700과 운영 상태 폴더는 요청해도 거절한다. 두 FLIGHT가 동시에 써도 포트가 겹치지 않는다. 확인이 실제 PR 자료를 필요로 할 때만 `ATC_GITHUB`를 빼고, 그때는 짧게만 돌린다.
+- skill 없이 직접 띄워야 하면 루트 `CLAUDE.md` "검증"의 명령을 그대로 쓴다: `(set -a; . /home/c10/projects/atc/.env.local; set +a; ATC_GITHUB=off ATC_STATE_DIR=<임시 폴더> ATC_PORT=<7702-7799> exec node server/index.ts) & echo $! > <임시 폴더>/server.pid`
   - 직접 만든 실행 스크립트도 PID 파일을 반드시 쓴다.
   - 끌 때는 `kill "$(cat <임시 폴더>/server.pid)"`만 쓴다. `pkill`·`killall`·`kill $(pgrep …)`처럼 이름·패턴으로 죽이지 않고, 내가 띄우지 않은 프로세스는 건드리지 않는다(운영 7700이 죽는다, 2026-09-29 사고. `hooks/kill-guard.mjs`가 막는다).
   - 임시 폴더에는 등록부(`airports.json`, `fleet.json`)만 복사한다.
   - `.env.local`은 복사하거나 출력하지 않는다.
-  - 다른 팀이 7702를 쓰고 있으면 7703이나 7704를 쓴다.
+  - 다른 팀이 쓰는 포트(`ss -ltn`)는 피한다.
 - 화면을 바꿨으면 Playwright로 4개 폭(390, 768, 1280, 1600) × 3개 테마(`radar`, `night`, `cockpit`)를 본다. 가로 넘침이 없는지도 확인한다.
 - 화면 FLIGHT(`web/`나 ANNUNCIATOR 화면을 바꾸는 FLIGHT)는 PR 전에 Skill 도구로 `ui-review`(mode `diff`)를 부른다(ATC-293, 가져온 규칙은 `THIRD_PARTY_NOTICES.md`). 그 출력 블록을 PR 본문의 `docs/design-language.md` 5절 점검표 답 옆에 그대로 붙이고, Blocker는 고치거나 보고의 `BLOCKED`에 적는다. 디자인 언어가 정한 값은 결함이 아니고, `CONFLICT`로 표시된 가져온 규칙은 따르지 않고 블록의 "Conflicts seen"에만 적는다. 스크린샷은 올리지 않는다.
 - 시험 중에 실제 팀 세션에 메시지를 보내지 않는다.
@@ -90,13 +90,22 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 ```
 
 - `auto`나 `flagged`: CI(`check`)가 통과하고 MCC INSPECTION이 `pass`면 MCC가 착륙시키고, `land+rts` 모드(2026-09-29부터)라 RETURN TO SERVICE로 배포까지 한다. 사용자가 먼저 머지해도 된다. `flagged`면 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다.
-- `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다.
+- `user`: 사용자가 머지한다. guard, 루트 `.claude/`, 루트 `CLAUDE.md`, `.github/`, 의존성, `hooks/`, `deploy/`를 바꾸면 이 등급이다. `user`거나 ESCALATE될 PR은 7절의 Behavior change 절이 꼭 있어야 한다.
 
 ## 7. PR
 
 - 커밋 메시지와 PR 제목, 본문은 영어로 쓴다. attribution 줄은 넣지 않는다.
 - PR 제목 끝은 `(ATC-<n>)`, 본문 첫 줄은 `Fixes ATC-<n>`이다. 후속 PR은 `Refs ATC-<n>`.
 - 본문에 요약, 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 기본값, 등급, 시험 계획(`[x]` 체크)을 적는다. 끝은 `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- **`user` 등급이거나 ESCALATE될 PR(SUPERVISOR가 승인하는 PR)은 본문에 "Behavior change" 절**을 둔다(ATC-360). SUPERVISOR가 diff를 읽지 않고 atc의 동작이 무엇이 바뀌는지 보게 하는 그림이다. 절 안에 ``` 코드 블록 하나: `BEFORE`와 `AFTER` 두 줄(또는 mermaid `flowchart`)에 트리거 → 단계 → 결과를 화살표로 잇고 바뀐 곳에 `*`를 붙인다. 이미지는 올리지 않는다(공개 저장소). PR 서랍은 코드 블록을 그대로 보여 준다. 동작이 바뀌지 않으면 한 줄 `Behavior change: none`. 그림은 diff와 같아야 한다. MCC INSPECTION이 그림이 없거나 diff와 어긋나면 P1로 지적한다. 예:
+
+  ````
+  ## Behavior change
+  ```
+  BEFORE: PR opened → MCC INSPECTION → pass → user tier: wait for SUPERVISOR
+  AFTER:  PR opened → MCC INSPECTION* (also checks the diagram) → pass → user tier: wait for SUPERVISOR
+  ```
+  ````
 - 머지하지 않는다.
 
 ## 8. 보고
@@ -120,3 +129,19 @@ BLOCKED none | <막힌 점 한 줄씩>
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것. 스크린샷은 올리지 않고 글로, 공개 저장소, 루트 CLAUDE.md), PR 링크.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다. TOWER가 `FIX`(ATC-270)를 보내면(PR의 현재 head에 리뷰 지적이 있다) `READBACK C-xxxx` → 같은 브랜치에서 지적을 고친다(안 고칠 것은 PR 본문에 이유를 적는다) → 5절 검증 → push → 일을 맡긴 세션에 보고. 못 고치면 `UNABLE C-xxxx — 사유`. INFO처럼 ROGER만 하고 기다리지 않는다. TOWER가 `GO AROUND`(ATC-128)를 보내면 이 일을 바로 한다: `READBACK C-xxxx` → rebase(또는 병합) → 충돌 조각을 대화에 보이기 → 5절 검증 → `git push --force-with-lease` → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿨으면 풀지 말고 `UNABLE C-xxxx — 사유`.
+
+## 9. Gotchas
+
+앞선 FLIGHT가 겪은 실패 중 어느 규칙에도 없는 것만 둔다. 항목마다 `origin/main`에서 참이어야 하고, 코드로 없앨 수 있으면 코드를 고치고 항목을 지운다.
+
+- `server/config.ts`는 import할 때 환경을 읽는다(`ATC_STATE_DIR`, `HOME`). 테스트가 `process.env`를 먼저 정하지 않고 정적 import하면 운영 상태 폴더 `~/.local/state/atc/`를 읽는다. 2026-09-30에 그렇게 읽은 테스트가 호스트 OOM을 내 모든 백그라운드 세션이 멈췄다(PR #272). `server/reposition-run.test.ts`처럼 임시 폴더를 환경에 넣고 동적으로 import한다. config 주입(ATC-343)이 들어가면 이 항목을 지운다.
+- 부분만 끝내는 PR은 제목에 `ATC-n`을 넣지 않는다(7절의 `(ATC-n)`은 이슈를 끝내는 PR 몫). 제목의 key는 머지 때 Linear 이슈를 닫는다. 본문은 `Refs ATC-n`.
+- `gh pr edit --body-file`은 GraphQL "Projects (classic)" 오류로 실패한다. `gh api -X PATCH repos/chaehy5665/atc/pulls/<n> -F body=@<파일>`을 쓴다.
+- Playwright MCP는 스크린샷을 `/tmp/playwright-mcp/` 아래 절대 경로로만 저장한다(`~/.claude/playwright-mcp.json`의 `outputDir`). 상대 경로나 다른 경로를 쓰면 PNG가 STAND나 main 체크아웃(공개 저장소)에 떨어진다. 커밋 전에 두 곳의 `git status`에서 남은 PNG를 확인한다.
+- `cp -al node_modules`는 같은 파일시스템에서만 된다. `/tmp`(tmpfs)에는 안 된다.
+- `origin/main`은 FLIGHT 도중 여러 번 움직인다. 끝까지 확인(시험 서버·Playwright) 전에 한 번, PR 직전에 한 번 `git fetch`하고 rebase한다.
+- Playwright 루프에서 해시만 다른 같은 URL로 `page.goto`하면 다시 불러오지 않아 React 상태(열린 설정 창 등)가 남는다. `/?i=${n}#tab`처럼 쿼리를 바꾼다.
+
+### 새 gotcha 제안
+
+`.claude/`를 곁에서 고치지 않는다. 겪은 실패가 위에도 규칙에도 없으면 8절 보고의 자유 요약에 한 줄을 더한다: `GOTCHA? <사실 한 줄> · <증거: PR, 파일:줄, 날짜>`. 받은 세션(OCC, ENGINEERING)이 참인지 확인해 이 절에 넣는 PR(등급 `user`)을 올린다. 이 절을 직접 고치는 PR은 항목마다 코드·실행으로 확인한 근거를 본문에 적는다.

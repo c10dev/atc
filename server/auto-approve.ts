@@ -46,6 +46,7 @@ export interface AssignCtx {
   fuelHold: boolean; // 그 AIRCRAFT의 ACCOUNT가 FUEL hold(스위치가 켜져 있고 holdPct 이상)
   counts: AutoCounts;
   approveMax: number;
+  live?: boolean; // 자동 운항(ATC-367): CROSSCHECK·blind·주의 메모를 보지 않는다
 }
 
 // 열린 ASSIGN(LAUNCH 아님)을 자동 승인해도 되나. 막히면 까닭, 되면 null
@@ -67,6 +68,7 @@ export interface LaunchCtx {
   backedOff: boolean; // 최근 LAUNCH 실패로 쉬는 REGISTRATION
   counts: AutoCounts;
   launchMax: number;
+  live?: boolean; // 자동 운항(ATC-367)
 }
 
 // 열린 launch 카드(ABSENT·RESUME)를 자동 승인하고 LAUNCH해도 되나. 조건은 모두 지켜야 한다
@@ -85,9 +87,11 @@ export function launchWhyNot(p: CardFacts, c: LaunchCtx): AutoSkip | null {
 }
 
 // ASSIGN과 launch 카드가 같이 지키는 조건: SETTLED, HELD 아님, CROSSCHECK agree, blind 아님, 주의 없음, FUEL hold 아님
-function commonWhyNot(p: CardFacts, c: { now: number; settleMin: number; fuelHold: boolean }): AutoSkip | null {
+// live(자동 운항, ATC-367)는 CROSSCHECK·blind·주의 메모 조건을 보지 않는다: 주의 메모는 FLIGHT PLAN 글에 실려 CAPTAIN에게 가고, 사람 카드는 없다
+function commonWhyNot(p: CardFacts, c: { now: number; settleMin: number; fuelHold: boolean; live?: boolean }): AutoSkip | null {
   if (p.holdAt !== null) return "held";
   if (c.now - Date.parse(p.at) < c.settleMin * 60_000) return "unsettled";
+  if (c.live) return c.fuelHold ? "fuel-hold" : null;
   if (!p.crosscheck) return "no-crosscheck";
   if (p.crosscheck.verdict !== "agree") return "disagree";
   if (isBlind(p.id)) return "blind"; // blind 표본은 SUPERVISOR가 mark를 못 본 채 판정한다. 자동으로는 절대 승인하지 않는다
