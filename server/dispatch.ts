@@ -12,7 +12,7 @@ import { keyInName, keyPatternOf, teamOfKey } from "./linear-keys.ts";
 import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
-import { ABSENT_REASON, cutHoldWhy, type ResumeInfo, stuckHintOf } from "./dispatch-launch.ts";
+import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, tailsOf } from "./dispatch-launch.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
@@ -405,14 +405,8 @@ export const REASON_FILTERS: Record<string, { auto: "auto" | "partial" | "manual
 // 있으면 그 팀에만 제안한다. 두 배정자(사람의 직접 배정과 DISPATCH)가 같은 FLIGHT를 다른 팀에 주는 일을 막는다.
 // `lane:`은 옛 이름이라 2026-10-10(KST) 전까지 같이 읽고, 제외 사유에 바꾸라고 적는다.
 // 그날부터는 읽지 않는다: `lane:`만 붙은 FLIGHT는 아무 팀에도 주지 않고 제외 사유로 알린다(oldLaneOnly).
-export const LANE_CUTOFF = Date.parse("2026-10-10T00:00:00+09:00");
-const TAIL_LABEL = /^(tail|lane):\s*(\S+)$/i;
-const TAIL_ONLY = /^(tail):\s*(\S+)$/i;
-export function tailsOf(t: Pick<Ticket, "labels">, now = Date.now()): Set<string> {
-  const re = now < LANE_CUTOFF ? TAIL_LABEL : TAIL_ONLY;
-  const regs = t.labels.map((l) => re.exec(l.trim())?.[2]).filter(Boolean) as string[];
-  return new Set(regs.map((r) => regKey(r))); // `tail:team-g`도 TEAM_G(ATC-67)
-}
+// tailsOf·LANE_CUTOFF는 dispatch-launch.ts에 있다(dispatch ↔ dispatch-launch 순환을 풀려고 옮김, ATC-338). 여기서 다시 내보낸다.
+export { LANE_CUTOFF, tailsOf };
 const usesOldLane = (t: Pick<Ticket, "labels">) => t.labels.some((l) => /^lane:/i.test(l.trim()));
 // 끊긴 뒤 남은 `lane:` 라벨(tail:이 없을 때만): 제외 사유 문구, 없으면 null
 export function oldLaneOnly(t: Pick<Ticket, "labels">, now: number): string | null {

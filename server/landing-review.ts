@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { loadAutoland } from "./autoland.ts";
-import { appendRecord } from "./autoland-run.ts";
+import { appendRecord } from "./autoland-record.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { modelFamily } from "./crosscheck.ts";
 import { type LandingReview, type MergeReview, externalGateOf, severityOf, slugOfUrl } from "./landing.ts";
