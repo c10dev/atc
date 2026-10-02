@@ -118,7 +118,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, `em`, spacing, radius, z-index; ATC-410) | built, ratcheted |
 | A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
-| A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | to build |
+| A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | built (ATC-436): a `kit/` file imports no screen file and no stylesheet outside `kit/`; a screen imports no stylesheet that belongs to another screen. Today's four exceptions are an allow list that only shrinks, each with the unit that removes it (HOME's three: S1, ATC-422; `SettingsAlerts` → `alerts.css`: S6, ATC-430) |
 | Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |
 | Contrast pairs in every theme | `server/theme-contrast.test.ts` with a declared pairs table | built (ATC-438); pairs that fail today are listed in `KNOWN` with their fixing unit |
 
