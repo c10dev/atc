@@ -72,7 +72,7 @@ export function FlightBrakes({ p, mode = "approval", fresh, onDone }: { p: Brake
   const text = reason.trim();
   const fn = flightNumber(p.flight);
   const btn = (kind: Exclude<Open, null>, label: string, aria: string, cls: string, title?: string) => (
-    <button type="button" className={`fb-btn ${cls}`} disabled={busy} aria-label={aria} title={title} aria-expanded={open === kind} onClick={(e) => { last.current = e.currentTarget; setOpen(open === kind ? null : kind); }}>
+    <button type="button" className={`btn ${cls}`} disabled={busy} aria-label={aria} title={title} aria-expanded={open === kind} onClick={(e) => { last.current = e.currentTarget; setOpen(open === kind ? null : kind); }}>
       {label}
     </button>
   );
@@ -110,10 +110,10 @@ export function FlightBrakes({ p, mode = "approval", fresh, onDone }: { p: Brake
             <span className="faint fb-count" aria-live="polite">
               {reason.length}/{RECALL_MAX}
             </span>
-            <button type="button" className="fb-btn" onClick={close} disabled={busy}>
+            <button type="button" className="btn" onClick={close} disabled={busy}>
               취소
             </button>
-            <button type="submit" className="fb-btn is-recall is-confirm" disabled={busy || !text}>
+            <button type="submit" className="btn is-recall is-confirm" disabled={busy || !text}>
               RECALL 요청
             </button>
           </div>
@@ -133,10 +133,10 @@ export function FlightBrakes({ p, mode = "approval", fresh, onDone }: { p: Brake
             {p.id}({fn})는 아직 {p.aircraftName}에 보내지 않았다. CANCEL하면 카드가 SUPERVISOR 취소로 닫히고 AIRCRAFT와 FLIGHT가 풀린다. 같은 짝은 24시간 다시 제안하지 않는다.
           </p>
           <div className="fb-actions">
-            <button type="button" className="fb-btn" autoFocus onClick={close} disabled={busy}>
+            <button type="button" className="btn" autoFocus onClick={close} disabled={busy}>
               취소
             </button>
-            <button type="submit" className="fb-btn is-recall is-confirm" disabled={busy}>
+            <button type="submit" className="btn is-recall is-confirm" disabled={busy}>
               CANCEL 확인
             </button>
           </div>
@@ -156,10 +156,10 @@ export function FlightBrakes({ p, mode = "approval", fresh, onDone }: { p: Brake
             {p.aircraftName}의 백그라운드 세션을 STOP하고 새 세션을 LAUNCH합니다. 새 세션의 첫 프롬프트가 CREW BRIEFING에 이어 {p.id}({fn})의 FLIGHT PLAN이라 OCC는 다시 보내지 않습니다. 이전 대화는 남지만(claude attach) 새 세션은 이어받지 않습니다.
           </p>
           <div className="fb-actions">
-            <button type="button" className="fb-btn" autoFocus onClick={close} disabled={busy}>
+            <button type="button" className="btn" autoFocus onClick={close} disabled={busy}>
               취소
             </button>
-            <button type="submit" className="fb-btn is-fresh is-confirm" disabled={busy}>
+            <button type="submit" className="btn is-fresh is-confirm" disabled={busy}>
               FRESH START 확인
             </button>
           </div>

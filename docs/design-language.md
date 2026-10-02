@@ -158,6 +158,10 @@ Secondary status lines (DUTY, GitHub, Linear, RADIO) share one group under the L
 
 An empty list says what would be there in one faint line (`LOGBOOK에 ARRIVED 기록 없음`), and only when the list is the main content of its place. Otherwise the block is hidden. "Unreachable" is its own state: grey, with what to do (`atc 연결 안 됨 — SSH 포워딩` and its repair button), never an empty screen.
 
+### 4.7 Buttons
+
+One button style: `.btn` (`web/src/kit/Button.css`, a CSS class, not a component, ATC-411). Add `.is-primary` for the one emphasised action and `.is-danger` for a destructive one; both change only the border and text colour. Fill, border, radius, size, hover, disabled and focus ring are defined once on `.btn` (height `--btn-h`, 30 px; the fill reads the contextual `--layer` / `--layer-hover`). A screen does not restyle the base; it adds a layout rule or a screen-only variant (`.btn.is-link`) next to its own classes. A new screen button is `.btn`, never a new `xx-btn` class.
+
 ## 5. Review checklist
 
 For a PR that changes a screen in atc or ANNUNCIATOR. Copy the lines that apply into the PR body and answer each in one line.

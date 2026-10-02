@@ -150,6 +150,10 @@
   --gap-column: var(--space-4); /* 열 사이 */
   --gap-section: var(--space-8); /* 베이·구역 사이 */
   --console-h: 48px;
+  --rail-w: 56px; /* 왼쪽 아이콘 레일(ATC-442) */
+  --bar-h: 56px; /* ≤860px의 아래 탭 줄 */
+  --sidebar-w: 0px; /* 사이드바 열(Z2가 채우기 전에는 접혀 있다) */
+  --drawer-w: 0px; /* 서랍 열(Z3가 채우기 전에는 접혀 있다) */
 
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
@@ -258,47 +262,12 @@ button {
   top: 0;
   z-index: var(--z-sticky);
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  height: var(--console-h);
+  min-height: var(--console-h);
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-2);
-}
-/* 로고 = 설정 버튼 */
-.brand-wrap {
-  position: relative;
-  display: flex;
-  flex: none;
-  border-right: 1px solid var(--line);
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) 0 var(--space-4);
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-.brand:hover,
-.brand[aria-expanded="true"] {
-  background: var(--panel);
-}
-.brand-gear {
-  width: 13px;
-  height: 13px;
-  color: var(--faint);
-  transition:
-    color var(--dur-fast) var(--ease),
-    transform var(--dur-base) var(--ease);
-}
-.brand:hover .brand-gear {
-  color: var(--text);
-}
-.brand[aria-expanded="true"] .brand-gear {
-  color: var(--tab-on);
-  transform: rotate(60deg);
 }
 .scope-icon {
   width: 26px;
@@ -308,63 +277,6 @@ button {
 .scope-sweep {
   transform-origin: 13px 13px;
   animation: sweep 6s linear infinite;
-}
-.brand-name {
-  display: block;
-  font: 700 var(--text-lg)/1.1 var(--mono);
-  letter-spacing: 0.18em;
-}
-.brand-sector {
-  display: block;
-  font: 400 var(--text-2xs) var(--mono);
-  letter-spacing: 0.14em;
-  color: var(--cyan);
-}
-/* 탭이 넘치면 줄 안에서 가로 스크롤. 선택 탭 밑줄(bottom:-1px)이 잘리지 않게 아래로 1px 늘린다. */
-.tabs {
-  display: flex;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
-  padding-bottom: 1px;
-  margin-bottom: -1px;
-}
-.tab {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-0-5);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.tab:hover {
-  color: var(--text);
-  background: var(--panel);
-}
-.tab-code {
-  font: 700 var(--text-xs) var(--mono);
-  letter-spacing: 0.16em;
-}
-.tab[aria-selected="true"] {
-  color: var(--tab-on);
-  background: var(--tab-on-bg);
-}
-.tab[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--tab-on);
-  box-shadow: 0 0 10px var(--tab-on);
 }
 .readouts {
   margin-left: auto;
@@ -1877,34 +1789,6 @@ a.ticket:hover {
   }
 }
 
-/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 6개 + 로고 + 수치, 1760px 이하): 탭을 헤더 둘째 줄로 */
-@media (min-width: 861px) and (max-width: 1760px) {
-  .console {
-    height: auto;
-    flex-wrap: wrap;
-  }
-  .brand {
-    height: var(--console-h);
-  }
-  .tabs {
-    order: 1;
-    flex-basis: 100%;
-    border-top: 1px solid var(--line);
-  }
-  .tab {
-    padding: var(--space-2) var(--space-4);
-  }
-}
-
-/* 둘째 줄이 가장 좁을 때: 탭 10개가 한 줄에 들어가게 좌우 여백을 줄인다(cockpit·night 글꼴이 넓다) */
-@media (min-width: 861px) and (max-width: 960px) {
-  .tab,
-  :root[data-theme="night"] .tabs .tab {
-    padding-left: var(--space-3);
-    padding-right: var(--space-3);
-  }
-}
-
 @media (max-width: 860px) {
   :root {
     --gutter: var(--space-4);
@@ -1912,35 +1796,6 @@ a.ticket:hover {
   .console {
     height: auto;
     flex-wrap: wrap;
-  }
-  .brand-wrap {
-    flex: 1;
-    border-right: 0;
-  }
-  .brand {
-    height: var(--console-h);
-  }
-  .tabs {
-    width: 100%;
-    flex-wrap: wrap;
-    overflow: visible;
-    padding-bottom: 0;
-    margin-bottom: 0;
-    border-top: 1px solid var(--line);
-  }
-  /* 한 줄에 4개씩(night 테마의 gap까지 들어가게 22%) */
-  .tab {
-    flex: 1 0 22%;
-    align-items: center;
-    padding: var(--space-2);
-    border-bottom: 1px solid var(--line);
-  }
-  .tab:last-child {
-    border-right: 0;
-  }
-  /* night 탭도 한 줄에 4개(탭 10개가 4/4/2) */
-  :root[data-theme="night"] .tabs .tab {
-    padding: 0 var(--space-2);
   }
   /* ≤860px: 가로로 밀지 않고 줄을 바꾼다(ATC-364, DL8). 칸은 72px 이상으로 늘어나 한 줄을 채우고, 소리 잠금 칩은 한 줄을 다 쓴다.
      칸 사이 선은 border가 아니라 왼선·윗선 box-shadow라 줄 맨 앞 칸의 왼선은 화면 밖에 그려지고 칸의 크기는 그대로다 */
@@ -2217,15 +2072,6 @@ a.ticket:hover {
 }
 :root[data-theme="cockpit"] .map {
   z-index: var(--z-raised);
-}
-:root[data-theme="cockpit"] .tab[aria-selected="true"] {
-  box-shadow: inset 0 0 0 1.5px var(--cyan);
-}
-:root[data-theme="cockpit"] .tab[aria-selected="true"]::after {
-  display: none;
-}
-:root[data-theme="cockpit"] .brand-sector {
-  color: var(--magenta);
 }
 :root[data-theme="cockpit"] .strip {
   border-radius: var(--radius-sm);
@@ -2962,8 +2808,6 @@ a.ticket:hover {
 :root[data-theme="night"] .moon-icon {
   filter: drop-shadow(0 0 8px rgba(255, 230, 170, 0.45));
 }
-:root[data-theme="night"] .brand-name,
-:root[data-theme="night"] .tab-code,
 :root[data-theme="night"] .readout b,
 :root[data-theme="night"] .label,
 :root[data-theme="night"] .blk-l1 strong,
@@ -2972,37 +2816,6 @@ a.ticket:hover {
 :root[data-theme="night"] .column-code,
 :root[data-theme="night"] .flap b {
   font-family: var(--display);
-}
-:root[data-theme="night"] .brand-sector {
-  color: var(--muted);
-  white-space: nowrap;
-}
-:root[data-theme="night"] .tabs {
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
-  align-items: center;
-}
-:root[data-theme="night"] .tab {
-  align-items: center;
-  height: 40px;
-  padding: 0 var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-}
-:root[data-theme="night"] .tab[aria-selected="true"] {
-  color: var(--text);
-  border-color: var(--line-strong);
-  box-shadow:
-    0 0 18px rgba(160, 180, 255, 0.18),
-    inset 0 0 12px rgba(160, 180, 255, 0.08);
-}
-:root[data-theme="night"] .tab[aria-selected="true"] .tab-code {
-  color: var(--gold);
-  text-shadow: 0 0 10px rgba(255, 217, 138, 0.6);
-}
-:root[data-theme="night"] .tab[aria-selected="true"]::after {
-  display: none;
 }
 :root[data-theme="night"] .tone-alert {
   background: none;
@@ -3320,7 +3133,7 @@ a.ticket:hover {
 /* 표: FIDS 목록, AIRPORT, 지표 */
 :root[data-density="compact"] .fids-table td,
 :root[data-density="compact"] .apt-table td,
-:root[data-density="compact"] .mx-table td {
+:root[data-density="compact"] .kit-table td {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
 }

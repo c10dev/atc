@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./kit/Icon.tsx";
 import "./alerts.css";
 
-// 도움말 메뉴(ATC-381, docs/layout.md Y6): DOCS는 탭이 아니라 여기서 연다. 주소 #docs/<쪽>은 그대로 열린다.
+// 도움말 메뉴(ATC-381, docs/layout.md Y6): DOCS는 탭이 아니라 여기서 연다. 주소 #docs/<쪽>은 그대로 열린다. ATC-442(Z1)부터 레일 아래쪽에 있고 메뉴는 레일 옆으로 열린다.
 const ITEMS: readonly { hash: string; label: string; note: string }[] = [
   { hash: "docs", label: "사용 안내", note: "소개 · 빠른 시작 · 개념" },
   { hash: "docs/screens", label: "화면 안내", note: "각 화면이 보이는 것" },
@@ -26,15 +26,12 @@ export function HelpMenu({ docsOpen }: { docsOpen: boolean }) {
     };
   }, [open]);
   return (
-    <div className="bell-wrap" ref={ref}>
-      <button type="button" className={`readout is-button${docsOpen ? " is-on" : ""}`} onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-haspopup="menu" aria-label="도움말 메뉴">
-        <b>
-          <Icon icon={CircleHelp} size={16} />
-        </b>
-        <span>HELP</span>
+    <div className="bell-wrap rail-menu" ref={ref} data-open={open ? "" : undefined}>
+      <button type="button" className={`rail-item${docsOpen || open ? " is-on" : ""}`} onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-haspopup="menu" aria-label="도움말 메뉴" data-tip="HELP · 도움말">
+        <Icon icon={CircleHelp} size={16} />
       </button>
       {open && (
-        <ul className="bell-list help-list" role="menu" aria-label="도움말">
+        <ul className="bell-list help-list rail-pop" role="menu" aria-label="도움말">
           {ITEMS.map((i) => (
             <li key={i.hash} role="none">
               <a role="menuitem" className="help-item" href={`#${i.hash}`} onClick={() => setOpen(false)}>

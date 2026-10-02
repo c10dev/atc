@@ -85,17 +85,6 @@
   display: none;
 }
 
-/* 넓은 화면(탭이 헤더 한 줄에 들어가는 폭): 띠가 셋째 줄로 내려가게 헤더가 줄바꿈된다. 좁은 폭은 이미 그렇다 */
-@media (min-width: 1761px) {
-  header.console {
-    height: auto;
-    flex-wrap: wrap;
-  }
-  header.console .brand {
-    height: var(--console-h);
-  }
-}
-
 /* 좁은 화면: 칩 하나로 접는다 */
 @media (max-width: 767px) {
   .cs-chips {

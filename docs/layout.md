@@ -187,7 +187,7 @@ Open:
 
 ## 7. Shell: rail, sidebar, drawer and CONTROL panel
 
-Decided by the SUPERVISOR on 2026-10-02, over three rounds on a private structure mockup at their real width (about 1000 px) with example data. Rounds 2 and 3 answered with a screenshot and a list. Nothing in this section is built; Z1–Z6 below are the steps.
+Decided by the SUPERVISOR on 2026-10-02, over three rounds on a private structure mockup at their real width (about 1000 px) with example data. Rounds 2 and 3 answered with a screenshot and a list. Z1 is built (see "Z1 as built" below); Z2–Z6 are not. Z1–Z6 below are the steps.
 
 ### 7.1 Today
 
@@ -295,3 +295,14 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
 - **E4.** Notifications (Linear, GitHub, atc) sit left of search ("알림은 검색 좌측에"). With the sidebar folded, one total beside the fold button: the session's recommendation, accepted with "진행".
 - **E5.** At narrow widths the CONTROL header shows only the sessions that need the SUPERVISOR and `OK n` for the rest. This answers the clipped chips in the SUPERVISOR's 390 px screenshot.
 - **E6.** Between 861 and 1279 px an open drawer folds the sidebar until it closes (the session's proposal in the mockup, accepted with "진행").
+
+### Z1 as built (ATC-442)
+
+- **Grid.** `.app.shell` (`web/src/Rail.css`) is a CSS grid with the areas `rail sidebar main drawer`, columns `--rail-w` (56 px), `--sidebar-w` (0), `minmax(0, 1fr)` and `--drawer-w` (0). The sidebar (`aside.sidebar`) and the drawer column (`div.drawer-col`) are rendered empty and `hidden`, and `section.panel-area` (the bottom panel) sits at the foot of the main column; Z2, Z3 and Z5 fill those elements and do not rearrange. The existing overlay drawers and the GLOBE and settings windows are untouched until Z3.
+- **Main column is a flex column, not nested grid areas.** `header.console` (the top bar) is `position: sticky`, and a sticky item inside a grid area cannot move past its own area. So the main column is a flex column: top bar (with the CONTROL strip as its last row), the notices (SUPERVISOR pairing, UPDATE bar, NEW VERSION bar, ticker, ALERT list), `main` (the screen), then the panel area. The page still scrolls as a whole.
+- **Rail** (`web/src/Rail.tsx`). Icons only (Lucide through `kit/Icon`): HOME `House`, RELEASE `Rocket`, FLIGHTS `Plane`, FLEET `Users`, METRICS `ChartColumn`. Each is a button with an accessible name (the code, plus the count when there is one), `aria-current="page"` on the open screen, and a CSS tooltip (`data-tip`). Arrow Up/Down (and Left/Right on the bottom bar), Home and End move between the buttons; Tab reaches them too. Clicking one sets the screen as the old tab did (a drawer that is open stays open). Badges: HOME shows the QUEUE item count (`GET /api/supervisor/queue`, `items`), RELEASE the READY count (`GET /api/releases`, `ready`); both are read when the snapshot minute changes, as the screens do, and show nothing at 0. The brand mark sits at the top of the rail; its tooltip holds what the old brand showed (`ATC · LOCAL CONTROL · <port>`).
+- **Rail foot.** GLOBE (a toggle, `#globe`), HELP (the same menu, opening beside the rail) and the SUPERVISOR mark (`UserRound`), which replaces the brand button and opens the same settings window (`#airports` still opens its AIRPORTS section).
+- **Top bar.** Fold button (`PanelLeft`, `aria-disabled`, does nothing until Z2), then AIRBORNE, STANDS, ENROUTE, FOLLOW next, HANDOFF, ALERTS, the bell, the sound lock, the clock and LINK, and DUTY at the right (shown when DUTY is on; `#duty` as before). The ticker, ALERT list and the two version bars keep their place under it. Readouts wrap to a second line if the width is short.
+- **≤ 860 px.** The rail becomes a fixed bottom tab bar with labels: the five screens, then GLOBE, HELP and settings as icon-only buttons (32 px wide, 55 px high). The top bar shows the brand text (`ATC · LOCAL CONTROL · <port>`) and DUTY on its first line and the readouts below; the fold button is hidden. The HELP menu opens upward from the bar.
+- **Removed in the same PR.** The tab row, the brand button, the settings gear and their CSS (`.tabs`, `.tab*`, `.brand*`, the 861–1760 px second-row rule and the 860 px tab grid), and the `GLOBE` and `HELP` readouts.
+- **Tokens added** to `:root`: `--rail-w`, `--bar-h`, `--sidebar-w`, `--drawer-w`.

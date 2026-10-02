@@ -95,7 +95,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
           onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
           aria-label="AIRPORT 코드 (비우면 자동)"
         />
-        <button className="apt-btn primary" type="submit">
+        <button className="btn is-primary" type="submit">
           OPEN
         </button>
       </form>
@@ -148,7 +148,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                           if (e.key === "Escape") setEditing(null);
                         }}
                       />
-                      <button className="apt-btn" onClick={saveCode}>
+                      <button className="btn" onClick={saveCode}>
                         저장
                       </button>
                     </span>
@@ -172,7 +172,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                 </td>
                 <td>
                   <button
-                    className="apt-btn"
+                    className="btn"
                     aria-pressed={a.teamsMerge !== false}
                     title={a.teamsMerge !== false ? "팀이 머지한다(TOWER가 LAND를 낸다). 누르면 SUPERVISOR만 머지" : "SUPERVISOR만 머지한다(LAND 없음). 누르면 팀 머지로"}
                     onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { teamsMerge: a.teamsMerge === false }))}
@@ -199,12 +199,12 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                 <td>
                   <div className="apt-actions">
                   {a.status === "closed" ? (
-                    <button className="apt-btn" onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { closed: false }))}>
+                    <button className="btn" onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { closed: false }))}>
                       REOPEN
                     </button>
                   ) : (
                     <button
-                      className="apt-btn"
+                      className="btn"
                       onClick={() => act(() => api("PATCH", `/api/airports/${encodeURIComponent(a.id)}`, { closed: true }))}
                     >
                       CLOSE
@@ -212,7 +212,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                   )}
                   {!a.discovered && (
                     <button
-                      className="apt-btn danger"
+                      className="btn is-danger"
                       onClick={() => {
                         if (confirm(`${a.code} ${a.name} AIRPORT를 등록부에서 지울까요? 저장소 폴더는 그대로 둡니다.`))
                           act(() => api("DELETE", `/api/airports/${encodeURIComponent(a.id)}`));
