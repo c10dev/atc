@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type PriceTable, parsePriceTable } from "./fuel-cost.ts";
 import type { FuelRecord } from "./fuel.ts";
-import { changeOf, changeText, coverageOf, noCompareText, trendScanDays, usageTrend } from "./fuel-trend.ts";
+import { changeOf, changeText, coverageOf, noCompareText, previousLabel, trendScanDays, usageTrend } from "./fuel-trend.ts";
 
 // ATC-389: USAGE TREND. 합성 기록만 쓴다(~/.claude를 읽지 않는다)
 const TABLE = parsePriceTable({
@@ -125,4 +125,7 @@ test("changeText·noCompareText", () => {
   assert.equal(noCompareText({ coverage: 0 }, 7), "지난 기간 기록 없음");
   assert.equal(noCompareText({ coverage: 0.4286 }, 7), "지난 기간 기록 3/7일뿐");
   assert.equal(noCompareText({ coverage: 1 }, 7), "지난 기간 0");
+  assert.equal(previousLabel({ coverage: 1 }, 7), "지난 7일");
+  assert.equal(previousLabel({ coverage: 0.1583 }, 7), "지난 7일(기록 1.1일)");
+  assert.equal(previousLabel({ coverage: 0 }, 14), "지난 14일");
 });

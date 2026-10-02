@@ -292,7 +292,7 @@
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.1em;
 }
-.mft-glabel .faint {
+.mft-glabel .muted {
   font: var(--text-xs) var(--sans);
   letter-spacing: 0;
 }

@@ -177,9 +177,15 @@ export function changeText(r: number | null): string | null {
   return pct === 0 ? "0%" : `${pct > 0 ? "+" : "−"}${Math.abs(pct)}%`;
 }
 
+// 지난 기간 이름. 일부만 기록이 있으면 그 날 수를 붙인다(그 값은 그 기간 전체의 값이 아니다)
+export const recordedDays = (coverage: number, days: number) => Math.round(coverage * days * 10) / 10;
+export function previousLabel(prev: Pick<UsagePeriod, "coverage">, days: number): string {
+  return prev.coverage > 0 && prev.coverage < 1 ? `지난 ${days}일(기록 ${recordedDays(prev.coverage, days)}일)` : `지난 ${days}일`;
+}
+
 // 견줄 수 없는 까닭. 지난 기간 일부만 기록이 있으면 그 날 수
 export function noCompareText(prev: Pick<UsagePeriod, "coverage">, days: number): string {
   if (prev.coverage <= 0) return "지난 기간 기록 없음";
-  if (prev.coverage < 1) return `지난 기간 기록 ${Math.round(prev.coverage * days * 10) / 10}/${days}일뿐`;
+  if (prev.coverage < 1) return `지난 기간 기록 ${recordedDays(prev.coverage, days)}/${days}일뿐`;
   return "지난 기간 0";
 }

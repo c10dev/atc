@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { changeText, metricOf, noCompareText, type TrendMetric, type UsagePeriod, type UsageTrend } from "../../../server/fuel-trend.ts";
+import { changeText, metricOf, noCompareText, previousLabel, recordedDays, type TrendMetric, type UsagePeriod, type UsageTrend } from "../../../server/fuel-trend.ts";
 import { usd } from "../../../server/fuel-view.ts";
 import { apiGet } from "../api.ts";
 
@@ -96,7 +96,7 @@ function Body({ data }: { data: TrendData }) {
   return (
     <>
       {!comparable && (
-        <p className="mft-note faint">
+        <p className="mft-note muted">
           {noCompareText(prev, days)}
           {data.historyStart ? ` · 대화 기록은 ${data.historyStart.slice(0, 10)}부터` : ""} — 변화는 지난 기간 기록이 다 찬 뒤에 보인다
         </p>
@@ -110,7 +110,7 @@ function Body({ data }: { data: TrendData }) {
                 <div key={t.metric}>
                   <dt>{t.label}</dt>
                   <dd className="mft-value">{t.value(cur)}</dd>
-                  {t.sub && t.sub(cur) ? <dd className="mft-sub faint">{t.sub(cur)}</dd> : null}
+                  {t.sub && t.sub(cur) ? <dd className="mft-sub muted">{t.sub(cur)}</dd> : null}
                   <dd className="mft-prev">
                     <Change data={data} tile={t} />
                   </dd>
@@ -131,7 +131,7 @@ function Change({ data, tile }: { data: TrendData; tile: Tile }) {
   const prevKnown = data.previous.coverage > 0;
   return (
     <>
-      <span className="muted">지난 {data.days}일 {prevKnown ? tile.value(data.previous) : "—"}</span>
+      <span className="muted">{previousLabel(data.previous, data.days)} {prevKnown ? tile.value(data.previous) : "—"}</span>
       {text ? <b className="mft-delta"> {text}</b> : null}
     </>
   );
@@ -147,7 +147,7 @@ function Weeks({ data }: { data: TrendData }) {
   return (
     <div className="mft-weeks">
       <h3 className="mft-glabel">
-        최근 {weeks.length}주 <span className="faint">7일씩, 지금에서 거꾸로{before ? ` · 앞 ${before}주는 기록 전` : ""}</span>
+        최근 {weeks.length}주 <span className="muted">7일씩, 지금에서 거꾸로{before ? ` · 앞 ${before}주는 기록 전` : ""}</span>
       </h3>
       <div className="mft-rows" onMouseLeave={() => setFocus(last)}>
         {ROWS.map((row) => {
@@ -178,7 +178,7 @@ function Weeks({ data }: { data: TrendData }) {
       </div>
       <p className="mft-readout muted" aria-live="polite">
         <b>{weekName(w, weeks.indexOf(w) === last)}</b>
-        {w.coverage === 0 ? " · 기록 전" : w.coverage < 1 ? ` · 기록 ${Math.round(w.coverage * 7 * 10) / 10}/7일` : ""}
+        {w.coverage === 0 ? " · 기록 전" : w.coverage < 1 ? ` · 기록 ${recordedDays(w.coverage, 7)}/7일` : ""}
         {w.coverage > 0 ? ` · 요청 ${count(w.requests)} · AIRCRAFT ${w.aircraft} · PR ${w.prs}` : ""}
       </p>
       <button type="button" className="mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
@@ -209,7 +209,7 @@ function Weeks({ data }: { data: TrendData }) {
                   <td className="num">{x.aircraft}</td>
                   <td className="num">{x.flights}</td>
                   <td className="num">{x.prs}</td>
-                  <td className="num">{x.coverage === 0 ? "기록 전" : x.coverage < 1 ? `${Math.round(x.coverage * 7 * 10) / 10}/7일` : "7/7일"}</td>
+                  <td className="num">{x.coverage === 0 ? "기록 전" : x.coverage < 1 ? `${recordedDays(x.coverage, 7)}/7일` : "7/7일"}</td>
                 </tr>
               ))}
             </tbody>
