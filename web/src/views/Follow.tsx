@@ -8,6 +8,7 @@ import { timeAgo } from "../derive.ts";
 import { LandingBadge } from "./Teams.tsx";
 import "./Follow.css";
 import { apiGet, apiSend } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // FOLLOW(docs/follow.md 4장): 따라가는 상위 이슈마다 하위 이슈의 단계를 한 줄씩 보인다. 그리기만 한다 — 단계와 글은 서버가 센다.
 
@@ -175,7 +176,7 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
         </span>
       </summary>
       <div className="fw-bbody">
-        {b.rows.length === 0 ? <p className="empty">{b.missing ? `${b.parent}을 스냅샷에서 찾지 못함(45일 안에 바뀐 이슈만 읽는다).` : "줄이 없음"}</p> : (
+        {b.rows.length === 0 ? <Empty>{b.missing ? `${b.parent}을 스냅샷에서 찾지 못함(45일 안에 바뀐 이슈만 읽는다).` : "줄이 없음"}</Empty> : (
           <ul className="fw-rows">
             {b.rows.map((r) => (
               <Row key={r.key} row={r} stages={stages} busy={busy || rowBusy === r.key} error={rowError[r.key] ?? null} moved={moved.has(r.key)} onRelease={onRelease} onChanged={onChanged} mode={mode} pull={pullOf(r.key)} />
@@ -242,7 +243,7 @@ export function Follow({ refreshKey, now, pulls = [] }: { refreshKey: string; no
       </header>
       {msg && <p className="fw-error" role="alert">{msg}</p>}
       {error && !data && <p className="fw-error" role="alert">불러오지 못함: {error}</p>}
-      {data && data.bundles.length === 0 && <p className="empty">따라가는 일이 없다. 발권(RELEASE)한 FLIGHT는 여기에 저절로 나타난다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누르면 번들도 따라간다.</p>}
+      {data && data.bundles.length === 0 && <Empty>따라가는 일이 없다. 발권(RELEASE)한 FLIGHT는 여기에 저절로 나타난다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누르면 번들도 따라간다.</Empty>}
       {data?.bundles.map((b) => (
         <Bundle key={b.parent} b={b} stages={data.stages} now={now} busy={busy} rowBusy={rowBusy} rowError={rowError} moved={moved} onRelease={release} onChanged={() => void reload()} mode={data.dispatchMode} pullOf={pullOf} onUnfollow={() => void change(b.parent, false)} />
       ))}

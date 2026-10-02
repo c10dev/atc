@@ -10,6 +10,7 @@ import { AccountsBlock } from "./SettingsAccounts.tsx";
 import { AlertsSettings } from "./SettingsAlerts.tsx";
 import { LandingSettings, OperationsSettings } from "./SettingsAutomation.tsx";
 import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
+import { Segmented } from "./kit/Segmented.tsx";
 
 // 왼쪽 메뉴. group이 있는 분류는 그 묶음 제목 아래에 모인다(AUTOMATION = SUPERVISOR 정책 스위치)
 const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: string }[] = [
@@ -304,27 +305,5 @@ function Section({ code, label, hint, children }: { code: string; label: string;
       {children}
       {hint && <p className="settings-hint">{hint}</p>}
     </section>
-  );
-}
-
-function Segmented<T extends string | boolean>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: [T, string][];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)}>
-          {text}
-        </button>
-      ))}
-    </div>
   );
 }

@@ -10,6 +10,7 @@ import { Network } from "./Network.tsx";
 import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
@@ -133,7 +134,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        <p className="empty">불러오는 중…</p>
+        <Empty>불러오는 중…</Empty>
       ) : (
         <>
           <Readiness data={data} />
@@ -143,7 +144,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
             TRENDS <em>5분 표본</em>
           </h2>
           {data.series.length < 2 ? (
-            <p className="empty mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</p>
+            <Empty className="mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</Empty>
           ) : (
             <div className="mx-trends">
               {TRENDS.map((t) => (

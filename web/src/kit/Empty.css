@@ -1,0 +1,5 @@
+/* 빈 상태 한 줄(kit, ATC-414): 의미 토큰만 쓴다 */
+.kit-empty {
+  margin: var(--space-2) 0 0;
+  color: var(--faint);
+}

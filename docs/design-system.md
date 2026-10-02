@@ -89,6 +89,13 @@ Rules:
 - Its own adjustable values are local custom properties, e.g. `--btn-h`.
 - Primitives live in `web/src/kit/`, one `.css` per primitive and a `.tsx` where behaviour needs one (decision S3). `web/src/badges.tsx` (was `ui.tsx`, renamed in ATC-435) holds the domain badges and `web/src/badges.css` their styles; they are not primitives.
 
+#### U8 as built (ATC-414)
+
+- `web/src/kit/Empty.tsx` (`.kit-empty`): one faint line, 4.6. The 38 `.empty` call sites use it; `className` only adjusts the place.
+- `web/src/kit/Fold.tsx` (`.kit-fold-*`): a heading button with `aria-expanded` (click, Enter, Space) and a count or one-line summary (`foldSummary`, tested in `server/kit.test.ts`). `foldable={false}` keeps the same look without the button (a WARNING is never folded, 4.3). HOME's six sections use it; they start open.
+- `web/src/kit/Segmented.tsx` (`.segmented`): the two settings copies in one component; `role="radiogroup"`, one tab stop, arrow keys, Home and End select (`nextSegment`). The ATFM switch row in `Atfm.tsx` is a different control (a labelled switch with three modes) and stays.
+- `--layer` and `--layer-hover` are defined on `:root` (`--panel`, `--panel-2`); a container may redefine them for its children. Segmented reads them; no kit file uses a domain token, a literal or a screen class.
+
 ### L2 Patterns
 
 The patterns of design-language section 4: row and expanded detail, card (header, alert band, body grid, folded history), section (heading plus body), queue item, status row.
