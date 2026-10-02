@@ -1,3 +1,4 @@
+import { type KVerdict, kWhyOf } from "./k-approval.ts";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { config } from "./config.ts";
@@ -20,8 +21,10 @@ export interface MccConfig {
   airport: string; // MCC가 맡는 AIRPORT 코드(atc 저장소)
   ciCheck: string; // 착륙 조건 L4의 CI 체크 이름
   holds: number[]; // SUPERVISOR가 HOLD한 PR 번호: 착륙시키지 않는다
+  // K 승인 착륙(ATC-391): 발권 때 승인한 K 효과 안에서 만든 user 등급 PR을 MCC가 착륙시킨다. 기본 on(처음부터 켬), 끄는 것은 SUPERVISOR만(설정 창)
+  kApproval: "on" | "off";
 }
-export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [] };
+export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" };
 
 const CONFIG_FILE = () => join(config.stateDir, "mcc.json");
 export const RECORD_FILE = () => join(config.stateDir, "mcc.jsonl");
@@ -37,6 +40,7 @@ export function parseMcc(raw: unknown): MccConfig {
     airport: text(r.airport, d.airport).toUpperCase(),
     ciCheck: text(r.ciCheck, d.ciCheck),
     holds: [...new Set((Array.isArray(r.holds) ? r.holds : []).filter((n): n is number => Number.isInteger(n) && n > 0))],
+    kApproval: r.kApproval === "off" ? "off" : d.kApproval, // 꺼지는 것은 정확히 "off"일 때뿐
   };
 }
 
@@ -75,7 +79,7 @@ export interface Inspection {
 export type MccRecord =
   | Inspection
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
-  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string }
+  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
   | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
   | { op: "mode"; at: string; mode: MccMode; detail: string }
   | { op: "hold" | "unhold"; at: string; pr: number };
@@ -189,6 +193,7 @@ export interface LandInput {
   tier: "auto" | "flagged" | "user";
   tierReasons: string[];
   escalated: { reason: string } | null;
+  kApproval?: KVerdict | null; // K 승인 판정(ATC-391, k-approval.ts). ok면 user 등급의 L3를 푼다. ESCALATE(의심)는 늘 막는다
   ci: CiState;
   ciCheck: string;
   inspection: Pick<Inspection, "verdict"> | null;
@@ -210,7 +215,7 @@ export function landBlocksOf(x: LandInput): LandBlock[] {
   if (x.pr.base !== x.defaultBranch) out.push({ code: "L2", text: `base가 ${x.defaultBranch}이 아님(${x.pr.base})` });
   if (!x.pr.head.startsWith(x.head.toLowerCase()) || x.head.length < 7) out.push({ code: "L2", text: `head가 움직임(지금 ${short(x.pr.head)}) — 새 head로 다시` });
   if (x.escalated) out.push({ code: "L3", text: `ESCALATE됨 — 사용자가 머지(${x.escalated.reason})` });
-  else if (x.tier === "user") out.push({ code: "L3", text: `user 등급 — 사용자가 머지(${x.tierReasons.join(", ") || "경로 규칙"})` });
+  else if (x.tier === "user" && !x.kApproval?.ok) out.push({ code: "L3", text: `user 등급 — 사용자가 머지(${x.tierReasons.join(", ") || "경로 규칙"})${x.kApproval ? ` · ${kWhyOf(x.kApproval)}` : ""}` });
   if (x.ci === "none") out.push({ code: "L4", text: `head에 CI ${x.ciCheck}가 없음` });
   else if (x.ci === "pending") out.push({ code: "L4", text: `CI ${x.ciCheck} 진행 중` });
   else if (x.ci === "failed") out.push({ code: "L4", text: `CI ${x.ciCheck} 실패` });

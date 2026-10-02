@@ -126,7 +126,7 @@ export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
     parent: n.parent?.identifier ?? null,
     children: uniq((n.children?.nodes ?? []).map((c) => c.identifier)),
     kEffects: kEffectsOf(n.description),
-    ...((k3) => (k3.length ? { k3 } : {}))(k3DeclarationsOf(n.description).declared),
+    ...((k3) => ({ ...(k3.declared.length ? { k3: k3.declared } : {}), ...(k3.unparsed ? { k3Unparsed: k3.unparsed } : {}) }))(k3DeclarationsOf(n.description)),
     releaseHash: releaseHashOf(n.description),
   };
 }
