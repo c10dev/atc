@@ -74,7 +74,7 @@ A new theme (the light theme, D7) cannot land unless the table passes.
 
 | Primitive | Form | Refactor unit |
 |---|---|---|
-| Button (`.btn`, `.is-primary`, `.is-danger`) | CSS class | U5 (ATC-411) |
+| Button (`.btn`, `.is-primary`, `.is-danger`) | CSS class, `web/src/kit/Button.css` (built, ATC-411: replaces `fb-`, `rl-`, `hm-`, `apt-btn`) | U5 (ATC-411) |
 | Chip, tag, dot (design-language 4.4) | CSS classes; a dot never stands without a word or a name | U6 (ATC-412) |
 | Table and scroll region | CSS class; the scroll region as a small component (focusable, named) | U7 (ATC-413) |
 | Fold | Component (`aria-expanded`, Enter / Space, the count in the header) | U8 (ATC-414) |

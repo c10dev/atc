@@ -316,10 +316,10 @@ function Brakes({ atfm, alertOn, now, onOpenSettings, schedule }: { atfm: Return
         <span className="hm-chip" title="SUPERVISOR가 손으로 건 출발 중지">
           수동 출발 중지 <b>{manual}</b>
         </span>
-        <button type="button" className="hm-btn" aria-expanded={atfmOpen} onClick={() => setAtfmOpen((v) => !v)}>
+        <button type="button" className="btn" aria-expanded={atfmOpen} onClick={() => setAtfmOpen((v) => !v)}>
           ATFM…
         </button>
-        <button type="button" className="hm-btn is-stop" aria-expanded={stopAll} onClick={() => setStopAll((v) => !v)}>
+        <button type="button" className="btn is-danger" aria-expanded={stopAll} onClick={() => setStopAll((v) => !v)}>
           STOP ALL…
         </button>
       </div>
@@ -328,16 +328,16 @@ function Brakes({ atfm, alertOn, now, onOpenSettings, schedule }: { atfm: Return
           {segs.length ? modeLine(segs) : server.state === "loading" ? "스위치 읽는 중…" : "스위치를 읽지 못함"}
         </span>
         {dispatchMode && (
-          <button type="button" className="hm-btn" onClick={() => void switchMode()} title="DISPATCH 모드(2a 그림자 ↔ 2b 승인). 자동 운항은 승인 운용에서만 일한다">
+          <button type="button" className="btn" onClick={() => void switchMode()} title="DISPATCH 모드(2a 그림자 ↔ 2b 승인). 자동 운항은 승인 운용에서만 일한다">
             DISPATCH {dispatchMode === "approval" ? "APPROVAL" : "SHADOW"} — {dispatchMode === "approval" ? "2a로" : "2b로"}
           </button>
         )}
         {scheduleMode && (
-          <button type="button" className="hm-btn" onClick={() => void switchSchedule()} title="SCHEDULE 모드(S1 그림자 ↔ S2 승인). S2에서 승인한 초안을 OCC가 Linear에 쓴다">
+          <button type="button" className="btn" onClick={() => void switchSchedule()} title="SCHEDULE 모드(S1 그림자 ↔ S2 승인). S2에서 승인한 초안을 OCC가 Linear에 쓴다">
             SCHEDULE {scheduleMode === "approval" ? "APPROVAL" : "SHADOW"} — {scheduleMode === "approval" ? "S1로" : "S2로"}
           </button>
         )}
-        <button type="button" className="hm-btn" onClick={onOpenSettings}>
+        <button type="button" className="btn" onClick={onOpenSettings}>
           스위치 설정
         </button>
       </div>

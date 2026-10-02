@@ -6,6 +6,8 @@
   --panel: #0f1720;
   --panel-2: #182330;
   --panel-3: #212e3d;
+  --layer: var(--panel-2); /* 담는 쪽이 정하는 면(S2): 버튼 같은 kit 조각이 읽는다 */
+  --layer-hover: var(--panel-3);
   --scope: #070c0f;
   --line: #2a3a4c;
   --line-strong: #3d5470;
