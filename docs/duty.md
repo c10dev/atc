@@ -37,7 +37,7 @@ Decisions made while the SUPERVISOR is away are not DUTY's either. They belong t
   - `.claude/settings.json` that denies `Edit`/`Write` and allows only `atcctl` and read commands;
   - fail-closed guard hooks (`… || exit 2`);
   - a `UserPromptSubmit` hook (SQUELCH).
-- **ENGINEERING today** is a working session opened in Claude desktop at the repository root. It writes design docs and Linear issues, and it doesn't merge, deploy or message teams (root `CLAUDE.md` "ENGINEERING", [naming.md](naming.md) "Working sessions").
+- **ENGINEERING today** is a working session opened in Claude desktop at the repository root. It writes design docs and Linear issues, and it doesn't merge, deploy or message teams (root `CLAUDE.md` "계획·DUTY·Linear", [naming.md](naming.md) "Working sessions").
 - **ANNUNCIATOR** (the Mac menu bar app, [mac-app.md](mac-app.md)) already reads `/api/events` (`summary`, alerts) from the SUPERVISOR's Mac through an ssh forward.
 
 ## 2. Principles
@@ -263,7 +263,7 @@ Each step is one issue. Everything is shadow or read-only until the step that sa
 | G2 | MERGE for `user`-tier CLEARED PRs: exact head, Origin, FLIGHT RECORDER; on the PR drawer and the QUEUE LANDING card | Merging without GitHub. Tier user |
 | G3 | Linear state button in the FLIGHT drawer, and the QUEUE row READY (blockers done → move to Todo?) | Releasing work without Linear. Tier user |
 | G4 | IDEAS list (`idea` issues) and the ADOPT card that asks DUTY for a design draft | Ideas without GitHub. Needs D3 |
-| D7 | **L1**: worktree, `gh pr create` and Linear in DUTY's settings and guard; root `CLAUDE.md` "ENGINEERING" moves to DUTY; [naming.md](naming.md) gets DUTY as a control session; `duty work` LAUNCH cards and ARRIVED reports as cards | Design, work orders and code hand-off without Claude desktop. `user` tier |
+| D7 | **L1**: worktree, `gh pr create` and Linear in DUTY's settings and guard; root `CLAUDE.md` "계획·DUTY·Linear" moves to DUTY; [naming.md](naming.md) gets DUTY as a control session; `duty work` LAUNCH cards and ARRIVED reports as cards | Design, work orders and code hand-off without Claude desktop. `user` tier |
 
 - Q1 can run beside D0.
 - D1 needs D0's answers on hooks and denied tools.

@@ -52,7 +52,7 @@ codex/voc-<n>-<slug>      # Codex sessions
 | Session name | Where | Role |
 |---|---|---|
 | `TEAM_X`, then `TEAM_XX` | a worktree per task | AIRCRAFT: builds FLIGHTs and opens PRs. One letter (`TEAM_A` … `TEAM_Z`), then two (`TEAM_AA` … `TEAM_ZZ`); the callsign is one phonetic word per letter (`TEAM_RA` → ROMEO ALPHA). See [fleet.md](fleet.md) "Two-letter REGISTRATIONs as built" |
-| `ENGINEERING` | this repository, opened when needed | Break-glass since DUTY L1: the same design and work-order work in a desktop session, under the same rules. Doesn't merge, deploy or message teams (root `CLAUDE.md` "DUTY") |
+| `ENGINEERING` | this repository, opened when needed | Break-glass since DUTY L1: the same design and work-order work in a desktop session, under the same rules. Doesn't merge, deploy or message teams (root `CLAUDE.md` "계획·DUTY·Linear", `docs/rules.ko.md` "DUTY") |
 
 - **ENGINEERING** is an airline's Technical Services, which designs modifications and issues Engineering Orders (EO). It replaces the ad hoc name `structure` for this role (GitHub #121, 2026-09-28). `structure`'s other role, landing and deploying atc PRs, goes to the user until MCC is in `land` mode, then to MCC.
 - Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
