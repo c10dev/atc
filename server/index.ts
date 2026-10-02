@@ -70,7 +70,8 @@ import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
-import { mountDutyL1 } from "./duty-l1-run.ts";
+import { defaultL1Deps, mountDutyL1 } from "./duty-l1-run.ts";
+import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
 import { mountLeaks } from "./leaks-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
@@ -311,7 +312,8 @@ mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): �
 mountLanes(app); // 조용한 리뷰 레인(ATC-386): 날짜별 착륙 수와 REVIEW 한 레인으로 착륙한 수(읽기만)
 mountMisfire(app); // 자동 운항 MISFIRE(ATC-367): 서버가 승인한 카드가 나중에 틀렸다고 드러난 수를 날짜별 승인 대비 몫으로(읽기만)
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
-mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)
+mountDutyL1(app, { ...defaultL1Deps, ...reviewHooks(getSnapshot) }); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절). REVIEW 턴(ATC-396)에는 Backlog만·중복 거절
+mountDutyReview(app, getSnapshot); // DUTY REVIEW(ATC-396): 주기·트리거로 서버가 DUTY 턴을 시작한다(duty.json review, 기본 켜짐, SUPERVISOR만 끈다). 읽기 GET /api/duty/review
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)

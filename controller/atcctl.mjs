@@ -240,7 +240,7 @@ DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 S
                                             CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)
   node atcctl.mjs duty stand <이름>         서버가 .claude/worktrees/duty-<이름>을 origin/main에서 claude/duty-<이름> 브랜치로 만든다(D7a). 문서는 여기에만 쓴다
   node atcctl.mjs duty stand-done <이름>    그 STAND를 치운다(duty-*만, 고치던 것이 없거나 이미 머지됐을 때만. 브랜치는 남는다)
-  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--label '<이름>']… -- '<Markdown 본문>'
+  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… -- '<Markdown 본문>'
   node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [-- '<본문>']
   node atcctl.mjs duty linear comment ATC-n -- '<본문>'
                                             서버가 자기 키로 Linear ATC 팀에 쓴다(D7a). 상태는 Backlog·Todo까지, 라벨은 있는 것만 더한다. 한 번마다 FLIGHT RECORDER 한 줄`;
@@ -716,7 +716,7 @@ export function parseDutyStand(args) {
 }
 
 // duty linear create|update|comment (D7a). 본문(Markdown)은 -- 뒤 낱말 전부. 옵션은 -- 앞에 쓴다
-//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--label <이름>]… -- <본문>
+//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--blocked-by ATC-n]… [--label <이름>]… -- <본문>
 //   update  ATC-n [--title <글>] [--priority <1-4>] [--state Backlog|Todo] [--label <이름>]… [-- <본문>]   (라벨은 더하기만)
 //   comment ATC-n -- <본문>
 export function parseDutyLinear(args) {
@@ -740,6 +740,7 @@ export function parseDutyLinear(args) {
     else if (flag === "--state") body.state = v;
     else if (flag === "--parent" && action === "create") body.parent = v;
     else if (flag === "--project" && action === "create") body.project = v;
+    else if (flag === "--blocked-by" && action === "create") (body.blockedBy ??= []).push(v);
     else if (flag === "--label") labels.push(v);
     else throw new Error(`알 수 없는 옵션 ${flag}`);
   }
