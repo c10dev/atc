@@ -13,6 +13,10 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
   --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --shadow-inset-scope: inset 0 0 40px rgba(0, 0, 0, 0.55); /* RADAR 스코프 안쪽 그늘 */
+  --shadow-inset-bay: inset 0 1px 3px rgba(0, 0, 0, 0.5); /* 스트립 레일 안쪽 */
+  --shade: #000; /* 기울어진 판의 그늘(불투명도로 쓴다) */
+  --mask-solid: #000; /* mask-image의 보이는 쪽(색은 쓰이지 않고 알파만) */
 
   /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상(server/theme-contrast.test.ts가 지킨다). 글자를 opacity로 흐리게 하지 않는다 */
   --text: #dde6ee;
@@ -27,7 +31,15 @@
   --series-captain: var(--cyan);
   --series-crew: var(--amber);
   --alert: #ff4a4a; /* LOSS OF SEPARATION, NORDO */
+  --alert-wash: rgba(255, 74, 74, 0.08); /* 경고 줄의 바탕 */
+  --alert-soft: #ff8b8b; /* 경고 줄의 글자 */
+  --on-alert: #fff; /* 경고색 바탕 위의 글자와 줄무늬 */
+  --on-amber: #000; /* 호박색·주황 바탕 위의 글자 */
   --blue: #8aa8ff; /* HANDOFF */
+  /* 테마가 정의하는 색의 기본값(다른 테마의 규칙이 아무것도 아닌 값으로 풀리지 않게): cockpit --magenta, night --gold·--display */
+  --magenta: var(--blue);
+  --gold: var(--amber);
+  --display: var(--sans);
   --ring: var(--radar); /* RADAR 거리 링, 스위프 */
   --tab-on: var(--radar);
   --tab-on-bg: linear-gradient(#0b1812, var(--chrome));
@@ -62,6 +74,18 @@
   --stamp-amber: #a86a00;
   --stamp-blue: #2c55c9;
   --stamp-gray: #585e64;
+
+  /* 티커(주의 줄), 우선순위 칩, 스트립 레일 */
+  --ticker-bg: #0b0904;
+  --ticker-line: #2c2410;
+  --ticker-serious-bg: #0c0606;
+  --ticker-serious-line: #3a1414;
+  --prio-bg: #3a3a3a;
+  --prio-ink: #ddd;
+  --prio-2: #ff8f3a;
+  --nocontact-line: rgba(255, 182, 39, 0.6); /* 교신 끊김 칩의 점선 */
+  --bay-line: #131d28;
+  --holder-parked: #6b7280;
 
   /* FIDS: 반전판 */
   --fids-bg: #0b0b0b;
@@ -399,14 +423,14 @@ button {
   color: var(--amber);
 }
 .tone-alert {
-  background: rgba(255, 74, 74, 0.08);
+  background: var(--alert-wash);
 }
 .tone-alert b {
   color: var(--alert);
 }
 .tone-alert > span,
 .tone-alert em {
-  color: #ff8b8b;
+  color: var(--alert-soft);
 }
 .utc {
   color: var(--cyan);
@@ -450,14 +474,14 @@ button {
   padding: 0;
   overflow: hidden;
   border: 0;
-  border-bottom: 1px solid #2c2410;
-  background: #0b0904;
+  border-bottom: 1px solid var(--ticker-line);
+  background: var(--ticker-bg);
   text-align: left;
   cursor: pointer;
 }
 .ticker.is-serious {
-  background: #0c0606;
-  border-bottom-color: #3a1414;
+  background: var(--ticker-serious-bg);
+  border-bottom-color: var(--ticker-serious-line);
 }
 .ticker-head {
   flex: none;
@@ -465,13 +489,13 @@ button {
   align-items: center;
   padding: 0 var(--space-3);
   background: var(--amber);
-  color: #000;
+  color: var(--on-amber);
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
 }
 .ticker.is-serious .ticker-head {
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
 }
 .ticker-list {
   display: flex;
@@ -486,7 +510,7 @@ button {
 /* 흐를 때는 양 끝을 흐리게 해 글자가 스며들고 빠져나가게 */
 .ticker-list.is-running {
   padding: 0;
-  mask-image: linear-gradient(90deg, transparent, #000 var(--space-6), #000 calc(100% - var(--space-12)), transparent);
+  mask-image: linear-gradient(90deg, transparent, var(--mask-solid) var(--space-6), var(--mask-solid) calc(100% - var(--space-12)), transparent);
 }
 .ticker-track {
   display: flex;
@@ -846,16 +870,16 @@ button {
   letter-spacing: 0.06em;
   padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
-  background: #3a3a3a;
-  color: #ddd;
+  background: var(--prio-bg);
+  color: var(--prio-ink);
 }
 .prio-1 {
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
 }
 .prio-2 {
-  background: #ff8f3a;
-  color: #000;
+  background: var(--prio-2);
+  color: var(--on-amber);
 }
 
 @keyframes sweep {
@@ -907,7 +931,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: radial-gradient(ellipse at 50% 45%, var(--scope-glow) 0%, var(--scope) 70%);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-inset-scope);
 }
 .scope-frame::before {
   content: "";
@@ -1133,7 +1157,7 @@ a.blk[href] {
   padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
   font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1169,7 +1193,7 @@ a.blk[href] {
   letter-spacing: 0;
 }
 .fp.is-nocontact {
-  border: 1px dashed rgba(255, 182, 39, 0.6);
+  border: 1px dashed var(--nocontact-line);
 }
 .fp.is-nocontact .tgt {
   background: var(--amber);
@@ -1234,8 +1258,8 @@ a.blk[href] {
   padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: repeating-linear-gradient(0deg, var(--panel) 0 46px, #131d28 46px 47px);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  background: repeating-linear-gradient(0deg, var(--panel) 0 46px, var(--bay-line) 46px 47px);
+  box-shadow: var(--shadow-inset-bay);
 }
 .strip {
   display: grid;
@@ -1260,14 +1284,14 @@ a.blk[href] {
   background: var(--paper-parked);
 }
 .strip.is-parked .holder {
-  background: #6b7280;
+  background: var(--holder-parked);
 }
 .strip.is-los {
   outline: 2px solid var(--alert);
   outline-offset: 1px;
 }
 .strip.is-los .holder {
-  background: repeating-linear-gradient(45deg, var(--alert) 0 5px, #fff 5px 10px);
+  background: repeating-linear-gradient(45deg, var(--alert) 0 5px, var(--on-alert) 5px 10px);
 }
 .strip-id {
   min-width: 0;
@@ -1537,7 +1561,7 @@ a.ticket:hover {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: #000;
+  background: var(--shade);
   opacity: 0;
 }
 /* 판이 없는 칸에서 떨어져 앉는 글자 */
@@ -2873,6 +2897,7 @@ a.ticket:hover {
    APPROACH는 청록, HANDOFF는 라일락, LOS는 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
 :root[data-theme="night"] {
   --bg: #03040d;
+  --sky: #080c24; /* 설정 창 견본의 바탕: 별밭 그라디언트의 가운데 */
   --backdrop:
     radial-gradient(ellipse 80% 50% at 70% 110%, rgba(120, 70, 200, 0.28), transparent 70%),
     radial-gradient(ellipse 60% 40% at 10% 100%, rgba(40, 90, 200, 0.18), transparent 70%),

@@ -15,13 +15,13 @@
   "web/src/alerts.css": {
     "spacing-literal": 21
   },
+  "web/src/badges.css": {
+    "spacing-literal": 2
+  },
   "web/src/styles.css": {
-    "color-literal": 43,
+    "color-literal": 21,
     "radius-literal": 3,
     "spacing-literal": 37
-  },
-  "web/src/ui.css": {
-    "spacing-literal": 2
   },
   "web/src/views/Airports.css": {
     "radius-literal": 2,

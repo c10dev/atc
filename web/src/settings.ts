@@ -2,14 +2,14 @@ import { useSyncExternalStore } from "react";
 import { motionOn } from "./motion.ts";
 
 // 화면 설정. 이 브라우저에만 저장된다(서버·다른 기기와 공유하지 않음).
-// 테마는 styles.css의 :root[data-theme="…"] 토큰 묶음과 짝을 이룬다.
+// 테마는 styles.css의 :root[data-theme="…"] 토큰 묶음과 짝을 이룬다. swatch의 색은 server/theme-swatch.test.ts가 그 테마의 토큰과 견주니, 테마 색을 바꾸면 견본도 고친다.
 export const THEMES = [
   {
     id: "radar",
     code: "RDR",
     label: "Radar Console",
     note: "ATC RADAR 스코프와 종이 스트립",
-    swatch: ["#080d12", "#3ef08f", "#ffb627", "#5cd0ff", "#ece6d3"],
+    swatch: ["#05080c", "#3ef08f", "#ffb627", "#5cd0ff", "#ece6d3"],
   },
   {
     id: "cockpit",
