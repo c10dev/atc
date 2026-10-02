@@ -86,6 +86,8 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 **작업 지시서(Linear 이슈, EO)**
 
 1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · **Measure** · Context · Release. Measure는 atc가 이미 기록하는 것 하나와 방향·기간을 `metric: leak:PROPOSAL` · `direction: down` · `window: 7d`로 적는다. 잴 것이 없으면 `None`. 자세한 것은 `../docs/rules.ko.md` "작업 지시서"). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
+   - **K3 효과는 선언 한 줄씩**(ATC-398): `## K effects`에 `K3[<라벨>]: <바꾸는 통제> | files: <저장소 기준 경로, …>` 꼴로 쓴다(`<라벨>`은 `server/k3-allow.ts`의 `K3_LABELS`, 산문 `K3: …`는 읽히지 않는다). K3 효과가 없으면 `K3`로 시작하는 줄을 쓰지 않는다(`K3: none`도 안 된다).
+   - **K3 작업 지시서는 발권을 증언하지 않는다**: 이슈를 만들면 끝이고 SUPERVISOR가 RELEASE 화면에서 쏘거나 DUTY 채팅에서 직접 말한다. 세션이 증언한 발권은 allow 항목을 만들지 못해 DISPATCH가 그 FLIGHT를 보내지 않는다.
 2. **우선순위(`--priority`)는 늘 정한다.** 없으면 DISPATCH가 후보에서 뺀다.
 3. **Linear 본문에 GitHub 참조는 전체 URL로 쓴다.** `#123`은 Linear가 다른 프로젝트의 것으로 자동 연결한다.
 4. 라벨은 워크스페이스 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)만 붙인다(있는 것만).

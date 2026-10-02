@@ -6,7 +6,7 @@ import { AUTOLAND_MODES, type AutolandMode, type CheckWarning, getCheckWarnings,
 import { setAutolandMode, setReviewedSecurity } from "./autoland-run.ts";
 import { config } from "./config.ts";
 import { accountFolders, observedLabelsOn } from "./accounts.ts";
-import { AUTO_MODES, type AutoMode, EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveAutoApprove, saveAutoDispatch, saveExternalReviewSecurity, saveFuelHold, saveStaleStop } from "./dispatch.ts";
+import { AUTO_MODES, type AutoMode, EXTERNAL_REVIEW_SECURITY, type ExternalReviewSecurity, loadDispatchConfig, saveAutoApprove, saveAutoDispatch, saveK3Hold, saveExternalReviewSecurity, saveFuelHold, saveStaleStop } from "./dispatch.ts";
 import { record } from "./recorder.ts";
 import { engineName, judgeStatus } from "./judges/run.ts";
 import { JUDGE_MODES, type JudgeMode, loadJudges, setJudgeMode } from "./judges/store.ts";
@@ -53,7 +53,7 @@ export interface ServerSettings {
   fuel: { hold: boolean; infoPct: number; holdPct: number };
   // 일치 기반 자동 승인(ATC-334): dispatch.json의 autoApprove(ASSIGN·SCHEDULE 초안)와 autoApproveLaunch(launch 카드). 기본 off. 상한은 dispatch.json에서만 바꾼다
   staleStop?: "on" | "off"; // STALE STOP(ATC-369): dispatch.json staleStop
-  dispatchAuto: { mode: "shadow" | "approval"; auto: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
+  dispatchAuto: { mode: "shadow" | "approval"; auto: "off" | "on"; k3Hold?: "off" | "on"; approve: AutoMode; launch: AutoMode; approveMax: number; launchMax: number; backoffMin: number };
   // SCHEDULE·FLEET PLAN 자동 적용(ATC-370): schedule.json·fleet-plan.json의 auto(기본 on). 사람 판정 없이 서버가 적용한다. 끄는 것은 SUPERVISOR만
   autonomyAuto: { schedule: AutoSwitch; fleetPlan: AutoSwitch };
   // EFFECT CHECK(ATC-402): effect-check.json의 on(기본 on). 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 평결을 남긴다(아무것도 바꾸지 않는다). 끄는 것은 SUPERVISOR만
@@ -94,6 +94,7 @@ export interface SettingsPatch {
   autoApproveLaunch?: AutoMode; // 위와 같다. launch 카드를 서버가 승인하고 LAUNCH한다
   staleStop?: "on" | "off"; // dispatch.json에 쓴다(ATC-369). 끝난 FLIGHT의 PENDING·HUNG AIRCRAFT를 30분 뒤 서버가 멈춘다. SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   autoDispatch?: "off" | "on"; // dispatch.json에 쓴다(ATC-367, K3). 켜면 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다. SUPERVISOR만(이 화면 Origin), atcctl 명령 없음
+  k3Hold?: "off" | "on"; // dispatch.json에 쓴다(ATC-398, K3). 끄면 K3 줄이 읽히지 않거나 발권이 allow를 못 주는 FLIGHT도 보낸다. SUPERVISOR만(이 화면 Origin), atcctl 명령 없음
   scheduleAuto?: AutoSwitch; // schedule.json의 auto(ATC-370). SUPERVISOR만: 이 화면 Origin이 있어야 받는다(atcctl 명령은 없다, K3)
   fleetPlanAuto?: AutoSwitch; // fleet-plan.json의 auto(ATC-370). 위와 같다
   effectCheck?: AutoSwitch; // effect-check.json의 on(ATC-402). SUPERVISOR만(자격이 있는 요청), atcctl 명령은 없다
@@ -144,7 +145,7 @@ export function readServerSettings(): ServerSettings {
     review: { security: loadDispatchConfig().externalReview.security },
     fuel: loadDispatchConfig().fuel,
     staleStop: loadDispatchConfig().staleStop,
-    dispatchAuto: (({ mode, autoDispatch, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ mode, auto: autoDispatch, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
+    dispatchAuto: (({ mode, autoDispatch, k3Hold, autoApprove, autoApproveLaunch, autoApproveMax, autoLaunchMax, autoLaunchBackoffMin }) => ({ mode, auto: autoDispatch, k3Hold, approve: autoApprove, launch: autoApproveLaunch, approveMax: autoApproveMax, launchMax: autoLaunchMax, backoffMin: autoLaunchBackoffMin }))(loadDispatchConfig()),
     autonomyAuto: { schedule: loadAutoSwitch("schedule"), fleetPlan: loadAutoSwitch("fleetPlan") },
     effectCheck: loadEffectSwitch(),
     autoland: (() => {
@@ -278,12 +279,13 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, scheduleAuto, fleetPlanAuto, effectCheck, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, migrateRehearsal, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, staleStop, k3Hold, scheduleAuto, fleetPlanAuto, effectCheck, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, migrateRehearsal, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (autoApprove !== undefined && !AUTO_MODES.includes(autoApprove as AutoMode)) return c.json({ errors: { autoApprove: `off, shadow, on 중 하나` } }, 400);
     if (autoApproveLaunch !== undefined && !AUTO_MODES.includes(autoApproveLaunch as AutoMode)) return c.json({ errors: { autoApproveLaunch: `off, shadow, on 중 하나` } }, 400);
     if (autoDispatch !== undefined && autoDispatch !== "off" && autoDispatch !== "on") return c.json({ errors: { autoDispatch: `off 또는 on` } }, 400);
     if (staleStop !== undefined && staleStop !== "off" && staleStop !== "on") return c.json({ errors: { staleStop: `off 또는 on` } }, 400);
+    if (k3Hold !== undefined && k3Hold !== "off" && k3Hold !== "on") return c.json({ errors: { k3Hold: `off 또는 on` } }, 400);
     if (scheduleAuto !== undefined && !AUTO_SWITCHES.includes(scheduleAuto as AutoSwitch)) return c.json({ errors: { scheduleAuto: `off 또는 on` } }, 400);
     if (fleetPlanAuto !== undefined && !AUTO_SWITCHES.includes(fleetPlanAuto as AutoSwitch)) return c.json({ errors: { fleetPlanAuto: `off 또는 on` } }, 400);
     if (effectCheck !== undefined && !AUTO_SWITCHES.includes(effectCheck as AutoSwitch)) return c.json({ errors: { effectCheck: `off 또는 on` } }, 400);
@@ -344,6 +346,7 @@ export function mountSettings(app: Hono) {
       saveStaleStop(staleStop);
       if (from !== staleStop) record({ t: new Date().toISOString(), kind: "policy", op: "stale-stop-mode", by: "SUPERVISOR", from, to: staleStop });
     }
+    if (k3Hold !== undefined) saveK3Hold(k3Hold);
     if (scheduleAuto !== undefined) saveAutoSwitch("schedule", scheduleAuto as AutoSwitch);
     if (fleetPlanAuto !== undefined) saveAutoSwitch("fleetPlan", fleetPlanAuto as AutoSwitch);
     if (effectCheck !== undefined) saveEffectSwitch(effectCheck as AutoSwitch);
@@ -362,7 +365,7 @@ export function mountSettings(app: Hono) {
     if (dutyReview !== undefined) await setDutyConfig({ review: dutyReview === "on" });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(staleStop !== undefined ? [`staleStop=${staleStop}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...migrateChanges.map((m) => `migrate.${m.code}=${m.on ? "on" : "off"}`), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(staleStop !== undefined ? [`staleStop=${staleStop}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(k3Hold !== undefined ? [`k3Hold=${k3Hold}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...migrateChanges.map((m) => `migrate.${m.code}=${m.on ? "on" : "off"}`), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

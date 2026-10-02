@@ -339,6 +339,16 @@ SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상
 
 새로 더한 둘의 항목이 적는 것(classifier의 "must name" 글): *Security Test Removal*은 어떤 테스트를 없애거나 건너뛰는지 적고, *Instruction Poisoning*은 표시된 지침 파일 편집이 SUPERVISOR가 허락한 원하는 변경이라서 그 경고는 오탐이라는 것과, 선언한 파일만 덮는다는 것(다른 지침 파일·memory 폴더는 아니다)을 적는다. 모든 항목은 통제, 파일, STAND, 발권 id도 적는다.
 
+### C9, 만든 것: K3 hold (ATC-398)
+
+K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow를 갖고 떠나거나 떠나지 않는다. SUPERVISOR가 이미 푼 효과에서 classifier 거부로 FLIGHT 도중에 멈추는 일이 없다.
+
+- **작업 지시서.** K3 효과는 `## K effects`에 선언 한 줄씩, `K3[<라벨>]: <바꾸는 통제> | files: <저장소 기준 경로>`이고 `<라벨>`은 `K3_LABELS` 가운데 하나다. K3 효과가 없는 작업 지시서에는 `K3`로 시작하는 줄이 없다. K3 작업 지시서는 RELEASE 화면이나 DUTY 채팅에서 발권한다. 세션은 발권을 증언하지 않는다(세션이 이슈를 만들고 SUPERVISOR가 쏜다). 규칙: `docs/rules.ko.md` "작업 지시서"와 DUTY 매뉴얼.
+- **Hold.** `## K effects`에 `K3` 줄이 있는데 allow 항목 없이 떠날 FLIGHT는 DISPATCH가 보내지 않는다: 읽히지 않는 줄(이유 "not a declaration": `K3:` 뒤 산문, `K3: none` 등), 또는 `K3_CHANNELS`에 없는 채널의 발권(이유 "release on the screen"). 이유와 고치는 길은 DISPATCH 제외 사유로 보이고, Todo FLIGHT는 HOME 알림(`alert|k3-hold|<FLIGHT>`, hold 되어 있는 동안)도 올린다. 발권 전 FLIGHT는 알림이 아니라 RELEASE 화면이 K3 상태를 보인다.
+- **RELEASE 화면.** SUPERVISOR가 쏘기 전에 `K3` 줄이 있는 FLIGHT의 줄이 선언이 읽히는지, 발권이 allow를 주는지(지금, 또는 화면에서 쏘면)를 보인다.
+- **끄는 스위치.** `dispatch.json`의 `k3Hold`, 기본 켜짐, 설정 창(K3 HOLD, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 켜짐으로 읽는다.
+- **오작동 카운터**(RELEASE 화면 맨 위, `GET /api/releases`의 `k3Hold`): *nuisance*는 `K3` 줄이 효과 없음으로 적힌(`K3: none`) FLIGHT에 걸린 hold, *miss*는 allow 없이 떠난(`launch` 기록에 `k3`가 없는) K3 FLIGHT의 AIRCRAFT가 classifier 거부(세션 health `DENIED`)로 멈춘 것이다(7일 안).
+
 ## 6. 남는 세 게이트를 내보낼 때 선언으로
 
 화살 방향(원칙 1, 4, 10)에서 K1–K3 효과는 머지 때가 아니라 SUPERVISOR가 FLIGHT를 내보낼 때 한 번 승인한다. 내보내기가 효과를 선언하고, 내보내기 기록(C18)이 승인을 선언의 해시에 묶는다(원칙 7). 내보낸 뒤에는 floor가 빌드된 내용을 선언과 맞댄다. 빌드된 변경이 선언을 넘는 FLIGHT(선언하지 않은 K 경로, 더 넓은 변경, floor가 분류하지 못하는 구문)는 멈추고, 빌드된 내용을 붙인 새 화살로 돌아온다. 그 새 화살이 곧 카드다. 머지 때 SUPERVISOR를 기다리는 것은 없다. 내보내기는 최소로 둔다: 목적지와 선언된 K 효과뿐이고, 경로 목록이나 FLIGHT별 예산은 없다(상한은 C11).

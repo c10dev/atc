@@ -300,6 +300,10 @@ const AUTO_DISPATCH_WARN = {
   off: "off: 열린 ASSIGN·launch 카드는 SUPERVISOR가 DISPATCH 화면에서 하나씩 누르고(아래 두 줄이 정한 만큼은 조건을 갖춘 카드를 서버가 승인), 큐와 알림에 다시 나타난다.",
   on: "⚠ 기본: 서버가 DISPATCH의 필터(SETTLED, HELD 아님, 발권된 FLIGHT)와 상한(FUEL hold, ATC_MAX_LAUNCHED, 하루 상한, 실패 뒤 대기)을 통과한 모든 ASSIGN·launch 카드를 blind 표본·SUPERVISOR 없이 승인한다(via auto). 못 가는 카드는 만료되고 planner가 다시 제안한다. 잘못된 승인은 아래 MISFIRE로 센다.",
 } as const;
+const K3_HOLD_WARN = {
+  on: "기본: `## K effects`에 `K3` 줄이 있는 FLIGHT는 줄이 `K3[<라벨>]: <통제> | files: <경로>`로 읽히고 RELEASE 화면(또는 DUTY 채팅)에서 발권됐을 때만 DISPATCH가 보낸다. 아니면 이유와 고치는 길을 제외 사유와 HOME 알림에 보인다.",
+  off: "⚠ K3 줄이 읽히지 않거나 세션이 증언한 발권인 FLIGHT도 allow 없이 보낸다. 그 FLIGHT는 이미 SUPERVISOR가 푼 효과에서 classifier 거부로 멈출 수 있다(MISS).",
+} as const;
 const AUTO_LAUNCH_WARN = {
   off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
   shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
@@ -765,6 +769,29 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
                 onSave={(v) => save({ staleStop: v as "on" | "off" })}
               />
             ) : null
+          }
+        </ServerRows>
+      </Block>
+
+      <Block code="K3 HOLD" label="K3 FLIGHT는 allow 없이 보내지 않음(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.dispatchAuto?.k3Hold ? (
+              <>
+                <EditRow
+                  label="K3 HOLD"
+                  env="k3Hold"
+                  value={s.dispatchAuto.k3Hold}
+                  note="dispatch.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈 · 오작동 수는 RELEASE 화면"
+                  input={{ kind: "select", options: ["on", "off"] }}
+                  guard={guardOf("k3Hold", s.dispatchAuto.k3Hold, K3_HOLD_WARN)}
+                  onSave={(v) => save({ k3Hold: v as "off" | "on" })}
+                />
+                <ModeLines modes={["on", "off"] as const} current={s.dispatchAuto.k3Hold} lines={K3_HOLD_WARN} />
+              </>
+            ) : (
+              <p className="settings-hint">서버가 K3 HOLD를 아직 모름(옛 서버)</p>
+            )
           }
         </ServerRows>
       </Block>

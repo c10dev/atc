@@ -159,6 +159,7 @@ export interface AlertsInput {
   // ATC-197: 상태에서 만드는 조건 항목 셋(각각 순수 함수 rtsHaltedOf·controlDownOf·repositionStuckOf의 결과)과, land 항목의 목적지를 가르는 PR별 landBy(`<repo>#<번호>` → 누가 착륙시키나)
   rtsHalted?: RtsHalted | null;
   revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
+  k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
   controlDown?: ControlDown[];
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
@@ -472,6 +473,20 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "원인을 본 뒤 lane(AUTOLAND·MCC)과 설정 창의 AUTO REVERT 스위치를 다시 고른다. 그때까지 되돌리지 않는다",
       link: "#radar",
       since: r.at,
+    });
+  }
+  for (const h of inp.k3Holds ?? []) {
+    out.push({
+      key: `alert|k3-hold|${h.flight}`,
+      group: "alert",
+      level: "caution",
+      cue: null,
+      aircraft: null,
+      flight: h.flight,
+      text: `K3 HOLD ${h.flight} — ${h.text}`,
+      next: h.fix,
+      link: "#release",
+      since: null,
     });
   }
   for (const c of inp.controlDown ?? []) {

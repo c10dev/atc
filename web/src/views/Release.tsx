@@ -8,7 +8,19 @@ import "./Release.css";
 // 후보(READY Backlog, 에이전트 제안) · 발권 없는 Todo · 최근 발권. 발권 기록은 ATC-362의 길 그대로이고, 이 화면의 클릭만 screen 발권을 만든다(서버가 Origin을 검사한다).
 // 클릭 전에 FLIGHT가 선언한 K 효과를 같은 줄에 보인다.
 
+// K3 줄이 있는 FLIGHT의 상태(ATC-398, server/k3-allow.ts K3Status): 선언이 읽히나, 지금 발권이 allow를 주나
+interface K3Status {
+  lines: number;
+  declared: number;
+  unparsed: number;
+  labels: string[];
+  parses: boolean;
+  grants: boolean;
+  willGrant: boolean;
+  hold: "not-declaration" | "release-on-screen" | null;
+}
 interface Row {
+  k3?: K3Status | null;
   key: string;
   title: string;
   hash: string | null;
@@ -36,6 +48,7 @@ interface Recent {
 type Channel = "screen" | "duty-chat" | "attested";
 // atc가 Backlog에 올린 제안(ATC-401): DUTY REVIEW·SCHEDULE NEW. 쏘거나 버릴 때까지 여기 있다
 interface Filed {
+  k3?: K3Status | null;
   key: string;
   title: string;
   hash: string | null;
@@ -45,6 +58,7 @@ interface Filed {
   at: string;
 }
 interface ReleaseData {
+  k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] };
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
   filed: Filed[];
@@ -70,14 +84,27 @@ const clock = (iso: string) => {
 };
 
 // 선언한 K 효과: 없으면 없다고 적는다(빈 칸이 "효과 없음"으로 읽히지 않게)
-function KEffects({ text }: { text: string | null }) {
+// K3 줄의 상태 한 줄: 읽히나 · 지금 발권이 allow를 주나(ATC-398). 줄이 없으면 아무것도 보이지 않는다
+function k3Text(k3: K3Status): string {
+  if (!k3.parses) return `K3 줄 ${k3.lines}개 중 ${k3.unparsed || k3.lines}개가 선언으로 읽히지 않음(not a declaration) — DISPATCH가 보내지 않습니다. 줄을 \`K3[<라벨>]: <통제> | files: <경로>\`로 고칩니다`;
+  const what = `선언 ${k3.declared}개 읽힘(${k3.labels.join(", ")})`;
+  return k3.grants ? `${what} · 지금 발권이 allow를 줍니다` : `${what} · 이 화면에서 발권하면 allow를 줍니다(세션이 증언한 발권은 주지 않습니다)`;
+}
+function KEffects({ text, k3 }: { text: string | null; k3?: K3Status | null }) {
+  const line = k3 ? (
+    <span className={k3.parses ? "rl-k3" : "rl-k3 is-bad"}>
+      <b>K3</b> {k3Text(k3)}
+    </span>
+  ) : null;
   return text ? (
     <span className="rl-k" title="이슈 본문 `## K effects` 절. 발권은 이 선언을 승인하는 것입니다">
       <b>K</b> {text}
+      {line}
     </span>
   ) : (
     <span className="rl-k">
       <b>K</b> 선언 없음
+      {line}
     </span>
   );
 }
@@ -139,6 +166,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     : data.gate.mode === "off"
       ? "발권 gate 꺼짐(dispatch.json releaseGate) — 발권 없이도 배정합니다"
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
+  const k3Hold = data.k3Hold;
   const attested = Object.entries(data.attested);
   const candidates = data.filed.length + data.ready.length + data.proposals.length;
 
@@ -148,6 +176,12 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         RELEASE <em>{gateNote}</em>
       </h2>
       {error && <p className="rl-error" role="alert">{error}</p>}
+      {k3Hold && (
+        <p className="faint rl-none" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤">
+          K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length}
+          {k3Hold.miss.length > 0 && ` (${k3Hold.miss.map((m) => `${m.flight}@${m.aircraft}`).join(", ")})`}
+        </p>
+      )}
 
       <section className="rl" aria-label="후보">
         <h3 className="label">
@@ -168,7 +202,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   <span className="rl-who" title="누가 언제 제안했나">
                     {f.by} · <span className="mono">{clock(f.at)}</span>
                   </span>
-                  <KEffects text={f.kEffects} />
+                  <KEffects text={f.kEffects} k3={f.k3} />
                   {f.priority <= 0 && <span className="rl-warn">우선순위가 없어 Todo로 옮기지 않습니다(DISPATCH가 건너뜁니다). 먼저 정합니다</span>}
                 </span>
                 <span className="rl-acts">
@@ -213,7 +247,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 <PriorityMark priority={r.priority} />
                 <span className="rl-title">{r.title}</span>
                 <span className="faint rl-kind">READY</span>
-                <KEffects text={r.kEffects} />
+                <KEffects text={r.kEffects} k3={r.k3} />
                 {r.priority > 0 ? (
                   <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => fireReady(r)} aria-label={`${r.key} 발권: Todo로 옮기고 발권`}>
                     발권
@@ -280,7 +314,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   <PriorityMark priority={r.priority} />
                   <span className="rl-title">{r.title}</span>
                   <span className="faint rl-kind">{r.why ? `발권 거둠 — ${r.why}` : r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
-                  <KEffects text={r.kEffects} />
+                  <KEffects text={r.kEffects} k3={r.k3} />
                   <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
                     발권
                   </button>
