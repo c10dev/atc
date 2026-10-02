@@ -18,6 +18,7 @@ const USER = [
   [/^package(-lock)?\.json$/, "의존성"],
   [/^hooks\//, "팀 세션 hook"],
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
+  [/^server\/switches\//, "SUPERVISOR 스위치 선언(기본값·⚠ 모드·저장 방식: 바꾸면 사용자가 머지)"], // ATC-393 검토: 기본값이나 ⚠ 모드 목록을 바꾸는 PR이 SUPERVISOR 없이 착륙하지 않게
   [/^duty\/settings\.json$/, "DUTY 설정"], // duty/*guard*.mjs는 위의 guard 규칙이 잡는다
 ];
 // 강조 등급: 관제 세션의 매뉴얼과 CLI(guard 제외)
@@ -25,8 +26,6 @@ const FLAGGED = [
   [/^(controller|occ|crosscheck|review|mcc|dispatch|duty)\//, "관제 세션"],
   // 주기로 도는 서버 일(ATC-393): 자동 RTS·자동 승인·LAUNCH·재시작 타이머가 파일 하나로 더해지거나 바뀐다. 서비스 이름(provideService)으로 부르는 부작용은 import 스캔이 못 보므로 폴더째 강조한다
   [/^server\/jobs\//, "주기 서버 일(배포·LAUNCH·머지 타이머)"],
-  // SUPERVISOR 스위치 선언(ATC-393): 값·기본값·저장 방식·⚠ 모드가 파일 하나에 있다. 쓰는 길(fromThisApp)은 settings.ts에 그대로
-  [/^server\/switches\//, "SUPERVISOR 스위치 선언"],
 ];
 
 // 외부 부작용이 있는 서버 코드(SHOW): 머지, PR 코멘트·본문, 세션·유닛 시작·정지처럼 밖에 흔적을 남긴다.

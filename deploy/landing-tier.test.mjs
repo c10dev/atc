@@ -192,13 +192,14 @@ test("가장 높은 등급을 쓰고 이유를 남긴다", () => {
 
 // 주기 서버 일과 스위치 선언(ATC-393): 서비스 이름(provideService/serviceOf)으로 부르는 부작용은 import 스캔이 못 본다. 그래서 폴더째 flagged다.
 // server/jobs/의 파일은 모두(새 파일도) 최소 flagged: 자동 RTS·자동 승인·LAUNCH·재시작 타이머를 auto로 바꾸는 PR이 없다
-test("server/jobs/와 server/switches/의 모든 파일은 flagged 이상이고, 이유는 폴더나 외부 부작용이다", () => {
+test("server/jobs/는 flagged, server/switches/의 모든 파일은 user이고, 이유는 폴더나 외부 부작용이다", () => {
   for (const dir of ["server/jobs", "server/switches"]) {
     const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
     assert.ok(files.length > 0, dir);
     for (const f of files) {
       const r = tierOf([`${dir}/${f}`]);
-      assert.equal(r.tier, "flagged", `${dir}/${f}`);
+      // jobs/는 flagged, switches/는 user(기본값·⚠ 모드를 바꾸는 PR은 SUPERVISOR가 머지한다)
+      assert.equal(r.tier, dir.endsWith("jobs") ? "flagged" : "user", `${dir}/${f}`);
       assert.match(r.reasons[0].why, dir.endsWith("jobs") ? /주기 서버 일|외부 부작용/ : /스위치 선언/); // 목록에 오른 파일은 더 구체적인 이유(외부 부작용)
     }
   }
