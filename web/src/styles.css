@@ -82,7 +82,7 @@
   --text-sm: 12px; /* 표·카드의 부가 정보 */
   --text-md: 14px; /* 본문(기본 밀도 14, compact 13. DL7) */
   --text-lg: 15px; /* FLIGHT NUMBER, 콜사인 강조 */
-  --text-xl: 18px; /* 상단 수치, FLIGHT STRIPS 콜사인 */
+  --text-xl: 18px; /* 상단 수치 */
   --text-2xl: 24px; /* 지표 큰 숫자 */
 
   /* 움직임(3.5 Craft 8): 호버·누름은 fast, 열고 닫고 접는 것은 base, 곡선은 하나. 늘 도는 생동감 애니메이션(ping·sweep·flap 등)은 자기 시간을 쓴다 */
@@ -1047,7 +1047,8 @@ a.blk[href] {
   flex: none;
 }
 .strip .apt {
-  border-color: var(--paper-line);
+  padding: 0;
+  border: 0;
   color: var(--paper-ink);
 }
 .blk-code {
@@ -1271,10 +1272,11 @@ a.blk[href] {
 .strip-id {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
+  /* 구분선 대신 면 단차(ATC-320): 콜사인 칸만 한 단 어둡게 */
+  background: color-mix(in srgb, var(--paper-ink) 6%, transparent);
 }
 .cs {
-  font: 700 var(--text-xl)/1.15 var(--mono);
+  font: 700 var(--text-lg)/1.15 var(--mono);
   letter-spacing: 0.08em;
   white-space: nowrap;
   overflow: hidden;
@@ -1318,7 +1320,6 @@ a.blk[href] {
 .cell {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
 }
 .cap {
   display: block;
