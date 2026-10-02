@@ -95,7 +95,13 @@
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
+/* 눌리는 칸 24×24 이상(ATC-417). 위아래 음수 마진으로 머리줄 높이는 그대로 */
 .mf-table th button {
+  display: inline-flex;
+  align-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  margin-block: -5px;
   padding: 0;
   border: 0;
   background: transparent;
