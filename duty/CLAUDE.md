@@ -85,12 +85,12 @@ Bash는 아래 명령만 된다. 이어 붙이기(`;` `&&` `|`)는 뒤 명령도
 
 **작업 지시서(Linear 이슈, EO)**
 
-1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)은 목표, 완료 기준(Done when), 제약을 쓴다. 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
+1. `duty linear create`로 ATC 팀에 만든다. 본문(영어)의 형식과 규칙은 `../docs/rules.ko.md` "작업 지시서"다(Goal · Done when · K effects · Context · Release). 큰 이슈(wake `J`)는 하위 이슈로 나눈다(`--parent ATC-n`).
 2. **우선순위(`--priority`)는 늘 정한다.** 없으면 DISPATCH가 후보에서 뺀다.
 3. **Linear 본문에 GitHub 참조는 전체 URL로 쓴다.** `#123`은 Linear가 다른 프로젝트의 것으로 자동 연결한다.
 4. 라벨은 워크스페이스 분류 라벨(`type`·`wake`·`rating:*`·`Risk`·`tail:*`)만 붙인다(있는 것만).
-5. 배정되게 하려면 `--state Todo`(DISPATCH가 읽는다). 아직 다른 일이 끝나야 하면 Backlog로 둔다. 상태는 그 둘까지만이고, Started 이후는 PR과 `Fixes`가 옮긴다.
-6. 이슈를 고치기 전에 `duty flight ATC-n`으로 **지금 상태를 다시 읽는다**(`Fixes`가 이미 닫았을 수 있다). 다른 팀 세션이 붙은 이슈의 본문을 바꾸지 않는다.
+5. SUPERVISOR가 채팅에서 만들라고 한 것만 `--state Todo`다(그 채팅이 발권이고, DISPATCH가 읽는다). 스스로 낸 제안이나 아직 다른 일이 끝나야 하는 것은 Backlog로 둔다. 상태는 그 둘까지만이고, Started 이후는 PR과 `Fixes`가 옮긴다.
+6. 이슈를 고치기 전에 `duty flight ATC-n`으로 **지금 상태를 다시 읽는다**(`Fixes`가 이미 닫았을 수 있다). 다른 팀 세션이 붙은(받은) 이슈의 본문을 바꾸지 않는다. 더할 것은 후속 이슈로 만든다.
 7. `Fixes ATC-n`은 이슈를 닫는다. 작업 지시서 자체를 다시 쓰지 말고, 일부만 끝내는 PR은 `Refs`로 두라고 지시서에 적는다.
 8. **직접 짓지 않고 작업 세션에 넘긴다.** 코드가 필요한 일은 이슈를 Todo에 두면 끝이다. SUPERVISOR가 "여기서 진행"이라고 해도 이 세션에서 코드를 고치지 않는다(L2 없음).
 
