@@ -17,8 +17,9 @@ import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { HelpMenu } from "./HelpMenu.tsx";
 import { GlobeMode } from "./GlobeMode.tsx";
-import { Globe as GlobeIcon } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { Icon } from "./kit/Icon.tsx";
+import { Rail, RAIL_SCREENS } from "./Rail.tsx";
 import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
@@ -40,18 +41,10 @@ const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
-// 화면(주소 #<id>가 여는 것). 탭 줄에 보이는 것은 ROW뿐이다(ATC-381, docs/layout.md Y6): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
+// 화면(주소 #<id>가 여는 것). 레일에 보이는 것은 RAIL_SCREENS(Rail.tsx)다(ATC-381·442): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
 // NETWORK는 METRICS의 하위 화면이다(ATC-380): #network는 #metrics/network를 연다
-const TABS = [
-  { id: "home", code: "HOME" },
-  { id: "release", code: "RELEASE" },
-  { id: "flights", code: "FLIGHTS" },
-  { id: "fleet", code: "FLEET" },
-  { id: "metrics", code: "METRICS" },
-  { id: "docs", code: "DOCS" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
-const IN_ROW = (t: Tab) => t !== "docs";
+type Tab = (typeof RAIL_SCREENS)[number]["id"] | "docs";
+const TAB_IDS: readonly string[] = [...RAIL_SCREENS.map((t) => t.id), "docs"];
 // 탭이 아닌 보기: #globe(#globe/<AIRPORT>)는 GLOBE 창을, #airports는 설정 창의 AIRPORTS를 연다
 const headOf = (hash: string) => hash.replace(/^#/, "").split("/")[0];
 
@@ -62,7 +55,7 @@ function initialTab(): Tab {
   const canon = canonicalHash(location.hash);
   if (canon) history.replaceState(null, "", canon);
   const hash = location.hash.slice(1).split("/")[0];
-  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "home";
+  return TAB_IDS.includes(hash) ? (hash as Tab) : "home";
 }
 
 export function App({ build }: { build: string }) {
@@ -104,16 +97,6 @@ export function App({ build }: { build: string }) {
     setGlobeOpen(false);
     history.replaceState(null, "", `#${tabRef.current}`);
   }, []);
-  // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
-  const tabsRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const el = tabsRef.current;
-    if (!el) return;
-    const show = () => el.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    const ro = new ResizeObserver(show);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tab]);
   useEffect(() => {
     const onHash = () => {
       const d = drawerOfHash(location.hash);
@@ -152,40 +135,65 @@ export function App({ build }: { build: string }) {
   const subjectOf = (a: (typeof alerts)[number]) =>
     a.ticketKey ? flightNumber(a.ticketKey) : (a.workspacePath?.split("/").pop() ?? a.sessionIds?.map(nameOf).join(", "));
 
+  const brandTitle = `ATC · LOCAL CONTROL · ${location.port || "80"}`;
+  const brandMark = settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />;
   return (
-    <div className="app">
+    <div className="app shell">
       {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
-      <header className="console">
-        <div className="brand-wrap">
-          <button
-            className="brand"
-            onClick={() => setSettingsOpen((v) => !v)}
-            aria-expanded={settingsOpen}
-            aria-controls="settings"
-            aria-haspopup="dialog"
-            title="설정"
-          >
-            {settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />}
-            <span className="brand-text">
-              <span className="brand-name">ATC</span>
-              <span className="brand-sector">LOCAL CONTROL · {location.port || "80"}</span>
-            </span>
-            <GearIcon />
+      <Rail
+        tab={tab}
+        onTab={(id) => setTab(id as Tab)}
+        refreshKey={snapshot?.at.slice(0, 16) ?? ""}
+        brandTitle={brandTitle}
+        brand={brandMark}
+        settingsOpen={settingsOpen}
+        onSettings={() => setSettingsOpen((v) => !v)}
+        globeOpen={globeOpen}
+        onGlobe={() => (globeOpen ? closeGlobe() : void (location.hash = "globe"))}
+        help={<HelpMenu docsOpen={tab === "docs"} />}
+      >
+        {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
+      </Rail>
+      {/* 사이드바(Z2)·서랍 열(Z3)·아래 패널(Z5) 자리. 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
+      <aside className="sidebar" hidden />
+      <div className="shell-main">
+        <header className="console">
+          <button type="button" className="fold-btn" aria-label="사이드바 접기" aria-disabled="true" title="사이드바가 생기면 여기서 접는다" tabIndex={-1}>
+            <Icon icon={PanelLeft} size={16} />
           </button>
-          {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
-        </div>
-        <nav className="tabs" role="tablist" ref={tabsRef}>
-          {TABS.filter((t) => IN_ROW(t.id)).map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
-              <span className="tab-code">{t.code}</span>
+          <span className="top-brand" aria-hidden="true">
+            {brandMark}
+            <span>{brandTitle}</span>
+          </span>
+          <div className="readouts">
+            <Readout code="AIRBORNE" value={busy} tone="radar" />
+            <Readout code="STANDS" label="점유" value={stands} />
+            <Readout code="ENROUTE" value={inProgress} />
+            <FollowNext refreshKey={snapshot?.at ?? ""} />
+            <button className="readout is-button" onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen}>
+              <b>{pad(handoffs.length)}</b>
+              <span>HANDOFF</span>
             </button>
-          ))}
-        </nav>
-        <div className="readouts">
-          <Readout code="AIRBORNE" value={busy} tone="radar" />
-          <Readout code="STANDS" label="점유" value={stands} />
-          <Readout code="ENROUTE" value={inProgress} />
-          <FollowNext refreshKey={snapshot?.at ?? ""} />
+            <button
+              className={`readout is-button readout-alerts${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
+              onClick={() => setAlertsOpen((v) => !v)}
+              aria-expanded={alertsOpen}
+            >
+              <b>{pad(actionable.length)}</b>
+              <span>
+                ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
+              </span>
+            </button>
+            <AlertBell />
+            <SoundLockChip />
+            <div className="readout clock">
+              <Clock clock={settings.clock} />
+              <span className={`link link-${update.kind === "restarting" ? "restarting" : connection}`}>
+                <i />
+                LINK <em>{update.kind === "restarting" ? "재시작" : connectionLabel[connection]}</em>
+              </span>
+            </div>
+          </div>
           {duty.status?.enabled && (
             <button
               className="readout is-button duty-readout"
@@ -200,104 +208,76 @@ export function App({ build }: { build: string }) {
               <span>DUTY</span>
             </button>
           )}
-          <button className="readout is-button" onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen}>
-            <b>{pad(handoffs.length)}</b>
-            <span>HANDOFF</span>
-          </button>
-          <button
-            className={`readout is-button readout-alerts${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
-            onClick={() => setAlertsOpen((v) => !v)}
-            aria-expanded={alertsOpen}
-          >
-            <b>{pad(actionable.length)}</b>
-            <span>
-              ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
-            </span>
-          </button>
-          <AlertBell />
-          <button type="button" className={`readout is-button${globeOpen ? " is-on" : ""}`} onClick={() => (globeOpen ? closeGlobe() : void (location.hash = "globe"))} aria-pressed={globeOpen} aria-label="GLOBE 보기 모드">
-            <b>
-              <Icon icon={GlobeIcon} size={16} />
-            </b>
-            <span>GLOBE</span>
-          </button>
-          <HelpMenu docsOpen={tab === "docs"} />
-          <SoundLockChip />
-          <div className="readout clock">
-            <Clock clock={settings.clock} />
-            <span className={`link link-${update.kind === "restarting" ? "restarting" : connection}`}>
-              <i />
-              LINK <em>{update.kind === "restarting" ? "재시작" : connectionLabel[connection]}</em>
-            </span>
-          </div>
-        </div>
-        <ControlStrip snapshot={snapshot} now={now} />
-      </header>
+          <ControlStrip snapshot={snapshot} now={now} />
+        </header>
 
-      <SupervisorPairing auth={supervisorAuth} />
-      <UpdateBar update={update} />
-      <NewVersionBar own={build} server={serverBuild} />
+        <SupervisorPairing auth={supervisorAuth} />
+        <UpdateBar update={update} />
+        <NewVersionBar own={build} server={serverBuild} />
 
-      {actionable.length > 0 && !alertsOpen && (
-        <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">
-          <span className="ticker-head">ALERT</span>
-          <Ticker>
-            {actionable.map((a, i) => (
-              <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
-                <span className="code-chip">{alertCode[a.kind]}</span>
-                {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
-                <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
-              </span>
-            ))}
-          </Ticker>
-        </button>
-      )}
-
-      {alertsOpen && alerts.length + handoffs.length > 0 && (
-        <ul className="alerts">
-          {groupAlerts(alerts, levelOf).map((g) => (
-            <Fragment key={g.level}>
-              <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
-              {g.alerts.map((a, i) => (
-                <li key={i} className={`alert alert-${a.kind} lv-${g.level}`}>
+        {actionable.length > 0 && !alertsOpen && (
+          <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">
+            <span className="ticker-head">ALERT</span>
+            <Ticker>
+              {actionable.map((a, i) => (
+                <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
                   <span className="code-chip">{alertCode[a.kind]}</span>
-                  {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
-                  <span className="mono">{subjectOf(a)}</span>
-                  <span className="muted">{alertMessage(a, nameOf)}</span>
-                </li>
+                  {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
+                  <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
+                </span>
               ))}
-            </Fragment>
-          ))}
-          {handoffs.map((h) => (
-            <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
-              <span className="code-chip">HO</span>
-              <span className="alert-label">{HANDOFF_LABEL}</span>
-              <span className="mono">{h.workspacePath.split("/").pop()}</span>
-              <span className="muted">
-                {nameOf(h.from)} → {nameOf(h.to)} · {timeAgo(h.at, now)}
-              </span>
-            </li>
-          ))}
-          <li className="alerts-close">
-            <button onClick={() => setAlertsOpen(false)}>접기</button>
-          </li>
-        </ul>
-      )}
-
-      <main className="main">
-        {!snapshot || !idx ? (
-          <Empty>{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</Empty>
-        ) : (
-          // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-          <>
-            {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
-            {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
-            <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
-            </TabBoundary>
-          </>
+            </Ticker>
+          </button>
         )}
-      </main>
+
+        {alertsOpen && alerts.length + handoffs.length > 0 && (
+          <ul className="alerts">
+            {groupAlerts(alerts, levelOf).map((g) => (
+              <Fragment key={g.level}>
+                <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
+                {g.alerts.map((a, i) => (
+                  <li key={i} className={`alert alert-${a.kind} lv-${g.level}`}>
+                    <span className="code-chip">{alertCode[a.kind]}</span>
+                    {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
+                    <span className="mono">{subjectOf(a)}</span>
+                    <span className="muted">{alertMessage(a, nameOf)}</span>
+                  </li>
+                ))}
+              </Fragment>
+            ))}
+            {handoffs.map((h) => (
+              <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
+                <span className="code-chip">HO</span>
+                <span className="alert-label">{HANDOFF_LABEL}</span>
+                <span className="mono">{h.workspacePath.split("/").pop()}</span>
+                <span className="muted">
+                  {nameOf(h.from)} → {nameOf(h.to)} · {timeAgo(h.at, now)}
+                </span>
+              </li>
+            ))}
+            <li className="alerts-close">
+              <button onClick={() => setAlertsOpen(false)}>접기</button>
+            </li>
+          </ul>
+        )}
+
+        <main className="main">
+          {!snapshot || !idx ? (
+            <Empty>{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</Empty>
+          ) : (
+            // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
+            <>
+              {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
+              {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+              <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
+                <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
+              </TabBoundary>
+            </>
+          )}
+        </main>
+        <section className="panel-area" hidden />
+      </div>
+      <div className="drawer-col" hidden />
       {globeOpen && snapshot && (
         <TabBoundary key="globe" stale={false}>
           <Suspense fallback={<TabLoading />}>
@@ -366,21 +346,6 @@ function Readout({ code, label, value, tone }: { code: string; label?: string; v
 function Clock({ clock }: { clock: "utc" | "local" }) {
   const now = useNow(1000);
   return <b className="utc">{formatClock(now, clock, true)}</b>;
-}
-
-function GearIcon() {
-  return (
-    <svg className="brand-gear" viewBox="0 0 16 16" aria-hidden>
-      <path
-        d="M6.9 1.5h2.2l.3 1.7a5 5 0 0 1 1.3.7l1.6-.6 1.1 1.9-1.3 1.1a5 5 0 0 1 0 1.5l1.3 1.1-1.1 1.9-1.6-.6a5 5 0 0 1-1.3.7l-.3 1.7H6.9l-.3-1.7a5 5 0 0 1-1.3-.7l-1.6.6-1.1-1.9 1.3-1.1a5 5 0 0 1 0-1.5L2.6 5.2l1.1-1.9 1.6.6a5 5 0 0 1 1.3-.7z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
 }
 
 function ScopeIcon() {
