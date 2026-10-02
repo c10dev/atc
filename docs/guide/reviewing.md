@@ -108,6 +108,14 @@ atc가 띄운 백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 쉬면 Clau
 - **launch 카드**(`autoApproveLaunch`): LAUNCH 카드와 RESUME 카드를 승인하고 세션을 띄우기까지 서버가 한다. 상한(`ATC_MAX_LAUNCHED`)이 안 찼고, ACCOUNT가 FUEL hold가 아니고, LAUNCH가 막히지 않았고, 방금 LAUNCH가 실패한 AIRCRAFT가 아니고(30분 쉼), 하루 6번 안일 때만 한다.
 - **그래도 SUPERVISOR 몫:** BLIND 표본(5장에 1장), CROSSCHECK가 disagree한 카드, HELD 카드, OCC가 주의를 단 카드, FUEL hold인 AIRCRAFT의 카드. 하루 상한(자동 승인 40건, 굴러가는 24시간)을 넘으면 그 카드는 기다린다.
 - **센 숫자에서 빠진다:** 서버가 한 승인은 사람 판정이 아니라서 게이트(판정 20건에 80%), CROSSCHECK 일치율, 한 번 클릭 비율에 들어가지 않는다.
+
+## SCHEDULE·FLEET PLAN은 사람 없이 돈다(기본 on)
+
+설정 창 OPERATIONS의 "SCHEDULE·FLEET PLAN AUTO"에 스위치 둘(SCHEDULE, FLEET PLAN)이 있고 **기본은 둘 다 on**이다. 끄는 것은 SUPERVISOR뿐이고 이 화면에서만 바뀐다(관제 세션은 못 바꾼다). 켜 두면 승인 줄에 사람이 누를 것이 없다.
+
+- **SCHEDULE:** 서버가 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 CROSSCHECK와 상관없이 승인한다(`via auto`). 발부는 OCC가 전처럼 한다. NEW는 **Backlog**에 이슈를 만든다: 풀어서 Todo로 보내는 것은 SUPERVISOR 몫이다. PRIORITIZE, ROUTE, TARGET 변경은 제안으로 남는다. CLOSE는 승인되지만 Done은 여전히 Linear에서 직접 옮긴다.
+- **FLEET PLAN:** 서버가 LAUNCH·STOP·RESTART·REFRESH·AOG 제안을 승인 단추와 같은 길로 실행한다. FUEL hold, `ATC_MAX_LAUNCHED`, 하루 상한(전체 40건, LAUNCH 계열 6번)을 지키고, 방금 건드린 AIRCRAFT는 쉰다. ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN과 데스크톱 세션의 REFRESH는 제안으로 남는다.
+- **오작동 세기:** 서버가 한 일을 사람이나 뒤 초안이 되돌리면 센다(라벨 되돌림, CLOSE 다시 열림, TAIL 바뀜, STOP 뒤 1시간 안 LAUNCH, 1시간 뒤에도 노는 LAUNCH, RESTART 반복). 하루별 개수는 `GET /api/autonomy/auto`에서 본다.
 - 자세한 규칙은 docs/dispatch.md "Agreement-based approval as built (ATC-334)".
 
 ## CROSSCHECK: 예비 판정 먼저 보기

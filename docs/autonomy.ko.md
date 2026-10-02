@@ -151,6 +151,16 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 기록은 `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since`와, ATC-362 릴리스 기록이 생기기 전까지 `null`인 `release` 칸을 담는다. 어느 통제가 섰는지는 `leaks.ts`의 `CONTROLS` 표가 정한다. 통제가 서면 거기 플래그만 고치고, 그 뒤의 새 leak은 "통제 있음"으로 간다.
 
+### 사람 없는 SCHEDULE·FLEET PLAN (ATC-370)
+
+P3·P5 행을 자른다(K3, 2026-10-02 SUPERVISOR 승인: "live first"). `server/autonomy-auto.ts`(순수)가 정하고 `server/autonomy-auto-run.ts`가 읽고 쓴다. 둘 다 서버 안에서만 돈다(바꾸는 HTTP 길도 `atcctl` 명령도 없다).
+
+- **SCHEDULE.** 서버가 1분마다 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 SUPERVISOR 판정도 CROSSCHECK 일치도 없이 승인한다(`via: "auto"`, 발부는 S2 흐름대로 OCC). PRIORITIZE·ROUTE·TARGET은 제안으로 남는다(방향, 원칙 10). NEW 초안은 이슈를 **Backlog**에 만든다(발부 호출의 `state: "Backlog"`). Todo로 푸는 것은 SUPERVISOR뿐이다(ATC-362). CLOSE는 승인하지만 atc는 여전히 이슈를 Done으로 옮기지 않는다(서버도 OCC도 쓰는 길이 없다): SCHEDULE 탭의 "LINEAR에서 직접 DONE" 목록에 남는다. 하루 상한 `autoApproveMax`가 CROSSCHECK 일치 자동 승인과 함께 센다.
+- **FLEET PLAN.** 서버가 주기마다 열린 LAUNCH·STOP·RESTART·REFRESH·AOG 제안을 승인 단추와 같은 실행기(`by: "auto"`)로 실행한다. 그래서 조건이 바뀜 검사, `ATC_MAX_LAUNCHED`, FUEL hold, ACCOUNT 로그인을 실행기가 다시 본다. ENTRY·ACCOUNT CHANGE·REPOSITION(자기 스위치)·RETIRE·RETURN과 데스크톱 세션의 REFRESH는 제안으로 남는다. 덧붙인 상한: 굴러가는 24시간에 자동 적용 전체 `autoApproveMax`, LAUNCH·RESTART·REFRESH `autoLaunchMax`(DISPATCH 자동 LAUNCH도 함께 센다), 그리고 서버가 30분 안에(실패는 60분) 건드린 AIRCRAFT는 쉰다.
+- **스위치.** `schedule.json`의 `auto`와 `fleet-plan.json`의 `auto`, `on`·`off`, 없으면 `on`(이 PR이 들어가면 둘 다 켜진다). `PUT /api/settings`(`scheduleAuto`, `fleetPlanAuto`)로만 쓰고 화면의 Origin(`fromThisApp`)이 있어야 받는다. 설정 창 → OPERATIONS → SCHEDULE·FLEET PLAN AUTO. 바꾸면 FLIGHT RECORDER에 남는다.
+- **오작동.** `auto-actions.jsonl`은 서버가 한 일, `misfires.jsonl`은 되돌려진 것을 사건마다 한 번 적는다. SCHEDULE: 자동 승인한 초안이 APPLIED가 된 뒤 라벨·TAIL이 되돌려졌거나 CLOSE가 다시 열렸거나 같은 FLIGHT의 같은 종류 뒤 초안이 어긋나는 값을 낸 것(3일 창). FLEET PLAN: STOP 뒤 1시간 안에 같은 AIRCRAFT의 LAUNCH, 1시간 뒤에도 노는 LAUNCH(스냅샷 점검이라 상한 값), 6시간 안의 세 번째 RESTART·REFRESH. `GET /api/autonomy/auto?days=14`가 스위치와 하루별 개수(UTC), 최근 20건을 준다.
+- **만들지 않은 것.** 오작동 개수 화면(지금은 API와 파일이 기록), CLOSE를 Done으로 옮기는 길, ATC-369와 STOP 규칙을 하나로 합치기.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.

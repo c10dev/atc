@@ -232,6 +232,14 @@ const AUTO_APPROVE_WARN = {
   shadow: "shadow: 서버가 CROSSCHECK가 agree한 카드를 \"승인했을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 승인하지 않는다.",
   on: "⚠ 서버가 CROSSCHECK가 agree한 열린 ASSIGN(LAUNCH 아님)과 SCHEDULE 초안을 스스로 승인한다(via auto). blind 표본·HELD·disagree·주의(caution) 카드와 FUEL hold인 AIRCRAFT는 SUPERVISOR 몫이고, 하루 상한을 넘으면 기다린다.",
 } as const;
+const SCHEDULE_AUTO_WARN = {
+  off: "off: SCHEDULE 초안은 SUPERVISOR(또는 일치 기반 자동 승인)가 승인한다.",
+  on: "⚠ 기본: 서버가 열린 SCHEDULE 초안 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW를 사람 판정과 CROSSCHECK 없이 승인한다(via auto). NEW는 Backlog에 제안으로만 생기고 SUPERVISOR가 풀어 준다. ROUTE·TARGET·PRIORITIZE는 제안으로 남는다. 하루 상한을 넘으면 기다린다.",
+} as const;
+const FLEET_PLAN_AUTO_WARN = {
+  off: "off: FLEET PLAN 제안은 SUPERVISOR가 FLEET 화면에서 승인한다.",
+  on: "⚠ 기본: 서버가 FLEET PLAN 제안 LAUNCH·STOP·RESTART·REFRESH·AOG를 사람 승인 없이 실행한다(세션을 띄우고 멈춘다). FUEL hold·ATC_MAX_LAUNCHED·하루 상한을 지키고, ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN은 제안으로 남는다.",
+} as const;
 const AUTO_LAUNCH_WARN = {
   off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
   shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
@@ -529,6 +537,37 @@ export function OperationsSettings({ server, save }: { server: Loaded; save: Sav
               </>
             );
           }}
+        </ServerRows>
+      </Block>
+
+      <Block code="SCHEDULE·FLEET PLAN AUTO" label="SCHEDULE·FLEET PLAN 사람 없이 적용(SUPERVISOR 전용)">
+        <ServerRows server={server}>
+          {(s) =>
+            s.autonomyAuto ? (
+              <>
+                <EditRow
+                  label="SCHEDULE"
+                  env="schedule.auto"
+                  value={s.autonomyAuto.schedule}
+                  note="schedule.json · 하루 상한은 dispatch.json autoApproveMax · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("scheduleAuto", s.autonomyAuto.schedule, SCHEDULE_AUTO_WARN)}
+                  onSave={(v) => save({ scheduleAuto: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.autonomyAuto.schedule} lines={SCHEDULE_AUTO_WARN} />
+                <EditRow
+                  label="FLEET PLAN"
+                  env="fleet-plan.auto"
+                  value={s.autonomyAuto.fleetPlan}
+                  note="fleet-plan.json · 하루 LAUNCH 상한은 autoLaunchMax, 전체는 autoApproveMax · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈"
+                  input={{ kind: "select", options: ["off", "on"] }}
+                  guard={guardOf("fleetPlanAuto", s.autonomyAuto.fleetPlan, FLEET_PLAN_AUTO_WARN)}
+                  onSave={(v) => save({ fleetPlanAuto: v as "off" | "on" })}
+                />
+                <ModeLines modes={["off", "on"] as const} current={s.autonomyAuto.fleetPlan} lines={FLEET_PLAN_AUTO_WARN} />
+              </>
+            ) : null
+          }
         </ServerRows>
       </Block>
 
