@@ -3,15 +3,19 @@ import { Icon } from "./Icon.tsx";
 import { useEffect, useState } from "react";
 import { ApplyNow } from "./ApplyNow.tsx";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
+import { type PlanUsageView, planText } from "../../server/account-usage.ts";
 import type { FolderHealth } from "../../server/account-health.ts";
 import type { LoginView } from "../../server/account-login.ts";
 import type { MemoryFolderView } from "../../server/account-memory.ts";
 import type { AccountsRegistry } from "../../server/accounts.ts";
 import type { LaunchModelSetting } from "../../server/launch-model.ts";
+import { hhmm } from "../../server/health.ts";
+import { ageText } from "./radio-log.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
 import { apiGet, apiSend } from "./api.ts";
 
 // AGENTS 탭의 ACCOUNTS 블록(ATC-146, docs/accounts.md). 라벨과 Claude Code 설정 폴더만 적는다(email·토큰은 없다). 저장은 SUPERVISOR만(서버가 Origin을 본다).
+// 폴더마다 요금제와 한도의 쓴 몫·남은 몫(ATC-348). 요금제는 auth status에서 읽어 이 화면에만 보인다(저장하지 않는다).
 // 폴더마다 로그인 여부(loggedIn·authMethod만)와 atc statusline·hook이 걸려 있는지를 보이고, 없으면 경고한다. 막지는 않는다.
 interface AccountsState {
   registry: AccountsRegistry;
@@ -49,9 +53,31 @@ export function AccountsBlock() {
       setSharing(false);
     }
   };
+  const [usage, setUsage] = useState<Record<string, PlanUsageView>>({}); // ATC-348: 폴더 라벨 → 요금제 한도의 쓴 몫·남은 몫(서버가 정한 수준)
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+  const loadUsage = () =>
+    apiGet("/api/accounts/usage")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d: { usage: Record<string, PlanUsageView> }) => setUsage(d.usage))
+      .catch(() => {});
+  const refreshUsage = async (label: string) => {
+    setRefreshing(label);
+    setError(null);
+    try {
+      const res = await apiSend("POST", `/api/accounts/${encodeURIComponent(label)}/usage`);
+      const body = await res.json();
+      if (res.ok) setUsage((body as { usage: Record<string, PlanUsageView> }).usage);
+      else setError(body.error ?? `HTTP ${res.status}`);
+    } catch {
+      setError("서버에 연결할 수 없음");
+    } finally {
+      setRefreshing(null);
+    }
+  };
   const [logins, setLogins] = useState<Record<string, LoginView>>({}); // 이 화면에서 LOGIN을 마친 폴더(줄이 LOGGED IN으로 바뀐 뒤에도 온보딩 결과를 보인다)
   const load = (d: AccountsState) => {
     setData(d);
+    void loadUsage();
     setRows(Object.entries(d.registry).map(([label, e]) => ({ label, configDir: e.configDir, maxLaunched: e.maxLaunched ? String(e.maxLaunched) : "" })));
   };
   const reload = () =>
@@ -60,6 +86,11 @@ export function AccountsBlock() {
       .then((d: AccountsState) => load(d))
       .then(loadMemory)
       .catch(() => setError("ACCOUNTS를 읽지 못함"));
+  useEffect(() => {
+    void loadUsage();
+    const id = setInterval(loadUsage, 60_000); // statusline 값은 세션이 돌면 바뀐다. 1분마다 다시 읽는다(/usage를 돌리지는 않는다)
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     let alive = true;
     void loadMemory();
@@ -94,7 +125,7 @@ export function AccountsBlock() {
     <Block code="ACCOUNTS" label="ACCOUNT 폴더(ATC-146)">
       <p className="settings-hint">
         ACCOUNT는 라벨과 Claude Code 설정 폴더다(예: acct-1 = ~/.claude-acct-1). atc는 등록된 모든 폴더의 세션·FUEL을 읽고, 세션의 ACCOUNT는 그 세션 파일이 있는 폴더로 정한다. <span className="mono">~/.claude</span>는 등록하지 않아도
-        읽는다. email·토큰은 저장하지 않는다.
+        읽는다. email·토큰은 저장하지 않는다. 요금제는 화면에만 보이고 저장하지 않는다.
       </p>
       {data?.folders.map((f) => (
         <div key={f.dir} className="acct-folder">
@@ -110,6 +141,7 @@ export function AccountsBlock() {
             <StatusChip tone={f.healthHook ? "ok" : "mute"}>{f.healthHook ? "HEALTH HOOK ✓" : "HEALTH HOOK 없음"}</StatusChip>
             <StatusChip tone={f.claimHook ? "ok" : "mute"}>{f.claimHook ? "CLAIM HOOK ✓" : "CLAIM HOOK 없음"}</StatusChip>
           </div>
+          <PlanUsage plan={f.loggedIn === true ? f.plan : null} view={usage[f.label]} busy={refreshing !== null} running={refreshing === f.label} onRefresh={() => refreshUsage(f.label)} />
           <MemoryLine view={memory.find((m) => m.dir === f.dir)} sharing={sharing} onShare={shareMemory} />
           {f.registered && f.loggedIn === false && (
             <LoginPanel
@@ -160,6 +192,53 @@ export function AccountsBlock() {
         }}
       />
     </Block>
+  );
+}
+
+// PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫·남은 몫·reset. 값은 statusline이나 REFRESH(/usage) 가운데 새것이고, 없으면 "알 수 없음"(0 %가 아니다).
+// 수준(색)은 서버가 FUEL 임계값으로 정한 것만 쓴다. REFRESH는 한 번에 한 ACCOUNT만
+function PlanUsage({ plan, view, busy, running, onRefresh }: { plan: string | null; view: PlanUsageView | undefined; busy: boolean; running: boolean; onRefresh: () => void }) {
+  const now = Date.now();
+  const source = !view || !view.source ? null : view.source === "usage" ? "/usage" : `statusline${view.from ? ` · ${view.from}` : ""}`;
+  return (
+    <div className="acct-usage">
+      <div className="acct-usage-head">
+        <span className="label">PLAN</span>
+        <span className="acct-plan">{planText(plan) ?? <span className="faint">—</span>}</span>
+        {view?.at && source && (
+          <span className={view.stale ? "acct-usage-src is-stale" : "acct-usage-src"}>
+            {source} · <span className="tn">{ageText(now - Date.parse(view.at))}</span> 전{view.stale ? " · 오래됨" : ""}
+          </span>
+        )}
+        <button type="button" className="config-btn" disabled={busy} onClick={onRefresh} title="이 폴더에서 claude -p /usage를 돌려 한도를 다시 읽는다(모델 호출 없음, 약 4초). 5분 안에는 다시 읽지 않는다">
+          {running ? "읽는 중…" : "REFRESH"}
+        </button>
+      </div>
+      {view && view.windows.length > 0 ? (
+        <ul className="acct-usage-list">
+          {view.windows.map((w) => (
+            <li key={w.name} className={`lv-${w.level}`}>
+              <span className="acct-usage-name">{w.label}</span>
+              <span className="acct-usage-bar" role="meter" aria-label={`${w.label} 한도 사용`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={w.used}>
+                <span style={{ width: `${Math.min(100, w.used)}%` }} />
+              </span>
+              <span className="acct-usage-nums">
+                사용 <b className="tn">{Math.round(w.used)}%</b> · 남음 <b className="tn">{w.left}%</b>
+                {w.resetsAt && (
+                  <span className="faint">
+                    {" "}
+                    · reset <span className="tn">{hhmm(Date.parse(w.resetsAt), now)}</span>
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="settings-hint acct-usage-unknown">한도 알 수 없음{view?.reason ? ` — ${view.reason}` : ""}</p>
+      )}
+      {view && view.windows.length > 0 && view.reason && <p className="settings-hint acct-warn">⚠ {view.reason}</p>}
+    </div>
   );
 }
 

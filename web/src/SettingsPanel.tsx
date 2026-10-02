@@ -15,7 +15,7 @@ const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: stri
   { id: "display", label: "화면", sub: "테마 · 밀도 · 시계" },
   { id: "linear", label: "LINEAR", sub: "연결 · 팀" },
   { id: "agents", label: "AGENTS", sub: "SOURCES · STANDS · 콜사인" },
-  { id: "accounts", label: "ACCOUNTS", sub: "설정 폴더 · LOGIN" },
+  { id: "accounts", label: "ACCOUNTS", sub: "설정 폴더 · LOGIN · 요금제" },
   { id: "alerts", label: "알림", sub: "알림 · 소리 · 음성" },
   { id: "landing", label: "LANDING", sub: "AUTOLAND · MCC · REVIEW", group: "AUTOMATION" },
   { id: "operations", label: "OPERATIONS", sub: "FUEL · REPOSITION · RECYCLE · JEV", group: "AUTOMATION" },

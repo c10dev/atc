@@ -3432,4 +3432,34 @@ a.ticket:hover {
 .acct-next li { margin: 3px 0; }
 .acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
 .acct-login { margin: 4px 0 2px; }
+/* PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫. 보통 수준은 무채색, INFO부터 amber, HOLD부터 alert(서버가 정한 수준) */
+.acct-usage { display: grid; gap: var(--space-1); }
+.acct-usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.acct-usage-head .config-btn { height: 24px; margin-left: auto; }
+.acct-plan { font: 700 var(--text-sm) var(--mono); letter-spacing: 0.06em; }
+.acct-usage-src { font-size: var(--text-xs); color: var(--faint); }
+.acct-usage-src.is-stale { color: var(--muted); }
+.acct-usage-list { display: grid; grid-template-columns: max-content minmax(60px, 1fr) auto; gap: var(--space-1) var(--space-2); margin: 0; padding: 0; list-style: none; }
+/* 줄마다 같은 칸: 라벨 폭과 막대 길이가 ACCOUNT 안에서 맞는다 */
+.acct-usage-list li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font-size: var(--text-sm);
+}
+.acct-usage-name { max-width: 16ch; font: 600 var(--text-xs) var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-usage-bar { height: 6px; border-radius: var(--radius-pill); background: var(--panel-3); overflow: hidden; }
+.acct-usage-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
+.acct-usage-list .lv-info .acct-usage-bar > span { background: var(--amber); }
+.acct-usage-list .lv-hold .acct-usage-bar > span { background: var(--alert); }
+.acct-usage-list .lv-info .acct-usage-nums b { color: var(--amber); }
+.acct-usage-list .lv-hold .acct-usage-nums b { color: var(--alert); }
+.acct-usage-nums { color: var(--muted); white-space: nowrap; }
+.acct-usage-nums b { font-weight: 600; color: var(--text); }
+.acct-usage-unknown { margin: 0; }
+@media (max-width: 480px) {
+  .acct-usage-list { grid-template-columns: max-content minmax(40px, 1fr); }
+  .acct-usage-nums { grid-column: 1 / -1; white-space: normal; }
+}
 .acct-login p { margin: 2px 0; }

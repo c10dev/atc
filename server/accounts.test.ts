@@ -185,25 +185,30 @@ test("FUEL: 관찰한 ACCOUNT로 statusline 기록을 묶는다(home과 달라�
   assert.deepEqual(same.map((m) => [m.name, m.account]), [["TEAM_C", null], ["TEAM_D", "acct-2"]]);
 });
 
-test("auth status 필터: loggedIn·authMethod 두 칸만 남는다", () => {
-  const full = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", email: "someone@example.com", orgName: "Org", subscriptionType: "max", apiKeySource: "x", token: "sk-secret" });
+test("auth status 필터: loggedIn·authMethod·요금제 세 칸만 남는다(ATC-348)", () => {
+  const full = JSON.stringify({ loggedIn: true, authMethod: "claude.ai", email: "someone@example.com", orgId: "org-1", orgName: "Org", subscriptionType: "max", apiKeySource: "x", token: "sk-secret" });
   const got = authFieldsOf(full);
-  assert.deepEqual(got, { loggedIn: true, authMethod: "claude.ai" });
-  assert.deepEqual(Object.keys(got).sort(), ["authMethod", "loggedIn"]);
-  assert.equal(JSON.stringify(got).includes("example.com"), false);
-  assert.deepEqual(authFieldsOf(JSON.stringify({ loggedIn: false })), { loggedIn: false, authMethod: null });
-  assert.deepEqual(authFieldsOf(JSON.stringify({ loggedIn: true, authMethod: "a b; rm -rf" })), { loggedIn: true, authMethod: null });
-  assert.deepEqual(authFieldsOf("not json"), { loggedIn: null, authMethod: null });
-  assert.deepEqual(authFieldsOf("{}"), { loggedIn: null, authMethod: null });
-  assert.deepEqual(authFieldsOf("null"), { loggedIn: null, authMethod: null });
+  assert.deepEqual(got, { loggedIn: true, authMethod: "claude.ai", plan: "max" });
+  assert.deepEqual(Object.keys(got).sort(), ["authMethod", "loggedIn", "plan"]);
+  for (const leak of ["example.com", "org-1", "Org", "sk-secret"]) assert.equal(JSON.stringify(got).includes(leak), false, leak);
+  assert.deepEqual(authFieldsOf(JSON.stringify({ loggedIn: false })), { loggedIn: false, authMethod: null, plan: null });
+  // 로그인 안 된 폴더의 옛 요금제 글은 보이지 않는다. 이상한 글자도 버린다
+  assert.equal(authFieldsOf(JSON.stringify({ loggedIn: false, subscriptionType: "max" })).plan, null);
+  assert.equal(authFieldsOf(JSON.stringify({ loggedIn: true, subscriptionType: "max; rm -rf" })).plan, null);
+  assert.equal(authFieldsOf(JSON.stringify({ loggedIn: true, subscriptionType: "someone@example.com" })).plan, null);
+  assert.equal(authFieldsOf(JSON.stringify({ loggedIn: true, subscriptionType: 3 })).plan, null);
+  assert.deepEqual(authFieldsOf(JSON.stringify({ loggedIn: true, authMethod: "a b; rm -rf" })), { loggedIn: true, authMethod: null, plan: null });
+  assert.deepEqual(authFieldsOf("not json"), { loggedIn: null, authMethod: null, plan: null });
+  assert.deepEqual(authFieldsOf("{}"), { loggedIn: null, authMethod: null, plan: null });
+  assert.deepEqual(authFieldsOf("null"), { loggedIn: null, authMethod: null, plan: null });
 });
 
 test("폴더 health: settings 조각 검사와 경고 글, auth 출력은 걸러 저장", async () => {
   const both = settingsPiecesOf(JSON.stringify({ statusLine: { command: "node /x/hooks/fuel-statusline.mjs" }, hooks: { PostToolUse: [{ hooks: [{ command: "node /x/hooks/claim.mjs" }] }], StopFailure: [{ hooks: [{ command: "node /x/hooks/health.mjs" }] }] } }));
   assert.deepEqual(both, { statusline: true, claimHook: true, healthHook: true });
-  assert.deepEqual(warningsOf("acct-2", { loggedIn: true, authMethod: "claude.ai" }, both), []);
+  assert.deepEqual(warningsOf("acct-2", { loggedIn: true, authMethod: "claude.ai", plan: null }, both), []);
   const none = settingsPiecesOf(null);
-  assert.deepEqual(warningsOf("acct-1", { loggedIn: false, authMethod: null }, none), ["not logged in on acct-1", "FUEL blind on acct-1 (no atc statusline)", "health blind on acct-1 (no health.mjs hook)", "claims blind on acct-1 (no claim.mjs hook)"]);
+  assert.deepEqual(warningsOf("acct-1", { loggedIn: false, authMethod: null, plan: null }, none), ["not logged in on acct-1", "FUEL blind on acct-1 (no atc statusline)", "health blind on acct-1 (no health.mjs hook)", "claims blind on acct-1 (no claim.mjs hook)"]);
 
   writeFileSync(join(A1, "settings.json"), JSON.stringify({ statusLine: { command: "node fuel-statusline.mjs" } }));
   const seen: string[] = [];

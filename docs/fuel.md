@@ -172,6 +172,10 @@ This is the part the 2026-09-28 TEAM_K case asks for.
 - The LOGBOOK `fuel.leak` counts gain an optional `accountChange` bucket; older lines simply lack it and read as zero.
 - Which ACCOUNT the tokens ran on comes from the session's folder (6.2); the leak is not attributed to a label.
 
+### Plan and usage in the settings window as built (ATC-348)
+
+The settings window's ACCOUNTS block shows FUEL REMAINING per registered folder with the plan word, used and left per window, and a REFRESH that reads `claude -p "/usage"` for an ACCOUNT with no running session. Display only: DISPATCH, FLEET PLAN and the hold still use the statusline value of 6.1. Details in [accounts.md](accounts.md) "PLAN and USAGE as built".
+
 ## 7. Screens and estimates
 
 Built in F8 (ATC-56); section 8.6 has the rules as built.
