@@ -9,7 +9,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
-  background: var(--layer, transparent);
+  background: transparent; /* 바탕은 놓인 면 그대로(--layer로 칠하지 않는다: 서랍·카드의 칩은 원래 투명이었다) */
   color: var(--chip-ink, var(--text));
   font: 600 var(--text-xs) var(--mono);
   letter-spacing: 0.08em;
@@ -22,7 +22,7 @@ button.chip {
   cursor: pointer;
 }
 button.chip:hover {
-  background: var(--layer-hover, var(--panel-3));
+  background: var(--layer-hover);
 }
 
 /* tag: 2px 모서리, 고정폭, 대문자. 정해진 상태나 종류(BG auto, STALE, AOG). 색은 data-tone으로 */

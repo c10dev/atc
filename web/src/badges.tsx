@@ -7,6 +7,7 @@ import { standNeedsHint } from "../../server/stand-hint.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
 import "./badges.css";
+import { dotShapeOf, PHASE_SHAPE } from "./kit/dot.ts";
 
 // 저장소 = AIRPORT 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
 // plain: 툴팁 없이(FIDS처럼 줄마다 붙는 곳. 저장소 경로는 숫자뿐인 툴팁이라 화면에 두지 않는다)
@@ -41,9 +42,6 @@ export function SessionPlace({ session, idx }: { session: Session; idx: Index })
     </>
   );
 }
-
-// 세션 상태 점의 모양(색만으로 구별하지 않는다): busy는 찬 원, idle은 막대, dead는 빈 원
-export const dotShapeOf = (status: string): "ring" | "dash" | undefined => (status === "dead" ? "ring" : status === "idle" ? "dash" : undefined);
 
 const statusLabel = { busy: "AIRBORNE", idle: "대기", dead: "NORDO" } as const;
 
@@ -107,7 +105,6 @@ export function PendingApproval({ job, health, attach, className = "" }: { job: 
 // ACTIVITY(ATC-97): "Bash · Run the test suite · 12s". 도구가 돌면 tool, 모델 대기는 model, idle은 흐리게. 본문은 없다
 // 단계는 색이 아니라 점의 모양으로도 보이고(ATC-412: tool 찬 원, model 빈 원, idle 막대) 낭독기에는 글로 읽힌다. 툴팁에만 있지 않다
 const PHASE_TIP = { tool: "도구 실행 중", model: "도구 결과 뒤 모델 응답 대기", idle: "턴이 끝나 쉬는 중" } as const;
-const PHASE_SHAPE = { tool: undefined, model: "ring", idle: "dash" } as const;
 export function ActivityLine({ activity, now, className = "" }: { activity: Activity | null | undefined; now: number; className?: string }) {
   if (!activity) return null;
   const { what, ago } = activityParts(activity, now);

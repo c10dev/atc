@@ -48,7 +48,20 @@ test("ActivityLine: 단계가 점의 모양과 낭독기 글로 나뉘고 툴팁
   const fn = src.slice(src.indexOf("export function ActivityLine"), src.indexOf("export function JobDetail"));
   assert.match(fn, /data-shape=\{PHASE_SHAPE\[activity\.phase\]\}/);
   assert.match(fn, /className="sr-only"/);
-  assert.match(src, /const PHASE_SHAPE = \{ tool: undefined, model: "ring", idle: "dash" \}/); // 셋의 모양이 서로 다르다
+});
+
+test("점 모양: ACTIVITY 단계 셋과 세션 상태 셋이 서로 다른 모양이다", async () => {
+  const { dotShapeOf, PHASE_SHAPE } = await import("../web/src/kit/dot.ts");
+  assert.equal(new Set(Object.values(PHASE_SHAPE).map((s) => s ?? "solid")).size, 3);
+  assert.equal(new Set(["busy", "idle", "dead"].map((s) => dotShapeOf(s) ?? "solid")).size, 3);
+  assert.equal(dotShapeOf("absent"), undefined);
+});
+
+test(".chip은 바탕을 칠하지 않는다(서랍·카드의 칩은 원래 투명이었다): 누르는 칩의 호버에서만 --layer-hover", () => {
+  const css = read("kit/chips.css");
+  const chip = /^\.chip \{([^}]*)\}/m.exec(css)?.[1] ?? "";
+  assert.match(chip, /background:\s*transparent/);
+  assert.ok(!/var\(--layer\b/.test(chip), ".chip 기본이 --layer로 칠한다");
 });
 
 test("점은 이름 없이 혼자 서지 않는다: .dot이 붙은 요소는 aria-label이나 aria-hidden을 가진다", () => {
