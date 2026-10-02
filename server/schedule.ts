@@ -183,7 +183,7 @@ export const canApplyOp = (s: Pick<ScheduleOp, "status">, op: StatusLine) => Boo
 
 // SUPERVISOR 판정과 그 사유. 사유는 판정한 상태에 머물러 있을 때만(approved 뒤의 verdictReason은 SUPERSEDED·EXPIRED 사유다)
 export function humanOf(s: ScheduleOp): HumanDecision | null {
-  if (!s.decision || s.via === "atfm") return null; // 자동 판정(ATFM)은 사람 판정으로 세지 않는다
+  if (!s.decision || s.via === "atfm" || s.via === "auto") return null; // 자동 판정(ATFM·auto)은 사람 판정으로 세지 않는다
   const reason = (s.status === "agreed" || s.status === "disagreed" || s.status === "rejected") && s.verdictReason ? s.verdictReason : null;
   return { ...s.decision, reason, ...(s.via ? { via: s.via } : {}) };
 }
@@ -281,8 +281,10 @@ function append(lines: LogLine[], file = FILE()) {
   if (!lines.length) return;
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
-  for (const l of lines) record({ t: l.at, kind: "schedule", op: l.op, id: l.id });
+  for (const l of lines) record({ t: l.at, kind: "schedule", op: l.op, id: l.id, ...(l.op === "approve" && l.via === "auto" ? { by: "auto" } : {}) });
 }
+// 서버가 CROSSCHECK 일치만 보고 스스로 승인한다(ATC-334 auto-approve-run.ts). 라우트의 검사는 거기서 같은 순수 규칙으로 다시 한다
+export const appendScheduleApprove = (id: string, at: string, file = FILE()) => append([{ op: "approve", id, at, via: "auto" }], file);
 
 const isOpenTicket = (t: Ticket | undefined) => Boolean(t && (t.stateType === "unstarted" || t.stateType === "backlog"));
 
@@ -756,7 +758,7 @@ export function syncLines(
 
 export function gateOf(all: ScheduleOp[]) {
   const ops = all.filter(countsForGate);
-  const decided = ops.filter((s) => (s.status === "agreed" || s.status === "disagreed") && s.via !== "atfm");
+  const decided = ops.filter((s) => (s.status === "agreed" || s.status === "disagreed") && s.via !== "atfm" && s.via !== "auto");
   const agreed = decided.filter((s) => s.status === "agreed").length;
   // (S2 이후의 승인·거절은 이 점검에 넣지 않는다 — 그림자 판정의 합의율만 잰다)
   const agreement = decided.length ? agreed / decided.length : null;
@@ -775,7 +777,7 @@ export function gateOf(all: ScheduleOp[]) {
 
 export function networkGateOf(ops: ScheduleOp[]) {
   const per = (kind: NetworkKind) => {
-    const decided = ops.filter((s) => s.kind === kind && s.decision && s.via !== "atfm");
+    const decided = ops.filter((s) => s.kind === kind && s.decision && s.via !== "atfm" && s.via !== "auto");
     const agreed = decided.filter((s) => s.decision!.verdict === "agree").length;
     return { decided: decided.length, agreed, agreement: decided.length ? agreed / decided.length : null };
   };

@@ -240,6 +240,7 @@ export interface ApproveLaunchDeps {
   append: (ops: Op[]) => void;
   launch: () => Promise<{ ok: boolean; jobId?: string; error?: string }>;
   now: () => string;
+  by?: string; // launch 줄의 by. 화면에서 승인하면 SUPERVISOR(기본), 서버의 자동 승인(ATC-334)이면 "auto"
 }
 export async function approveLaunch(id: string, d: ApproveLaunchDeps): Promise<{ ok: boolean; status: 200 | 409 | 502; error?: string }> {
   if (!d.live && d.cap.full) return { ok: false, status: 409, error: launchFullWhy(d.cap) };
@@ -252,7 +253,7 @@ export async function approveLaunch(id: string, d: ApproveLaunchDeps): Promise<{
     r = { ok: false, error: (e as Error).message };
   }
   const at = d.now();
-  const result: Op = { op: "launch", id, at, ok: r.ok, by: "SUPERVISOR", ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
+  const result: Op = { op: "launch", id, at, ok: r.ok, by: d.by ?? "SUPERVISOR", ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
   if (r.ok) {
     d.append([result]);
     return { ok: true, status: 200 };

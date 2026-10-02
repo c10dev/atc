@@ -290,7 +290,7 @@ export const canCrosscheck = (p: Proposal) => p.status === "proposed" && !isHeld
 // SUPERVISOR 판정(shadow agreed/disagreed, approval approved/rejected). 사유는 판정한 상태에 머물러 있을 때만
 // (approved 뒤의 reason은 DECLINED·SUPERSEDED 같은 다른 사유다)
 export function humanOf(p: Proposal): HumanDecision | null {
-  if (p.via === "atfm" || p.via === "preflight") return null; // 자동 판정(ATFM)과 PREFLIGHT 확정은 사람 판정으로 세지 않는다
+  if (p.via === "atfm" || p.via === "preflight" || p.via === "auto") return null; // 자동 판정(ATFM·auto)과 PREFLIGHT 확정은 사람 판정으로 세지 않는다
   const t = p.timeline;
   const at = t.agreed ?? t.disagreed ?? t.approved ?? t.rejected;
   if (!at) return null;
@@ -875,7 +875,7 @@ export function readiness2bNow(gate: ReturnType<typeof gateOf>, now = Date.now()
 
 export function gateOf(proposals: Proposal[]) {
   // 게이트는 AIRCRAFT 선택만 잰다(2026-09-27, SUPERVISOR): 사람 판정 중 준비 안 됨 거절은 따로 센다
-  const judged = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm" && p.via !== "preflight");
+  const judged = proposals.filter((p) => (p.status === "agreed" || p.status === "disagreed") && p.via !== "atfm" && p.via !== "preflight" && p.via !== "auto");
   const decided = judged.filter((p) => !notReadyOf(p));
   const agreed = decided.filter((p) => p.status === "agreed").length;
   const agreement = decided.length ? agreed / decided.length : null;
@@ -1068,7 +1068,7 @@ export function append(ops: Op[]) {
   if (!ops.length) return;
   mkdirSync(dirname(FILE), { recursive: true });
   appendFileSync(FILE, ops.map((o) => JSON.stringify(o)).join("\n") + "\n");
-  for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id, ...(o.op === "send" && o.via ? { via: o.via } : {}) });
+  for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id, ...(o.op === "send" && o.via ? { via: o.via } : {}), ...(o.op === "approve" && o.via === "auto" ? { by: "auto" } : {}) });
 }
 
 // 보낼 FLIGHT PLAN 문구. release(OCC가 보냄)와 FRESH START(ATC-73, 새 세션의 첫 프롬프트)가 같이 쓴다

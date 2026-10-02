@@ -353,6 +353,24 @@ Claude Code 2.1.285에서 scratch job으로 쟀다(빈 폴더에서 `claude --bg
 
 풀지 못한 것: worker가 방금 크래시하면 daemon이 다시 띄우기 전 몇 초 동안 pid가 없으므로, 그 순간에는 `blocked` 줄이 STALE로 보일 수 있다(`done` 줄에도 있던 노출이다). 그 사이에 승인한 LAUNCH는 두 번째 세션을 띄울 수 있다. 더 재지는 않았다.
 
+### 일치 기반 자동 승인 구현 내용(ATC-334)
+
+[autonomy.ko.md](autonomy.ko.md) C14와 WO-16 1·2단계: CROSSCHECK가 agree하면 서버가 스스로 카드를 승인해서 SUPERVISOR가 카드마다 누르지 않는다. `dispatch.json`의 스위치 둘, **기본은 둘 다 off**이고 설정 창(OPERATIONS의 "AUTO APPROVE", `fromThisApp` 검사 뒤의 `PUT /api/settings`)에서만 바꾼다. `atcctl` 명령도 다른 길도 없어서 관제 세션은 켤 수 없다(K3). `on`을 고르면 다른 ⚠ 스위치처럼 확인을 묻는다.
+
+| 스위치 | 값 | 다루는 것 |
+|---|---|---|
+| `autoApprove` | `off`, `shadow`, `on` | launch 카드가 아닌 열린 ASSIGN 카드와 SCHEDULE 초안 |
+| `autoApproveLaunch` | `off`, `shadow`, `on` | launch 카드(ABSENT AIRCRAFT나 RESUME): 승인과 LAUNCH를 한 걸음으로 |
+
+- **`off`**는 아무것도 바꾸지 않는다. **`shadow`**는 `auto-approve.jsonl`에 `would-approve`·`would-launch` 줄만 카드마다 한 번 적고 아무것도 승인하지 않는다. **`on`**은 `via: "auto"`(API가 보낼 수 없는 새 값. FLIGHT RECORDER 줄에는 `by: "auto"`)로 승인하고 `auto-approve.jsonl`에 `approve` 줄을 쓴다.
+- **카드가 자격을 얻으려면** DISPATCH가 `approval` 모드이고, 카드가 열려 있고 SETTLED이며 HELD가 아니고, CROSSCHECK mark가 `agree`이고, **blind 표본이 아니고**(SUPERVISOR와 같은 5분의 1 해시, `server/blind.ts`), OCC가 주의를 달지 않았고, 그 AIRCRAFT의 ACCOUNT가 FUEL hold가 아니어야 한다. 순수 규칙은 `server/auto-approve.ts`의 `assignWhyNot`. disagree 카드, blind 카드, HELD 카드, 주의 카드는 전과 똑같이 SUPERVISOR 몫이다.
+- **SCHEDULE 초안**도 같은 규칙(agree, blind 아님, SCHEDULE이 `approval` 모드)을 따른다. TARGET·ROUTE(그림자 전용 종류)는 승인하지 않는다. 발부와 적용은 전처럼 OCC가 한다.
+- **하루 상한:** 굴러가는 24시간에 자동 승인은 `autoApproveMax`(기본 40)건까지, ASSIGN과 SCHEDULE을 같이 센다. 41번째 카드는 SUPERVISOR를 기다린다. `shadow`는 would 줄을 세어 상한이 어떻게 할지 보인다.
+- **launch 카드**는 위의 공통 조건에 더해 모두 만족해야 한다: `launchCapOf`가 차지 않음(`ATC_MAX_LAUNCHED`), AIRCRAFT가 `stuck`이 아님(ATC-213), REGISTRATION이 대기 중이 아님(누가 눌렀든 그 REGISTRATION의 LAUNCH가 최근 `autoLaunchBackoffMin`분(기본 30) 안에 실패하지 않음), 24시간에 자동 LAUNCH가 `autoLaunchMax`(기본 6)번 미만. 승인과 LAUNCH는 같은 `approveLaunch`를 서버 안에서 불러서 한다(HTTP 길 없음). `POST /api/dispatch/proposals/:id/approve`는 launch 카드에 대해 `fromThisApp` 검사를 그대로 둔다. `launch` 줄과 FLIGHT RECORDER에는 `by: "auto"`가 남는다. LAUNCH가 실패하면 늘 그렇듯 카드가 SUPERSEDED로 닫히고 대기가 시작된다.
+- **사람 판정이 아니다:** `via: "auto"`는 `atfm`·`preflight`처럼 `humanOf`, 2b 게이트(판정 20건에 80%), CROSSCHECK 일치율, 한 번 클릭 비율에서 뺀다. SCHEDULE의 게이트도 뺀다.
+- **어디서 도나:** `server/auto-approve-run.ts`, `index.ts`가 1분에 한 번, 한 번에 한 주기만. 쓰기 직전에 카드를 다시 읽어서 먼저 온 클릭이 이긴다.
+- **이번 단계가 아닌 것:** FLEET PLAN, CREW CHANGE, network 종류(WO-16의 나중 단계).
+
 ## 7. atc에 더할 것
 
 | 곳 | 내용 |
