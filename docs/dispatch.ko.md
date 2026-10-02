@@ -646,7 +646,7 @@ DISPATCH가 자기 카드를 스스로 승인하므로(ATC-367) 판정 화면이
 
 K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정하고, LAUNCH 플래그를 바꾼다([autonomy.md](autonomy.md) C9). 항목은 서버만, 발권 기록에서 만든다.
 
-- **선언.** 이슈 `## K effects` 절에 효과마다 한 줄: `K3[<라벨>]: <바꾸는 통제> | files: <경로>, <경로>`. 라벨은 `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review`(classifier의 soft_deny 라벨). 경로는 저장소 기준 상대 경로이고 글롭과 `..`은 없다. 맞지 않는 `K3` 줄은 무시한다(항목 없음): 그 FLIGHT는 classifier 아래에 남는다.
+- **선언.** 이슈 `## K effects` 절에 효과마다 한 줄: `K3[<라벨>]: <바꾸는 통제> | files: <경로>, <경로>`. 라벨은 `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review`, `Security Test Removal`, `Instruction Poisoning`(classifier의 soft_deny 라벨, ATC-399가 뒤의 둘을 더했다). 나머지 soft_deny 라벨은 선언할 수 없고 이유는 [autonomy.ko.md](autonomy.ko.md) C9 표에 있다. 경로는 저장소 기준 상대 경로이고 글롭과 `..`은 없다. Linear가 저장한 줄(`K3\[Security Weaken\]: …`처럼 기호 앞에 역슬래시)은 이스케이프를 되돌려 읽는다. 맞지 않는 `K3` 줄은 무시한다(항목 없음): 그 FLIGHT는 classifier 아래에 남는다.
 - **항목을 만드는 때.** FLIGHT의 발권이 `screen`이나 `duty-chat` 채널이고 해시가 지금 이슈 본문과 같을 때. `attested` 발권은 항목을 만들지 않는다: agent가 증언을 쓸 수 있다(`server/k3-allow.ts`의 `k3LaunchOf`).
 - **LAUNCH가 넘기는 것.** `--settings '{"autoMode":{"allow":["$defaults", <항목>…]}}'`. 선언마다 항목 하나이고 라벨, 통제, 파일, STAND(`<repo>/.claude/worktrees/<flight>-*`), 발권 id(`<FLIGHT>@<해시>`)를 적고 "Code only; nothing is executed against production during the FLIGHT"를 말한다. `$defaults`는 항목이 아니다: 없으면 `allow`가 classifier의 기본 allow 목록을 통째로 대신한다. 그 밖에는 더하지 않는다: ACCOUNT settings의 정적 allow, `bypassPermissions`, 정책 훅 모두 없다.
 - **새 AIRCRAFT.** 돌고 있는 세션은 새 `--settings`를 받지 못하므로, 플래너는 이런 FLIGHT를 그 FLIGHT를 위해 띄우는 AIRCRAFT(launch 카드)에만 짝짓는다.
