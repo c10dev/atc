@@ -217,6 +217,15 @@ Three comparisons on `#metrics/fuel` that answer "how much are we using agents, 
 - **API.** `GET /api/fuel/trend?days=N&tz=M` (N as `/api/fuel`; M whole minutes from −840 to 840, anything else is UTC) returns `{at, days, historyStart, current, previous, weeks[], change, today: {tzOffsetMin, current, previous, change}}`. It reads transcripts for `max(2 × days, 56)` days (`trendScanDays`, at most 60), so it is a separate route and `/api/fuel` and the FLEET context sizes keep their shorter scan. The screen reads it once per window change or refresh, like `/api/fuel`. Measured on 2026-10-02 against the real `~/.claude` (read only): about 60,000 deduplicated requests since 2026-09-24, about 48 MB of heap for the 60-day scan. The parsed records stay in the in-memory scan cache, so expect roughly 0.8 KB per request once 60 days of history exist.
 - **Code.** `server/fuel-trend.ts` (pure: `usageTrend`, `changeOf`, `coverageOf`, `localDayStart`, `tzOffsetOf`, the text helpers), tested in `server/fuel-trend.test.ts` with synthetic records only; the route is in `server/fuel-run.ts`; the screen is `web/src/views/MetricsFuelTrend.tsx` (`useUsageTrend`, `UsageToday`, `SummaryChange`, `MetricsFuelTrend`), used by `MetricsFuel.tsx`.
 
+### LEVERAGE as built (ATC-397)
+
+**LEVERAGE** answers "how many days of work did the agents do in one day": the work time of a period (CAPTAIN + CREW, the 5-minute-slot rule of USAGE TREND above) divided by the wall-clock time that passed in it. Today at 09:00 with 64 h of work since 00:00 is `×7.0`; a 7-day window with 792 h is `×4.7` (÷ 168 h).
+
+- **Denominator.** Only the covered part of the period: time after `historyStart`, the earliest transcript record. A partly covered previous period therefore still has a fair rate (`지난 7일 중 1.1일 ×2.6`); its change stays hidden by the usual coverage rule. No record at all gives null (`—`).
+- **Where.** First tile in TODAY (today against yesterday up to the same time, with `가동 64h ÷ 9.0h` under it), a tile in USAGE's 가동 group (`÷ 흐른 168h`), the weekly readout line and a column in the weekly table. The weekly work-time row already has the same shape (every week is 168 h), so there is no separate leverage row.
+- **API.** Every `UsagePeriod` in `GET /api/fuel/trend` gains `leverage` (2 decimals, or null) and `elapsedHours`; `change.leverage` and `today.change.leverage` follow the same rule as the other metrics.
+- **Code.** `leverageOf` and `leverageText` in `server/fuel-trend.ts`, tested in `server/fuel-trend.test.ts`.
+
 ## 8. Implementation order (one issue each)
 
 | # | Issue | Depends on | Tier | Size |

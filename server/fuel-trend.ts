@@ -26,6 +26,8 @@ export interface UsagePeriod {
   flights: number; // LOGBOOK ARRIVED 줄
   prs: number; // 그중 PR로 ARRIVED한 줄
   costPerFlight: number | null; // cost / flights. FLIGHT가 없으면 null
+  leverage: number | null; // LEVERAGE(ATC-397): 가동 시간 ÷ 흐른 시간(기록이 있는 때만). 기록이 없으면 null
+  elapsedHours: number; // LEVERAGE의 분모: 기간 중 가장 이른 기록 뒤로 흐른 시간
 }
 
 export interface UsageTrend {
@@ -47,7 +49,7 @@ export interface TodayCompare {
 }
 
 // 화면이 견주는 값. 계산은 여기서만 한다(화면은 보이기만)
-export const TREND_METRICS = ["cost", "requests", "hours", "aircraft", "flights", "prs", "costPerFlight"] as const;
+export const TREND_METRICS = ["cost", "requests", "hours", "aircraft", "flights", "prs", "costPerFlight", "leverage"] as const;
 export type TrendMetric = (typeof TREND_METRICS)[number];
 export const metricOf = (p: UsagePeriod, m: TrendMetric): number | null => (m === "hours" ? round2(p.captainHours + p.crewHours) : p[m]);
 
@@ -110,6 +112,13 @@ export function coverageOf(from: number, to: number, historyStart: number | null
   return round4((to - historyStart) / (to - from));
 }
 
+// LEVERAGE(ATC-397): 에이전트 가동 시간의 합 ÷ 그동안 흐른 시간. 분모는 기간 중 가장 이른 기록 뒤의 몫만(기록 전 시간은 빼고)
+const elapsedOf = (from: number, to: number, historyStart: number | null) => (historyStart === null ? 0 : Math.max(0, to - Math.max(from, historyStart)));
+export function leverageOf(slots: number, from: number, to: number, historyStart: number | null): number | null {
+  const elapsed = elapsedOf(from, to, historyStart);
+  return elapsed > 0 ? round2((slots * SLOT_MS) / elapsed) : null;
+}
+
 function periodOf(a: Acc, historyStart: number | null): UsagePeriod {
   const hours = (n: number) => round2((n * WORK_SLOT_MIN) / 60);
   return {
@@ -127,6 +136,8 @@ function periodOf(a: Acc, historyStart: number | null): UsagePeriod {
     flights: a.flights,
     prs: a.prs,
     costPerFlight: a.flights ? round4(a.cost / a.flights) : null,
+    leverage: leverageOf(a.captainSlots.size + a.crewSlots.size, a.from, a.to, historyStart),
+    elapsedHours: round2(elapsedOf(a.from, a.to, historyStart) / 3_600_000),
   };
 }
 
@@ -226,4 +237,10 @@ export function noCompareText(prev: Pick<UsagePeriod, "coverage">, days: number)
   if (prev.coverage <= 0) return "지난 기간 기록 없음";
   if (prev.coverage < 1) return `지난 기간 기록 ${recordedDays(prev.coverage, days)}/${days}일뿐`;
   return "지난 기간 0";
+}
+
+// LEVERAGE 글자: ×4.7(10 넘으면 정수). null이면 —
+export function leverageText(x: number | null): string {
+  if (x === null) return "—";
+  return `×${x >= 10 ? Math.round(x).toLocaleString("en-US") : x.toFixed(1)}`;
 }
