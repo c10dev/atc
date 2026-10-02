@@ -195,7 +195,7 @@
 }
 .fl-layout-btn {
   height: 26px;
-  padding: 0 var(--space-2-5, var(--space-3));
+  padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
