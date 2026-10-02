@@ -4,6 +4,7 @@ import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
 import { timeAgo } from "../derive.ts";
 import "./Follow.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // FOLLOW(docs/follow.md 4장): 따라가는 상위 이슈마다 하위 이슈의 단계를 한 줄씩 보인다. 그리기만 한다 — 단계와 글은 서버가 센다.
 
@@ -24,7 +25,7 @@ const clock = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "n
 
 async function postFollow(parent: string, on: boolean): Promise<string | null> {
   try {
-    const res = await fetch("/api/follow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent, on }) });
+    const res = await apiSend("POST", "/api/follow", { parent, on });
     if (res.ok) return null;
     const body = await res.json().catch(() => ({}));
     return String(body.error ?? `HTTP ${res.status}`);
@@ -36,7 +37,7 @@ async function postFollow(parent: string, on: boolean): Promise<string | null> {
 // release 칩: 기존 FLIGHT 상태 길(서랍의 상태 버튼과 같은 길). 서버가 from을 확인하고 옮겨졌으면 409. 한 번에 한 줄, 일괄 없음
 async function releaseFlight(key: string, from: string): Promise<string | null> {
   try {
-    const res = await fetch(`/api/flight/${encodeURIComponent(key)}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from, to: "Todo" }) });
+    const res = await apiSend("POST", `/api/flight/${encodeURIComponent(key)}/state`, { from, to: "Todo" });
     if (res.ok) return null;
     const body = await res.json().catch(() => ({}));
     return String(body.error ?? `HTTP ${res.status}`);
@@ -54,7 +55,7 @@ export function useFollowBoard(refreshKey: string) {
   const load = useCallback(async () => {
     last.current = Date.now();
     try {
-      const res = await fetch("/api/follow");
+      const res = await apiGet("/api/follow");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
       setError(null);

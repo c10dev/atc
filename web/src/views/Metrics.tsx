@@ -5,6 +5,7 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import "./Metrics.css";
+import { apiGet } from "../api.ts";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
@@ -81,7 +82,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
   // 스냅샷이 바뀔 때(최대 몇 초 간격)와 기간을 바꿀 때 다시 읽는다.
   useEffect(() => {
     let alive = true;
-    fetch(`/api/metrics?days=${days}`)
+    apiGet(`/api/metrics?days=${days}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e) => alive && setError(String(e.message ?? e)));

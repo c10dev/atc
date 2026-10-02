@@ -9,6 +9,7 @@ import {
 } from "../fuel-overview.ts";
 import { FuelAccounts } from "./fleet/Fuel.tsx";
 import "./MetricsFuel.css";
+import { apiGet } from "../api.ts";
 
 // FUEL 개요(ATC-137, docs/fuel.md "FUEL overview as built"): METRICS 탭 안 #metrics/fuel. 읽기만 한다.
 // /api/fuel과 /api/logbook은 열 때, 기간을 바꿀 때, 새로고침 버튼을 누를 때만 읽는다(스냅샷마다 읽지 않는다).
@@ -34,7 +35,7 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
   useEffect(() => {
     let alive = true;
     setSt((s) => ({ ...s, loading: true, error: null }));
-    const get = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${url} → HTTP ${r.status}`))));
+    const get = (url: string) => apiGet(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${url} → HTTP ${r.status}`))));
     Promise.all([get(`/api/fuel?days=${days}`), get(`/api/logbook?days=${days}`).catch(() => ({ entries: [] }))])
       .then(([fuel, log]) => alive && setSt({ days, fuel, entries: Array.isArray(log.entries) ? log.entries : [], loading: false, error: null }))
       .catch((e) => alive && setSt((s) => ({ ...s, loading: false, error: String((e as Error).message ?? e) })));

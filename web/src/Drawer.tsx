@@ -8,6 +8,7 @@ import { RelayBox } from "./Relay.tsx";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import "./Drawer.css";
+import { apiGet, apiSend } from "./api.ts";
 
 // FLIGHT drawer(#flight/<KEY>)와 PR drawer(#pr/<AIRPORT>/<번호>): Linear 이슈와 GitHub PR을 읽기만 한다(DUTY G1).
 export type Load<T> = { state: "loading" } | { state: "ok"; data: T } | { state: "error"; message: string; off?: boolean };
@@ -16,7 +17,7 @@ export function useDetail<T>(url: string): Load<T> {
   const [r, setR] = useState<{ url: string; v: Load<T> } | null>(null);
   useEffect(() => {
     const ctl = new AbortController();
-    fetch(url, { signal: ctl.signal })
+    apiGet(url, { signal: ctl.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         setR({ url, v: res.ok ? { state: "ok", data: body as T } : { state: "error", message: String(body.error ?? `HTTP ${res.status}`), off: body.off === true } });
@@ -65,7 +66,7 @@ function StateMove({ d, onMoved }: { d: IssueDetail; onMoved: () => void }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/flight/${d.key}/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ from: d.state, to }) });
+      const res = await apiSend("POST", `/api/flight/${d.key}/state`, { from: d.state, to });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
       setAsk(null);
@@ -113,7 +114,7 @@ function FollowToggle({ k }: { k: string }) {
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    fetch("/api/follow/list")
+    apiGet("/api/follow/list")
       .then((r) => (r.ok ? r.json() : null))
       .then((b: { parents?: string[] } | null) => live && setOn(b ? Boolean(b.parents?.includes(k)) : null))
       .catch(() => live && setOn(null));
@@ -126,7 +127,7 @@ function FollowToggle({ k }: { k: string }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/follow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent: k, on: !on }) });
+      const res = await apiSend("POST", "/api/follow", { parent: k, on: !on });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
       setOn(!on);
@@ -267,7 +268,7 @@ function MergeRow({ d, airport, note, onDone }: { d: PrView; airport: string; no
   const go = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/pr/${airport}/${d.number}/merge`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ head: m.head }) });
+      const res = await apiSend("POST", `/api/pr/${airport}/${d.number}/merge`, { head: m.head });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(body.error ?? `HTTP ${res.status}`));
       onDone({ ok: true, text: `머지했다 · ${m.head.slice(0, 7)} · ${m.method}` });

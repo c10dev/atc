@@ -6,6 +6,7 @@ import { asOf, ageText, ALL_FILTER, type Filter, filterTx, FREQS, linksOf, loadF
 import { formatClock, useSettings } from "../settings.ts";
 import { useNow } from "../useSnapshot.ts";
 import "./Radio.css";
+import { apiGet } from "../api.ts";
 
 // RADIO 탭(ATC-171, docs/radio.md R2). atc가 이미 기록한 교신을 주파수별로 보여 주기만 한다.
 // 읽기만: 보내기·ACK·승인 버튼이 없다. 소리는 R3. 서버는 R1(GET /api/radio, SSE 토픽 radio).
@@ -32,7 +33,7 @@ function useRadio(onFresh: (txs: Transmission[]) => void): { txs: Transmission[]
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/radio");
+      const res = await apiGet("/api/radio");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { transmissions: Transmission[] };
       for (const t of body.transmissions) known.current.add(t.id);
@@ -419,7 +420,7 @@ function ListenBar({ l, replaying }: { l: ReturnType<typeof useListen>; replayin
   const [showVoices, setShowVoices] = useState(false);
   useEffect(() => {
     if (!showVoices || voices) return;
-    void fetch("/api/voice/status")
+    void apiGet("/api/voice/status")
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { voices?: string[] } | null) => setVoices(j?.voices ?? []))
       .catch(() => setVoices([]));

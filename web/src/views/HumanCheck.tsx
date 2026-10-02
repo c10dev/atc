@@ -8,6 +8,7 @@ import { OpenFlight } from "../FlightLink.tsx";
 import type { Index } from "../derive.ts";
 import { AirportCode } from "../ui.tsx";
 import "./HumanCheck.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // HUMAN CHECK(ATC-37): 사람이 꼭 봐야 하는 PR만(`## UI change` class CHOICE·ACCOUNT·DEVICE, 이 head에 done 아님).
 // 줄마다 증거(PR 댓글 이미지, RUN-UP 보고서), ACCOUNT·DEVICE면 Preview와 단계. SUPERVISOR가 PASS·FAIL을 누르면
@@ -66,7 +67,7 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
     let live = true;
     setEv(null);
     setEvError(null);
-    fetch(`/api/human-check/${slug}/${pr.number}/evidence`)
+    apiGet(`/api/human-check/${slug}/${pr.number}/evidence`)
       .then(async (r) => {
         const body = await r.json();
         if (!live) return;
@@ -84,11 +85,7 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/human-check/${slug}/${pr.number}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result, note, head: pr.head }),
-      });
+      const res = await apiSend("POST", `/api/human-check/${slug}/${pr.number}`, { result, note, head: pr.head });
       const body = (await res.json().catch(() => ({}))) as { error?: string; head?: string; comment?: string | null };
       if (res.ok) setDone({ result, head: body.head ?? pr.head, comment: body.comment ?? null });
       else setError(body.error ?? `HTTP ${res.status}`);

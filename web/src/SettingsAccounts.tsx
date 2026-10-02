@@ -12,6 +12,7 @@ import type { LaunchModelSetting } from "../../server/launch-model.ts";
 import { hhmm } from "../../server/health.ts";
 import { ageText } from "./radio-log.ts";
 import { Block, StatusChip } from "./SettingsServer.tsx";
+import { apiGet, apiSend } from "./api.ts";
 
 // AGENTS 탭의 ACCOUNTS 블록(ATC-146, docs/accounts.md). 라벨과 Claude Code 설정 폴더만 적는다(email·토큰은 없다). 저장은 SUPERVISOR만(서버가 Origin을 본다).
 // 폴더마다 요금제와 한도의 쓴 몫·남은 몫(ATC-348). 요금제는 auth status에서 읽어 이 화면에만 보인다(저장하지 않는다).
@@ -34,7 +35,7 @@ export function AccountsBlock() {
   const [memory, setMemory] = useState<MemoryFolderView[]>([]); // ATC-191: 폴더별 memory 상태
   const [sharing, setSharing] = useState(false);
   const loadMemory = () =>
-    fetch("/api/accounts/memory")
+    apiGet("/api/accounts/memory")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: { memory: MemoryFolderView[] }) => setMemory(d.memory))
       .catch(() => {});
@@ -42,7 +43,7 @@ export function AccountsBlock() {
     setSharing(true);
     setError(null);
     try {
-      const res = await fetch("/api/accounts/memory", { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await apiSend("POST", "/api/accounts/memory");
       const body = await res.json();
       if (res.ok) setMemory((body as { memory: MemoryFolderView[] }).memory);
       else setError(body.error ?? `HTTP ${res.status}`);
@@ -80,7 +81,7 @@ export function AccountsBlock() {
     setRows(Object.entries(d.registry).map(([label, e]) => ({ label, configDir: e.configDir, maxLaunched: e.maxLaunched ? String(e.maxLaunched) : "" })));
   };
   const reload = () =>
-    fetch("/api/accounts")
+    apiGet("/api/accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: AccountsState) => load(d))
       .then(loadMemory)
@@ -93,7 +94,7 @@ export function AccountsBlock() {
   useEffect(() => {
     let alive = true;
     void loadMemory();
-    fetch("/api/accounts")
+    apiGet("/api/accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: AccountsState) => alive && load(d))
       .catch(() => alive && setError("ACCOUNTS를 읽지 못함"));
@@ -108,7 +109,7 @@ export function AccountsBlock() {
     setError(null);
     try {
       const accounts = Object.fromEntries(rows.filter((r) => r.label.trim() || r.configDir.trim()).map((r) => [r.label.trim(), { configDir: r.configDir.trim(), ...(r.maxLaunched.trim() ? { maxLaunched: Number(r.maxLaunched) } : {}) }]));
-      const res = await fetch("/api/accounts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accounts }) });
+      const res = await apiSend("PUT", "/api/accounts", { accounts });
       const body = await res.json();
       if (res.ok) load(body as AccountsState);
       else setError(body.error ?? `HTTP ${res.status}`);
@@ -279,7 +280,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
   const [done, setDone] = useState<AddResult | null>(null);
 
   const loadPreview = () =>
-    fetch("/api/accounts/add")
+    apiGet("/api/accounts/add")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((p: AddPreview) => {
         setPreview(p);
@@ -296,11 +297,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/accounts/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: label.trim(), ...(dir.trim() ? { configDir: dir.trim() } : {}), ...(preview?.homeLabel ? {} : { homeLabel: homeLabel.trim() }), dropEnv: drop }),
-      });
+      const res = await apiSend("POST", "/api/accounts/add", { label: label.trim(), ...(dir.trim() ? { configDir: dir.trim() } : {}), ...(preview?.homeLabel ? {} : { homeLabel: homeLabel.trim() }), dropEnv: drop });
       const body = await res.json();
       if (!res.ok) {
         setError(body.error ?? `HTTP ${res.status}`);
@@ -426,7 +423,7 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
   const base = `/api/accounts/${encodeURIComponent(label)}/login`;
   useEffect(() => {
     let alive = true;
-    fetch(base)
+    apiGet(base)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { login: LoginView | null } | null) => alive && d?.login && setView(d.login))
       .catch(() => {});
@@ -438,7 +435,7 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(base + path, { method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const res = await apiSend(method, base + path, body);
       const d = await res.json();
       if (!res.ok) {
         setError(d.error ?? `HTTP ${res.status}`);
@@ -522,7 +519,7 @@ function LaunchAccountRow({ registryKey }: { registryKey: string }) {
   const [saving, setSaving] = useState<"aircraft" | "control" | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/fleet/launch-accounts")
+    apiGet("/api/fleet/launch-accounts")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: LaunchAccountsView) => alive && setView(d))
       .catch(() => alive && setError("LAUNCH ACCOUNT를 읽지 못함"));
@@ -534,7 +531,7 @@ function LaunchAccountRow({ registryKey }: { registryKey: string }) {
     setSaving(kind);
     setError(null);
     try {
-      const res = await fetch("/api/fleet/launch-account", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [kind]: value || null }) });
+      const res = await apiSend("PUT", "/api/fleet/launch-account", { [kind]: value || null });
       const body = await res.json().catch(() => ({}));
       if (res.ok) setView((v) => (v ? { ...v, launchAccount: body.launchAccount, launchAccountWarnings: Array.isArray(body.launchAccountWarnings) ? body.launchAccountWarnings : [] } : v));
       else setError((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -645,7 +642,7 @@ function LaunchModelRow() {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     let alive = true;
-    fetch("/api/fleet/launch-model")
+    apiGet("/api/fleet/launch-model")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d: LaunchModelView) => alive && setView(d))
       .catch(() => alive && setError("LAUNCH MODEL을 읽지 못함"));
@@ -657,7 +654,7 @@ function LaunchModelRow() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/fleet/launch-model", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const res = await apiSend("PUT", "/api/fleet/launch-model", patch);
       const body = await res.json().catch(() => ({}));
       if (res.ok) setView((v) => (v ? { ...v, launchModel: body.launchModel ?? {} } : v));
       else setError((body as { error?: string }).error ?? `HTTP ${res.status}`);

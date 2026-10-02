@@ -9,6 +9,7 @@ import { timeAgo } from "./derive.ts";
 import { isManual, WILL_DO } from "./views/FleetPlan.tsx";
 import { RelayBox } from "./Relay.tsx";
 import "./Relay.css";
+import { apiGet, apiSend } from "./api.ts";
 
 // DUTY 카드와 QUEUE 줄(ATC-230, docs/duty.md 3.2·4·5장 D3). 카드는 큐 줄 자체이고, 버튼은 이 화면이 기존 길을 부르는 것이다.
 // DUTY는 버튼을 누르지 못한다. 서버에는 DUTY·atcctl이 부를 수 있는 승인·거절·머지·보내기 길이 없다(인라인 버튼의 길은 모두 Origin 검사).
@@ -21,7 +22,7 @@ export function useQueue(refreshKey: string, enabled: boolean): { queue: Supervi
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    fetch("/api/supervisor/queue")
+    apiGet("/api/supervisor/queue")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((q: SupervisorQueue) => alive && setQueue(q))
       .catch(() => {});
@@ -45,7 +46,7 @@ export function useDecisions(refreshKey: string, enabled: boolean, extra: number
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    fetch("/api/duty/decisions")
+    apiGet("/api/duty/decisions")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: DecisionsData) => alive && setData(d))
       .catch(() => {});
@@ -68,7 +69,7 @@ export function useCharters(refreshKey: string, enabled: boolean, extra: number)
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    fetch("/api/duty/charters")
+    apiGet("/api/duty/charters")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: ChartersData) => alive && setData(d))
       .catch(() => {});
@@ -82,7 +83,7 @@ export function useCharters(refreshKey: string, enabled: boolean, extra: number)
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; error?: string; data: Record<string, unknown> }> {
   try {
-    const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const res = await apiSend("POST", path, body);
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     const error = typeof data.error === "string" ? data.error : typeof data.why === "string" ? data.why : undefined;
     return { ok: res.ok && !data.error && data.started !== false, error: error ?? (res.ok ? undefined : `HTTP ${res.status}`), data };
@@ -108,7 +109,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/fleet/plan")
+    apiGet("/api/fleet/plan")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((b: PlanBrief) => alive && setBrief(b))
       .catch(() => alive && setBrief("error"));
@@ -371,7 +372,7 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
 }
 
 // note·charter 초안. charter는 읽기만 하는 흐린 카드(확정은 D5). note는 SUPERVISOR가 확정하거나 버린다(D4): 확정은 decisions.jsonl에 적고,
-// 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 fetch(Origin 검사)이고 DUTY가 누를 수 없다
+// 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 apiGet(Origin 검사)이고 DUTY가 누를 수 없다
 export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; ctx: CardCtx }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

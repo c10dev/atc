@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { barKindOf, type UpdateStatus } from "../../server/update.ts";
 import type { Connection } from "./useSnapshot.ts";
+import { apiGet, apiSend } from "./api.ts";
 
 const POLL_MS = 15_000;
 const BUSY_POLL_MS = 2_000;
@@ -18,7 +19,7 @@ export function useUpdate(connection: Connection) {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/update");
+      const r = await apiGet("/api/update");
       if (r.ok) setStatus((await r.json()) as UpdateStatus);
     } catch {
       // 재시작 중이면 서버가 없다: 옛 상태를 둔다
@@ -49,7 +50,7 @@ export function useUpdate(connection: Connection) {
     setError(null);
     setClicked(true);
     try {
-      const r = await fetch("/api/update/start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const r = await apiSend("POST", "/api/update/start", {});
       const body = (await r.json().catch(() => ({}))) as { started?: boolean; why?: string };
       if (!r.ok || !body.started) {
         setClicked(false);

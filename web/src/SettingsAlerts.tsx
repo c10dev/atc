@@ -7,6 +7,7 @@ import { disableSound, enableNotify, enableSound, previewSound, previewVoice, re
 import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
 import "./alerts.css";
+import { apiGet } from "./api.ts";
 
 // 설정 창의 알림 탭(ATC-87). 알림(브라우저 Notification)과 소리(Web Audio)는 각자 따로 켜고, 둘 다 이 브라우저에만 저장되며 기본은 꺼짐이다.
 // 음성 콜아웃(ATC-140): 서버가 로컬 TTS 엔진으로 만든 WAV를 무전 체인으로 들려준다. 켜기·무전 효과는 이 브라우저에, 엔진·목소리는 서버 설정(.env.local)에 둔다
@@ -14,7 +15,7 @@ function useVoiceStatus() {
   const [status, setStatus] = useState<VoiceStatus | null | "error">(null);
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/voice/status");
+      const r = await apiGet("/api/voice/status");
       setStatus(r.ok ? ((await r.json()) as VoiceStatus) : "error");
     } catch {
       setStatus("error");

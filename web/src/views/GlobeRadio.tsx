@@ -14,6 +14,7 @@ import type { Transmission } from "../../../server/radio.ts";
 import { mergeTx } from "../radio-log.ts";
 import { f1, toPx } from "./globe-draw.ts";
 import "./GlobeRadio.css";
+import { apiGet } from "../api.ts";
 
 // GLOBE G7(ATC-268, docs/globe.md 3.9): RADIO가 이미 합친 교신을 지구본 위에 그린다. 새 데이터도 새 길도 없다 —
 // GET /api/radio와 SSE 토픽 radio를 RADIO 탭과 같은 방식으로 읽는다. 열린 호출은 답이 올 때까지 깜박이고 overdueAt을 넘기면 호박색이 된다.
@@ -27,7 +28,7 @@ export function useRadioFeed(): { txs: Transmission[]; error: boolean } {
     let live = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/radio");
+        const res = await apiGet("/api/radio");
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as { transmissions: Transmission[] };
         if (!live) return;

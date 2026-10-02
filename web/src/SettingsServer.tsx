@@ -3,6 +3,7 @@ import type { Snapshot } from "../../server/model.ts";
 import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
+import { apiGet, apiSend } from "./api.ts";
 
 // 설정 창의 LINEAR, AGENTS 분류(ACCOUNTS는 SettingsAccounts.tsx, 정책 스위치는 SettingsAutomation.tsx의 LANDING·OPERATIONS). 서버 설정을 읽고 고친다.
 // 저장하면 서버가 .env.local에 쓰고 실행 중인 설정에도 바로 반영한다(재시작 필요 없음).
@@ -15,7 +16,7 @@ export function useServerSettings(): { server: Loaded; save: Save } {
   const [server, setServer] = useState<Loaded>({ state: "loading" });
   useEffect(() => {
     let alive = true;
-    fetch("/api/settings")
+    apiGet("/api/settings")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: ServerSettings) => alive && setServer({ state: "ready", data }))
       .catch(() => alive && setServer({ state: "error" }));
@@ -26,11 +27,7 @@ export function useServerSettings(): { server: Loaded; save: Save } {
 
   const save: Save = async (patch) => {
     try {
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
+      const res = await apiSend("PUT", "/api/settings", patch);
       const body = await res.json();
       if (res.ok) {
         setServer({ state: "ready", data: body as ServerSettings });

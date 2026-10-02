@@ -21,6 +21,7 @@ import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
 import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
+import { apiSend } from "../api.ts";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
@@ -427,11 +428,7 @@ function HoldButton({ pr, landing }: { pr: PullRequest; landing: LandingIndex })
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/autoland/hold", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: pr.repo, number: pr.number, hold: !held }),
-      });
+      const res = await apiSend("POST", "/api/autoland/hold", { repo: pr.repo, number: pr.number, hold: !held });
       if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
     } catch {
       setError("서버에 연결할 수 없음");

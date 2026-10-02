@@ -22,6 +22,7 @@ import { allControlDown, type BulkOp } from "../../../../server/control-bulk.ts"
 import { BulkBar, BulkPanel, RecoveryBanner } from "./ControlBulk.tsx";
 import { ContextCell } from "./Context.tsx";
 import { FleetListHead, FleetRowShell } from "./StatusList.tsx";
+import { apiGet, apiSend } from "../../api.ts";
 
 // FLEET 탭의 CONTROL 그룹(ATC-130 → ATC-132, docs/fleet.md 8.5.1). AIRCRAFT 목록과 같은 줄(FleetRowShell)·같은 열이고, 모두가 같은 사실은 그룹 머리에 한 번만 적는다.
 // 줄마다 live 배지(BG·TERM·DESKTOP). TOWER·OCC·MCC·CROSSCHECK·REVIEW는 atc가 그 폴더에서 `claude --bg`로 띄운다(ocx·tmux LAUNCH는 2026-09-29에 끊음).
@@ -62,7 +63,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     if (inflight.current || !controlPollDue(sectionAt, Date.now(), force)) return;
     inflight.current = true;
     sectionAt = Date.now();
-    fetch("/api/control/accounts")
+    apiGet("/api/control/accounts")
       .then((r) => (r.ok ? r.json() : null))
       .then((a: ControlAccounts | null) => {
         if (!a) return;
@@ -71,7 +72,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
       })
       .catch(() => {});
     try {
-      const res = await fetch(`/api/control/sessions${force ? "?fresh=1" : ""}`);
+      const res = await apiGet(`/api/control/sessions${force ? "?fresh=1" : ""}`);
       const body = await res.json();
       if (res.ok) {
         memo.list = body as ControlList;
@@ -108,7 +109,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
   useEffect(() => {
     if (!controlPollDue(fuelMemo.at, Date.now())) return;
     fuelMemo.at = Date.now();
-    fetch("/api/fuel?days=14")
+    apiGet("/api/fuel?days=14")
       .then((r) => (r.ok ? r.json() : null))
       .then((r: FuelReply | null) => {
         if (!r) return;
@@ -123,7 +124,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     setBusy(name);
     setError(null);
     try {
-      const res = await fetch(`/api/control/${encodeURIComponent(name)}/${op}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const res = await apiSend("POST", `/api/control/${encodeURIComponent(name)}/${op}`, {});
       if (!res.ok) setError(`${name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
     } catch {
       setError("서버에 연결할 수 없음");
@@ -137,7 +138,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     setBusy(o.id);
     setError(null);
     try {
-      const res = await fetch(`/api/control/others/${encodeURIComponent(o.id)}/stop`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const res = await apiSend("POST", `/api/control/others/${encodeURIComponent(o.id)}/stop`, {});
       if (!res.ok) setError(`${o.name}: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`}`);
     } catch {
       setError("서버에 연결할 수 없음");
@@ -148,7 +149,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
   // ACCOUNT(ATC-60): 관제 세션도 FUEL에서 그 ACCOUNT에 센다. 라벨만 둔다(fleet.json control)
   const saveAccount = async (name: string, v: string): Promise<SaveResult> => {
     try {
-      const res = await fetch(`/api/control/${encodeURIComponent(name)}/account`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: v || null }) });
+      const res = await apiSend("PUT", `/api/control/${encodeURIComponent(name)}/account`, { account: v || null });
       const body = (await res.json().catch(() => ({}))) as { error?: string; accounts?: ControlAccounts };
       if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` };
       if (body.accounts) {

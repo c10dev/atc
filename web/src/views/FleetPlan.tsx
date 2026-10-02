@@ -5,6 +5,7 @@ import { type FuelRemaining, fuelLabel, fuelTitle } from "../../../server/fuel-r
 import { flightNumber } from "../aviation.ts";
 import { timeAgo } from "../derive.ts";
 import "./FleetPlan.css";
+import { apiGet, apiSend } from "../api.ts";
 
 // FLEET PLAN(docs/fleet.md 8.6·8.7): atc가 수요·활주로·예비를 보고 LAUNCH·ENTRY·STOP·RESTART·REFRESH·ACCOUNT CHANGE·AOG·RETIRE·RETURN을 제안한다.
 // 그림자: SUPERVISOR는 동의·반대만 한다. 승인 운용: 승인(실행)하면 카드의 버튼과 같은 코드로 바로 실행한다.
@@ -74,7 +75,7 @@ const kTokens = (n: number) => (n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.r
 const stepText = (x: StepResult) => `${x.action} ${x.registration}${x.jobId ? ` (${x.jobId})` : ""}${x.ok ? "" : ` 실패: ${x.error ?? ""}`}`;
 
 async function post(path: string, body: unknown) {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await apiSend("POST", path, body);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok || data.error) {
     const failed = (data.steps as StepResult[] | undefined)?.find((x) => !x.ok);
@@ -92,7 +93,7 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/fleet/plan");
+      const res = await apiGet("/api/fleet/plan");
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       setBrief(data);
@@ -132,7 +133,7 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
   const [copied, setCopied] = useState<string | null>(null);
   const copyBriefing = (p: Open) =>
     run(p.id, async () => {
-      const res = await fetch(`/api/fleet/${encodeURIComponent(p.aircraft ?? "")}/briefing`);
+      const res = await apiGet(`/api/fleet/${encodeURIComponent(p.aircraft ?? "")}/briefing`);
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       if (!navigator.clipboard) throw new Error("클립보드를 쓸 수 없음 — FLEET 카드의 CREW BRIEFING을 연다");

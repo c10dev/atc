@@ -3,6 +3,7 @@ import { formatClock, useSettings } from "../settings.ts";
 import "./Metrics.css";
 import "./Network.css";
 import { RouteMap } from "./RouteMap.tsx";
+import { apiGet } from "../api.ts";
 
 // 4단계 NETWORK: ROUTE(Linear 프로젝트)·AIRCRAFT·28일 추이를 한눈에. 읽기만 한다.
 // 차트는 METRICS와 같은 모양(인라인 SVG, 계열 하나)으로 그린다.
@@ -149,7 +150,7 @@ export function Network({ refreshKey }: { refreshKey: string }) {
   // 스냅샷이 바뀔 때(최대 몇 초 간격) 다시 읽는다.
   useEffect(() => {
     let alive = true;
-    fetch("/api/network")
+    apiGet("/api/network")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => alive && (setData(normalize(d)), setError(null)))
       .catch((e) => alive && setError(String(e.message ?? e)));

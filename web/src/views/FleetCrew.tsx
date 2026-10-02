@@ -5,6 +5,7 @@ import type { AircraftView } from "../../../server/fleet.ts";
 import { timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import "./FleetCrew.css";
+import { apiSend } from "../api.ts";
 
 // FLEET 카드의 CREW 표(선언 + 관측)와 CREW CHANGE 대기. 설계: docs/fleet.md.
 // 관측 CREW는 세션 메타데이터(agent type·시각)만 읽은 결과다. 대화 내용은 읽지 않는다.
@@ -131,7 +132,7 @@ function CrewChange({ registration, change, mode, onChanged }: { registration: s
     setBusy(op);
     setError(null);
     try {
-      const res = await fetch(`/api/fleet/${encodeURIComponent(registration)}/crew-change/${encodeURIComponent(change.id)}/${op}`, { method: "POST" });
+      const res = await apiSend("POST", `/api/fleet/${encodeURIComponent(registration)}/crew-change/${encodeURIComponent(change.id)}/${op}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
       await onChanged();
