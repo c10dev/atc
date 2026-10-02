@@ -463,6 +463,8 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
 
+- **자동 revert (ATC-351)**: `autoRevert` 스위치가 `on`이고(설정 창, **기본 on**, ATC-394) 실패한 체크를 같은 head에서 다시 돌려도 빨갛고 그 PR 자신의 head가 초록이었으면 AUTOLAND가 머지해 `main`을 빨갛게 만든 머지의 revert PR이 열리고, AUTOLAND는 GROUND STOP이 걸린 중에도 그 PR을 머지한다(나가는 길이라서. 리뷰·CI·제외 목록은 그대로고 FLIGHT는 없어도 된다). 걸린 stop은 다음 head가 초록이면 atc가 푼다. 마이그레이션·`user` 등급 경로를 고친 PR과 사람의 머지는 자동으로 되돌리지 않는다(`hold` 줄, DUTY가 본다). 1시간 안에 새 빨간 head가 둘이면 AUTOLAND `merge`를 `update`로 내리고 SUPERVISOR가 스위치를 다시 고를 때까지 레인이 멈춘다. 규칙 전체: [autonomy.ko.md](autonomy.ko.md) "C4 구현 결과".
+
 #### 머지 리뷰: atc에 기록한 리뷰가 착륙 리뷰다 (ATC-328)
 
 AUTOLAND가 맡은 AIRPORT(`autoland.json`의 `airports`)에서는 PR head에 atc로 기록한 리뷰가 Codex 상태와 상관없이 그 head의 착륙 리뷰다. `pass`는 그 head의 `no-review`(와 `review-stale`)를 LANDING SEQUENCE·TOWER 브리프·`/api/autoland`에서 풀고, `findings`는 P0/P1/P2 수와 함께 `review-findings`로 보인다. 범위는 기록이 가리키는 head 하나다:
@@ -549,6 +551,8 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 승인되거나 release됐는데 3일 안에 적용되지 않은 작업은 만료된다. 호출은 계획 필드만 건드린다: 라벨, 우선순위, 새 이슈의 제목·본문·프로젝트·관계, 댓글. 상태나 담당자는 절대 아니다.
 
 ## CROSSCHECK
+
+> **은퇴(ATC-371).** CROSSCHECK 세션은 더 띄우거나 살려 두거나 재시작하지 않고, 서버의 어떤 규칙도 그 mark를 기다리지 않는다. 이 절은 있던 그대로의 역할을 기록으로 남긴 것이고, 옛 mark는 읽힌다.
 
 그림자 판정(DISPATCH 제안과 SCHEDULE 초안)은 SUPERVISOR가 하나씩 정하므로 부담이 크다. 판정을 모델에 넘기면 게이트(판정 20건, 80%)가 모델 둘이 서로 맞는지를 재게 되고, 그건 아무 뜻이 없다. 그래서 일을 나눈다.
 

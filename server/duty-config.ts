@@ -14,7 +14,17 @@ export interface DutyConfig {
   briefDecisions: number;
   charter: CharterMode; // D5: DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. off(기본) · shadow · on
   l1: boolean; // D7a: DUTY STAND(duty-*)와 Linear 쓰기 길을 여는 스위치. 기본 꺼짐. duty.json에서만 켠다(화면 항목은 아직 없다)
+  // REVIEW(ATC-396): 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작한다. 스위치는 SUPERVISOR만(설정 창). 기본 켜짐(live first). DUTY가 꺼져 있으면 돌지 않는다
+  review: boolean;
+  reviewEveryMin: number; // 정기 점검 간격
+  reviewIdleMin: number; // 놀고 있는 AIRCRAFT가 일감을 두고 이만큼 이어지면 트리거
+  reviewLeakMin: number; // leak이 이만큼 열려 있으면 트리거
+  reviewGapMin: number; // 점검과 점검 사이 최소 간격(트리거가 몰려도)
 }
+
+export const REVIEW_DEFAULTS = { everyMin: 240, idleMin: 20, leakMin: 60, gapMin: 30 } as const;
+export const REVIEW_RANGES = { everyMin: [30, 1440], idleMin: [5, 240], leakMin: [15, 1440], gapMin: [10, 240] } as const;
+const reviewNum = (raw: unknown, def: number, [lo, hi]: readonly [number, number]) => (typeof raw === "number" && Number.isInteger(raw) && raw >= lo && raw <= hi ? raw : def);
 
 export const DEFAULT_ACCOUNT = "acct-2";
 export const DEFAULT_IDLE_MIN = 30;
@@ -36,6 +46,11 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     briefDecisions: briefDecisionsOf(o.briefDecisions),
     charter: charterModeOf(o.charter),
     l1: o.l1 === true,
+    review: o.review !== false,
+    reviewEveryMin: reviewNum(o.reviewEveryMin, REVIEW_DEFAULTS.everyMin, REVIEW_RANGES.everyMin),
+    reviewIdleMin: reviewNum(o.reviewIdleMin, REVIEW_DEFAULTS.idleMin, REVIEW_RANGES.idleMin),
+    reviewLeakMin: reviewNum(o.reviewLeakMin, REVIEW_DEFAULTS.leakMin, REVIEW_RANGES.leakMin),
+    reviewGapMin: reviewNum(o.reviewGapMin, REVIEW_DEFAULTS.gapMin, REVIEW_RANGES.gapMin),
   };
 }
 

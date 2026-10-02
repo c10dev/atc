@@ -139,6 +139,14 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
   });
   const answerable = issued.filter((c) => !c.cancelledAt);
   const readbackRate = answerable.length ? answerable.filter((c) => answeredAt(c)).length / answerable.length : null;
+  // FIX·GO AROUND의 READBACK 시간을, 그때 그 AIRCRAFT가 다른 FLIGHT를 하고 있었나로 나눈다(ATC-387). elsewhere가 없는 옛 기록은 어느 쪽에도 넣지 않는다
+  const fixRb = (xs: Clearance[]) => {
+    const ms = xs.filter((c) => c.readbackAt).map((c) => Date.parse(c.readbackAt!) - Date.parse(c.at));
+    const m = median(ms);
+    return { n: xs.length, readBack: ms.length, medianMin: m === null ? null : round1(m / MIN) };
+  };
+  const fixKinds = issued.filter((c) => (c.type === "FIX" || c.type === "GO AROUND") && !c.cancelledAt && c.elsewhere !== undefined);
+  const fixReadback = { elsewhere: fixRb(fixKinds.filter((c) => c.elsewhere)), direct: fixRb(fixKinds.filter((c) => !c.elsewhere)) };
   const byType: Record<string, number> = {};
   for (const c of issued) byType[c.type] = (byType[c.type] ?? 0) + 1;
 
@@ -214,6 +222,7 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
       readbackMedianMin: readbackMedian === null ? null : round1(readbackMedian / MIN),
       overdue: overdue.length,
       cancelled: issued.filter((c) => c.cancelledAt).length,
+      fixReadback,
     },
     landing: {
       requests: count("landing.requested"),

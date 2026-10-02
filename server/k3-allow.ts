@@ -1,0 +1,100 @@
+// K3 발권이 classifier에 닿는 길(ATC-372, docs/autonomy.md C9). 순수 함수만. 읽기·LAUNCH는 session-control.ts.
+// SUPERVISOR가 발권한 FLIGHT가 선언한 K3 효과(이슈 본문 `## K effects`의 `K3[<라벨>]: <바꾸는 통제> | files: <경로, …>` 줄)로만
+// FLIGHT별 `--settings`의 `autoMode.allow` 항목을 만든다. 서버만 만들고(발권 기록과 지금 본문의 해시가 같을 때만), 항목은 그 선언 말고는 없다.
+// 항목은 이슈가 말한 soft_deny 라벨(Security Weaken …)을 이름으로 대고, 통제·파일·STAND·발권 id를 적는다.
+import type { ReleaseChannel, ReleaseRecord, ReleaseView } from "./release.ts";
+import { releaseStateOf } from "./release.ts";
+
+// K3로 선언할 수 있는 라벨: `claude auto-mode defaults`의 soft_deny 가운데 K3에 닿는 것(ATC-372 이슈 "Map each declared K effect")
+export const K3_LABELS = ["Security Weaken", "Self-Approval", "Permission Grant", "Self-Modification", "Merge Without Review"] as const;
+export type K3Label = (typeof K3_LABELS)[number];
+
+export interface K3Declaration {
+  label: K3Label;
+  control: string; // 바꾸는 통제(글)
+  files: string[]; // 저장소 기준 상대 경로. 글롭·절대 경로·`..`은 받지 않는다
+}
+
+const MAX_CONTROL = 200;
+const MAX_FILES = 20;
+const FILE_RE = /^(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]*$/; // 공백·글롭(*?[])·절대 경로·`..` 없음
+const LINE_RE = /^\s*(?:[-*+]\s+)?K3\s*\[([^\]]+)\]\s*:\s*(.+?)\s*\|\s*files?\s*:\s*(.+?)\s*$/i;
+
+// 본문 `## K effects`에서 K3 선언을 읽는다. 모양이 맞지 않는 `K3` 줄은 unparsed로 센다(항목을 만들지 않는다: 닫는 쪽으로 틀린다)
+export function k3DeclarationsOf(description: string | null | undefined): { declared: K3Declaration[]; unparsed: number } {
+  const section = (() => {
+    // release.ts sectionsOf는 글을 한 줄로 뭉치므로 줄 단위가 필요한 이 읽기는 `## K effects` 절(같은 절 이름 규칙)만 따로 자른다
+    let cur = false;
+    const lines: string[] = [];
+    for (const line of (description ?? "").split("\n")) {
+      const h = /^#{1,6}\s+(.*?)\s*$/.exec(line);
+      if (h) {
+        cur = /^(?:k effects?|k 효과)$/i.test(h[1]!.replace(/[:：]$/, ""));
+        continue;
+      }
+      if (cur) lines.push(line);
+    }
+    return lines;
+  })();
+  const declared: K3Declaration[] = [];
+  let unparsed = 0;
+  for (const line of section) {
+    if (!/^\s*(?:[-*+]\s+)?K3\b/i.test(line)) continue;
+    const m = LINE_RE.exec(line);
+    const label = m ? K3_LABELS.find((l) => l.toLowerCase() === m[1]!.trim().toLowerCase()) : undefined;
+    const control = m ? m[2]!.replace(/\s+/g, " ").trim() : "";
+    const files = m ? [...new Set(m[3]!.split(",").map((f) => f.trim().replace(/^`|`$/g, "")).filter(Boolean))] : [];
+    if (!label || !control || control.length > MAX_CONTROL || !files.length || files.length > MAX_FILES || !files.every((f) => FILE_RE.test(f))) {
+      unparsed++;
+      continue;
+    }
+    declared.push({ label, control, files });
+  }
+  return { declared, unparsed };
+}
+
+// 발권 id: 어느 발권(FLIGHT·승인한 내용의 해시)이 이 항목을 낳았나. 발권 기록에는 따로 id가 없어 FLIGHT와 해시로 쓴다
+export const releaseIdOf = (flight: string, r: Pick<ReleaseRecord, "hash">) => `${flight}@${r.hash}`;
+
+// STAND(워크트리): 새 AIRCRAFT가 만들 폴더. FLIGHT 키로 이름이 시작한다(`EnterWorktree name=atc-<n>-…`)
+export const standOf = (repo: string, flight: string) => `${repo.replace(/\/+$/, "")}/.claude/worktrees/${flight.toLowerCase()}-*`;
+
+export const CODE_ONLY = "Code only; nothing is executed against production during the FLIGHT.";
+
+// autoMode.allow 항목 하나(선언 하나). 라벨을 이름으로 대고, 통제·파일·STAND·발권 id를 말한다
+export function allowEntryOf(d: K3Declaration, ctx: { flight: string; release: string; stand: string }): string {
+  return (
+    `${d.label}: the SUPERVISOR released ${ctx.flight} (release ${ctx.release}) and declared this K3 effect: change the control "${d.control}" ` +
+    `by editing only ${d.files.join(", ")} in the STAND ${ctx.stand}. This specific change is wanted and authorized. ${CODE_ONLY}`
+  );
+}
+
+export const K3_CHANNELS: readonly ReleaseChannel[] = ["screen", "duty-chat"];
+
+export interface K3Launch {
+  flight: string;
+  release: string;
+  stand: string;
+  entries: string[]; // autoMode.allow에 넣는 글(선언마다 하나)
+  settings: string; // `--settings`에 줄 JSON
+}
+
+// `$defaults`는 항목이 아니라 "기본 allow를 지우지 않는다"는 표시다(없으면 allow가 기본을 통째로 대신한다: `claude auto-mode config`로 확인)
+export const DEFAULTS_MARK = "$defaults";
+export const settingsOf = (entries: readonly string[]) => JSON.stringify({ autoMode: { allow: [DEFAULTS_MARK, ...entries] } });
+
+// 이 FLIGHT가 새로 띄워야 하는 K3 FLIGHT인가(선언이 읽히고 발권됐다). 아니면 null: 전과 같은 LAUNCH
+export function k3LaunchOf(input: { flight: string; declared: readonly K3Declaration[] | undefined; hash: string | null | undefined; releases: ReleaseView | null | undefined; repo: string }): K3Launch | null {
+  const view = input.releases;
+  if (!view || releaseStateOf(input.flight, input.hash, view) !== "released") return null;
+  const record = view.records[input.flight];
+  if (!record) return null;
+  // attested 발권은 agent가 쓸 수 있는 글이다(원칙 6·7): allow 항목을 만들지 않는다. 화면 클릭과 DUTY 채팅(서버가 SUPERVISOR의 글로 읽은 것)만
+  if (!K3_CHANNELS.includes(record.channel)) return null;
+  const declared = input.declared ?? [];
+  if (!declared.length) return null;
+  const release = releaseIdOf(input.flight, record);
+  const stand = standOf(input.repo, input.flight);
+  const entries = declared.map((d) => allowEntryOf(d, { flight: input.flight, release, stand }));
+  return { flight: input.flight, release, stand, entries, settings: settingsOf(entries) };
+}

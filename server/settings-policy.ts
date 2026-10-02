@@ -41,7 +41,7 @@ export const settingsTabOf = <T extends string>(stored: string | null | undefine
 };
 
 // 설정 창 왼쪽 메뉴의 분류. landing·operations는 AUTOMATION 묶음(SUPERVISOR 정책 스위치)
-export type SettingsTab = "display" | "linear" | "agents" | "accounts" | "alerts" | "landing" | "operations";
+export type SettingsTab = "display" | "linear" | "agents" | "accounts" | "airports" | "alerts" | "landing" | "operations";
 
 // 설정 찾기의 색인: 블록마다 분류, 제목 코드(화면의 h3), 한국어 이름, 찾을 말(줄 이름·환경 변수·저장 값).
 // 블록을 더하거나 옮기면 여기도 고친다(settings-policy.test.ts가 분류마다 하나 이상인지 본다)
@@ -64,6 +64,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "agents", code: "STANDS", label: "점유 규칙", words: "stand handoff airport 폴더 ATC_CLAIM_TTL_MIN ATC_HANDOFF_GRACE_MIN ATC_PROJECTS_DIR 유예" },
   { tab: "agents", code: "CALLSIGNS", label: "콜사인", words: "team 음성 알파벳 alpha" },
   { tab: "accounts", code: "ACCOUNTS", label: "ACCOUNT 폴더", words: "account add login 계정 추가 로그인 CLAUDE_CONFIG_DIR statusline health hook acct plan usage refresh 요금제 한도 사용량" },
+  { tab: "airports", code: "AIRPORTS", label: "AIRPORT 등록부(개설·이름·닫기·팀 머지)", words: "airport 저장소 repo open close rename 개설 이름 코드 teamsMerge 팀 머지 스위치 register ~/projects" },
   { tab: "alerts", code: "NOTIFY", label: "브라우저 알림", words: "notification 알림 권한" },
   { tab: "alerts", code: "SOUND", label: "소리", words: "warning caution call 방해 금지 quiet 톤" },
   { tab: "alerts", code: "VOICE", label: "음성 콜아웃", words: "tts piper espeak kokoro 목소리 무전 radio" },

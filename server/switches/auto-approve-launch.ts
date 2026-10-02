@@ -14,7 +14,7 @@ export default defineSwitch({
   warn: {
     off: "off(기본): launch 카드(ABSENT·RESUME)는 SUPERVISOR가 화면에서 승인한다.",
     shadow: "shadow: 승인과 LAUNCH 조건을 모두 갖춘 launch 카드를 \"띄웠을 것\"이라고 auto-approve.jsonl에만 적는다. 아무것도 띄우지 않는다.",
-    on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). CROSSCHECK agree, blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
+    on: "⚠ 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(사용량을 쓴다). blind·HELD 아님, 상한(ATC_MAX_LAUNCHED)이 안 참, ACCOUNT가 FUEL hold 아님, LAUNCH 막힘 아님, 실패한 REGISTRATION은 쉼, 하루 상한 안일 때만.",
   },
   row: () => {
     const c = loadDispatchConfig();

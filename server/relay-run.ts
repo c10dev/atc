@@ -38,7 +38,7 @@ export function readRelayOps(file = FILE()): RelayOp[] {
   return ops;
 }
 
-function append(op: RelayOp, file = FILE()) {
+export function append(op: RelayOp, file = FILE()) {
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, JSON.stringify(op) + "\n");
   bustQueue(); // 손으로 전하는 카드가 곧바로 뜨고 사라진다

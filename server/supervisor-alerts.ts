@@ -48,7 +48,7 @@ export interface SupervisorAlert {
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
 // key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
 // 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
-export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow"] as const;
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow", "revert"] as const;
 export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
   const p = item.key.split("|");
   switch (p[0]) {
@@ -69,6 +69,8 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
     case "recycle":
       return p[1] === "over" || p[1] === "wait" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
     case "cap":
+      return "alerts";
+    case "revert": // revert|stop|<airport>|<at>: breaker가 lane을 낮췄다(ATC-351). SUPERVISOR만 다시 올린다
       return "alerts";
     case "control": // control|down|<session>: 멈춘 채인 관제 세션
       return "alerts";
@@ -156,6 +158,7 @@ export interface AlertsInput {
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
   // ATC-197: 상태에서 만드는 조건 항목 셋(각각 순수 함수 rtsHaltedOf·controlDownOf·repositionStuckOf의 결과)과, land 항목의 목적지를 가르는 PR별 landBy(`<repo>#<번호>` → 누가 착륙시키나)
   rtsHalted?: RtsHalted | null;
+  revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
   controlDown?: ControlDown[];
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
@@ -255,7 +258,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       // 키에 STAND 경로가 든 ALERT(주인 없는 변경·종료된 세션의 점유 …)는 어느 STAND인지 문구에 붙인다(ATC-152). 이미 이름이 있으면 그대로
       text: a.workspacePath && !a.message.includes(standNameOf(a.workspacePath, standNames)) ? `${a.message} — ${standNameOf(a.workspacePath, standNames)}` : a.message,
       next: health?.next ?? "",
-      link: "#strips",
+      link: "#flights",
       since: null,
     });
   }
@@ -274,7 +277,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: `정리 대기 ${stale.length}건 — 주인 없는 변경 ${changes.length}곳, 종료된 세션의 점유 ${claims.length}곳이 ${Math.round((inp.unowned!.afterMs ?? UNOWNED_AFTER_MS) / 3_600_000)}시간 넘게 그대로 (${names.join(", ")}${stale.length > 3 ? " …" : ""})`,
       next: "STAND를 확인해 커밋·푸시하거나 직접 정리한다. atc는 변경을 지우지 않는다",
-      link: "#strips",
+      link: "#flights",
       since: new Date(Math.min(...stale.map((x) => x.first))).toISOString(),
     });
   }
@@ -297,7 +300,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: inp.pending ? pendingTextOf({ name: s.name, since: s.health.since, now, calls, needs }) : `${s.name} — PENDING: ${s.health.detail}`,
       next: s.jobId ? `${s.health.next} — ${attachCommandOf(s.jobId, s.attachDir)}` : s.health.next,
-      link: "#strips",
+      link: "#flights",
       since: s.health.since,
     });
   }
@@ -320,7 +323,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
         flight: f.flight,
         text: i.text,
         next: NEXT_BY_ISSUE[i.code] ?? "FLIGHT FOLLOWING에서 그 FLIGHT를 확인한다",
-        link: "#strips",
+        link: "#flights",
         since: i.since,
       });
     }
@@ -358,8 +361,8 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
         aircraft: null,
         flight: op.flight,
         text: `SCHEDULE ${op.id} — ${op.kind}${op.flight ? ` ${op.flight}` : ""} 판정 대기`,
-        next: "SCHEDULE 탭에서 승인하거나 거절한다",
-        link: "#schedule",
+        next: "HOME의 QUEUE에서 승인하거나 거절한다",
+        link: "#home",
         since: op.statusAt,
         ask: op.kind.toLowerCase(),
       });
@@ -371,11 +374,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     if (pr.draft) continue;
     const id = `${pr.repo}#${pr.number}`;
     if (pr.landing === "CLEARED") {
-      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#airports", since: null });
+      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#flights", since: null });
     }
     const hc = pr.humanCheck;
     if (hc?.required && hc.state !== "done") {
-      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#airports", since: null });
+      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#home", since: null });
     }
   }
 
@@ -392,7 +395,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: `RTS ${short(r.from)} → ${short(r.to)} ${r.result.toUpperCase()}${r.detail ? ` — ${r.detail}` : ""}`,
       next: bad ? "설정 창에서 MCC 모드를 다시 고르기 전에 원인을 본다(docs/mcc.md 6)" : r.result === "refused" ? "UPDATE 바에서 사유를 본다" : "",
-      link: "#radar",
+      link: "#home",
       since: r.at,
     });
   }
@@ -453,8 +456,22 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: `RTS 멈춤 — ${inp.rtsHalted.reason}`,
       next: "원인을 본 뒤 설정 창에서 MCC 모드를 다시 고른다(docs/mcc.md 6). 그때까지 배포되지 않는다",
-      link: "#radar",
+      link: "#home",
       since: inp.rtsHalted.since,
+    });
+  }
+  for (const r of inp.revertStops ?? []) {
+    out.push({
+      key: `revert|stop|${r.airport}|${r.at}`,
+      group: "land",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `자동 되돌림 멈춤(${r.airport}) — ${r.detail}`,
+      next: "원인을 본 뒤 lane(AUTOLAND·MCC)과 설정 창의 AUTO REVERT 스위치를 다시 고른다. 그때까지 되돌리지 않는다",
+      link: "#radar",
+      since: r.at,
     });
   }
   for (const c of inp.controlDown ?? []) {
@@ -493,7 +510,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     const recent = (at: string | null) => !at || now - Date.parse(at) < FOLLOW_LOG_WINDOW_MS;
     const title = (r: FollowAlertRow) => `${r.key}${r.title ? ` ${r.title}` : ""}`;
     for (const r of inp.follow.rows) {
-      const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#follow" };
+      const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#flights" };
       if (r.ready && !r.finished) out.push({ ...base, key: `follow|ready|${r.key}`, level: "advisory", cue: "call", text: `${title(r)} — 풀 수 있음(READY)`, next: "FOLLOW 탭에서 Todo로 푼다", since: null });
       const stuck = stuckLineOf(r);
       if (stuck) {

@@ -4,6 +4,8 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { type LeakRecord, type OpenLeak, leakItemsOf, leakView, openFromRecords, reconcile } from "./leaks.ts";
 import type { Snapshot } from "./model.ts";
+import { releaseIdOf } from "./release.ts";
+import { readReleaseView } from "./release-store.ts";
 import { parseDays } from "./readability-run.ts";
 import { collectQueueInput } from "./supervisor-queue-run.ts";
 import { supervisorQueueOf } from "./supervisor-queue.ts";
@@ -37,6 +39,15 @@ export function appendLeaks(recs: readonly LeakRecord[], file = LEAKS_FILE()): v
   appendFileSync(file, recs.map((r) => JSON.stringify(r)).join("\n") + "\n");
 }
 
+// 붙잡힌 FLIGHT의 발권 id(ATC-402). 발권 기록을 못 읽으면 null
+export function releaseOfFlight(): (flight: string | null) => string | null {
+  let records: Record<string, Parameters<typeof releaseIdOf>[0]> = {};
+  try {
+    records = readReleaseView().records;
+  } catch {}
+  return (flight) => (flight && records[flight] ? releaseIdOf(records[flight]) : null);
+}
+
 export function mountLeaks(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>) {
   let open: Map<string, OpenLeak> | null = null;
   let running = false;
@@ -50,7 +61,7 @@ export function mountLeaks(app: Hono, getSnapshot: () => Promise<Snapshot>, upda
       // GitHub·Linear를 아직 못 읽었으면(RTS 재시작 직후 첫 스냅샷) PR·FLIGHT 항목이 통째로 빠져 있다: 열지도 닫지도 않고, 열린 leak은 기다림이 이어진다(ATC-385)
       const ready = leakInputReady(s);
       const inp = await collectQueueInput(s, updateStatus, now);
-      appendLeaks(reconcile(open, leakItemsOf(supervisorQueueOf(inp, now), inp), now, ready));
+      appendLeaks(reconcile(open, leakItemsOf(supervisorQueueOf(inp, now), inp), now, ready, releaseOfFlight()));
     } catch (e) {
       console.warn(`[atc] leaks: ${e instanceof Error ? e.message : e}`);
     } finally {

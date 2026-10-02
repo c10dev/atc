@@ -1,5 +1,6 @@
 import { config } from "../config.ts";
 import { teamOfKey } from "../linear-keys.ts";
+import { k3DeclarationsOf } from "../k3-allow.ts";
 import { kEffectsOf, releaseHashOf } from "../release.ts";
 import type { Ticket, TicketColumn, TicketStateType } from "../model.ts";
 
@@ -125,6 +126,7 @@ export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
     parent: n.parent?.identifier ?? null,
     children: uniq((n.children?.nodes ?? []).map((c) => c.identifier)),
     kEffects: kEffectsOf(n.description),
+    ...((k3) => (k3.length ? { k3 } : {}))(k3DeclarationsOf(n.description).declared),
     releaseHash: releaseHashOf(n.description),
   };
 }

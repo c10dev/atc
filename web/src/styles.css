@@ -1931,17 +1931,33 @@ a.ticket:hover {
   :root[data-theme="night"] .tabs .tab {
     padding: 0 var(--space-2);
   }
+  /* ≤860px: 가로로 밀지 않고 줄을 바꾼다(ATC-364, DL8). 칸은 72px 이상으로 늘어나 한 줄을 채우고, 소리 잠금 칩은 한 줄을 다 쓴다.
+     칸 사이 선은 border가 아니라 왼선·윗선 box-shadow라 줄 맨 앞 칸의 왼선은 화면 밖에 그려지고 칸의 크기는 그대로다 */
   .readouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
     width: 100%;
     margin-left: 0;
     border-top: 1px solid var(--line);
-    overflow-x: auto;
+    overflow: visible;
   }
   .readout {
-    flex: 1;
-    min-width: 72px;
+    min-width: 0;
     align-items: flex-start;
     padding: var(--space-2) var(--space-3);
+    border-left: 0;
+    box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line);
+  }
+  /* ALERTS는 늘 첫 줄(줄이 몇 개로 갈라져도) */
+  .readout.readout-alerts {
+    order: -1;
+  }
+  .readouts > .sound-lock {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: calc(100% - var(--space-6));
+    margin: var(--space-2) var(--space-3);
+    white-space: normal;
   }
   .readout em,
   .readout.clock {

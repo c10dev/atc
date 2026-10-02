@@ -1,25 +1,25 @@
 # 화면 안내
 
+**탭 줄**에는 일하는 화면만 있다(2026-10-02, ATC-381): HOME · RELEASE · FLIGHTS · FLEET · METRICS(NETWORK는 METRICS의 하위 화면이다, ATC-380). 기본 화면은 HOME이다. 나머지는 이렇게 연다.
+
+- **GLOBE**: 헤더의 **GLOBE** 버튼(또는 `#globe`, `#globe/<AIRPORT>`)이 현재 화면 위에 꽉 찬 보기 모드로 연다. Esc나 닫기 버튼으로 닫으면 열기 전 화면으로 돌아온다.
+- **AIRPORTS**: 설정 창(왼쪽 위 로고)의 **AIRPORTS** 분류. `#airports`도 그 분류를 연다. 등록부, 개설·코드 변경·폐쇄, 팀 머지 스위치가 그대로 있다.
+- **DOCS**: 헤더의 **HELP** 메뉴(사용 안내, 화면 안내, 문제 해결, 변경 기록). `#docs`와 `#docs/<쪽>` 주소는 그대로 열린다.
+
 | 탭 | 주소 | 보는 것 | 할 수 있는 것 |
 |---|---|---|---|
-| RADAR | `#radar` | 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조. ARRIVED·취소된 FLIGHT의 STAND와 그것만 쥔 AIRCRAFT는 기본으로 접고 툴바에 `ARRIVED STAND N 숨김`을 보임 | 전체 보기 전환, `ARRIVED STAND 포함` |
-| FOLLOW | `#follow` | 따라가기로 한 상위 이슈(번들)마다 하위 이슈·related 이슈를 한 줄씩. 줄마다 Todo → 제안 → 승인 → 발송 → READBACK → PR → CLEARED → 착륙 → 배포 단계 점과 "지금 글"(막는 이슈, DISPATCH가 배정하지 않은 이유, 승인 후 발송 없음, 작업 경과, 막힘 코드·GO AROUND, RTS 대기). 한도를 넘은 줄은 주황 점·`막힘`으로 번들 맨 위에 오르고(Todo 제안 없음 30분, 승인 뒤 발송 없음 10분, 착륙 뒤 배포 없음 15분과 FLIGHT FOLLOWING의 기존 한도), 줄마다 다음 할 일 칩이 최대 하나 붙는다(`Todo로`·`우선순위 정하기`·`승인하러`·`HUMAN CHECK`/`머지`·`살펴보기`). 머리의 `NEXT n`이 칩의 수다. 새 사실은 없다 — 제안·FLIGHT FOLLOWING·OOOI·DISPATCH 계획을 합칠 뿐이다. 자세히는 [일 따라가기](follow.md) | 상위 이슈 key로 따라가기 시작·끝(FLIGHT 서랍의 FOLLOW 버튼도 같음), 줄의 key로 FLIGHT 서랍 열기, 줄의 기록 펼치기, `Todo로` 칩(Linear 상태를 Backlog → Todo로, 한 줄씩) |
-| GLOBE | `#globe` | 읽기 전용 정사영 지구본(ATC-254). SUPERVISOR의 위치를 가운데 두고 AIRPORT를 안정된 자리에, AIRPORT마다 FLIGHT가 없는 AIRCRAFT(base 기준)를 작은 비행기 표시로 놓는다(여럿이면 ×수). 진행 중인 FLIGHT는 자기 AIRPORT에서 뜨고 내리는 바퀴를 도는 비행기로 그린다(ATC-260). 밤 영역은 지금 시각(UTC)의 해 위치로 그린다. 옆 목록은 같은 내용을 글로 적은 것이다. SPACE 보기(ATC-261)로 바꿔 우주처럼 볼 수 있다. 무선 교신은 AIRPORT와 비행기 사이의 선으로 그리고 AIRPORT를 누르면 가까이서 본다(ATC-268). 다른 AIRPORT에서 일하는 AIRCRAFT(OUTSTATION)와 base를 옮기는 REPOSITION은 AIRPORT 사이의 큰 원 호로 그린다(ATC-263): 점선 호의 끝에 그 AIRCRAFT가 있고, 옆 목록 `MOVES`에 `TEAM_H · ferry ATCC → VCDO`처럼 적힌다. 우주 보기의 전이 궤도는 아직 없다 | GLOBE | SPACE 바꾸기, HOME AIRPORT 고르기, 위도·경도 입력, 내 위치 사용(1°로 반올림해 저장), 위치 지우기, 끌어서 돌리기, 휠·두 손가락 확대, 홈으로, AIRPORT를 끌어 옮기기(이 브라우저에만 기억), AIRPORT 위치 되돌리기, 비행기를 눌러 FLIGHT 서랍 열기 |
-| STRIPS | `#strips` | 맨 위 HUMAN CHECK(사람 확인을 기다리는 PR, 있을 때만)와 LANDING SEQUENCE(열린 PR), 세션마다 FLIGHT STRIP(쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT는 맨 아래 접힌 `GATE CLEANUP`에 모임. 미완 FLIGHT의 STAND를 쥔 NORDO는 NORDO에 그대로): 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 | PR 링크 열기, 막는 조건 펼치기 |
-| FIDS | `#board` | Linear 상태 열별 FLIGHT 카드와 점유 팀 배지. 모든 그룹(목록은 비행 단계, 보드는 상태 열)은 머리에 FLIGHT 수가 있고 앞 5건만 보인다. `<그룹> N more · 전체 보기` 줄이 그 자리에서 나머지를 펼친다(누르거나 Enter, 누를 때마다 접기와 펼치기, 저장하지 않음). 팀(AIRCRAFT)이 맡았거나 경고가 걸린 FLIGHT는 접혀도 보인다. 표시 옵션의 "SCHEDULED · ARRIVED · CANCELLED 포함"은 그 열을 화면에 올리고, 그 열도 같이 접힌다. 목록 보기에서는 REMARKS 옆에 그 FLIGHT의 가장 늦은 이정표(`ON 04:02`)가 보이고, 행에 마우스를 올리면 OUT·OFF·ON·IN 넷이 나온다(OOOI, concepts의 FLIGHT FOLLOWING). 폰 폭(860px 아래)에서는 행이 한 줄 카드(FLIGHT, 제목, AIRCRAFT, 나이 `3h`)가 되고 이정표와 NO CONTACT는 작은 둘째 줄에 붙으며, 보드는 열이 세로로 쌓인다 | 표시 옵션(목록·보드, 포함 범위), 그룹 펼치기 |
-| AIRPORTS | `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄, 팀 머지 켜고 끄기(끄면 그 AIRPORT는 팀에게 LAND를 내지 않고 SUPERVISOR가 머지) |
+| FLIGHTS | `#flights`, `#flights/board`, `#flights/radar`, `#flights/radio` (옛 `#follow`·`#strips`·`#board`·`#radar`·`#radio`도 그 보기로 열린다) | 같은 FLIGHT를 보는 한 화면(ATC-379)의 네 보기. 위 줄에서 LIST·BOARD·RADAR·RADIO를 고른다. 목록의 FLIGHT 줄에는 그 FLIGHT의 PR이 있으면 착륙 상태 배지(`CLEARED TO LAND`·`APPROACH`)가 붙는다. 맨 위 HUMAN CHECK는 HOME의 QUEUE로 옮겼다. **LIST(기본, 옛 FOLLOW)**: 따라가기로 한 상위 이슈(번들)마다 하위 이슈·related 이슈를 한 줄씩. 줄마다 Todo → 제안 → 승인 → 발송 → READBACK → PR → CLEARED → 착륙 → 배포 단계 점과 "지금 글"(막는 이슈, DISPATCH가 배정하지 않은 이유, 승인 후 발송 없음, 작업 경과, 막힘 코드·GO AROUND, RTS 대기). 한도를 넘은 줄은 주황 점·`막힘`으로 번들 맨 위에 오르고(Todo 제안 없음 30분, 승인 뒤 발송 없음 10분, 착륙 뒤 배포 없음 15분과 FLIGHT FOLLOWING의 기존 한도), 줄마다 다음 할 일 칩이 최대 하나 붙는다(`Todo로`·`우선순위 정하기`·`승인하러`·`HUMAN CHECK`/`머지`·`살펴보기`). 머리의 `NEXT n`이 칩의 수다. 새 사실은 없다 — 제안·FLIGHT FOLLOWING·OOOI·DISPATCH 계획을 합칠 뿐이다. 자세히는 [일 따라가기](follow.md) **AIRCRAFT STRIPS(목록 아래 접힌 칸, 옛 STRIPS)**: 세션마다 FLIGHT STRIP(쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT는 맨 아래 접힌 `GATE CLEANUP`에 모임. 미완 FLIGHT의 STAND를 쥔 NORDO는 NORDO에 그대로): 상태, 쥔 STAND, FLIGHT(없으면 AD HOC), STAND의 PR 착륙 배지, 마지막 교신 **BOARD(옛 FIDS)**: Linear 상태 열별 FLIGHT 카드와 점유 팀 배지. 모든 그룹(목록은 비행 단계, 보드는 상태 열)은 머리에 FLIGHT 수가 있고 앞 5건만 보인다. `<그룹> N more · 전체 보기` 줄이 그 자리에서 나머지를 펼친다(누르거나 Enter, 누를 때마다 접기와 펼치기, 저장하지 않음). 팀(AIRCRAFT)이 맡았거나 경고가 걸린 FLIGHT는 접혀도 보인다. 표시 옵션의 "SCHEDULED · ARRIVED · CANCELLED 포함"은 그 열을 화면에 올리고, 그 열도 같이 접힌다. 목록 보기에서는 REMARKS 옆에 그 FLIGHT의 가장 늦은 이정표(`ON 04:02`)가 보이고, 행에 마우스를 올리면 OUT·OFF·ON·IN 넷이 나온다(OOOI, concepts의 FLIGHT FOLLOWING). 폰 폭(860px 아래)에서는 행이 한 줄 카드(FLIGHT, 제목, AIRCRAFT, 나이 `3h`)가 되고 이정표와 NO CONTACT는 작은 둘째 줄에 붙으며, 보드는 열이 세로로 쌓인다 **RADAR(옛 RADAR)**: 세션 ─ STAND ─ FLIGHT 3열을 선으로 연결. 주인 없는 STAND, STAND 없는 진행 FLIGHT 강조. ARRIVED·취소된 FLIGHT의 STAND와 그것만 쥔 AIRCRAFT는 기본으로 접고 툴바에 `ARRIVED STAND N 숨김`을 보임 **RADIO(옛 RADIO)**: 기록된 교신(TOWER CLEARANCE와 READBACK, OCC FLIGHT PLAN·RECALL·CREW CHANGE, ARRIVED 보고, MCC·RTS)을 주파수(DELIVERY·TOWER·GROUND·COMPANY)별로 시간순으로. 답은 호출 밑에 들여쓰고, 답 없는 호출은 나이와 `NO REPLY`(10분 넘김)를 글자로 보여 준다. 실시간 갱신과 지난 6시간 되감기(1×·4×·16×). 자세한 것은 [RADIO 탭](radio-tab.md) | LIST: 상위 이슈 key로 따라가기 시작·끝(FLIGHT 서랍의 FOLLOW 버튼도 같음), 줄의 key로 FLIGHT 서랍 열기, 줄의 기록 펼치기, `Todo로` 칩(Linear 상태를 Backlog → Todo로, 한 줄씩) AIRCRAFT STRIPS: PR 링크 열기, 막는 조건 펼치기 BOARD: 표시 옵션(목록·보드, 포함 범위), 그룹 펼치기 RADAR: 전체 보기 전환, `ARRIVED STAND 포함` RADIO: 주파수·AIRPORT·AIRCRAFT 거르기(브라우저에 기억), 본문 펼치기, 되감기. 보내기·ACK 없음 |
+| GLOBE (보기 모드) | 헤더 버튼, `#globe` | 읽기 전용 정사영 지구본(ATC-254). SUPERVISOR의 위치를 가운데 두고 AIRPORT를 안정된 자리에, AIRPORT마다 FLIGHT가 없는 AIRCRAFT(base 기준)를 작은 비행기 표시로 놓는다(여럿이면 ×수). 진행 중인 FLIGHT는 자기 AIRPORT에서 뜨고 내리는 바퀴를 도는 비행기로 그린다(ATC-260). 밤 영역은 지금 시각(UTC)의 해 위치로 그린다. 옆 목록은 같은 내용을 글로 적은 것이다. SPACE 보기(ATC-261)로 바꿔 우주처럼 볼 수 있다. 무선 교신은 AIRPORT와 비행기 사이의 선으로 그리고 AIRPORT를 누르면 가까이서 본다(ATC-268). 다른 AIRPORT에서 일하는 AIRCRAFT(OUTSTATION)와 base를 옮기는 REPOSITION은 AIRPORT 사이의 큰 원 호로 그린다(ATC-263): 점선 호의 끝에 그 AIRCRAFT가 있고, 옆 목록 `MOVES`에 `TEAM_H · ferry ATCC → VCDO`처럼 적힌다. 우주 보기의 전이 궤도는 아직 없다 | GLOBE | SPACE 바꾸기, HOME AIRPORT 고르기, 위도·경도 입력, 내 위치 사용(1°로 반올림해 저장), 위치 지우기, 끌어서 돌리기, 휠·두 손가락 확대, 홈으로, AIRPORT를 끌어 옮기기(이 브라우저에만 기억), AIRPORT 위치 되돌리기, 비행기를 눌러 FLIGHT 서랍 열기 |
+| AIRPORTS (설정 창) | 설정 → AIRPORTS, `#airports` | 저장소 등록부, 소속 AIRCRAFT, OUTSTATION으로 와 있는 AIRCRAFT | AIRPORT 개설·코드 변경·폐쇄, 팀 머지 켜고 끄기(끄면 그 AIRPORT는 팀에게 LAND를 내지 않고 SUPERVISOR가 머지) |
 | FLEET | `#fleet` | 팀별 상태, 지금 FLIGHT, 판정 계열의 REPORT 칩(`JEV REPORT`, 켜져 있을 때 · 카드에서 맞음·틀림 표시), RULES(규칙 파일을 확인했나: `RULES current` 또는 `RULES 미확인 since <시각>`과 파일, rules-drift hook이 있을 때), 팀원, 자격, ROUTE, TARGETS와 LOGBOOK 실적(이번 주, 정시, 되돌림, LOS, 최근 FLIGHT), CHECKRIDE(TYPE RATING 근거와 추천), FLEET PLAN(atc의 제안과 AIRPORT별 수요, 그림자·승인 운용), CONTROL SESSIONS(관제 세션 배지·NEEDS YOU·ACCOUNT, `#fleet/control`. LAUNCH ALL·RESTART ALL·STOP ALL·ALIGN은 미리 보기에서 순서·이유·ACCOUNT drift를 보고 한 번 확인한다. 모두 내려가면 복구 배너) | 프로필 편집, ENTRY INTO SERVICE, LAUNCH·STOP(팀과 관제 세션 띄우기·멈추기), CREW BRIEFING, AOG, 퇴역, rating 부여·회수, FLEET PLAN 동의·반대, 승인 운용 켜기·끄기, 승인(실행) |
-| NETWORK | `#network` | 4단계 운항 개요(읽기 전용): ROUTE MAP(ROUTE마다 WAYPOINT 경로·지금 구간·ETA), ROUTE(Linear 프로젝트)별 열린 FLIGHT·14일 ARRIVED·도는 AIRCRAFT·착륙 대기·프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추세(ARRIVED·착륙 대기·되돌림, 게이트 판정·합의율·CROSSCHECK 일치율) | — |
-| METRICS | `#metrics`, `#metrics/fuel`, `#metrics/leaks` | OPERATIONS: FLIGHT RECORDER로 본 운용 지표와 추이, 그리고 **MISFIRE**(서버가 승인한 DISPATCH 카드 가운데 나중에 틀렸다고 드러난 몫, 날짜별. 자동 승인이 없으면 안 보인다). LEAKS: 릴리스 뒤에도 사람이 거친 단계를 지난 7일 동안 종류별로 센다(건수, 붙잡은 분, 붙잡힌 FLIGHT, `gate 행 · 통제`). "통제 없음"(그 통제가 서면 사라질 단계)과 "통제 있음"(통제가 도는데도 사람이 거친 단계)으로 나뉘고, K1~K3 승인과 SUPERVISOR가 당긴 brake는 세지 않는다. 세기만 하고 게이트는 바꾸지 않는다. FUEL: 기간(1·7·14·30일, 기본 7일)의 FUEL을 한 화면에 — 맨 위 TODAY(오늘 0시부터 지금까지를 어제 같은 시각까지와 견줌: COST·요청·가동 시간·ARRIVED. 하루의 경계는 보는 브라우저의 시간대), 합계(FUEL COST·요청 밑에 지난 같은 기간 값과 변화, 가격 없는 모델 몫과 "API 정가, 청구액 아님" 안내), USAGE(가동 시간·AIRCRAFT, ARRIVED·PR·FLIGHT당 비용을 지난 같은 기간과 견줌. 지난 기간 기록이 다 차지 않았으면 변화 대신 그 까닭을 적는다. 그 아래 최근 8주 막대와 표로 보기), ACCOUNT별 FUEL REMAINING, AIRCRAFT·관제 세션별 표(정렬 가능, 팀 AIRCRAFT는 FLEET 카드로 연결), 모델별, LEAK 종류별과 CREW 경고, 날짜별 CAPTAIN·CREW 비용 막대(표로 보기), NET이 큰 ARRIVED FLIGHT 10개와 TRIP 판정 | 기간 고르기, 새로고침(FUEL은 열 때·기간을 바꿀 때·새로고침을 누를 때만 읽는다) |
-| RELEASE | `#release` | 화살을 쏘는 화면(ATC-376). 후보(READY Backlog 이슈, SCHEDULE NEW 초안 같은 에이전트 제안), 발권 없는 Todo 이슈, 최근 발권(채널별 7일 수). 줄마다 우선순위와 선언한 K 효과가 클릭 전에 보인다 | READY 이슈 **발권**(Todo로 옮기고 발권을 기록), Todo 이슈 **발권**·**모두 발권…**. 우선순위 없는 이슈는 FLIGHT 서랍으로, 제안은 SCHEDULE로 간다. 이 화면의 클릭만 화면 발권이 된다 |
-| HOME | `#home` (옛 `#dispatch`도 여기) | 사용자에게 남은 일 한 화면(2026-10-02, DISPATCH를 해체). **QUEUE**(SUPERVISOR QUEUE: 승인·거절·머지 같은 결정. 자동 운항을 끄면 ASSIGN·launch 카드도 여기 오고 줄마다 승인·거절), **ALERTS**(WARNING·CAUTION), **STUCK**(막힌 FLIGHT 줄과 그 줄의 CANCEL…·RECALL…), 그리고 늘 있는 중립 **BRAKES** 줄(GROUND STOP·수동 출발 중지 수, 자동화 스위치 상태, **ATFM…**, **STOP ALL…**, DISPATCH 2a↔2b, 스위치 설정). 정상이면 BRAKES 줄만 보이고, 실제 GROUND STOP이 걸리면 ATFM 블록이 맨 위로 펴진다. 배정 기록은 FLIGHT 서랍의 `배정 기록`, MISFIRE는 METRICS | 큐 줄의 버튼, 알림 누르기, CANCEL·RECALL, ATFM 스위치와 수동 출발 중지, STOP ALL, DISPATCH 모드 전환 |
-| SCHEDULE | `#schedule` | 위에서부터 모드 줄, LATE WAYPOINTS(지연 경고, 예외라 늘 펴 둠), OCC 초안(CLASSIFY·PRIORITIZE·TAIL·WAYPOINT·NEW, CROSSCHECK 칩), 후보 수, RECENT의 판정 계열 칩(`JEV agree`, 판정한 초안에만), 맨 아래 접힌 **READINESS** 한 줄(`READINESS · gate 12/20 ✗ · agree 92% ✓ · CROSSCHECK 93%`, 펼침은 탭마다 기억. 펴면 S2 점검과 CROSSCHECK 일치, 판정 계열 일치(`JEV 일치`, 켜져 있을 때), ROUTES WITHOUT WAYPOINTS(WAYPOINT 없는 ROUTE)가 원래 모양 그대로 들어 있다) | 판정, CROSSCHECK에 동의 |
-| RADIO | `#radio` | 기록된 교신(TOWER CLEARANCE와 READBACK, OCC FLIGHT PLAN·RECALL·CREW CHANGE, ARRIVED 보고, MCC·RTS)을 주파수(DELIVERY·TOWER·GROUND·COMPANY)별로 시간순으로. 답은 호출 밑에 들여쓰고, 답 없는 호출은 나이와 `NO REPLY`(10분 넘김)를 글자로 보여 준다. 실시간 갱신과 지난 6시간 되감기(1×·4×·16×). 자세한 것은 [RADIO 탭](radio-tab.md) | 주파수·AIRPORT·AIRCRAFT 거르기(브라우저에 기억), 본문 펼치기, 되감기. 보내기·ACK 없음 |
-| DOCS | `#docs` | 이 안내와 변경 기록(`CHANGELOG.ko.md`에 아직 접지 않은 `changelog.d/` 조각까지 `[Unreleased]` 아래에) | — |
+| METRICS | `#metrics`, `#metrics/leaks`, `#metrics/misfire`, `#metrics/fuel`, `#metrics/network` (옛 `#network`도 여기) | 위쪽 줄에 하위 화면 다섯: OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK(2026-10-02, NETWORK 탭을 들였다). OPERATIONS: FLIGHT RECORDER로 본 운용 지표와 추이와 한 레인 착륙. LEAKS: 릴리스 뒤에도 사람이 거친 단계를 지난 7일 동안 종류별로 센다(건수, 붙잡은 분, 붙잡힌 FLIGHT, `gate 행 · 통제`). "통제 없음"(그 통제가 서면 사라질 단계)과 "통제 있음"(통제가 도는데도 사람이 거친 단계)으로 나뉘고, K1~K3 승인과 SUPERVISOR가 당긴 brake는 세지 않는다. 세기만 하고 게이트는 바꾸지 않는다. MISFIRE: 사람 없이 도는 레인(DISPATCH, SCHEDULE, FLEET PLAN)이 지난 7일에 한 일 가운데 나중에 틀렸다고 드러난 몫. 위에 레인마다 한 줄(스위치, 한 일, MISFIRE, 몫. FLEET PLAN은 적용 실패 수도), 그 밑에 DISPATCH의 날짜별 줄(자동 승인이 없으면 안 보인다)과 SCHEDULE·FLEET PLAN의 최근 misfire(되돌려짐, 멈춘 뒤 LAUNCH, LAUNCH 뒤 놀음, 재시작 반복). 읽기만 하고 아무것도 바꾸지 않는다. FUEL: 기간(1·7·14·30일, 기본 7일)의 FUEL을 한 화면에 — 맨 위 TODAY(오늘 0시부터 지금까지를 어제 같은 시각까지와 견줌: COST·요청·가동 시간·ARRIVED. 하루의 경계는 보는 브라우저의 시간대), 합계(FUEL COST·요청 밑에 지난 같은 기간 값과 변화, 가격 없는 모델 몫과 "API 정가, 청구액 아님" 안내), USAGE(가동 시간·AIRCRAFT, ARRIVED·PR·FLIGHT당 비용을 지난 같은 기간과 견줌. 지난 기간 기록이 다 차지 않았으면 변화 대신 그 까닭을 적는다. 그 아래 최근 8주 막대와 표로 보기), ACCOUNT별 FUEL REMAINING, AIRCRAFT·관제 세션별 표(정렬 가능, 팀 AIRCRAFT는 FLEET 카드로 연결), 모델별, LEAK 종류별과 CREW 경고, 날짜별 CAPTAIN·CREW 비용 막대(표로 보기), NET이 큰 ARRIVED FLIGHT 10개와 TRIP 판정 | 기간 고르기, 새로고침(FUEL은 열 때·기간을 바꿀 때·새로고침을 누를 때만 읽는다) |
+| RELEASE | `#release` | 화살을 쏘는 화면(ATC-376). 후보(READY Backlog 이슈, SCHEDULE NEW 초안 같은 에이전트 제안), 발권 없는 Todo 이슈, 최근 발권(채널별 7일 수). 줄마다 우선순위와 선언한 K 효과가 클릭 전에 보인다 | READY 이슈 **발권**(Todo로 옮기고 발권을 기록), Todo 이슈 **발권**·**모두 발권…**. 우선순위 없는 이슈는 FLIGHT 서랍으로, 제안은 HOME의 QUEUE로 간다. 이 화면의 클릭만 화면 발권이 된다 |
+| HOME | `#home` (옛 `#dispatch`와 `#schedule`도 여기) | 사용자에게 남은 일 한 화면(2026-10-02, DISPATCH를 해체). **QUEUE**(SUPERVISOR QUEUE: 승인·거절·머지 같은 결정. 자동 운항을 끄면 ASSIGN·launch 카드도 여기 오고 줄마다 승인·거절), **ALERTS**(WARNING·CAUTION), **STUCK**(막힌 FLIGHT 줄과 그 줄의 CANCEL…·RECALL…), **EFFECT**(배포한 FLIGHT가 작업 지시서 `## Measure`의 것을 바꾸지 못한 평결: `not improved`·`worse`, 틀렸다고 표시하지 않은 것만. FLIGHT 서랍의 `EFFECT CHECK` 줄에서 **틀림**으로 표시, ATC-402), **LATE WAYPOINTS**(ETA가 목표일을 넘거나 목표일이 지난 WAYPOINT, 예외라 있을 때만. 2026-10-02 SCHEDULE을 해체), **LINEAR에서 직접 DONE**(승인한 CLOSE, 있을 때만), 그리고 늘 있는 중립 **BRAKES** 줄(GROUND STOP·수동 출발 중지 수, 자동화 스위치 상태, **ATFM…**, **STOP ALL…**, DISPATCH 2a↔2b, SCHEDULE S1↔S2, 스위치 설정). QUEUE에는 SCHEDULE 초안도 오고(S2일 때) 줄마다 승인·거절. 정상이면 BRAKES 줄만 보이고, 실제 GROUND STOP이 걸리면 ATFM 블록이 맨 위로 펴진다. 배정 기록은 FLIGHT 서랍의 `배정 기록`, MISFIRE는 METRICS | 큐 줄의 버튼, 알림 누르기, CANCEL·RECALL, ATFM 스위치와 수동 출발 중지, STOP ALL, DISPATCH·SCHEDULE 모드 전환 |
+| DOCS (HELP 메뉴) | HELP 메뉴, `#docs`, `#docs/<쪽>` | 이 안내와 변경 기록(`CHANGELOG.ko.md`에 아직 접지 않은 `changelog.d/` 조각까지 `[Unreleased]` 아래에) | — |
 
-## NETWORK
+## METRICS → NETWORK
 
-ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아무것도 바꾸지 않고, 배정 점수에도 쓰지 않는다. 숫자를 읽는 법:
+(`#metrics/network`, 옛 `#network`) ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아무것도 바꾸지 않고, 배정 점수에도 쓰지 않는다. 숫자를 읽는 법:
 
 - **ROUTE MAP**: 맨 위. ROUTE(Linear 프로젝트)마다 WAYPOINT(프로젝트 마일스톤)를 가로 경로로 잇는다. ●는 지난 WAYPOINT(Linear에서 done), ◉는 지금 구간(끝나지 않은 것 중 순서상 첫 번째)과 진행률, ○는 앞으로 갈 WAYPOINT다. 지금 구간 위의 ✈는 그 WAYPOINT의 FLIGHT를 모는 AIRCRAFT다(FOLLOWING과 같은 규칙: ASSIGN 제안, 없으면 `tail:` 라벨). 주황은 지연이다. WAYPOINT를 누르면 완료 기준이 보이고, atc가 잴 수 있는 기준(판정 게이트, 2b 점검표, 모드, ATFM 켜기 조건) 아래에는 지금 상태가 ✓ 충족 · ✗ 미달 · ○ 데이터 부족 · △ 확인 필요로 붙는다.
   - WAYPOINT를 누르면(Tab으로 옮겨 Enter·Space도 된다) 진행률, 목표일, ETA, 완료 기준(마일스톤 설명의 "Exit criteria" 번호 목록), FLIGHT 목록(진행·막힘·계획·완료와 AIRCRAFT)이 열린다. 한 번 더 누르거나 ✕로 닫는다.
@@ -28,7 +28,7 @@ ROUTE·AIRCRAFT·추세를 한 화면에서 보는 읽기 전용 개요다. 아�
   - 좁은 화면에서는 경로가 자기 상자 안에서 가로로 넘어간다.
 - **ROUTE 표**: Linear 프로젝트마다 한 줄. 열린 FLIGHT는 Todo(FILED)·In Progress(ENROUTE)·In Review(APPROACH, Ready to Merge 포함)로 나눠 센다. Backlog·끝난 것·상위 이슈는 세지 않는다. ARRIVED 14일은 그 프로젝트 FLIGHT의 LOGBOOK 기록이고, 착륙 대기는 그 기록의 중앙값이다. 목표(목표일·진척·상태)는 Linear 프로젝트에서 10분마다 읽고, 못 읽으면 비어 있다.
 - **AIRCRAFT 표**: FLEET 카드와 같은 숫자다(이번 주 ARRIVED 대 `flightsPerWeek`, 14일 정시율 대 `onTime`, 착륙 대기, 되돌림, LOS). 퇴역 AIRCRAFT는 빠진다.
-- **추세**: 최근 28일. 날마다 ARRIVED 수, 착륙 대기 중앙값, 되돌림. 게이트 줄은 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 그날까지의 누적 합의율(마지막 날이 DISPATCH·SCHEDULE 탭의 게이트 숫자와 같다), 둘을 합친 CROSSCHECK 일치율.
+- **추세**: 최근 28일. 날마다 ARRIVED 수, 착륙 대기 중앙값, 되돌림. 게이트 줄은 날마다 DISPATCH·SCHEDULE 그림자 판정 수와 그날까지의 누적 합의율(마지막 날이 S2 진입 점검 숫자와 같다), 둘을 합친 CROSSCHECK 일치율.
 - Linear·GitHub·LOGBOOK 중 못 읽은 것이 있으면 그 표시가 뜬다. 그 출처에서 온 숫자는 비거나 0일 수 있다.
 
 TARGETS·ROUTE를 바꾸는 것은 지금처럼 FLEET 탭에서 SUPERVISOR가 한다. OCC가 변경 초안을 내는 흐름은 설계만 있다(`docs/fleet.ko.md` 7.4).
@@ -57,7 +57,7 @@ SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `doc
 - 조작: 끌기(돌리기), 휠·두 손가락(확대, 1~8배), "홈으로"(위치를 가운데로, 확대 1배). 애니메이션을 끈 설정(`motion` 꺼짐)이면 "홈으로"는 바로 옮긴다.
 - 지구본의 육지는 Natural Earth 1:110m(공개 도메인)를 줄여 화면 파일 안에 넣은 것이다. 외부 요청은 없다. 이 화면 첫 방문 때만 GLOBE 화면 파일(약 19 KB)을 더 받는다.
 
-## STRIPS의 진행 막대
+## AIRCRAFT STRIPS의 진행 막대
 
 FLIGHT가 있는 STAND 줄 아래에 얇은 막대가 붙는다. 네 칸(작업 → 착륙 대기 → RTS 대기 → 서비스)으로, 지난 칸은 실선이고 지금 칸은 점선에 표식이 있으며 앞 칸은 옅은 점선이다. OUT·OFF·ON·IN 이정표는 atc가 기록한 실제 시각이다.
 
@@ -69,9 +69,9 @@ FLIGHT가 있는 STAND 줄 아래에 얇은 막대가 붙는다. 네 칸(작업 
 - 끝난 FLIGHT는 막대 없이 작은 `완료` 글만 보인다(마우스를 올리면 이정표 시각은 그대로). 진행 중인 FLIGHT가 더 잘 보이게 한 것이다.
 - AD HOC 줄(티켓 없는 작업)과 아직 OUT이 없는 FLIGHT에는 막대가 없다.
 
-## STRIPS의 HUMAN CHECK
+## HOME의 HUMAN CHECK
 
-PR 본문 `## UI change` 블록의 class가 CHOICE·ACCOUNT·DEVICE인데 이 head에 `Human check: done`이 없는 PR만 LANDING SEQUENCE 위 `HUMAN CHECK n`에 모인다. 없으면 이 칸이 보이지 않는다.
+PR 본문 `## UI change` 블록의 class가 CHOICE·ACCOUNT·DEVICE인데 이 head에 `Human check: done`이 없는 PR만 HOME의 QUEUE에 `HUMAN CHECK` 줄로 모인다(ATC-379, 옛 STRIPS 맨 위 칸). 없으면 이 칸이 보이지 않는다.
 
 - 줄마다 `#번호`, AIRPORT·FLIGHT, STAND를 쥔 팀, class 칩, 상태(`pending`, `FAILED`, `옛 head에 기록됨 (sha)`, `채우지 않음`), 제목.
 - 증거: Evidence pack 링크가 가리키는 PR 댓글의 스크린샷 썸네일, 이 head의 RUN-UP 보고서가 있으면 바뀐 화면·컷 수, UNEXPECTED 경고, 바뀐 컷 썸네일과 보고서 링크. 증거가 없으면 "증거 없음".
@@ -80,9 +80,9 @@ PR 본문 `## UI change` 블록의 class가 CHOICE·ACCOUNT·DEVICE인데 이 he
 - 누르면 "PASS 기록됨 · sha · 댓글"이 뜨고, GitHub을 다시 읽으면(90초 안) 줄이 대기열에서 빠진다.
 - AUTOLAND `merge`는 이 대기열의 PR과 `## UI change` 블록이 없는 PR을 머지하지 않는다. LANDING SEQUENCE 줄에는 `HUMAN CHECK ACCOUNT: pending`처럼 보인다.
 
-## STRIPS의 LANDING SEQUENCE
+## FLIGHTS의 LANDING SEQUENCE
 
-STRIPS 맨 위에 GitHub에 열린 PR을 LANDING 순서대로 보여 준다([개념](concepts.md)의 LANDING SEQUENCE).
+FLIGHTS 목록 아래에 GitHub에 열린 PR을 LANDING 순서대로 보여 준다([개념](concepts.md)의 LANDING SEQUENCE).
 
 - **CLEARED TO LAND**: 조건을 모두 채운 PR. 준비된 순서(`readyAt`)대로 번호가 붙고 펼쳐 둔다. 제목의 숫자가 CLEARED TO LAND PR 수다.
 - **APPROACH**: 막는 조건이 남은 PR(Draft 제외). PR을 연 순서로, 접어 둔 줄을 누르면 열린다. 줄마다 막는 조건이 한국어 한 줄씩 붙는다.
@@ -105,14 +105,14 @@ STAND 줄의 REMARKS 칸에도 그 STAND 브랜치의 PR 배지가 붙는다.
 
 FLIGHT 번호(`ATC206`)나 STRIPS의 PR 번호를 누르면 화면 오른쪽에 서랍이 열린다(폰에서는 화면 전체). Linear 이슈와 GitHub PR을 atc 안에서 읽는다. 읽기가 기본이고, 쓰는 것은 둘뿐이다: FLIGHT 서랍의 상태 이동 버튼과 PR 서랍의 **MERGE** 버튼(둘 다 아래).
 
-- **FLIGHT 서랍**(주소 `#flight/ATC-206`): 상태, 우선순위, 담당, 라벨, 막는·막고 있는 FLIGHT(눌러 그 FLIGHT 서랍으로), 상위·하위, 붙은 PR, 본문, 댓글. 마지막 줄 링크로 Linear를 연다.
+- **FLIGHT 서랍**(주소 `#flight/ATC-206`): 이 FLIGHT의 RADIO 스레드(호출과 답 묶음, 지난 7일, 없으면 칸 없음 · 전체 기록은 `#flights/radio`, ATC-379), 상태, 우선순위, 담당, 라벨, 막는·막고 있는 FLIGHT(눌러 그 FLIGHT 서랍으로), 상위·하위, 붙은 PR, 본문, 댓글. 마지막 줄 링크로 Linear를 연다.
 - **상태 이동**(FLIGHT 서랍): 그 이슈가 Backlog·Todo·Canceled에 있을 때만 이 팀의 Backlog·Todo·Canceled 중 지금 상태를 뺀 버튼이 보인다. 누르면 "Backlog → Todo로 옮긴다. Linear에 바로 쓴다."를 한 번 더 묻고, [확인]을 눌러야 Linear에 쓴다. 지금 상태가 그 사이에 바뀌었으면 옮기지 않고 알린다. Started·Done으로는 옮길 수 없다: 그 상태는 팀의 PR(`Fixes ATC-n`)과 Linear에서 SUPERVISOR가 정한다. 옮길 때마다 FLIGHT RECORDER에 한 줄 남는다. 이 화면에서 누른 클릭만 쓴다(세션·`atcctl`·`curl`은 못 한다).
 - **READY**: Backlog인 이슈가 막는 FLIGHT를 하나 이상 갖고 모두 Done이나 Canceled면 상태 옆에 `READY` 칩이 뜨고 Todo 버튼이 강조된다. "막는 FLIGHT가 다 풀렸으니 Todo로 옮길까?"를 알려 줄 뿐이고, 옮기는 것은 늘 SUPERVISOR의 클릭이다. 아직 QUEUE 목록에는 올라가지 않는다.
 - **PR 서랍**(주소 `#pr/ATCC/281`): 브랜치, 작성자, 착륙 상태와 막는 조건, 등급(TIER), MCC INSPECTION, 리뷰 결정, 체크, 본문, 바뀐 파일(100개까지). 착륙 상태·등급·INSPECTION은 atc가 폴링하는 열린 PR만 보인다.
 - **MERGE**(PR 서랍): MCC AIRPORT(atc 저장소)의 **user 등급**(또는 MCC가 ESCALATE한) PR이 CLEARED TO LAND일 때만 `MERGE…` 버튼이 뜬다. 누르면 "TIER user · head e726794 · merge 방식. GitHub에 바로 머지한다."를 한 번 더 묻고, [머지 확인]을 눌러야 머지한다. 서버는 눌린 뒤 지금 GitHub 자료로 다시 판정한다: 서랍이 보여 준 head가 그대로일 때만(움직였으면 409와 새 head가 뜨고 머지하지 않는다), PR이 열려 있고 Draft·fork가 아니고 SUPERVISOR HOLD가 없고 atc가 그 head를 CLEARED로 볼 때만 머지한다. 머지는 그 head(sha)에 고정하고 auto-merge는 켜지 않는다. **auto·flagged 등급 PR은 여기서 머지하지 않는다**(MCC의 몫이라 버튼도 없다). 후보인데 지금 안 되면 버튼 자리에 까닭이 보인다. 이 화면에서 누른 클릭만 받고(세션·CLI는 못 한다), 시도마다 FLIGHT RECORDER에 한 줄(누가·PR·head·결과, 거절도) 남는다. 머지한 뒤의 배포는 [배포하기](deploy.md).
 - 본문과 댓글의 Markdown은 안전하게 그린다: HTML 태그는 글자로 보이고, 이미지는 링크로만 남고, 링크는 새 탭에서 열린다.
 - Esc, 바깥 클릭, ×로 닫는다. 브라우저 뒤로 가기도 닫는다. 서랍은 열 때 한 번 읽고 60초 동안 기억한다(백그라운드로 다시 읽지 않는다). `ATC_GITHUB=off`인 서버에서는 PR 서랍이 "GitHub이 꺼져 있다"고 알린다.
-- 지금 번호를 눌러 열리는 곳: STRIPS(LANDING SEQUENCE의 FLIGHT와 PR 번호, HUMAN CHECK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.
+- 지금 번호를 눌러 열리는 곳: FLIGHTS(LANDING SEQUENCE의 FLIGHT와 PR 번호), HOME(HUMAN CHECK·STUCK), DISPATCH 표·후보·승인 기록, FOLLOWING, FLEET(카드·목록). 이미 다른 링크(Linear) 안에 있는 번호는 그 링크 그대로다. 주소를 직접 써도 열린다.
 
 ## DUTY 서랍
 

@@ -432,6 +432,8 @@ With `strict` on vocado's `main`, every merge puts the other open PRs `behind`, 
   - ATC-27/30 still decide: `buildPulls` re-checks the external-review exclusion with the current switch. An excluded PR is not queued, and the strip says "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)".
   - One request per head (`autoland-state.json` `reviewRequests`), recorded as `op: "review-request"` with `via` (`codex`, `deepseek` or `supervisor`). The strip shows "AUTOLAND: review requested (codex|deepseek)" until a review lands. Only while AUTOLAND is `update` or `merge` and the AIRPORT is not in GROUND STOP.
 
+- **Auto-revert (ATC-351)**: with the `autoRevert` switch `on` (settings window; **on by default**, ATC-394), after the failing check was re-run once on the same head and is red again and the merged PR's own head was green, a merge AUTOLAND made that turns `main` red gets a revert PR, which AUTOLAND merges even while its GROUND STOP is latched (it is the way out; review, CI and the exclusion list still apply, and it needs no FLIGHT). The latched stop is then cleared by atc when the next head is green. PRs that touch migration or `user`-tier paths and human merges are never reverted automatically (a `hold` line, shown to DUTY). A second new red head within an hour lowers AUTOLAND `merge` to `update` and stops the lane until the SUPERVISOR picks the switch again. Full rules: [autonomy.md](autonomy.md) "C4 as built".
+
 #### Merge review: a review recorded in atc counts as the landing review (ATC-328)
 
 On an AUTOLAND AIRPORT (the `airports` list of `autoland.json`) a review recorded in atc for a PR head is that head's landing review, whatever Codex is doing. A `pass` clears `no-review` (and `review-stale`) for that head on LANDING SEQUENCE, the TOWER brief and `/api/autoland`; `findings` shows as `review-findings` with the P0/P1/P2 counts. It is scoped to the head it names:
@@ -511,6 +513,8 @@ S2 is built and sits behind the SCHEDULE `mode` (`~/.local/state/atc/schedule.js
 How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `atcctl schedule release S-xxxx`, which records RELEASED and prints the exact Linear MCP calls (`save_issue`, plus a `save_comment` with the reason for CLASSIFY and PRIORITIZE) → OCC makes each call with the input unchanged; `occ/mcp-guard.mjs` (linear-guard) passes a Linear write only when the mode is approval, the tool and input match a released call exactly, and that call has not passed before (section 6) → on the next Linear read atc marks the operation APPLIED (the change is visible, or for NEW an issue with that title appeared). Approved or released operations that don't land within 3 days expire. Calls only touch plan fields: labels, priority, a new issue's title/body/project/relations, and a comment. Never state or assignee.
 
 ## CROSSCHECK
+
+> **Retired (ATC-371).** The CROSSCHECK session is no longer launched, kept alive or recycled, and no server rule waits on its marks. This section describes the role as it was and is kept as history; old marks stay readable.
 
 Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one by the SUPERVISOR, which is a heavy load. Handing the verdict to a model would make the gate (20 decisions, 80%) measure whether two models agree with each other, which means nothing. So the work is split:
 

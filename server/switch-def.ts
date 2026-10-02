@@ -36,6 +36,7 @@ export interface SwitchDecl {
   order: number; // 설정 창의 순서
   lineOrder?: number; // 정책 한 줄의 순서(기본 order)
   applyOrder?: number; // 검사·저장의 순서(기본 order)
+  data?: () => unknown; // 설정 창의 블록이 그릴 덧붙은 자료(JSON으로 가는 것만). settings.ts에 칸을 더하지 않고 스위치 파일이 준다
   read(): string; // 지금 값
   validate?: (raw: unknown) => { ok: true; value: unknown } | { ok: false; error: string }; // enum이 아닐 때
   save(value: never): void | Promise<void>; // 저장 값을 파일에 쓰고 실행 중인 서버에 반영
@@ -56,6 +57,7 @@ export interface SwitchView {
   risky: readonly string[];
   warn: Record<string, string>;
   row: SwitchRow | null;
+  data?: unknown;
   line: boolean;
   order: number;
   lineOrder: number;
@@ -77,6 +79,7 @@ export function viewOf(d: SwitchDecl): SwitchView {
     risky: d.risky,
     warn: typeof d.warn === "function" ? d.warn() : (d.warn ?? {}),
     row: d.row ? d.row() : null,
+    ...(d.data ? { data: d.data() } : {}),
     line: d.line !== false,
     order: d.order,
     lineOrder: lineOrderOf(d),

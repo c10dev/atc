@@ -11,7 +11,7 @@
 | 2a | DISPATCH 그림자 운용: 배정 제안과 판정 | 운용 중 |
 | 2b | DISPATCH 승인 운용: 승인한 제안을 FLIGHT PLAN으로 보냄. STAND 없는 FLIGHT는 READBACK에 DEPARTED, CAPTAIN 보고로 ARRIVED | 만들어 둠, 꺼져 있음. 켜기 전 점검표는 DISPATCH 탭 |
 | 3 | ATFM(흐름 관리): 저위험 배정 자동 승인, 머지 슬롯, CI 혼잡 시 출발 중지 | 데이터·그림자 판정 운용 중, 출발 중지 다섯 가지와 머지 슬롯은 스위치로 켤 수 있음(기본 꺼짐·그림자), 자동 배정은 아직 없음 |
-| 4 | 네트워크 계획: 목표·지표 운영 화면, 에이전트는 초안까지 | NETWORK 탭(읽기 전용 개요와 ROUTE MAP) 운용 중. WAYPOINT ETA와 지연 경고는 OCC 브리핑과 SCHEDULE 탭에 있음. OCC의 TARGET·ROUTE 변경 초안은 그림자 판정으로 운용(적용은 아직 없음) |
+| 4 | 네트워크 계획: 목표·지표 운영 화면, 에이전트는 초안까지 | METRICS의 NETWORK 하위 화면(읽기 전용 개요와 ROUTE MAP) 운용 중. WAYPOINT ETA와 지연 경고는 OCC 브리핑과 HOME의 LATE WAYPOINTS에 있음. OCC의 TARGET·ROUTE 변경 초안은 그림자 판정으로 운용(적용은 아직 없음) |
 
 - 2a → 2b: 판정 20건 이상, 합의율 80% 이상.
 - 2b → 3: 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상(STAND가 필요한 FLIGHT만), DISPATCH가 보낸 FLIGHT에서 난 충돌이 거의 없음.

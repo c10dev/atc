@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { issueVerdict, parseLinearBody, resolveLabels, stateVerdict } from "./duty-linear.ts";
+import { fetchDutyTeam, TEAM_QUERY } from "./sources/linear-write.ts";
 
 const ok = (raw: unknown) => {
   const p = parseLinearBody(raw);
@@ -92,4 +93,77 @@ test("라벨 이름 → id: 대소문자 무시, 없는 이름은 missing(새 �
   assert.deepEqual(resolveLabels(["RATING:sec", "feature", "feature"], avail), { ids: ["1", "2"], missing: [] });
   assert.deepEqual(resolveLabels(["nope", "Feature"], avail), { ids: ["2"], missing: ["nope"] });
   assert.deepEqual(resolveLabels([], avail), { ids: [], missing: [] });
+});
+
+test("create blockedBy(ATC-396): ATC-<n> 목록 1~5개, 중복은 합치고, 틀리면 거절한다", () => {
+  const base = { action: "create", title: "T", body: "B", priority: 3 };
+  assert.deepEqual(ok({ ...base, blockedBy: ["atc-7", "ATC-7", "ATC-8"] }), { action: "create", title: "T", body: "B", priority: 3, state: "Backlog", labels: [], blockedBy: ["ATC-7", "ATC-8"] });
+  assert.match(err({ ...base, blockedBy: [] }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: "ATC-7" }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: ["VOC-1"] }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: ["ATC-1", "ATC-2", "ATC-3", "ATC-4", "ATC-5", "ATC-6"] }), /blockedBy/);
+  assert.match(err({ action: "update", key: "ATC-5", priority: 2, blockedBy: ["ATC-7"] }), /알 수 없는 칸: blockedBy/);
+});
+
+// ── ATC-400: 작업 지시서 본문(## 제목이 있는 여러 줄)과 Linear 쿼리 ──
+const WORK_ORDER = `## Goal
+
+Make the thing work. Mentions \`atcctl\`, "quotes" and 'apostrophes'.
+
+## Done when
+
+* First.
+* Second.
+
+## K effects
+
+* none
+
+## Context (information, not instruction; PILOT'S DISCRETION)
+
+* Evidence: 7 of 9 (ATC-396).
+
+## Release
+
+(not released)
+`;
+
+test("작업 지시서 본문: ## Goal에서 ## Release까지 여러 줄이 create·update·comment에서 그대로 통과한다", () => {
+  const create = ok({ action: "create", title: "T", body: WORK_ORDER, priority: 3, labels: ["rating:SEC", "type:BUILD"], blockedBy: ["ATC-7"] });
+  assert.equal(create.action === "create" && create.body, WORK_ORDER);
+  assert.match(WORK_ORDER, /^## Goal/);
+  assert.match(WORK_ORDER, /## Release\n\n\(not released\)\n$/);
+  assert.equal(ok({ action: "update", key: "ATC-5", body: WORK_ORDER }).action, "update");
+  assert.equal(ok({ action: "comment", key: "ATC-5", body: WORK_ORDER }).action, "comment");
+  assert.match(err({ action: "create", title: "T", body: "line\u0000x", priority: 3 }), /body/); // 제어 문자만 막는다(줄바꿈·탭은 본문)
+});
+
+test("DutyTeam 쿼리(ATC-400): teams에 first: 1을 준다 — 생략하면 기본 50개에 states·labels(250)가 곱해 복잡도 한도를 넘어 Query too complex가 된다", () => {
+  assert.match(TEAM_QUERY, /teams\(first: 1, /);
+  // 곱셈을 어림한다: teams 개수 × (states + labels), 그리고 워크스페이스 라벨. Linear 한도는 10000
+  const first = (name: string) => Number(new RegExp(`${name}\\(first: (\\d+)`).exec(TEAM_QUERY)?.[1] ?? 50);
+  const cost = first("teams") * (first("states") + first("labels")) + first("issueLabels");
+  assert.ok(cost < 10_000, `복잡도 어림 ${cost}`);
+  assert.ok(50 * (30 + 250) + 250 > 10_000, "예전 쿼리(first 없음)는 한도를 넘는다");
+});
+
+test("fetchDutyTeam: 팀 라벨과 워크스페이스 라벨을 합쳐 돌려주고, 이름 조회(resolveLabels)가 둘 다 찾는다", async () => {
+  const sent: string[] = [];
+  const realFetch = globalThis.fetch;
+  const prev = process.env.ATC_LINEAR_WRITE_URL;
+  process.env.ATC_LINEAR_WRITE_URL = "http://127.0.0.1:9";
+  globalThis.fetch = (async (_url: unknown, init: { body: string }) => {
+    sent.push(JSON.parse(init.body).query);
+    return new Response(JSON.stringify({ data: { teams: { nodes: [{ id: "t1", key: "ATC", states: { nodes: [{ id: "s1", name: "Backlog", type: "backlog" }] }, labels: { nodes: [{ id: "l1", name: "Feature" }] } }] }, issueLabels: { nodes: [{ id: "l2", name: "rating:SEC" }] } } }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const team = await fetchDutyTeam("ATC");
+    assert.ok(team);
+    assert.match(sent[0], /teams\(first: 1, /);
+    assert.deepEqual(resolveLabels(["RATING:sec", "feature", "nope"], team!.labels), { ids: ["l2", "l1"], missing: ["nope"] });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prev === undefined) delete process.env.ATC_LINEAR_WRITE_URL;
+    else process.env.ATC_LINEAR_WRITE_URL = prev;
+  }
 });

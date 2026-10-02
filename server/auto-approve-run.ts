@@ -41,7 +41,7 @@ function appendAutoLine(line: AutoLine, file = FILE()) {
 
 export interface AutoDeps {
   max: number; // ATC_MAX_LAUNCHED
-  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // by "auto"는 index.ts가 정한다
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // by "auto"는 index.ts가 정한다
 }
 
 // 한 주기가 읽고 쓰는 곳(시험은 가짜를 꽂는다)
@@ -177,7 +177,7 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
           cap,
           approve: { op: "approve", id: p.id, at, via: "auto" },
           append: io.appendOps,
-          launch: () => deps.launch(s, reg, p.id, !!p.resume),
+          launch: () => deps.launch(s, reg, p.id, !!p.resume, p.flight),
           now: io.stamp,
           by: "auto",
         });

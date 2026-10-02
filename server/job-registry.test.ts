@@ -17,7 +17,7 @@ test("내장 일: 이름이 겹치지 않고 때는 하나씩, tick 일의 순�
   assert.equal(new Set(names).size, names.length);
   assert.deepEqual(
     [...jobs].filter((j) => j.tick).sort((a, b) => (a.order ?? 1000) - (b.order ?? 1000)).map((j) => j.name),
-    ["sample", "dispatch", "fleet-plan", "departures", "logbook", "milestones", "standfree", "atfm", "autoland", "judges", "qrh"],
+    ["sample", "dispatch", "fleet-plan", "departures", "logbook", "milestones", "standfree", "atfm", "auto-revert", "autoland", "judges", "qrh"],
   );
   assert.deepEqual(jobs.filter((j) => j.every !== undefined).map((j) => [j.name, j.every]).sort(), [["auto-approve", 60_000], ["auto-rts", 30_000], ["auto-schedule", 60_000], ["control-recycle", 60_000]]);
   assert.deepEqual(jobs.filter((j) => j.start).map((j) => j.name).sort(), ["readability", "skill-usage"]);

@@ -335,6 +335,73 @@ function SwitchRow({ sw, save }: { sw: SwitchView; save: Save }) {
 }
 
 // 스위치 줄 뒤에 붙는, 자기 데이터가 있는 화면. 키는 스위치 key
+// DUTY REVIEW 기록(ATC-396): 마지막 점검과 하루 세기(점검, 만든 제안, 발권된 제안, 버려진 제안)
+interface ReviewView {
+  on: boolean;
+  dutyEnabled: boolean;
+  linear: boolean;
+  last: { id: string; at: string; trigger: string; detail: string } | null;
+  days: { day: string; reviews: number; proposals: number; fired: number; discarded: number }[];
+}
+function DutyReviewRecord({ on }: { on: boolean }) {
+  const [v, setV] = useState<ReviewView | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/duty/review")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ReviewView) => alive && setV(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [on]);
+  if (!v) return null;
+  const days = v.days.slice(-7);
+  return (
+    <div className="config-note" aria-label="DUTY REVIEW 기록">
+      <p>
+        {v.last ? `마지막 점검 ${v.last.id} · ${v.last.trigger} · ${v.last.detail}` : "아직 점검한 적 없음"}
+        {!v.dutyEnabled && " · DUTY가 꺼져 있어 돌지 않는다"}
+        {v.dutyEnabled && !v.linear && " · Linear 쓰기(duty.json l1)가 꺼져 있어 제안은 채팅 요약에만 남는다"}
+      </p>
+      {days.length > 0 && (
+        <ul className="config-list" aria-label="하루 세기(Z)">
+          {days.map((d) => (
+            <li key={d.day}>
+              <code>{d.day}</code> 점검 {d.reviews} · 제안 {d.proposals} · 발권 {d.fired} · 버림 {d.discarded}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// AUTO REVERT 하루 세기(ATC-394): 최근 7일의 revert·flake 잡음·misfire와 알림·멈춤 수. 자료는 스위치 선언의 data가 준다
+interface RevertDayView {
+  day: string;
+  reverts: number;
+  flakes: number;
+  misfires: number;
+  holds: number;
+  stops: number;
+}
+function AutoRevertDays({ days }: { days: RevertDayView[] }) {
+  const shown = [...days].reverse().filter((d) => d.reverts + d.flakes + d.misfires + d.holds + d.stops > 0);
+  if (!shown.length) return null;
+  return (
+    <ul className="dp-misfire">
+      {shown.map((d) => (
+        <li key={d.day}>
+          <span className="mono">{d.day}</span> revert <b>{d.reverts}</b> · flake 잡음 <b>{d.flakes}</b> · misfire <b>{d.misfires}</b>
+          {d.holds + d.stops > 0 ? <span className="faint"> — 알림 {d.holds} · 멈춤 {d.stops}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
+
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   autolandReviewedSecurity: (s, save) => (
     <>
@@ -358,6 +425,11 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   ),
   controlRecycleMode: (s, save) => <RecycleSessions caps={s.controlRecycle.caps} auto={s.controlRecycle.auto} save={save} />,
   dutyEnabled: (s, save) => <DutyAccountRow current={s.duty.account} warning={s.duty.accountWarning} save={save} />,
+  autoRevert: (s) => {
+    const days = (switchOf(s, "autoRevert")?.data as { days?: RevertDayView[] } | undefined)?.days;
+    return days ? <AutoRevertDays days={days} /> : null;
+  },
+  dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
   judgesJev: (s) =>
     s.judges.jev.lastRunAt || s.judges.jev.lastError ? (

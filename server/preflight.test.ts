@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPATCH_CONFIG, type Plan } from "./dispatch.ts";
 import type { Ticket } from "./model.ts";
-import { confirmCodesOf, confirmReasonOf, preflightOf, preflightOps } from "./preflight.ts";
+import { confirmCodesOf, confirmReasonOf } from "./preflight.ts";
 import { fold, gateOf, humanOf, isHeld, type Op, preflightStatsOf, reasonStatsOf, recentFlightsOf, reservedOf, syncOps } from "./proposals.ts";
 
 const NOW = Date.parse("2026-09-27T12:00:00.000Z");
@@ -16,24 +16,10 @@ const mark = (id: string, minAgo: number, verdict: "agree" | "disagree", reasonC
 });
 const one = (ops: Op[]) => fold(ops)[0];
 
-test("PREFLIGHT 대상: FLIGHT 칩 disagree만. wrong-aircraft·other·칩 없음·agree는 대기열에 남는다", () => {
-  const at = iso(0);
-  const op = preflightOf(one([create("D-0024", "VOC-125", "d", 60), mark("D-0024", 50, "disagree", ["wrong-aircraft", "needs-human"])]), at);
-  assert.deepEqual(op, { op: "preflight", id: "D-0024", at, by: "CROSSCHECK", model: "claude-ocx-opencode-go--muse-spark-1.3-contributor", codes: ["needs-human"], reason: "사용자 지시를 기다림" });
-  for (const codes of [["wrong-aircraft"], ["other"], undefined]) {
-    assert.equal(preflightOf(one([create("D-1", "VOC-1", "d", 60), mark("D-1", 50, "disagree", codes)]), at), null, String(codes));
-  }
-  assert.equal(preflightOf(one([create("D-1", "VOC-1", "d", 60), mark("D-1", 50, "agree")]), at), null);
-  assert.equal(preflightOf(one([create("D-1", "VOC-1", "d", 60)]), at), null); // CROSSCHECK 대기
-  // 이미 OCC HOLD거나, 판정했거나, 대기열로 돌린 제안은 다시 잡지 않는다
-  assert.equal(preflightOf(one([create("D-1", "VOC-1", "d", 60), mark("D-1", 50, "disagree", ["needs-human"]), { op: "hold", id: "D-1", at: iso(45), blockedBy: [] }]), at), null);
-  assert.equal(preflightOf(one([create("D-1", "VOC-1", "d", 60), mark("D-1", 50, "disagree", ["needs-human"]), { op: "verdict", id: "D-1", at: iso(45), verdict: "agree", reason: null }]), at), null);
-});
-
-test("PREFLIGHT HOLD: HELD로 가고 FLIGHT를 잡아 두며, 판정 없이 누가·칩·이유가 남는다", () => {
+// CROSSCHECK 은퇴(ATC-371): 서버는 더 이상 mark로 PREFLIGHT HOLD를 걸지 않는다. 옛 preflight 줄은 기록으로 읽힌다
+test("PREFLIGHT HOLD(옛 기록): HELD로 가고 FLIGHT를 잡아 두며, 판정 없이 누가·칩·이유가 남는다", () => {
   const ops: Op[] = [create("D-0024", "VOC-125", "d", 60), mark("D-0024", 50, "disagree", ["needs-human"])];
-  const pre = preflightOps(fold(ops), iso(40));
-  assert.equal(pre.length, 1);
+  const pre: Op[] = [{ op: "preflight", id: "D-0024", at: iso(40), by: "CROSSCHECK", model: "claude-ocx-opencode-go--muse-spark-1.3-contributor", codes: ["needs-human"], reason: "사용자 지시를 기다림" }];
   const p = one([...ops, ...pre]);
   assert.equal(p.status, "proposed");
   assert.equal(isHeld(p), true);
@@ -44,7 +30,6 @@ test("PREFLIGHT HOLD: HELD로 가고 FLIGHT를 잡아 두며, 판정 없이 누�
   assert.equal(reservedOf([p], NOW).aircraft.has("d"), false); // AIRCRAFT는 풀어 둔다
   assert.equal(humanOf(p), null);
   assert.equal(gateOf([p]).decided, 0);
-  assert.deepEqual(preflightOps([p], iso(0)), []); // 두 번 걸지 않는다
 });
 
 test("대기열로(requeue): 같은 제안이 SUPERVISOR 대기열로 돌아오고, 다시 HOLD되지 않으며, 24시간은 돌린 때부터", () => {
@@ -59,7 +44,6 @@ test("대기열로(requeue): 같은 제안이 SUPERVISOR 대기열로 돌아오�
   assert.equal(p.preflight, undefined);
   assert.equal(p.requeuedAt, iso(10));
   assert.equal(p.firstHeldAt, iso(29 * 60)); // 준비율에는 HOLD된 제안으로 남는다
-  assert.deepEqual(preflightOps([p], iso(0)), []);
   // 만든 지 30시간이지만 돌린 지 10분: 만료하지 않는다
   const plan: Plan = {
     at: iso(0), assign: [{ kind: "ASSIGN", flight: "VOC-125", aircraft: "b", aircraftName: "TEAM_B", airport: "VCDO", score: 1, factors: [] }], release: [], hold: [], excluded: [], slots: [],

@@ -3,7 +3,7 @@
 import type { QueueItem, QueueKind } from "./supervisor-queue.ts";
 
 export type CardAction =
-  | { type: "inline"; op: "fleet-plan" | "update" | "proposal" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
+  | { type: "inline"; op: "fleet-plan" | "update" | "proposal" | "schedule" } // 이 화면의 기존 길을 부르는 버튼(SUPERVISOR의 결정)
   | { type: "link"; label: string; hash: string }; // 그 화면을 연다. 판정은 거기서 한다
 
 export type CardView =
@@ -30,7 +30,16 @@ export function proposalAskOf(id: string, ask: "approve" | "reject", card: Pick<
   return `${id}를 승인하면 DISPATCH가 그 AIRCRAFT에게 FLIGHT PLAN을 보냅니다.`;
 }
 
-// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인), UPDATE, DISPATCH 카드(승인·거절, ATC-377)뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
+// SCHEDULE 초안(ATC-378)을 승인·거절하면 무슨 일이 일어나는지 한 문장. TARGET·ROUTE는 적용하는 길이 아직 없어 그림자 판정(동의·거절)만 기록한다
+export const NETWORK_KINDS: ReadonlySet<string> = new Set(["TARGET", "ROUTE"]);
+export function scheduleAskOf(id: string, ask: "approve" | "reject", kind: string): string {
+  if (NETWORK_KINDS.has(kind)) return ask === "approve" ? `${id}(${kind})에 동의로 기록합니다. 적용하는 길이 아직 없어 Linear나 FLEET에는 아무것도 쓰지 않습니다.` : `${id}(${kind})를 거절로 기록합니다. 아무것도 쓰지 않습니다.`;
+  if (ask === "reject") return `${id}를 거절합니다. 아무것도 Linear에 쓰지 않습니다.`;
+  if (kind === "CLOSE") return `${id}를 승인하면 이 FLIGHT를 닫아도 된다고 기록합니다. 이슈 상태는 OCC가 바꾸지 않으니, Linear에서 직접 Done으로 바꿉니다.`;
+  return `${id}를 승인하면 OCC가 다음 바퀴에 ${kind} 변경을 Linear에 씁니다.`;
+}
+
+// 큐 줄 하나의 버튼. 인라인은 FLEET PLAN(동의·거절·승인), UPDATE, DISPATCH 카드(승인·거절, ATC-377), SCHEDULE 초안(승인·거절, ATC-378)뿐. GO는 서버에 SUPERVISOR의 길이 없어 AIRCRAFT 링크다
 export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: readonly AirportRef[]): CardAction[] {
   switch (item.kind) {
     case "FLEET PLAN":
@@ -40,14 +49,14 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     case "PROPOSAL":
       return [{ type: "inline", op: "proposal" }]; // 자동 운항이 꺼져 있거나 RELEASE 카드: 큐 줄에서 승인·거절(ATC-377)
     case "SCHEDULE":
-      return [{ type: "link", label: "SCHEDULE에서 판정", hash: "#schedule" }];
+      return [{ type: "inline", op: "schedule" }]; // 큐 줄에서 승인·거절(ATC-378). SCHEDULE 탭은 없다
     case "HUMAN CHECK":
-      return [{ type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
+      return [{ type: "link", label: "HOME에서 확인", hash: "#home" }];
     case "RELAY": // key가 LANDING과 같은 `<저장소>#<번호>@…`
     case "LANDING": {
       const pr = prOfKey(item.key);
       const ap = pr && airports.find((a) => repoName(a.repo) === pr.repo || a.name === pr.repo);
-      return [pr && ap ? { type: "link", label: `PR #${pr.number} 열기`, hash: `#pr/${ap.code}/${pr.number}` } : { type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
+      return [pr && ap ? { type: "link", label: `PR #${pr.number} 열기`, hash: `#pr/${ap.code}/${pr.number}` } : { type: "link", label: "FLIGHTS에서 보기", hash: "#flights" }];
     }
     case "UNDELIVERED":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];

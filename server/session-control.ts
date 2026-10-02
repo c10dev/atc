@@ -18,6 +18,7 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
+import { type K3Declaration, type K3Launch, k3LaunchOf } from "./k3-allow.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { readJob, settleJob } from "./job-state.ts";
@@ -82,6 +83,7 @@ export interface LaunchInput {
   briefing: string;
   permissionMode?: unknown;
   model?: unknown;
+  settings?: string; // `--settings`로 줄 JSON(ATC-372): 서버가 발권 기록에서 만든 K3 FLIGHT의 autoMode.allow뿐. 요청 본문에서는 받지 않는다
 }
 
 export interface LaunchPlan {
@@ -117,7 +119,7 @@ export function launchPlanOf(input: LaunchInput, rows: AgentRow[], max = MAX_LAU
   if (!PERMISSION_MODES.includes(mode as PermissionMode)) throw new ControlError(`permission mode는 ${PERMISSION_MODES.join(" | ")}`, 400);
   const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : null;
   if (model && !/^[\w.:[\]-]+$/.test(model)) throw new ControlError(`모델 이름이 이상함: ${model}`, 400);
-  const args = ["--bg", "-n", reg, "--permission-mode", mode as string, ...(model ? ["--model", model] : []), input.briefing];
+  const args = ["--bg", "-n", reg, "--permission-mode", mode as string, ...(model ? ["--model", model] : []), ...(input.settings ? ["--settings", input.settings] : []), input.briefing];
   return { registration: reg, cwd: input.repo, permissionMode: mode as PermissionMode, model, args, account: account?.label ?? null, configDir: configDirOf(account) };
 }
 
@@ -162,12 +164,13 @@ export interface ControlSpec {
   prompt: string | null; // 첫 메시지
   flags: string[];
   launch: "bg" | null;
+  retired?: true; // 은퇴한 관제 세션(ATC-371 CROSSCHECK): 띄우지·되살리지·재시작하지 않는다. 남은 세션을 알아보고 멈추기만 한다
 }
 export const CONTROL_SESSIONS: readonly ControlSpec[] = [
   { name: "TOWER", dir: "controller", prompt: "/loop 3m /tick", flags: [], launch: "bg" },
   { name: "OCC", dir: "occ", prompt: "/loop 10m /tick", flags: [], launch: "bg" },
   { name: "MCC", dir: "mcc", prompt: "/loop 5m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
-  { name: "CROSSCHECK", dir: "crosscheck", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
+  { name: "CROSSCHECK", dir: "crosscheck", prompt: null, flags: [], launch: null, retired: true },
   { name: "REVIEW", dir: "review", prompt: "/loop 10m /tick", flags: ["--strict-mcp-config"], launch: "bg" },
   { name: "ENGINEERING", dir: null, prompt: null, flags: [], launch: null },
 ];
@@ -210,7 +213,7 @@ export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: st
 
 // LAUNCH를 막는 이유(순수). ENGINEERING은 배지만
 export function launchBlockOf(spec: ControlSpec): string | null {
-  return spec.launch === null ? "배지만 — 저장소 뿌리에서 연다" : null;
+  return spec.retired ? "은퇴 — 더 띄우지 않는다(ATC-371)" : spec.launch === null ? "배지만 — 저장소 뿌리에서 연다" : null;
 }
 
 // PATH에서 실행 파일을 찾는다(없으면 null)
@@ -470,12 +473,14 @@ export interface ControlResult {
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
 // proposal: launch 카드로 띄웠으면 그 제안 id(기록에 남는다)
-export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; lastModel?: string | null; account?: unknown; lastAccount?: string | null; promptOf?: (briefing: string) => string; flight?: string }, by: string, proposal?: string): Promise<ControlResult> {
+export async function launchAircraft(s: Snapshot, registration: string, options: { permissionMode?: unknown; model?: unknown; lastModel?: string | null; account?: unknown; lastAccount?: string | null; promptOf?: (briefing: string) => string; flight?: string }, by: string, proposal?: string, k3Of?: (repo: string) => K3Launch | null): Promise<ControlResult> {
+  // k3Of(ATC-372)는 옵션이 아니라 따로 받는다: 옵션은 LAUNCH 라우트의 본문이 펼쳐져 들어오므로, 본문이 allow 항목을 실을 수 없어야 한다. repo는 base 저장소(STAND가 생길 곳)
   const reg = regKey(registration);
   const cfg = loadDispatchConfig();
   const a = fleetView(s, loadFleet(), cfg.teamPattern).find((x) => x.registration === reg);
   if (!a) return { ok: false, status: 404, error: `FLEET에 없음: ${reg}` };
   const repo = s.airports.find((x) => x.code === a.base)?.repo ?? null;
+  const k3 = repo ? (k3Of?.(repo) ?? null) : null;
   const t = new Date().toISOString();
   try {
     // 관제 세션은 팀 세션 상한(ATC_MAX_LAUNCHED)에 세지 않는다
@@ -490,12 +495,12 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
     // 모델(ATC-279): 양식에 적은 것 > AIRCRAFT > AIRPORT > 기본 > 마지막 LAUNCH(lastModel) > 없음. 모든 AIRCRAFT LAUNCH 길이 여기를 지난다
     const picked = launchModelOf({ registration: reg, airport: a.base ?? null, explicit: typeof options.model === "string" ? options.model : null, last: options.lastModel ?? null, setting: loadFleet().launchModel });
-    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: ((b) => (options.promptOf ? options.promptOf(b) : b))(crewBriefing(a, repo, cfg.mode, true)), permissionMode: options.permissionMode, model: picked.model }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
+    const plan = launchPlanOf({ registration: reg, retired: !!a.retired, repo, briefing: ((b) => (options.promptOf ? options.promptOf(b) : b))(crewBriefing(a, repo, cfg.mode, true)), permissionMode: options.permissionMode, model: picked.model, ...(k3 ? { settings: k3.settings } : {}) }, rows, MAX_LAUNCHED, account, (row) => idleMinOfRow(row, s.sessions), Object.keys(loadFleet().aircraft));
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, modelFrom: plan.model ? picked.from : "none", ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}), ...(options.flight ? { flight: options.flight } : {}) });
+    record({ t, kind: "fleet", op: "launch", aircraft: reg, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model ?? undefined, modelFrom: plan.model ? picked.from : "none", ...(plan.account ? { account: plan.account } : {}), error, ...(proposal ? { proposal } : {}), ...(options.flight || k3 ? { flight: k3?.flight ?? options.flight } : {}), ...(k3 ? { k3: { release: k3.release, stand: k3.stand, entries: k3.entries } } : {}) });
     return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: plan.permissionMode, model: plan.model, modelFrom: plan.model ? picked.from : "none", account: plan.account } : { ok, status: 502, error };
   } catch (e) {
     // 띄우기 전에 거절된 것(상한, 이미 떠 있음, RETIRED …)도 launch 카드로 온 것이면 남긴다
@@ -551,7 +556,7 @@ export async function launchControl(name: string, by: string, requestedAccount?:
 export async function stopControl(name: string, by: string): Promise<ControlResult> {
   const spec = controlSpecOf(name);
   if (!spec) return { ok: false, status: 404, error: `관제 세션이 아님: ${name}` };
-  if (spec.launch === null) return { ok: false, status: 409, error: `${spec.name}: 배지만 — 그 창에서 닫는다` };
+  if (spec.launch === null && !spec.retired) return { ok: false, status: 409, error: `${spec.name}: 배지만 — 그 창에서 닫는다` };
   const t = new Date().toISOString();
   try {
     const tmux = tmuxBin() ?? "tmux";
@@ -626,7 +631,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       return c.json({
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
-        sessions: CONTROL_SESSIONS.map((spec) => ({
+        sessions: CONTROL_SESSIONS.filter((spec) => !spec.retired || controlRowsOf(spec, rows, controlDirOf(spec)).length > 0).map((spec) => ({
           name: spec.name,
           dir: spec.dir,
           prompt: spec.prompt,
@@ -780,7 +785,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
         return c.json({ error: `${flight}의 지시서를 읽지 못함 — ${String((e as Error).message ?? e)}. 띄우지 않았다` }, 502);
       }
     }
-    const { promptOf: _p, flight: _f, ...opts } = body; // 본문의 promptOf·flight는 옵션으로 넘기지 않는다(함수는 서버만 만든다)
+    const { promptOf: _p, flight: _f, settings: _s, k3: _k, ...opts } = body; // 본문의 promptOf·flight·settings·k3는 옵션으로 넘기지 않는다(함수와 allow 항목은 서버만 만든다)
     const r = await launchAircraft(await getSnapshot(), reg, { ...opts, ...(withFlight ?? {}) }, "SUPERVISOR");
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
     return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, modelFrom: r.modelFrom, account: r.account });
@@ -799,12 +804,16 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
 export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control">) {
   return {
     labeled: accountsLabeled(fleet),
-    rows: CONTROL_NAMES.map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
+    rows: CONTROL_NAMES.filter((name) => name !== "CROSSCHECK").map((name) => ({ name, label: fleet.control?.[name]?.account ?? null, account: controlAccountOf(fleet, name) })),
   };
 }
 
 // launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다, ATC-393에서 index.ts에서 옮김). by는 FLIGHT RECORDER에 남는 주체. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
-export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
+export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
   const a = s.absent?.find((x) => x.registration === reg);
-  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
+  // K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다
+  // STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다
+  const t = s.tickets.find((x) => x.key === flight);
+  const k3 = t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
 };

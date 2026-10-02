@@ -204,6 +204,16 @@ SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상
 - **한계를 그대로 적는다.** 이것은 호스트에서 요청을 위조하는 세션을 막는다. root가 될 수 있는 세션(호스트 사용자가 `docker`·`sudo` 그룹이다: `docker`는 `/etc`를 마운트할 수 있고 `sudo`는 지금 비밀번호가 필요하다), 서비스 코드나 유닛 파일을 고치고 재시작을 기다리는 세션, SUPERVISOR의 Mac을 읽는 세션은 막지 못한다. 이것들은 이 검사가 아니라 착륙 규칙(K3)의 일이다. 비밀은 SSH 터널과 loopback에서 평문으로 지나가는데, 같은 사용자의 프로세스는 추가 권한 없이 그것을 엿볼 수 없다.
 - **바꾸지 않은 것.** `atcctl`과 guard: 허용 목록의 라우트로 에이전트가 하는 일은 그대로 된다. 기록 형식은 바꾸지 않았다.
 
+### EFFECT CHECK 구현 (ATC-402)
+
+원칙 7은 배포한 FLIGHT가 바꾸려던 것을 바꿨는지 묻는다. 작업 지시서에 `## Measure` 절이 생겼다([rules.ko.md](rules.ko.md) "작업 지시서"): `metric: <종류>:<이름>`, `direction: down|up`, `window: <n>d`(1d~30d), 또는 `None`. 종류는 atc가 이미 기록하는 것이다: `leak:<종류>`·`leak-minutes:<종류>`(`leaks.jsonl`), `misfire:dispatch`, `alert:<alertKind>`(FLIGHT RECORDER의 `alert.raised`), `clearance:<TYPE>`.
+
+- **평결.** `server/effect-check-run.ts`가 10분마다, 지난 37일 안에 배포됐고 아직 평결이 없는 FLIGHT를 본다(OOOI의 IN, 배포가 없는 AIRPORT는 ON, 되돌려진 ON은 건너뛴다). 본문은 Linear에서 읽고(주기마다 15건까지, 아직 안 읽은 것과 최근 배포를 먼저, `None`을 포함한 해석은 하루 캐시라 후보가 얼마든 정해진 주기 수 안에 모두 본다. 배포 뒤 하루가 안 지난 FLIGHT는 읽지 않는다. metric 이름은 글자·숫자·공백·`-`·`_`·`:` 32자까지라 본문 글이 REVIEW 프롬프트에 들어가지 못한다), `배포 + 창`이 지나면 배포 앞 창의 수와 뒤 같은 창의 수를 견준다(`server/effect-check.ts`의 `judge`): `improved`(적은 방향으로 20% 이상, 하나 이상 움직임), `worse`(반대로 그만큼), `not improved`, `too little data`(그 기록이 앞 창 전체를 덮지 않거나, `down`은 앞 창에 3건 미만, `up`은 앞뒤 합쳐 3건 미만). `None`이나 절이 없거나 모양이 틀리면 평결이 없다.
+- **기록.** `effect-verdicts.jsonl`, 추가만: FLIGHT마다 `verdict` 한 줄(처음 것이 이긴다. 측정, 두 수, 이유, 발권 id가 든다)과 `mark` 줄. `releaseIdOf`(`server/release.ts`)는 `<FLIGHT>@<발권 시각>`이고, leak 기록이 붙잡은 FLIGHT의 발권 id를 싣는다(`release`, 전에는 늘 null). 그래서 leak이 그것을 없애려던 FLIGHT에 이어진다.
+- **어디에 보이나.** FLIGHT 서랍의 `EFFECT CHECK` 줄(평결, 두 수, **틀림** 버튼), HOME의 `EFFECT` 구역(틀렸다고 표시하지 않은 `not improved`·`worse`, 오작동 수 포함). `GET /api/effect[?flight=KEY]`는 `{ on, verdicts, misfire, open, skipped }`(`skipped`는 지난 주기가 아직 못 읽은 본문 수). DUTY REVIEW 프롬프트가 열린 나쁜 평결을 싣는다(`openEffectLines`). 새 트리거는 없다.
+- **스위치와 misfire.** `effect-check.json`의 `on`(기본 on)은 설정 → OPERATIONS → EFFECT CHECK에서만 바꾼다(SUPERVISOR 자격이 있는 요청, `atcctl` 명령 없음). **misfire**는 SUPERVISOR가 틀렸다고 표시한 평결이다(`POST /api/effect/mark {flight, wrong}`, 다른 쓰기처럼 SUPERVISOR 전용): `misfire { verdicts, wrong, share }`.
+- **형식**(추가만): `effect-verdicts.jsonl`, `effect-check.json`, `Leak.release`, `ServerSettings.effectCheck`.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C15, C16이고(C14는 대체됨), C9와 C18은 K1–K3 승인을 내보낼 때로 옮기며, 나머지는 이들을 받친다.
@@ -230,6 +240,22 @@ SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상
 | C18 | **내보내기 기록.** 내보내기마다 FLIGHT, 선언의 해시, 통로를 기록한다: atc 화면의 클릭(Origin 검사), DUTY 채팅의 SUPERVISOR 메시지(채팅을 나르는 서버가 확인), 다른 세션에 한 말(그 세션이 말과 시각을 적어 증언). DISPATCH는 내보낸 FLIGHT만 받는다. | SUPERVISOR 없이 시작한 일, 거짓 증언 | 내보낼 때 | 내보내지 않은 FLIGHT를 거절 | 통로별 내보내기, 세션별 증언된 내보내기(골라 확인용) |
 | C19 | **데이터 울타리.** 모든 리뷰어·관제 패킷은 제목, 본문, 이슈 글, 댓글을 데이터로 감싼다. DUTY 패킷은 이미 그렇다. 리뷰 기준은 고칠 수 있는 글에서 가져오지 않는다. | 글 속 지시가 리뷰어를 움직임(원칙 6) | 패킷 안에서 | 감싼다 | 울타리 없는 패킷(목표 0) |
 | C20 | **migration 리허설**(**Decided**, [ATC-368](https://linear.app/vocado/issue/ATC-368)). 호스팅 DB가 있는 AIRPORT마다 라이브 스키마와 최근 데이터 스냅숏을 담은 시험 DB를 둔다. 선언 floor(C9)를 통과하면 atc는 거기에 migration을 적용하고 앱의 smoke 시험을 돌린다. 그다음에야 라이브 DB의 복원 지점을 잡고, 적용하고, 버전을 기록하고, 적용 뒤 검사를 돌린다. 어디서든 실패하면 라이브는 그대로 두고 FLIGHT는 새 화살로 돌아온다. 변경은 더하기 먼저, 파괴는 나중의 migration으로 나눈다. | 데이터에 따른 실패(기존 데이터 위의 제약, 긴 잠금) | 라이브 적용마다 그 전에 | 리허설하고, 적용하고, 검사하고, 복원 | 통과·실패한 리허설, 적용 뒤 실패 |
+
+### C4 구현 결과 (ATC-351, ATC-394로 처음부터 켬)
+
+자동 revert 레인(통제 C4, WO-10을 앞당김)이 **처음부터 켜져 있다(live first, ATC-394): shadow는 없다.** 스위치 하나 `autoRevert`가 `on`(기본: 파일이 없거나 모르는 값이거나 예전 `shadow`여도 `on`) 또는 `off`이고, 파일에 정확히 `off`가 적혀야 레인이 멈춘다. 설정 창(LANDING 탭의 "AUTO REVERT", 다시 켤 때 확인 단계)에서만, `fromThisApp` 설정 길(`PUT /api/settings {autoRevert}`)로 바꾼다. `atcctl` 명령은 없다. 규칙은 순수 함수(`server/auto-revert.ts`의 `revertDecisionOf`, 시험 있음)이고, GitHub을 읽고 쓰는 주기는 `server/auto-revert-run.ts`다. 상태는 `auto-revert.json`(스위치)과 추가만 하는 `auto-revert.jsonl`이다. 둘 다 새 파일이라 기존 형식은 바뀌지 않는다.
+
+- **flake 방어(ATC-394).** revert하거나 lane을 멈추기 전에, 같은 `main` head에서 실패한 GitHub Actions run을 한 번 다시 돌린다(`rerun-failed-jobs`, `rerun` 줄에 run id와 시도 번호). 다시 돌려 초록이면 flake다: `flake` 줄을 쓰고 아무것도 되돌리지 않으며, 그 head는 breaker에 세지 않는다(다시 빨간 head만 `red` 줄을 쓴다). 다시 빨갛고 **또한** 되돌릴 PR 자신의 head 커밋이 머지 전에 초록이었으면(되돌리기 직전에 다시 읽는다) 그 머지가 `main`을 깬 것이라 revert PR을 연다. 실패한 체크가 Actions run이 아니라 다시 돌릴 수 없으면 짐작하지 않고 `hold` 줄을 쓴다. 다시 돌린 것이 45분 안에 끝나지 않거나 PR 자신의 head가 초록이 아니었을 때도 `hold`다.
+- **시작.** GitHub을 읽을 때마다(90초) AUTOLAND가 맡은 AIRPORT와 MCC AIRPORT마다, 기본 브랜치 head가 빨가면. head에서 CI가 초록이던 마지막 커밋까지 거슬러 올라가(최대 15커밋, 커밋마다 읽기 전용 상태 호출 하나) 그 뒤에 머지된 것을 본다.
+- **어느 머지.** `autoland.jsonl`(`merge` ok)이나 `mcc.jsonl`(`land` ok)에 기록이 있고 GitHub이 그 PR의 머지 커밋이라고 확인한 머지만. 가장 새 머지부터 되돌린다. 그 revert PR이 착륙한 뒤에도 head가 빨가면 다음 주기에 다음으로 새 머지를 되돌린다(revert 머지는 건너뛰고 되돌리지 않는다). 마지막 초록 뒤에 lander 머지가 아닌 커밋(사람의 머지, 직접 push, 읽지 못한 것)이 하나라도 있으면 짐작하지 않고 `hold` 줄을 쓴다.
+- **K1·K3.** 되돌릴 PR이 마이그레이션·SQL 경로(`migrationPathOf`)나 착륙 등급이 `user`인 경로(guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/` …)를 고쳤거나 파일을 읽지 못했으면 `hold` 줄을 쓰고 거기서 멈춘다. 더 오래된 머지로 건너뛰지 않는다.
+- **revert PR.** GraphQL `revertPullRequest`(Draft 아님, force-push·브랜치 삭제·admin 우회 없음). 제목 `Revert PR #n: main went red (auto-revert)`(ATC key가 없어 이슈를 닫지 않는다), 본문에 실패한 체크를 적는다. AIRPORT마다 하나만. 다른 PR과 같은 리뷰·CI를 거친다. MCC AIRPORT의 main 깨짐 GROUND STOP과 AUTOLAND의 걸린 GROUND STOP이 막지 않는 유일한 PR이다(그것이 나가는 길이라서). 나머지 조건(리뷰, CI, base, 등급, HOLD)은 그대로다. GitHub의 revert 브랜치 이름 `revert-<n>-...`이고 `auto-revert.jsonl`에 줄이 있어야 한다. AUTOLAND는 FLIGHT 없이도 받는다.
+- **풀기.** ATFM의 main 깨짐 stop은 head가 다시 초록이면 끝난다. AUTOLAND의 걸린 stop은 atc가 revert PR을 연 head에서 걸렸고 다음 head가 초록일 때만 atc가 푼다(기록 `groundstop-clear`, detail `auto-revert`). SUPERVISOR나 다른 이유로 건 stop은 그대로 둔다.
+- **breaker.** 1시간 안에 새 빨간 head가 둘째로 나오면 `stop` 줄을 쓴다. atc 자신의 revert 머지가 빨간 것은 세지 않아서 여러 머지를 거치는 연쇄는 한 사고다. `stop`은 AUTOLAND `merge`를 `update`로, MCC 착륙을 끄고(`land`는 `shadow`, `land+rts`는 `rts`), SUPERVISOR 알림 하나(`revert|stop|<airport>|<at>`)를 올리고, SUPERVISOR가 `autoRevert` 스위치를 다시 고를 때까지 되돌리지 않는다. AUTOLAND·MCC를 다시 올리는 것은 SUPERVISOR의 스위치로 남는다.
+- **알리기.** SUPERVISOR가 아니라 DUTY에게: `hold`·`revert-opened`·`revert-failed`·`revert-landed`·`stop` 줄이 DUTY brief(`AUTO-REVERT` 구역, 최근 24시간)에 들어간다. 되돌린 PR의 FLIGHT는 마지막으로 그 일을 한 AIRCRAFT에게 FIX relay(`relays.jsonl`, TOWER가 보낸다)를 받고, 실패한 체크가 적힌다. 담당을 못 찾으면 그렇다고 `fix` 줄을 쓰고, 이슈를 되돌리는 것은 DUTY가 한다(atc는 Linear에 쓰지 않는다).
+- **날짜별로 센다**(설정 창 AUTO REVERT 줄 아래, 최근 7일 UTC): 연 revert, 잡은 flake(빨갛다가 다시 돌리니 초록), misfire, `hold`·`stop` 줄. **misfire**는 되돌린 PR이 revert가 착륙한 뒤 24시간 안에 그대로 다시 머지된 것이다: atc의 revert PR을 되돌린 PR(GitHub 브랜치 이름 `revert-<우리 revert PR>-…`)이거나, 파일과 바뀐 뒤 blob 해시가 원래 PR과 같은 PR이다. `misfire` 줄을 한 번 쓰고 DUTY brief가 보인다.
+- **끄는 스위치.** SUPERVISOR의 `off`는 그대로 있다: 끄면 이 레인은 아무것도 읽지도 쓰지도 않는다.
+- 만들지 않은 것: WO-10의 앞 절반(SUPERVISOR가 볼 Draft revert 제안). 레인은 바로 움직이되 flake 재실행, PR head 초록 확인, K1·K3 hold, breaker가 지킨다. 우연히 통과한 재실행이 진짜 깨짐을 가리는 경우는 재실행이 못 잡는다: 그 그물은 breaker다.
 
 ## 6. 남는 세 게이트를 내보낼 때 선언으로
 

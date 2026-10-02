@@ -642,6 +642,37 @@ DISPATCH가 자기 카드를 스스로 승인하므로(ATC-367) 판정 화면이
 
 `#dispatch`는 HOME을 연다.
 
+## K3 발권이 classifier에 닿는 길, 만든 것 (ATC-372)
+
+K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정하고, LAUNCH 플래그를 바꾼다([autonomy.md](autonomy.md) C9). 항목은 서버만, 발권 기록에서 만든다.
+
+- **선언.** 이슈 `## K effects` 절에 효과마다 한 줄: `K3[<라벨>]: <바꾸는 통제> | files: <경로>, <경로>`. 라벨은 `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review`(classifier의 soft_deny 라벨). 경로는 저장소 기준 상대 경로이고 글롭과 `..`은 없다. 맞지 않는 `K3` 줄은 무시한다(항목 없음): 그 FLIGHT는 classifier 아래에 남는다.
+- **항목을 만드는 때.** FLIGHT의 발권이 `screen`이나 `duty-chat` 채널이고 해시가 지금 이슈 본문과 같을 때. `attested` 발권은 항목을 만들지 않는다: agent가 증언을 쓸 수 있다(`server/k3-allow.ts`의 `k3LaunchOf`).
+- **LAUNCH가 넘기는 것.** `--settings '{"autoMode":{"allow":["$defaults", <항목>…]}}'`. 선언마다 항목 하나이고 라벨, 통제, 파일, STAND(`<repo>/.claude/worktrees/<flight>-*`), 발권 id(`<FLIGHT>@<해시>`)를 적고 "Code only; nothing is executed against production during the FLIGHT"를 말한다. `$defaults`는 항목이 아니다: 없으면 `allow`가 classifier의 기본 allow 목록을 통째로 대신한다. 그 밖에는 더하지 않는다: ACCOUNT settings의 정적 allow, `bypassPermissions`, 정책 훅 모두 없다.
+- **새 AIRCRAFT.** 돌고 있는 세션은 새 `--settings`를 받지 못하므로, 플래너는 이런 FLIGHT를 그 FLIGHT를 위해 띄우는 AIRCRAFT(launch 카드)에만 짝짓는다.
+- **서버만.** `launchAircraft`는 항목을 옵션이 아니라 서버가 만든 별도 인자로 받고, LAUNCH 라우트는 요청 본문의 `settings`·`k3`를 버린다. LAUNCH를 시작하는 라우트는 SUPERVISOR 라우트 인증(ATC-373)이 지킨다.
+- **기록.** FLIGHT RECORDER의 `launch` 줄에 `flight`와 `k3: { release, stand, entries }`가 남는다.
+
+## 착륙만 기다리는 PR은 AIRCRAFT의 슬롯을 쓰지 않는다 (ATC-387)
+
+FLIGHT가 착륙만 기다리는 동안 AIRCRAFT가 놀지 않는다. 전에는 PR이 열린 진행 중 FLIGHT가 머지될 때까지 그 AIRCRAFT를 "멈춘 팀"으로 붙들었다. 이제 슬롯을 쓰지 않는다.
+
+- **"착륙만 기다림"**(`server/dispatch.ts`의 `waitsToLandOf`): 그 FLIGHT의 열린 PR이 모두 Draft가 아니고, 그 FLIGHT로 열린 FIX·GO AROUND CLEARANCE가 없고, AIRCRAFT가 고칠 막힘이 없다. 허용하는 막힘은 없음(CLEARED), `checks-pending`, `no-review`, `review-stale`, `stacked`, `merge-unknown`(`WAITING_BLOCKS`)뿐이다. 그 밖의 막힘(`checks-failed`, `review-findings`, `changes-requested`, `dirty`, `behind`, `blocked`, `no-checks`, `los`, `draft`, 나중에 생기는 코드)은 할 일이 있다는 뜻이라 슬롯을 계속 쓴다. PR이 없는 FLIGHT도 슬롯을 쓴다.
+- **효과**: 기다리는 FLIGHT는 세션이 있는 AIRCRAFT와 ABSENT(`tail:`) AIRCRAFT 모두에서 `holding`(`perTeam` 부하), 열린 FLIGHT 수, "멈춘 팀" 사유에서 빠진다. `AircraftState.waiting`이 그 목록이고 `reason`은 `착륙 대기 PR n건 … 다음 FLIGHT는 새 STAND`로 읽힌다. 일하는 FLIGHT(PR 아직 없음, 실패한 체크, 리뷰 지적, FIX)는 그대로 슬롯을 써서 한 AIRCRAFT가 한 번에 한 FLIGHT를 하는 것은 같다.
+- **상한**: `dispatch.json`의 `slots.waitingPr`(기본 2). 기다리는 PR을 그만큼 쥔 AIRCRAFT는 하나가 착륙하기 전까지 STAND가 필요한 FLIGHT를 받지 않는다(STAND 없는 SURVEY·CHECK는 받는다).
+- **새 STAND**: AIRCRAFT는 다음 FLIGHT를 새 STAND에서 시작하고 앞 STAND를 남긴다. ASSIGN 카드에 `waitingFlights`가 들어가고, FLIGHT PLAN에 한 줄이 붙는다: 앞 FLIGHT는 자기 STAND에서 착륙만 기다린다, 이 FLIGHT는 새 STAND에서 시작해라, 앞 PR의 FIX·GO AROUND는 앞 STAND에서 처리해라.
+- **FIX·GO AROUND는 그대로 닿는다**: TOWER는 PR의 STAND를 점유(claim)한 세션에게 보낸다. 점유는 `ATC_CLAIM_TTL_MIN`(180분)이 지나면 낡는데, `keptStandClaims`(`server/snapshot.ts`)가 열린 PR이 있는 STAND에서 살아 있는 세션의 낡은 점유를 이어 둔다(STAND마다 가장 최근에 건드린 세션 하나, 지금 다른 세션이 쥔 STAND는 건드리지 않는다). 충돌·알림·건강 계산이 끝난 뒤에 더해서 홀더 조회만 본다. CLEARANCE에는 앞 STAND가 실려 AIRCRAFT가 거기서 처리한다.
+- **측정**: FIX·GO AROUND CLEARANCE는 낼 때 `elsewhere`를 남긴다: 그 세션이 다른 STAND에서 쥔 진행 중 FLIGHT, 없으면 `null`. METRICS → OPERATIONS의 `FIX·GO AROUND READBACK` 타일이 다른 FLIGHT를 하던 AIRCRAFT와 아닌 AIRCRAFT의 READBACK 중앙값을 나눠 보인다(`clearances.fixReadback`). 필드가 없는 옛 CLEARANCE는 어느 쪽에도 넣지 않는다.
+- **형식**(추가만): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
+
+## CROSSCHECK 은퇴, 만든 것 (ATC-371)
+
+K3: 관제 세션 목록을 바꾸고 mark를 기다리던 승인 규칙을 푼다([autonomy.md](autonomy.md) D23, C14). ATC-367과 ATC-370 뒤에 들어가므로 자동 승인이 멈추지 않는다.
+
+- **세션 없음.** `CONTROL_SESSIONS`가 CROSSCHECK를 `retired`로 둔다: 띄우지 않고, 살려 두지(CONTROL BULK) 않고, 재시작하지(기본 CAP·auto 항목 없음) 않고, FLEET의 관제 목록에도 줄이 없다. 아직 떠 있는 CROSSCHECK 세션은 다음 CONTROL RECYCLE 주기에 서버가 한 번 멈춘다(`retired-stop`, 모드와 상관없이, SUPERVISOR 단계 없음). STOP은 그 세션에 여전히 된다.
+- **mark를 기다리는 규칙 없음.** `auto-approve.ts`에서 `no-crosscheck`·`disagree` 건너뛰기를 뺐다(DISPATCH ASSIGN·launch·SCHEDULE. blind, 주의, HELD, FUEL hold, 상한은 그대로). ATFM A7은 없애고 S3는 절 인용 검사만 남긴다(`server/atfm.ts`). ATFM 켜기 점검의 "CROSSCHECK 일치" 두 줄도 뺐다. 서버는 disagree mark로 PREFLIGHT HOLD를 걸지 않고, `POST /api/dispatch/proposals/:id/crosscheck`와 `POST /api/schedule/ops/:id/crosscheck`는 410으로 답한다. brief의 `crosscheck` 블록은 늘 비어 있다.
+- **기록은 남는다.** 옛 mark, `preflight` op, 옛 카드의 칩, NETWORK GATES(은퇴로 표시), `gate.crosscheck`는 그대로 읽힌다. `crosscheck/` 폴더와 `controller/guard.mjs`는 건드리지 않았다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

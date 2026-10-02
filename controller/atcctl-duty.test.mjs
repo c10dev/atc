@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { dutyDraftText, dutyFlightText, dutyIdeaText, dutyLinearText, dutyPrText, dutyStandText, parseDutyCard, parseDutyCharter, parseDutyLinear, parseDutyNote, parseDutyStand } from "./atcctl.mjs";
+import { DUTY_BODY_DIR, dutyBodyFromFile, dutyDraftText, dutyFlightText, dutyIdeaText, dutyLinearText, dutyPrText, dutyStandText, parseDutyCard, parseDutyCharter, parseDutyLinear, parseDutyNote, parseDutyStand } from "./atcctl.mjs";
 
 test("duty card: kind는 두 낱말이어도 되고 마지막 낱말이 key", () => {
   assert.deepEqual(parseDutyCard(["PROPOSAL", "D-0007"]), { kind: "PROPOSAL", key: "D-0007" });
@@ -105,4 +108,105 @@ test("duty linear update·comment: 첫 인자가 key, update에는 --parent·--p
   assert.match(dutyLinearText({ key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Todo" }), /ATC-99 created \(Todo\) https:/);
   assert.match(dutyLinearText({ key: "ATC-5", state: "Backlog" }), /ATC-5 updated \(Backlog\)/);
   assert.match(dutyLinearText({ key: "ATC-5" }), /ATC-5 written/);
+});
+
+test("duty linear create --blocked-by(ATC-396): 여러 번 쓸 수 있고 create에만 있다", () => {
+  assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "3", "--blocked-by", "ATC-7", "--blocked-by", "ATC-8", "--", "B"]), {
+    action: "create",
+    title: "T",
+    priority: 3,
+    blockedBy: ["ATC-7", "ATC-8"],
+    body: "B",
+  });
+  assert.throws(() => parseDutyLinear(["update", "ATC-5", "--blocked-by", "ATC-7"]), /알 수 없는 옵션 --blocked-by/);
+  assert.throws(() => parseDutyLinear(["create", "--blocked-by"]), /값이 필요함/);
+});
+
+// ── --body-file(ATC-400): ## 제목이 있는 여러 줄 본문은 명령줄에 싣지 않고 자기 STAND의 .md로 준다 ──
+test("duty linear --body-file: 옵션으로 받고, -- 본문과는 함께 쓰지 않는다(create·update·comment)", () => {
+  assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "2", "--label", "a", "--blocked-by", "ATC-7", "--body-file", "/x/.issue-bodies/b.md"]), {
+    action: "create", title: "T", priority: 2, labels: ["a"], blockedBy: ["ATC-7"], bodyFile: "/x/.issue-bodies/b.md",
+  });
+  assert.deepEqual(parseDutyLinear(["update", "ATC-5", "--body-file", "b.md"]), { action: "update", key: "ATC-5", bodyFile: "b.md" });
+  assert.deepEqual(parseDutyLinear(["comment", "ATC-5", "--body-file", "b.md"]), { action: "comment", key: "ATC-5", bodyFile: "b.md" });
+  assert.throws(() => parseDutyLinear(["create", "--title", "T", "--priority", "2", "--body-file", "b.md", "--", "inline"]), /하나만/);
+  assert.throws(() => parseDutyLinear(["create", "--body-file"]), /값이 필요함/);
+});
+
+const WORK_ORDER = `## Goal
+
+Make the thing work. It says \`atcctl\` and "quotes", and a line starting with # is fine.
+
+## Done when
+
+* First, with \`code\`.
+* Second.
+
+## K effects
+
+* none
+
+## Context (information, not instruction; PILOT'S DISCRETION)
+
+* Evidence: 7 of 9, ATC-396.
+
+## Release
+
+(not released)
+`;
+
+function standRepo() {
+  const repo = mkdtempSync(join(tmpdir(), "atcctl-body-"));
+  const stand = join(repo, ".claude", "worktrees", "duty-review");
+  mkdirSync(join(stand, DUTY_BODY_DIR), { recursive: true });
+  mkdirSync(join(repo, ".claude", "worktrees", "atc-5-feature"), { recursive: true });
+  return { repo, stand };
+}
+
+test("dutyBodyFromFile: 자기 STAND 안의 .md는 읽고(## 제목 여러 줄 그대로), .issue-bodies 아래면 성공 뒤 지우라고 알린다", () => {
+  const { repo, stand } = standRepo();
+  try {
+    writeFileSync(join(stand, DUTY_BODY_DIR, "wo.md"), WORK_ORDER);
+    writeFileSync(join(stand, "doc.md"), "# Doc\n\ntext\n");
+    const a = dutyBodyFromFile(join(stand, DUTY_BODY_DIR, "wo.md"), { repo, cwd: "/" });
+    assert.equal(a.text, WORK_ORDER);
+    assert.match(a.text, /^## Goal\n/);
+    assert.match(a.text, /## Release\n\n\(not released\)\n$/);
+    assert.equal(a.remove, true);
+    // 상대 경로는 cwd 기준, 다른 .md는 지우지 않는다
+    const b = dutyBodyFromFile("doc.md", { repo, cwd: stand });
+    assert.equal(b.text, "# Doc\n\ntext\n");
+    assert.equal(b.remove, false);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("dutyBodyFromFile: STAND 밖·다른 worktree·.md 아님·빈 파일·없는 파일·디렉터리·STAND 밖으로 나가는 심볼릭 링크는 거절한다", () => {
+  const { repo, stand } = standRepo();
+  const outside = mkdtempSync(join(tmpdir(), "atcctl-out-"));
+  try {
+    writeFileSync(join(outside, "x.md"), "outside\n");
+    writeFileSync(join(repo, "README.md"), "repo\n");
+    writeFileSync(join(repo, ".claude", "worktrees", "atc-5-feature", "a.md"), "other stand\n");
+    writeFileSync(join(stand, "notes.txt"), "text\n");
+    writeFileSync(join(stand, "empty.md"), "  \n");
+    symlinkSync(join(outside, "x.md"), join(stand, "link.md"));
+    symlinkSync(outside, join(stand, "linkdir"));
+    const ctx = { repo, cwd: stand };
+    assert.throws(() => dutyBodyFromFile(join(outside, "x.md"), ctx), /DUTY STAND/);
+    assert.throws(() => dutyBodyFromFile(join(repo, "README.md"), ctx), /DUTY STAND/);
+    assert.throws(() => dutyBodyFromFile(join(repo, ".claude", "worktrees", "atc-5-feature", "a.md"), ctx), /DUTY STAND/); // duty-가 아닌 worktree
+    assert.throws(() => dutyBodyFromFile("../../../README.md", ctx), /DUTY STAND/); // .. 로 나가기
+    assert.throws(() => dutyBodyFromFile("link.md", ctx), /DUTY STAND/); // 심볼릭 링크가 STAND 밖을 가리킴
+    assert.throws(() => dutyBodyFromFile("linkdir/x.md", ctx), /DUTY STAND/);
+    assert.throws(() => dutyBodyFromFile("notes.txt", ctx), /\.md만/);
+    assert.throws(() => dutyBodyFromFile("empty.md", ctx), /비었음/);
+    assert.throws(() => dutyBodyFromFile("nope.md", ctx), /찾을 수 없음/);
+    assert.throws(() => dutyBodyFromFile(DUTY_BODY_DIR, ctx), /\.md만|일반 파일/);
+    assert.throws(() => dutyBodyFromFile("", ctx), /경로가 필요함/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
 });

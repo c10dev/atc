@@ -124,9 +124,43 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - **MISFIRE** and the single-lane landings block (ATC-386) are blocks in METRICS → OPERATIONS (`AutoMisfire`, `SingleLane`).
 - Routes of approve, reject, cancel, recall, fresh-start, mode and ATFM are unchanged; `GET /api/settings` gains `dispatchAuto.mode`.
 
+### Y4 as built (ATC-379)
+
+- `#flights` is a tab (`web/src/views/Flights.tsx`), placed after HOME. A row of views at the top picks the view; the address says which: `#flights` (LIST, default), `#flights/board`, `#flights/radar`, `#flights/radio`. FOLLOW, STRIPS, FIDS, RADAR and RADIO are gone from the tab row. Their old addresses (`#follow`, `#strips`, `#board`, `#radar`, `#radio`, and the older `#map`, `#teams`, `#tickets`) open the matching view (`web/src/legacy-hash.ts`, `canonicalHash`): `#follow` and `#strips` open LIST, `#board` BOARD, `#radar` RADAR, `#radio` the RADIO log.
+- **LIST** is FOLLOW's bundles and rows with its stage dots, now with the PR's landing badge (`CLEARED TO LAND`, `APPROACH` and the blocker count, STACKED) on the row of a FLIGHT that has an open PR. Under the list: the LANDING SEQUENCE (with the AUTOLAND lines and HOLD buttons) and a folded **AIRCRAFT STRIPS** block (the old STRIPS bays, GATE CLEANUP and progress bars, unchanged). **BOARD** is FIDS with its own list/board switch; **RADAR** is the old RADAR; **RADIO** is the old RADIO tab (filters, replay, listening).
+- **HUMAN CHECK** moved to HOME. The queue item (`HUMAN CHECK`, hash `#home`) draws the PR's evidence and the PASS / FAIL form inline (`HumanRow`) instead of a link to STRIPS.
+- **A FLIGHT's radio thread** shows in the FLIGHT drawer (`web/src/FlightRadio.tsx`): the calls whose `flight` is that FLIGHT and their replies for the last 7 days; the block is not drawn when there are none, and it links to `#flights/radio`.
+- **Server links** now point at the new places: the queue's HUMAN CHECK and UPDATE and UNDELIVERED items to `#home`, LANDING to `#flights`; alert links `#strips` / `#follow` to `#flights` and `#radar` to `#home`; FOLLOW chips `#flights` and `#flights/radio`; the menu bar's RTS and overflow lines to `#home`.
+- **The default tab is HOME** now (RADAR was the default and no longer exists); the SINCE LAST LOOK line (ATC-383) is at the top of HOME.
+- **Dropped:** the page titles `FOLLOW`, `STRIPS`, `FIDS`, `RADAR`, `RADIO` and the HUMAN CHECK block's `CHOICE·ACCOUNT·DEVICE PR만…` hint line. The strips are no longer a first-level view: they sit in the folded block of LIST.
+
+### Y3 as built (ATC-378)
+
+- SCHEDULE is no longer a tab. `#schedule` opens HOME (`web/src/legacy-hash.ts`); the queue item hash, the `pending|schedule` alert link and the DUTY card link now say `#home`. `Schedule.tsx`, its CSS, `ReadinessFold` and `scheduleLineParts` are deleted.
+- **LATE WAYPOINTS** are a HOME section, drawn only when there is one. **LINEAR에서 직접 DONE** (approved CLOSE drafts, which OCC never writes) is a second section, also only when there is one. Both come from the new read-only `GET /api/schedule/home` (`mode`, `slips`, `closeManual`), so HOME does not load the whole SCHEDULE brief.
+- **Drafts are approved in the QUEUE.** A SCHEDULE queue item has inline **승인** / **거절** (`ScheduleButtons`, one confirmation, reject takes a reason). In S2 it calls `/api/schedule/ops/:id/approve|reject`. TARGET and ROUTE have no apply path, so they get **동의** / **거절** and call `/verdict` (a recorded shadow verdict, nothing is written). The item carries OCC's reason line (`detail`, 240 characters) so the row says what it approves. The switch `SCHEDULE AUTO` only decides whether the server approves first; with it off, the drafts wait in the QUEUE.
+- The S1 ↔ S2 switch moved to the BRAKES row (`SCHEDULE SHADOW — S2로`), the same route.
+- NEW drafts stay RELEASE candidates (Y1); their link now says `HOME에서 승인`.
+- Removed with the tab: the S1 verdict screen, CROSSCHECK chips, judge-family chips, the CANDIDATES, IN PROGRESS and RECENT tables and the READINESS fold (S2 gate numbers, ROUTES WITHOUT WAYPOINTS). In S1 a draft is not a queue item (as before), so with SCHEDULE AUTO off and S1 on nobody judges it and it expires after 3 days. The server routes (`/verdict`, `/crosscheck`, `/brief`) are unchanged.
+
+### Y5 as built (ATC-380)
+
+- METRICS has five sub-views, chosen by the address (`web/src/views/Metrics.tsx`): `#metrics` OPERATIONS, `#metrics/leaks` LEAKS, `#metrics/misfire` MISFIRE, `#metrics/fuel` FUEL, `#metrics/network` NETWORK. NETWORK is no longer a tab; `#network` opens `#metrics/network` (`web/src/legacy-hash.ts`). `Network.tsx` is unchanged and rendered inside METRICS.
+- **MISFIRE** (`views/MetricsMisfire.tsx`, pure rows in `web/src/misfire-rows.ts`) takes the block that sat under OPERATIONS and covers every automatic lane for the last 7 days: one row per lane (switch, what the server did, MISFIRE, share; FLEET PLAN also shows failed applies), then the DISPATCH daily lines (`/api/dispatch/misfire`, unchanged) and the latest 10 SCHEDULE and FLEET PLAN misfires (`/api/autonomy/auto`, unchanged). No server change.
+- The single-lane landings block (ATC-386) stays in OPERATIONS.
+- Menu bar and server links to `#network`: none existed in `web/src`, `server` or `menubar`; only old bookmarks reach it.
+- With NETWORK gone from the tab row, the row is HOME, RELEASE, FLIGHTS, FLEET and METRICS (Y6 left it in until this step).
+
+### Y6 as built (ATC-381)
+
+- The tab row shows HOME, RELEASE, FLIGHTS, FLEET and METRICS, plus NETWORK until METRICS takes it in (Y5); SCHEDULE left with Y3. The default tab was already `#home` (ATC-379).
+- **AIRPORTS** is a settings category (`web/src/SettingsPanel.tsx`, `SETTINGS_INDEX`), rendering the unchanged register view, including the team-merge switch. `#airports` opens the settings window on it and leaves the current tab; the PR-alert links that pointed at `#airports` now point at `#flights` and `#home`.
+- **GLOBE** is a view mode (`web/src/GlobeMode.tsx`): a header button or `#globe` / `#globe/<AIRPORT>` opens a full-screen window over the current screen; Escape or the close button returns to it. `views/Globe.tsx` is unchanged.
+- **DOCS** is opened from a HELP menu in the header (`web/src/HelpMenu.tsx`); `#docs/<page>` still opens the Docs view, which stays a routed screen with no tab selected.
+
 ### Not built yet
 
-Everything (Y1–Y6).
+Nothing from section 4 (Y1–Y6 are built).
 
 ## 5. Risks
 

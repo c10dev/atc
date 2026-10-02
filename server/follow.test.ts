@@ -262,7 +262,7 @@ test("막힘: 승인 뒤 발송 없음 10분, 발송 뒤 READBACK 없음 10분",
   const r3 = followRowOf("ATC-3", base({ tickets, proposals: [sent] }));
   assert.equal(r3.stuck?.code, "sent-no-readback");
   assert.equal(r3.next?.kind, "look");
-  assert.equal(r3.next?.href, "#radio");
+  assert.equal(r3.next?.href, "#flights/radio");
 });
 
 test("막힘: 착륙(ON) 뒤 배포(IN) 없음 15분. MCC AIRPORT가 아닌 곳은 아니다", () => {
@@ -271,7 +271,7 @@ test("막힘: 착륙(ON) 뒤 배포(IN) 없음 15분. MCC AIRPORT가 아닌 곳�
   assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(16) })).stuck?.code, "landed-not-deployed");
   assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(14) })).stuck, null);
   assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(60), noDeploy: new Set(["ATC-1"]) })).stuck, null);
-  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(60) })).next?.href, "#strips");
+  assert.equal(followRowOf("ATC-1", base({ tickets, milestones: m(60) })).next?.href, "#flights");
 });
 
 test("막힘: FLIGHT FOLLOWING의 pr-not-cleared·landing-wait를 그대로 쓴다", () => {

@@ -26,6 +26,12 @@ test("launchPlanOf: 모델과 권한 모드를 고를 수 있다", () => {
   assert.equal(p.model, "opus");
 });
 
+test("launchPlanOf: settings는 --settings로 브리핑 앞에 실린다(ATC-372)", () => {
+  const settings = '{"autoMode":{"allow":["$defaults","x"]}}';
+  assert.deepEqual(launchPlanOf({ ...base, settings }, []).args, ["--bg", "-n", "TEAM_K", "--permission-mode", "auto", "--settings", settings, base.briefing]);
+  assert.ok(!launchPlanOf(base, []).args.includes("--settings"));
+});
+
 test("launchPlanOf: bypassPermissions와 이상한 모델 이름은 거절", () => {
   refused(() => launchPlanOf({ ...base, permissionMode: "bypassPermissions" }, []), 400, /permission mode/);
   refused(() => launchPlanOf({ ...base, model: "opus --dangerously-skip-permissions" }, []), 400, /모델/);
@@ -64,12 +70,12 @@ const MCC = controlSpecOf("mcc")!;
 const DIR = "/home/u/projects/atc/mcc";
 const row = (over: Partial<AgentRow>): AgentRow => ({ sessionId: "s", kind: "interactive", status: "idle", cwd: "/elsewhere", ...over });
 
-test("관제 세션 목록: TOWER·OCC·MCC·CROSSCHECK·REVIEW는 claude --bg(ocx·tmux LAUNCH는 끊음), ENGINEERING은 배지만", () => {
+test("관제 세션 목록: TOWER·OCC·MCC·REVIEW는 claude --bg(ocx·tmux LAUNCH는 끊음), CROSSCHECK는 은퇴(ATC-371), ENGINEERING은 배지만", () => {
   assert.deepEqual(CONTROL_SESSIONS.map((c) => `${c.name} ${c.launch} ${c.dir} ${c.prompt} ${c.flags.join(" ")}`.trim()), [
     "TOWER bg controller /loop 3m /tick",
     "OCC bg occ /loop 10m /tick",
     "MCC bg mcc /loop 5m /tick --strict-mcp-config",
-    "CROSSCHECK bg crosscheck /loop 10m /tick --strict-mcp-config",
+    "CROSSCHECK null crosscheck null",
     "REVIEW bg review /loop 10m /tick --strict-mcp-config",
     "ENGINEERING null null null",
   ]);
@@ -157,18 +163,16 @@ test("live 줄: 이름이 같거나 그 폴더에서 연 세션. ENGINEERING은 
   assert.deepEqual(controlRowsOf(ENGINEERING, [row({ name: "TEAM_G", cwd: "/home/u/projects/atc" })], null), []);
 });
 
-test("CROSSCHECK·REVIEW LAUNCH: 다른 관제 세션처럼 claude --bg, --strict-mcp-config. 그 폴더의 세션이나 같은 이름이 있으면 거절", () => {
-  assert.deepEqual(controlLaunchPlanOf(CROSSCHECK, [row({ name: "TEAM_B", cwd: "/w" })], XDIR), {
-    cwd: XDIR,
-    args: ["--bg", "-n", "CROSSCHECK", "--permission-mode", "auto", "--strict-mcp-config", "/loop 10m /tick"],
-  });
+test("REVIEW LAUNCH: 다른 관제 세션처럼 claude --bg, --strict-mcp-config. 그 폴더의 세션이나 같은 이름이 있으면 거절. CROSSCHECK는 은퇴해 띄우지 않는다(ATC-371)", () => {
+  assert.equal(CROSSCHECK.retired, true);
   assert.deepEqual(controlLaunchPlanOf(REVIEW, [], "/r").args, ["--bg", "-n", "REVIEW", "--permission-mode", "auto", "--strict-mcp-config", "/loop 10m /tick"]);
-  refused(() => controlLaunchPlanOf(CROSSCHECK, [row({ name: "cc-1", cwd: XDIR })], XDIR), 409, /interactive cc-1/);
-  refused(() => controlLaunchPlanOf(CROSSCHECK, [row({ name: "CROSSCHECK", cwd: "/elsewhere" })], XDIR), 409, /이미 떠 있음/);
+  refused(() => controlLaunchPlanOf(REVIEW, [row({ name: "rv-1", cwd: "/r" })], "/r"), 409, /interactive rv-1/);
+  refused(() => controlLaunchPlanOf(REVIEW, [row({ name: "REVIEW", cwd: "/elsewhere" })], "/r"), 409, /이미 떠 있음/);
 });
 
 test("LAUNCH를 끄는 이유: ENGINEERING만 배지만. tmux pane에서 손으로 연 세션도 STOP한다", () => {
-  for (const spec of [CROSSCHECK, REVIEW, MCC]) assert.equal(launchBlockOf(spec), null, spec.name);
+  for (const spec of [REVIEW, MCC]) assert.equal(launchBlockOf(spec), null, spec.name);
+  assert.match(launchBlockOf(CROSSCHECK)!, /은퇴/);
   assert.match(launchBlockOf(ENGINEERING)!, /배지만/);
   // STOP할 대상은 TOWER와 같은 규칙(tmux pane)
   const tmuxRow = row({ name: "CROSSCHECK", cwd: XDIR, pid: 42 });

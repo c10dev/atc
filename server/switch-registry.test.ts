@@ -39,7 +39,7 @@ test("선언의 순서: 정책 한 줄은 lineOrder, 저장은 applyOrder, 설�
     ["autolandMode", "autolandReviewedSecurity", "mccMode", "judgesJev", "fuelHold", "reviewSecurity", "codexLane"],
   );
   assert.deepEqual(switchRegistry.decls.slice(0, 4).map((d) => d.key), ["reviewSecurity", "fuelHold", "autoApprove", "autoApproveLaunch"]);
-  assert.deepEqual(switchRegistry.views().filter((v) => v.group === "landing").map((v) => v.key), ["autolandMode", "autolandReviewedSecurity", "mccMode", "reviewSecurity", "codexLane"]);
+  assert.deepEqual(switchRegistry.views().filter((v) => v.group === "landing").map((v) => v.key), ["autolandMode", "autolandReviewedSecurity", "mccMode", "autoRevert", "reviewSecurity", "codexLane"]);
 });
 
 test("GET /api/settings는 선언된 스위치를 싣는다(지금 값, 값 목록, ⚠ 모드, 값마다 경고, 줄)", async () => {

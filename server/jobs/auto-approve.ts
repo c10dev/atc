@@ -10,6 +10,6 @@ export default defineJob({
   run: async (ctx) => {
     const s = ctx.current();
     if (!s) return;
-    await runAutoApprove(s, { max: MAX_LAUNCHED, launch: (snap, reg, proposal, resume) => launchForCard(snap, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
+    await runAutoApprove(s, { max: MAX_LAUNCHED, launch: (snap, reg, proposal, resume, flight) => launchForCard(snap, reg, proposal, resume, "auto", flight) }).catch((e) => console.error("[atc] auto approve failed:", e));
   },
 });
