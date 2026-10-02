@@ -512,6 +512,8 @@ How it runs: the SUPERVISOR approves (or rejects with a reason) → OCC runs `at
 
 ## CROSSCHECK
 
+> **Retired (ATC-371).** The CROSSCHECK session is no longer launched, kept alive or recycled, and no server rule waits on its marks. This section describes the role as it was and is kept as history; old marks stay readable.
+
 Shadow verdicts (DISPATCH proposals and SCHEDULE drafts) are decided one by one by the SUPERVISOR, which is a heavy load. Handing the verdict to a model would make the gate (20 decisions, 80%) measure whether two models agree with each other, which means nothing. So the work is split:
 
 - A **CROSSCHECK** session, running on a model from a different family than OCC, leaves a provisional verdict (a **mark**: `agree`/`disagree` and a one-line reason) on each open item first.

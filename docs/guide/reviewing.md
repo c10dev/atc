@@ -77,43 +77,33 @@ atc가 띄운 백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 쉬면 Clau
 - **RESUME 카드**: 사용 한도로 턴이 잘린 채 세션이 사라진 AIRCRAFT는 한도가 풀린 뒤 같은 FLIGHT·같은 AIRCRAFT의 RESUME 카드로 돌아온다(LAUNCH 카드이기도 하다). 카드에는 STAND(워크트리)와 브랜치, 마지막 커밋, CAPTAIN의 마지막 보고 한 줄이 실린다. 보내는 FLIGHT PLAN은 "resume, don't restart" — 처음부터 다시 하지 말고 거기서 이어서 하라고 적는다. 같은 끊김에는 한 번만 나온다(거절하면 다시 나오지 않는다). 세션이 살아 있는 AIRCRAFT의 `RESUME 필요`는 전처럼 그 세션에서 "계속"을 보낸다.
 - 데스크톱·터미널에서 연 AIRCRAFT는 atc가 띄우지 않으니 세션이 없으면 후보가 아니다.
 
-## 자동 승인(켜면): CROSSCHECK가 agree한 카드는 서버가 승인
+## 자동 승인(켜면): 조건을 갖춘 카드는 서버가 승인
 
 설정 창 OPERATIONS의 "AUTO APPROVE"에 스위치 둘이 있고 **기본은 둘 다 off**다. 이 화면에서만 바꾸고(관제 세션은 못 바꾼다) `on`을 고르면 확인을 묻는다. `shadow`는 서버가 "승인했을 것"만 `auto-approve.jsonl`에 적는다. 먼저 shadow로 며칠 보고 켜기를 권한다.
 
-- **ASSIGN·SCHEDULE**(`autoApprove`): 열린 ASSIGN 카드(LAUNCH 아님)와 SCHEDULE 초안을 CROSSCHECK가 agree했으면 서버가 승인한다. 카드에는 승인한 쪽이 `auto`로 남는다(`via auto`).
+- **ASSIGN·SCHEDULE**(`autoApprove`): 열린 SETTLED ASSIGN 카드(LAUNCH 아님)와 SCHEDULE 초안을 서버가 승인한다. CROSSCHECK는 은퇴해 mark를 보지 않는다. 카드에는 승인한 쪽이 `auto`로 남는다(`via auto`).
 - **launch 카드**(`autoApproveLaunch`): LAUNCH 카드와 RESUME 카드를 승인하고 세션을 띄우기까지 서버가 한다. 상한(`ATC_MAX_LAUNCHED`)이 안 찼고, ACCOUNT가 FUEL hold가 아니고, LAUNCH가 막히지 않았고, 방금 LAUNCH가 실패한 AIRCRAFT가 아니고(30분 쉼), 하루 6번 안일 때만 한다.
-- **그래도 SUPERVISOR 몫:** BLIND 표본(5장에 1장), CROSSCHECK가 disagree한 카드, HELD 카드, OCC가 주의를 단 카드, FUEL hold인 AIRCRAFT의 카드. 하루 상한(자동 승인 40건, 굴러가는 24시간)을 넘으면 그 카드는 기다린다.
-- **센 숫자에서 빠진다:** 서버가 한 승인은 사람 판정이 아니라서 게이트(판정 20건에 80%), CROSSCHECK 일치율, 한 번 클릭 비율에 들어가지 않는다.
+- **그래도 SUPERVISOR 몫:** BLIND 표본(5장에 1장), HELD 카드, OCC가 주의를 단 카드, FUEL hold인 AIRCRAFT의 카드. 하루 상한(자동 승인 40건, 굴러가는 24시간)을 넘으면 그 카드는 기다린다.
+- **센 숫자에서 빠진다:** 서버가 한 승인은 사람 판정이 아니라서 게이트(판정 20건에 80%)와 옛 CROSSCHECK 일치율에 들어가지 않는다.
 
 ## SCHEDULE·FLEET PLAN은 사람 없이 돈다(기본 on)
 
 설정 창 OPERATIONS의 "SCHEDULE·FLEET PLAN AUTO"에 스위치 둘(SCHEDULE, FLEET PLAN)이 있고 **기본은 둘 다 on**이다. 끄는 것은 SUPERVISOR뿐이고 이 화면에서만 바뀐다(관제 세션은 못 바꾼다). 켜 두면 승인 줄에 사람이 누를 것이 없다.
 
-- **SCHEDULE:** 서버가 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 CROSSCHECK와 상관없이 승인한다(`via auto`). 발부는 OCC가 전처럼 한다. NEW는 **Backlog**에 이슈를 만든다: 풀어서 Todo로 보내는 것은 SUPERVISOR 몫이다. PRIORITIZE, ROUTE, TARGET 변경은 제안으로 남는다. CLOSE는 승인되지만 Done은 여전히 Linear에서 직접 옮긴다.
+- **SCHEDULE:** 서버가 열린 CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW 초안을 사람 판정 없이 승인한다(`via auto`). 발부는 OCC가 전처럼 한다. NEW는 **Backlog**에 이슈를 만든다: 풀어서 Todo로 보내는 것은 SUPERVISOR 몫이다. PRIORITIZE, ROUTE, TARGET 변경은 제안으로 남는다. CLOSE는 승인되지만 Done은 여전히 Linear에서 직접 옮긴다.
 - **FLEET PLAN:** 서버가 LAUNCH·STOP·RESTART·REFRESH·AOG 제안을 승인 단추와 같은 길로 실행한다. FUEL hold, `ATC_MAX_LAUNCHED`, 하루 상한(전체 40건, LAUNCH 계열 6번)을 지키고, 방금 건드린 AIRCRAFT는 쉰다. ENTRY·ACCOUNT CHANGE·REPOSITION·RETIRE·RETURN과 데스크톱 세션의 REFRESH는 제안으로 남는다.
 - **오작동 세기:** 서버가 한 일을 사람이나 뒤 초안이 되돌리면 센다(라벨 되돌림, CLOSE 다시 열림, TAIL 바뀜, STOP 뒤 1시간 안 LAUNCH, 1시간 뒤에도 노는 LAUNCH, RESTART 반복). 하루별 개수는 `GET /api/autonomy/auto`에서 본다.
 - 자세한 규칙은 docs/dispatch.md "Agreement-based approval as built (ATC-334)".
 
-## CROSSCHECK: 예비 판정 먼저 보기
+## CROSSCHECK는 은퇴했다(ATC-371)
 
-CROSSCHECK 세션이 켜져 있으면, 열린 제안과 초안마다 OCC와 다른 계열의 모델이 예비 판정을 먼저 달아 둔다. 카드의 점선 칩이 그것이다: `CROSSCHECK agree · 본문상 제약 없음`, `CROSSCHECK disagree · 이미 완료됨`.
+CROSSCHECK 세션은 더 띄우지 않고, 서버의 어떤 규칙(자동 승인, ATFM 자동 대상, PREFLIGHT HOLD)도 CROSSCHECK mark를 기다리지 않는다. 새 mark는 받지 않는다(`POST …/crosscheck`는 410). 은퇴 전에 남은 mark는 기록으로 읽힌다: 옛 카드와 초안의 점선 칩, NETWORK의 GATES 줄(은퇴 — 옛 기록). 칩이 있는 옛 열린 SCHEDULE 초안에는 "CROSSCHECK에 동의" 단추가 남아 있다.
+## JEV 판정 줄
 
-- **CROSSCHECK에 동의**: 한 번 클릭으로 같은 판정을 낸다. 그림자 운용이면 승인했을 것/거절했을 것, 승인 운용(2b·S2)이면 승인/거절이다. disagree에 동의하면 CROSSCHECK의 이유와 사유 칩(점선 칩 안의 `사람 결정 필요` 같은 표시)이 그대로 거절 사유로 들어가고, 칩대로 차단 범위가 정해진다. 칩이 없는 CROSSCHECK에 동의하면 짝만 막힌다. 승인 운용에서 승인하면 FLIGHT PLAN이 나가거나 Linear에 쓰이므로 확인 창이 한 번 더 뜬다.
-- **한 번 클릭 비율**(점검 패널): 판정마다 "CROSSCHECK에 동의"로 냈는지, 버튼을 직접 골랐는지 기록한다. 3/10이면 한 번 클릭이 가능했던 판정(판정 전에 CROSSCHECK 칩이 있던 것) 10건 중 3건을 한 번 클릭으로 냈다는 뜻이다. 칩 없이 한 판정은 세지 않는다. blind 카드의 판정도 세지 않는다(한 번 클릭이 막혀 있어서). 이 비율이 높은데 일치율도 높으면, 합의율이 CROSSCHECK를 따라가는 습관 때문에 부풀었을 수 있다. 게이트를 넘기 전에 몇 건은 칩을 보기 전에 스스로 판단해 본다. 이 기록이 생기기 전의 판정은 세지 않는다.
-- **BLIND 합의율**(점검 패널): blind 카드에서 낸 판정만의 합의율이다. CROSSCHECK를 보지 않고 판단했을 때의 숫자라, 전체 합의율보다 크게 낮으면 동의 묶음의 [동의]를 기본값처럼 누르고 있다는 신호다(anchoring 점검). 게이트 기준은 아니다.
-- **뒤집기**: 칩과 생각이 다르면 평소 버튼(승인했을 것, 거절했을 것 …)을 누르고 사유를 적는다. 그 판정과 사유가 다음 바퀴부터 CROSSCHECK의 기준 예시가 된다.
-- **mark는 참고일 뿐이다.** 제안·초안 상태를 바꾸지 않고, 게이트(20건·80%)에도 들어가지 않는다. 게이트는 사람 판정만 센다.
-- **CROSSCHECK 일치** 줄(점검 패널): 사람이 판정한 건 중 판정 전에 mark가 있던 건에서, mark가 사람 판정과 맞은 비율. 게이트 기준은 아니고, 나중에 위험이 낮은 일(SEC가 아닌 CLASSIFY 등)을 자동으로 넘길지 정할 근거다.
 - **JEV 일치** 줄(SCHEDULE 점검 패널, 판정 계열이 켜져 있거나 mark가 있을 때): 판정 계열 Jev가 CLASSIFY 초안에 낸 분류가 사람 판정과 맞은 비율. 지난 판정을 다시 돌린 `replay` mark도 센다. Jev의 mark는 판정한 초안에만 RECENT의 칩(`JEV agree`)으로 보인다. 판정 전에는 보이지 않아서 판단이 쏠리지 않는다. 켜고 끄는 것은 설정 창 AGENTS 탭의 JUDGES다(설계: `docs/fleet.ko.md` 6.1).
 - **JEV** 줄 셋(DISPATCH 점검 패널, 판정 계열이 켜져 있거나 mark가 있을 때): Jev가 열린 ASSIGN 제안마다 세 가지를 묻는다. 본문이 시작하기에 충분한가(Ready), 다른 일을 기다린다고 적혀 있나(Prerequisite), AIRCRAFT의 최근 atc FLIGHT와 얼마나 가까운가(Same area). 줄은 `Ready = no → 거절`, `Prerequisite = yes → 선행 대기`(`waiting-on-prior` 칩이나 OCC HOLD), `Same area 가까움 → 승인`이 사람 결과와 맞은 건수다. 참고용이고 점수·HOLD·상태에는 영향이 없다. mark는 RECENT의 `JEV` 칩(툴팁에 세 답)으로 닫힌 제안에만 보이고, 열린 카드에는 보이지 않는다. 쓸지는 판정한 제안이 20건 넘은 뒤 SUPERVISOR가 정한다(설계: `docs/fleet.ko.md` 6.1).
 - **JEV REPORT**(FLEET 줄의 칩, AIRCRAFT 카드의 줄, FLEET PLAN 패널 위쪽 줄): AIRCRAFT의 턴이 끝날 때 Jev가 CAPTAIN의 마지막 메시지를 `reported done`·`asks for a decision`·`stopped mid-work`·`idle and ready`·`can't tell`로 분류한다(atc 저장소 AIRCRAFT만, 경로·URL을 가려서 최대 1,500자). 카드의 **맞음 / 틀림**으로 분류가 맞았는지 표시하면 패널에 `JEV REPORT 맞음 m/n`이 센다. 결정이 필요하다는 확률이 70% 이상이면 FLIGHT FOLLOWING에 항목이 하나 붙는다. 참고용이고 health 코드·DISPATCH·FLEET PLAN에는 영향이 없다(설계: `docs/fleet.ko.md` 8.8).
-- 모델별로도 보인다: 일치 줄 아래 `└ claude-opus-5-5 3/4 75%`처럼 모델마다 한 줄(2026-09-29 전 ocx 시절 mark는 `muse-spark-1.3`으로 따로 보인다). 칩에도 mark를 단 모델의 짧은 이름이 시각 옆에 있고, 전체 id는 칩과 RECENT에 마우스를 올리면 보인다. 모델 이름이 생기기 전의 mark는 `unknown`으로 센다.
-- 본문이나 OCC 메모에 PR 조건("PR #393 머지 뒤")이 있으면, CROSSCHECK가 `gh pr view`로 그 PR의 상태를 확인하고 이유에 적는다(예: `PR #393 머지 전이면 HOLD — gh: OPEN`).
-- HOLD 중인 제안에는 mark가 달리지 않는다. FLIGHT 칩 disagree mark가 달리면 그 제안은 곧바로 HELD로 간다(PREFLIGHT). "CROSSCHECK에 동의"는 대기열에 남은 제안(팀 선택 문제, agree)에만 쓴다.
-
-CROSSCHECK 세션을 여는 법은 [빠른 시작](quickstart.md)의 관제 세션 표에 있다.
 
 ## 얼마나 자주
 
-하루 몇 번, 새 카드가 있을 때 판정하면 충분하다. CROSSCHECK 칩이 있으면 대부분은 한 번 클릭으로 끝나고, 뒤집을 건에만 사유를 쓰면 된다. 판정이 쌓이는 속도가 곧 다음 단계로 가는 속도다.
+하루 몇 번, 새 카드가 있을 때 판정하면 충분하다. 판정이 쌓이는 속도가 곧 다음 단계로 가는 속도다.

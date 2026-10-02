@@ -223,6 +223,12 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     let facts: SafeFacts | null | undefined;
     const excluded: OverCap[] = [];
     const nowStuck: WaitStuck[] = [];
+    // 은퇴한 관제 세션(CROSSCHECK, ATC-371)이 아직 떠 있으면 스스로 멈춘다. 모드와 상관없이, SUPERVISOR 단계 없이
+    for (const spec of CONTROL_SESSIONS) {
+      if (!spec.retired || !controlRowsOf(spec, rows, controlDirOf(spec)).some((r) => !r.stale)) continue;
+      const r = await stopControl(spec.name, "retire");
+      out.push({ name: spec.name, action: r.ok ? "retired-stop" : "retired-stop-failed", reason: r.ok ? "CROSSCHECK는 은퇴했다(ATC-371)" : (r.error ?? "stop 실패") });
+    }
     for (const spec of CONTROL_SESSIONS) {
       if (spec.launch !== "bg") continue;
       const live = controlRowsOf(spec, rows, controlDirOf(spec)).filter((r) => !r.stale);
