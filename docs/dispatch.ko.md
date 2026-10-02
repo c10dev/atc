@@ -607,6 +607,17 @@ FLIGHT PLAN·CLEARANCE·RELAY는 만들 때 저장한 이름으로 주소를 정
 - **원인.** `undelivered`(FLIGHT PLAN)·`undeliverable`(CLEARANCE·RELAY)는 선택 `cause`를 받는다. 없으면 사유에서 읽는다(`causeOf`): `absent`, `cross-account`, `tower-down`, `restarting`, `bad-recipient`, `stale-address`, `other`. `cause` / `undeliverableCause`로 저장한다.
 - **READABILITY.** 하루 기록의 모든 bucket에 `undelivered: { n, causes }`가 있다. 닿지 못한 것으로 닫힌 호출(`Transmission.undelivered`·`undeliveredCause`)에서 센다. undeliverable로 닫힌 CLEARANCE는 RADIO에서 `cancel` 대신 `undelivered`로 닫히지만, 둘 다 거둔 호출이라 다른 수는 바뀌지 않는다.
 
+## DISPATCH 자동 운항 구현 내용 (ATC-367)
+
+K3: DISPATCH가 사람이나 CROSSCHECK 없이 나는 것을 SUPERVISOR가 2026-10-02에 승인했다(이슈에 인용됐고 TEAM_G 세션에서 직접 확인). live first, shadow 없음([autonomy.md](autonomy.md) 원칙 1·5).
+
+- **서버가 하는 일.** `runAutoApprove`가 1분마다, planner 자신의 필터(`settleMin` 동안 SETTLED, HELD 아님, 발권된 FLIGHT, FUEL hold 아님)와 기존 상한(`ATC_MAX_LAUNCHED`, 하루 승인·LAUNCH 상한, LAUNCH 실패 뒤 대기, LAUNCH 막힘)을 통과한 열린 ASSIGN·launch 카드를 모두 승인한다. CROSSCHECK mark, blind 표본, CAUTION 메모는 보지 않는다(메모는 FLIGHT PLAN 글에 실려 간다). 승인은 `via: "auto"`다.
+- **SUPERVISOR 카드 없음.** ASSIGN·launch 카드는 SUPERVISOR QUEUE와 판정 대기 알림에서 빠진다. 갈 수 없는 카드(상한이 참, FUEL hold)는 `autoCardTtlMin`(기본 60분) 뒤 `자동 운항: 승인되지 못함` 사유로 SUPERSEDED되고, 이 사유는 churned라 그 짝이 곧바로 다시 후보가 되어 planner가 다시 제안한다. CROSSCHECK의 DISPATCH 브리핑은 비어 있다. RELEASE 카드와 SCHEDULE 초안, 그 CROSSCHECK는 그대로다. 손으로 누르는 승인·거절 버튼은 brake로 남는다.
+- **스위치 하나.** `dispatch.json`의 `autoDispatch`: `"on"`(이게 들어간 뒤 기본) 또는 `"off"`. SUPERVISOR만 바꾼다: 설정 → AUTOMATION → AUTO APPROVE, Origin을 확인하는 설정 길(`fromThisApp`)로만. `atcctl` 명령은 없다. 깨진 `dispatch.json`은 `off`로 읽는다. `off`면 옛 `autoApprove`·`autoApproveLaunch` 모드(CROSSCHECK가 agree한 카드만, ATC-334)가 전처럼 돌고 SCHEDULE 초안은 계속 `autoApprove`가 정한다.
+- **MISFIRE.** `GET /api/dispatch/misfire?days=7`과 DISPATCH 탭 맨 위 MISFIRE 블록이, 서버가 승인한 ASSIGN 카드 가운데 나중에 틀렸다고 드러난 것(거절·UNABLE, RECALL, 보낸 뒤 SUPERSEDED, AIRCRAFT 불가로 SUPERSEDED)을 승인한 UTC 날짜별로 그날 승인 대비 몫으로 센다. 카드는 한 번만 센다.
+- **형식.** `dispatch.json`의 `autoDispatch`·`autoCardTtlMin`과 SUPERSEDE 사유 `AUTO_STALE_WHY`는 추가다. 기록 형식은 바뀌지 않는다.
+- **아직 아님.** SETTLED를 기다리는 동안 있는 DISPATCH 카드에는 agree 줄과 CROSSCHECK mark가 여전히 그려진다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

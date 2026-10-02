@@ -151,6 +151,10 @@ Counting only; no gate changes. `server/leaks.ts` (pure) decides for each SUPERV
 
 A record carries `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since` and a `release` field that stays `null` until the ATC-362 release record exists. The `CONTROLS` table in `leaks.ts` says which controls are built; flip a flag there when a control lands and new leaks move to "its control exists".
 
+### DISPATCH automatic as built (ATC-367)
+
+K3 loosening, approved by the SUPERVISOR on 2026-10-02: the server approves every ASSIGN and launch card that passes the planner filters and caps; no CROSSCHECK step, no blind sample, no SUPERVISOR card. Switch `dispatch.json` `autoDispatch` (default on, SUPERVISOR-only through `fromThisApp`, damaged file reads as off). The late-outcome count is MISFIRE (`/api/dispatch/misfire`, DISPATCH tab). Rows P1 and P2 of section 4 no longer reach the SUPERVISOR QUEUE, so the leak counter's PROPOSAL class should fall to zero. Details: [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
+
 ## 5. Compensating controls
 
 Each control says what it detects, how fast, what it does by itself and what it reports. The controls that replace a human decision are C1, C2, C4, C6, C10, C14, C15 and C16; the others support them.

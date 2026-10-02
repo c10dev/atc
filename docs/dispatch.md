@@ -607,6 +607,17 @@ FLIGHT PLANs, CLEARANCEs and RELAYs used to be addressed by the name stored when
 - **Cause.** `undelivered` (FLIGHT PLAN), `undeliverable` (CLEARANCE and RELAY) accept an optional `cause`; without one it is read from the reason (`causeOf`): `absent`, `cross-account`, `tower-down`, `restarting`, `bad-recipient`, `stale-address`, `other`. It is stored as `cause` / `undeliverableCause`.
 - **READABILITY.** Every bucket of the daily record has `undelivered: { n, causes }`, counted from calls closed as undelivered (`Transmission.undelivered` and `undeliveredCause`). A CLEARANCE closed as undeliverable now closes as `undelivered` instead of `cancel` in RADIO; both are withdrawn calls, so the other counts do not change.
 
+## Automatic DISPATCH as built (ATC-367)
+
+K3: the SUPERVISOR approved on 2026-10-02 (attested on the issue and confirmed in the TEAM_G session) that DISPATCH flies without a human or CROSSCHECK. Live first, no shadow ([autonomy.md](autonomy.md) principles 1 and 5).
+
+- **What the server does.** Every minute `runAutoApprove` approves each open ASSIGN and launch card that passes the planner's own filters (SETTLED for `settleMin`, not HELD, a released FLIGHT, FUEL hold) and the existing caps (`ATC_MAX_LAUNCHED`, the daily approval and LAUNCH caps, backoff after a failed LAUNCH, a stuck LAUNCH). It does not look at CROSSCHECK marks, the blind sample or a CAUTION note (the note still travels in the FLIGHT PLAN text). The approval is `via: "auto"`.
+- **No SUPERVISOR card.** ASSIGN and launch cards leave the SUPERVISOR QUEUE and the pending alerts. A card that cannot go (a cap is full, a FUEL hold) is superseded after `autoCardTtlMin` (default 60) with the reason `자동 운항: 승인되지 못함`; that reason is "churned", so the pair is a candidate again at once and the planner proposes again. CROSSCHECK's DISPATCH brief is empty. RELEASE cards, SCHEDULE drafts and their CROSSCHECK step are unchanged. The manual approve and reject buttons stay as a brake.
+- **One switch.** `dispatch.json` `autoDispatch`: `"on"` (default once this lands) or `"off"`. Only the SUPERVISOR changes it: Settings → AUTOMATION → AUTO APPROVE, through the Origin-checked settings route (`fromThisApp`); there is no `atcctl` command. A damaged `dispatch.json` reads as `off`. With `off`, the older `autoApprove` and `autoApproveLaunch` modes (CROSSCHECK-agree cards only, ATC-334) work as before and `autoApprove` still governs SCHEDULE drafts.
+- **MISFIRE.** `GET /api/dispatch/misfire?days=7` and a MISFIRE block at the top of the DISPATCH tab count, per UTC day of approval, the server-approved ASSIGN cards that later turned out wrong, as a share of that day's approvals: declined or UNABLE, RECALLed, superseded after it was sent, or superseded because the AIRCRAFT was unfit. A card counts once.
+- **Formats.** `autoDispatch` and `autoCardTtlMin` in `dispatch.json` and the `AUTO_STALE_WHY` supersede reason are additive. No log changes.
+- **Not built.** The agree lane and CROSSCHECK marks are still drawn on the DISPATCH cards that exist during the settle window.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

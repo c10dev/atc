@@ -80,7 +80,8 @@ export interface AutoResult {
 export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now(), io: AutoIO = realIO()): Promise<AutoResult> {
   const result: AutoResult = { approved: 0, launched: 0, would: 0 };
   const cfg = io.cfg();
-  if (cfg.autoApprove === "off" && cfg.autoApproveLaunch === "off") return result;
+  const autoOn = cfg.autoDispatch === "on"; // 자동 운항(ATC-367): 사람·CROSSCHECK 없이 필터와 상한을 통과한 ASSIGN·launch를 승인한다
+  if (!autoOn && cfg.autoApprove === "off" && cfg.autoApproveLaunch === "off") return result;
   if (running) return result;
   running = true;
   try {
@@ -93,12 +94,12 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
       return Boolean(f && fuelHolds(f, cfg.fuel));
     };
 
-    // ASSIGN(LAUNCH 아님): 오래된 카드부터
-    const assignAct = actsOf(cfg.autoApprove);
+    // ASSIGN(LAUNCH 아님): 오래된 카드부터. 자동 운항이 켜져 있으면 항상 승인
+    const assignAct = autoOn ? "approve" : actsOf(cfg.autoApprove);
     if (assignAct !== "none") {
       const open = io.proposals().filter((p) => p.status === "proposed" && !p.launch).sort((a, b) => a.at.localeCompare(b.at));
       for (const p of open) {
-        const why = assignWhyNot(p, { now, settleMin: cfg.settleMin, dispatchMode: cfg.mode, fuelHold: fuelHoldOf(regOfProposal(p, tp)), counts, approveMax: cfg.autoApproveMax });
+        const why = assignWhyNot(p, { now, settleMin: cfg.settleMin, dispatchMode: cfg.mode, fuelHold: fuelHoldOf(regOfProposal(p, tp)), counts, approveMax: cfg.autoApproveMax, live: autoOn });
         if (why) continue;
         if (assignAct === "record") {
           if (seen.has(`dispatch:${p.id}`)) continue;
@@ -115,13 +116,16 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
         counts.approved++;
         result.approved++;
       }
+    }
 
-      // SCHEDULE 초안(같은 상한을 같이 센다)
+    // SCHEDULE 초안(같은 상한을 같이 센다). 자동 운항과 상관없이 autoApprove 스위치(CROSSCHECK agree)만 따른다 — CROSSCHECK는 SCHEDULE에서 그대로다
+    const scheduleAct = actsOf(cfg.autoApprove);
+    if (scheduleAct !== "none") {
       const scheduleMode = io.scheduleMode();
       for (const op of io.scheduleOps().filter((o) => o.status === "draft").sort((a, b) => a.at.localeCompare(b.at))) {
         const why = scheduleWhyNot(op, { scheduleMode, counts, approveMax: cfg.autoApproveMax, isNetwork: isNetworkKind });
         if (why) continue;
-        if (assignAct === "record") {
+        if (scheduleAct === "record") {
           if (seen.has(`schedule:${op.id}`)) continue;
           io.addLine({ at: io.stamp(), mode: "shadow", kind: "schedule", op: "would-approve", id: op.id });
           counts.approved++;
@@ -138,7 +142,7 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
     }
 
     // launch 카드(ABSENT·RESUME): 상한, FUEL hold, 막힘, 실패 뒤 대기, 하루 상한을 모두 지킬 때만
-    const launchAct = actsOf(cfg.autoApproveLaunch);
+    const launchAct = autoOn ? "approve" : actsOf(cfg.autoApproveLaunch);
     if (launchAct !== "none") {
       const fails = recentLaunchFailsOf(io.proposals(), now, cfg.autoLaunchBackoffMin, tp);
       const open = io.proposals().filter((p) => p.status === "proposed" && p.launch).sort((a, b) => a.at.localeCompare(b.at));
@@ -155,6 +159,7 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
           backedOff: fails.has(reg),
           counts,
           launchMax: cfg.autoLaunchMax,
+          live: autoOn,
         });
         if (why) continue;
         if (launchAct === "record") {
