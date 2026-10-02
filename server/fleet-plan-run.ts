@@ -37,6 +37,7 @@ import type { FuelRemaining } from "./fuel-remaining.ts";
 import { aircraftContexts } from "./fuel-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
+import { runAutoFleet, fleetMisfires } from "./autonomy-auto-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { allProposals, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
@@ -269,6 +270,9 @@ export async function runFleetPlan(s: Snapshot, now = Date.now()) {
     last = { at: new Date(now).toISOString(), candidates, demand, background: rows.filter((r) => r.kind === "background").length, error: null };
     // auto: 새로 열린 REPOSITION 카드를 가드(하루 상한·flapping) 아래에서 곧바로 실행한다
     if (rep.mode === "auto") await autoReposition(allFleetPlan().filter((x) => !before.has(x.id) && x.kind === "REPOSITION" && x.status === "open"), plan.flaps, inputs.repositions ?? [], rep, now);
+    // ATC-370: LAUNCH·STOP·RESTART·REFRESH·AOG 제안은 사람 없이 서버가 실행한다(스위치 fleet-plan.json auto, 기본 on). 상한은 실행기와 autonomy-auto.ts가 지킨다
+    if (autoRun) await runAutoFleet({ proposals: allFleetPlan, mode: loadFleetPlanMode, run: autoRun }, now);
+    fleetMisfires(s, now);
   } catch (e) {
     last = { at: new Date(now).toISOString(), candidates: last?.candidates ?? [], demand: last?.demand ?? [], background: last?.background ?? 0, error: (e as Error).message };
     console.error("[atc] fleet plan failed:", e);

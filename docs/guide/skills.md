@@ -41,6 +41,7 @@ atc 세션이 일하는 방법은 세 가지 파일에 나뉘어 있습니다: �
 
 - `CLAUDE.md`, `docs/design-language.md`, `atc-task`가 바뀌면 실행 중인 atc 세션이 다음 차례에 바뀐 부분을 받습니다(`rules-drift` hook). FLEET 카드의 "RULES current / RULES 미확인"이 그 상태입니다. 다른 skill과 규정집은 아직 이 감시 대상이 아닙니다.
 - 관제 세션은 `/tick` 처음에 `manual check`로 자기 매뉴얼이 바뀌었는지 보고, 바뀌었으면 다시 읽습니다.
+- 규칙 파일에는 크기 예산이 있습니다(ATC-361). 매 턴 읽히는 `CLAUDE.md`와 `atc-task`가 `deploy/rules-budget.json`의 예산을 넘거나 두 파일에 같은 글이 되풀이되면 CI(`npm test`)가 실패합니다. 새 규칙은 먼저 `docs/rules.ko.md`(필요할 때만 읽는 규칙)나 해당 설계 문서에 두고, 정말 매 턴 필요한 것만 `CLAUDE.md`에 넣습니다. 예산을 올리는 변경은 `deploy/` 파일이라 SUPERVISOR가 머지합니다.
 - 가져온 skill의 출처·커밋·라이선스는 저장소의 `THIRD_PARTY_NOTICES.md`에 있습니다.
 
 ## SUPERVISOR가 정하는 것

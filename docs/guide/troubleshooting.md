@@ -100,3 +100,17 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 배포 전에 열어 둔 탭은 옛 화면을 계속 돌린다. 서버가 새 번들을 내주기 시작하면 그 탭 상단(콘솔 바로 아래)에 **"새 버전이 배포됨 · 새로고침"** 알림이 뜬다. 새로고침을 눌러야 새 화면이 된다. 입력 중인 내용(거절 사유 등)이 날아가지 않게 저절로 새로고침하지 않는다. 닫기를 누르면 그 번들에 대해서는 다시 뜨지 않고, 다음 배포 때 다시 뜬다.
 
 알림이 없는데도 새 기능이 안 보이면 서비스가 다시 빌드됐는지 본다: `curl -s localhost:7700/api/version`의 `build`(`/assets/index-<hash>.js`)와 `startedAt`.
+
+## 화면의 쓰기가 거절된다 · "SUPERVISOR 자격" 막대가 뜬다
+
+승인·MERGE·모드 스위치·LAUNCH·STOP·설정 같은 SUPERVISOR 전용 동작은 이 기기만 가진 비밀이 있어야 서버가 받습니다(ATC-373, [autonomy.md](../autonomy.md)). 서버가 이 기기를 받아들이지 않으면 화면 상단에 막대가 뜨고 쓰기가 `403`으로 거절됩니다.
+
+1. 막대의 **자격 만들기**를 누릅니다. 비밀은 이 브라우저에만 저장되고, 화면에는 해시만 든 명령이 한 줄 나옵니다.
+2. 그 명령을 atc가 도는 호스트에서 한 번 실행합니다(`sudo`가 필요합니다. 에이전트 세션은 root가 아니라 이 파일을 고치지 못합니다): `sudo install -d /etc/atc && echo <해시> | sudo tee -a /etc/atc/supervisor.sha256`
+3. **등록했음, 확인**을 누르거나 15초를 기다립니다. 막대가 사라지면 됩니다.
+
+- `unpaired`: 해시 파일이 없거나 비었습니다(아직 한 번도 짝짓지 않았거나 지웠습니다). 위 순서를 따릅니다.
+- `insecure`: 해시 파일이 root 소유가 아니거나 다른 사용자가 쓸 수 있습니다. 서버는 그 파일을 믿지 않습니다: `sudo chown root:root /etc/atc/supervisor.sha256 && sudo chmod 644 /etc/atc/supervisor.sha256`.
+- `invalid`·`missing`: 이 브라우저의 비밀이 파일의 해시와 맞지 않습니다(다른 브라우저, 저장소를 지움). 자격 만들기로 다시 짝짓고 새 해시 줄을 더합니다. 기기를 여럿 쓰면 줄이 여럿입니다.
+- 시험 서버(7702)는 `ATC_SUPERVISOR_HASH_FILE=<임시 파일> ATC_SUPERVISOR_ALLOW_USER_FILE=1`로 띄우면 사용자 소유 해시 파일을 받습니다(운영에서는 쓰지 않습니다).
+- `atcctl`로 하는 일(관제·팀 세션의 보고, READBACK, 착륙 …)은 자격 없이 그대로 됩니다.

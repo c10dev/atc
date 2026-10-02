@@ -18,7 +18,7 @@ import { cachedPrBody, fetchPrBody } from "./sources/github.ts";
 import { loadLinearProjects, type Milestone } from "./sources/linear-projects.ts";
 import { isNetworkKind, type NetworkCtx, NetworkDraftError, type NetworkKind, type NetworkPayload, networkChangesOf, networkSupersedeReason, parseNetwork } from "./network-drafts.ts";
 import { routeRows } from "./network.ts";
-import { loadRoutes } from "./routes.ts";
+import { loadRoutes } from "./routes-load.ts";
 import { ofTeams, waypointGapsOf } from "./waypoint-gaps.ts";
 import { parseTail, type TailCtx, TailError, type TailPayload, tailCautionOf, tailChangesOf, tailDiffOf, tailSignalsOf, type TailSignal } from "./schedule-tail.ts";
 import { readDepartures } from "./departures.ts";
@@ -634,7 +634,7 @@ export function draftOps(
 export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> | undefined, teamName: string): LinearCall[] {
   if (op.kind === "CLOSE") throw new ScheduleError(CLOSE_RELEASE_WHY, 409);
   if (isNetworkKind(op.kind)) throw new ScheduleError(NETWORK_APPLY_WHY, 409);
-  const trail = `(SCHEDULE ${op.id}, SUPERVISOR 승인)`;
+  const trail = `(SCHEDULE ${op.id}, ${op.via === "auto" ? "서버 자동 승인" : "SUPERVISOR 승인"})`; // ATC-370: 사람 판정 없이 서버가 승인한 초안은 그렇게 적는다
   if (op.kind === "NEW") {
     const n = op.payload as NewPayload;
     const labels = [n.type, n.wake, ...(n.ratings ?? []).map((r) => `rating:${r}`), n.tail && `tail:${n.tail}`].filter(Boolean) as string[];
@@ -643,6 +643,7 @@ export function callsOf(op: ScheduleOp, t: Pick<Ticket, "labels" | "priority"> |
       title: n.title,
       description: `${n.body}\n\n— OCC ${op.id} · CHARTER REQUEST ${trail}`,
       project: n.project,
+      state: "Backlog", // 새 이슈는 제안이다. Todo로 풀어 주는 것(화살을 쏘는 것)은 SUPERVISOR만(ATC-370, ATC-362)
     };
     if (n.priority) input.priority = n.priority;
     if (labels.length) input.labels = labels;

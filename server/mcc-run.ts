@@ -13,7 +13,7 @@ import {
   type CiState,
   escalationOf,
   inspectionComment,
-  inspectionOf,
+  reviewOfHead,
   landBlocksOf,
   loadMcc,
   mccGateLine,
@@ -203,7 +203,7 @@ async function judge(s: Snapshot, number: number, head?: string) {
   tierCache.set(tierKey(ap.slug, number, pr.head.sha), tier); // landBy가 같은 등급을 쓴다(ATC-151)
   const ci = await fetchCi(ap.slug, pr.head.sha, ap.cfg.ciCheck);
   const records = readMccRecords();
-  const inspection = inspectionOf(records, number, pr.head.sha);
+  const inspection = reviewOfHead(records, number, pr.head.sha); // ESCALATE한 head도 본 것으로 센다(ATC-390)
   const escalated = escalationOf(records, number);
   const rts = rtsState(records);
   const blocks = landBlocksOf({
