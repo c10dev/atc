@@ -31,7 +31,7 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
   - The night block restyles strips and FIDS by selector.
 - **Checks today:**
   - `server/css-lint.ts`: colour literals, px font sizes, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
-  - `server/theme-contrast.test.ts` (ATC-408): `--faint` and `--muted` on every layer in every theme, and `--paper-muted` on a parked strip.
+  - `server/theme-contrast.test.ts` (ATC-408, ATC-438): a declared table of (foreground, background, minimum) pairs checked in every theme found in `styles.css`; see section 4.
   - `server/boundaries.test.ts` (ATC-335): import cycles, and web → Node imports.
   - Nothing checks which layer may use which.
 
@@ -63,12 +63,12 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
 | **Domain** | `--paper-*`, `--stamp-*`, `--fids-*`, `--flap-*`, `--phase-*`, `--series-*` | Point at semantic tokens where possible (`--phase-enroute: var(--radar)` already does). A theme overrides one only when the domain look differs (paper strips in Radar Console). Used by screens, not by primitives |
 | **Contextual** (decision S2) | `--layer`, `--layer-hover`, set by a container for its children (Carbon) | Rows, cards and dialogs read `--layer`, so the same primitive works on any surface |
 
-**Contrast pairs.** `server/theme-contrast.test.ts` grows into a declared table of (foreground token, background token, minimum), checked in every theme, as Primer does:
+**Contrast pairs (built, ATC-438).** `server/theme-contrast.test.ts` holds a declared table (`PAIRS`) of (foreground token, background token, minimum), checked in every theme, as Primer does:
 - text 4.5
 - borders and focus 3
 - tags and chips: their text on their fill
 
-A new theme (the light theme, D7) cannot land unless the table passes.
+A new theme (the light theme, D7) cannot land unless the table passes. A pair that fails today goes in `KNOWN` with the unit that fixes it; a `KNOWN` pair that starts passing must be removed, and the minimums are never lowered.
 
 ### L1 Primitives
 
@@ -113,7 +113,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
 | A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | to build |
 | Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |
-| Contrast pairs in every theme | `server/theme-contrast.test.ts` with a declared pairs table | partly built (ATC-408) |
+| Contrast pairs in every theme | `server/theme-contrast.test.ts` with a declared pairs table | built (ATC-438); pairs that fail today are listed in `KNOWN` with their fixing unit |
 
 Each new rule starts with a baseline of today's count and only goes down, as css-lint does now.
 
