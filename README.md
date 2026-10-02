@@ -242,7 +242,7 @@ A Claude session opened in the `controller/` folder becomes the TOWER session (C
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
   Do not touch this STAND until the team ahead finishes and hands it off
-  — Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
+  — Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.
   ```
 
   Notices such as INFO ask for "ROGER C-0007" instead; see [docs/guide/radio.md](docs/guide/radio.md), ATC-122. Text that sessions send each other is English (ATC-126).

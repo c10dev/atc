@@ -42,17 +42,17 @@ export function answerError(kind: MessageKind, attr: ResponseAttr, answer: Answe
 export const replyToName = (kind: MessageKind) => (kind === "clearance" ? "TOWER" : "OCC");
 export function addressLine(kind: MessageKind): string {
   const name = replyToName(kind);
-  return `— Send your reply to the session name "${name}" (SendMessage to: "${name}"), not to the from address: the address changes when ${name} restarts.`;
+  return `— Send your reply to the session name "${name}" (SendMessage to: "${name}"). Do not send it to the from address. The address changes when ${name} restarts.`;
 }
 
 // 메시지 끝줄: 어떤 답을 기다리는지 적는다. RECALL은 늘 READBACK <id> RECALL 하나. 바로 위에 답 주소 줄이 붙는다
 export function closingLine(kind: MessageKind, attr: ResponseAttr, id: string): string {
   const ask =
     kind === "recall"
-      ? `— When received, reply to this message with "READBACK ${id} RECALL".`
+      ? `— Reply to this message with "READBACK ${id} RECALL" when you receive it.`
       : attr === "R"
-        ? `— When received, reply to this message with "ROGER ${id}".`
-        : `— Reply to this message with "READBACK ${id}" if you take it, "UNABLE ${id} — reason" if you cannot, or "STANDBY ${id}" if you need time.`;
+        ? `— Reply to this message with "ROGER ${id}" when you receive it.`
+        : `— Reply to this message with "READBACK ${id}" if you take it. Reply with "UNABLE ${id} — reason" if you cannot. Reply with "STANDBY ${id}" if you need time.`;
   return `${addressLine(kind)}\n${ask}`;
 }
 

@@ -143,6 +143,7 @@ export interface AlertsInput {
   tickets: Pick<Ticket, "key" | "stateType">[];
   following: Pick<FollowItem, "flight" | "aircraft" | "issues">[];
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
+  autoDispatch?: boolean; // 자동 운항(ATC-367): ASSIGN 카드는 서버가 승인하므로 판정 대기 알림이 없다
   pulls: Pick<PullRequest, "repo" | "number" | "title" | "head" | "landing" | "draft" | "ticketKey" | "humanCheck">[];
   rts: Pick<RtsRecord, "at" | "from" | "to" | "result" | "detail"> | null;
   // SCHEDULE 판정(ATC-162): approval 모드에서만 SUPERVISOR 결정을 기다리는 일이다. shadow는 게이트 판정이라 항목이 없다. 없으면 항목 없음
@@ -291,6 +292,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   // 4) SUPERVISOR가 판정할 DISPATCH 제안(HOLD 걸린 것은 사람 결정을 기다리는 게 아니라 선행 FLIGHT를 기다린다)
   for (const p of inp.proposals) {
     if (p.holdAt !== null || (p.status !== "proposed" && p.status !== "agreed" && p.status !== "disagreed")) continue;
+    if (inp.autoDispatch && p.kind === "ASSIGN") continue;
     // 따라가는 줄의 제안은 follow|approve로 낸다(pending|proposal을 대신한다, 이중 알림 없음)
     out.push({
       key: followProposals.has(p.id) ? `follow|approve|${p.id}` : `pending|proposal|${p.id}`,

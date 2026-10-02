@@ -7,6 +7,8 @@ import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueCle
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
+import { looksLikeTitle, resolveRecipient, standHolderOf } from "./address.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { allRelays } from "./relay-run.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
@@ -39,8 +41,8 @@ function sessionLabel(s: Session | undefined, id: string) {
 // p3: 해결·답글된 Codex P3 지적이 남은 채 CLEARED인 PR(ATC-28). 막지는 않지만 LAND 글에 남긴다
 export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null, p3 = 0): string {
   const head = `LANDING sequence ${repoSeq}${airport ? ` (${airport})` : ""}: PR #${pr}${flight ? ` (${flight})` : ""}.`;
-  const note = p3 ? ` Codex P3 findings left: ${p3} (resolved or answered; they do not block landing).` : "";
-  if (prevPr == null) return `${head} Clear to LAND now — check that base is current before merging.${note}`;
+  const note = p3 ? ` Codex P3 findings left: ${p3}. They are resolved or answered. They do not block landing.` : "";
+  if (prevPr == null) return `${head} Clear to LAND now. Check that base is current before you merge.${note}`;
   return `${head} Rebase and LAND after the PR ahead (#${prevPr}) merges.${note}`;
 }
 
@@ -231,7 +233,7 @@ export function buildBrief(
     },
     landingQueue,
     // SUPERVISOR가 화면에서 AIRCRAFT에게 보낸 글(ATC-271). TOWER는 text를 고치지 않고 type의 CLEARANCE로 그대로 보낸 뒤 `atcctl relay issued`로 표시한다
-    relays: relayBriefOf(relays, now),
+    relays: relayBriefOf(relays, now, s.sessions, loadDispatchConfig().teamPattern),
     // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)
     groundStops: (s.atfm?.groundStops ?? []).map((g) => ({ airport: g.airport, trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, since: g.since })),
     github: s.github,
@@ -265,6 +267,22 @@ export function resolveSession(s: Snapshot, to: string): Session | string {
   const byName = s.sessions.filter((x) => x.status !== "dead" && (x.name === to || callsign(x) === to.toUpperCase()));
   if (byName.length === 1) return byName[0];
   return byName.length ? `"${to}" 이름의 세션이 ${byName.length}개라 ID로 지정해야 함` : `"${to}" 세션을 찾을 수 없음`;
+}
+
+// CLEARANCE의 받는 이(ATC-353). 이름·콜사인·id로 먼저 찾고, 못 찾으면 REGISTRATION(relay가 저장한 to)으로 지금 살아 있는 세션을 찾는다.
+// to가 없으면 그 STAND를 쥔 살아 있는 세션. 그래도 없고 제목 꼴이면 제목이라고 거절한다(이름·콜사인에 공백이 있어도 먼저 찾으므로 거절당하지 않는다)
+export function clearanceTargetOf(s: Pick<Snapshot, "sessions">, toRaw: string, stand: string | null, teamPattern?: string): Session | string {
+  const to = toRaw.trim();
+  if (!to) {
+    const holder = stand ? standHolderOf(s.sessions, stand) : null;
+    return holder ? s.sessions.find((x) => x.id === holder.id)! : "받는 이(to)가 필요함 — 세션 id나 REGISTRATION, 또는 STAND를 쥔 세션이 있는 stand";
+  }
+  const exact = resolveSession(s as Snapshot, to);
+  if (typeof exact !== "string") return exact;
+  if (/개라 ID로/.test(exact)) return exact; // 같은 이름의 세션이 둘 이상이면 REGISTRATION으로 조용히 고르지 않고 거절한다
+  const byReg = resolveRecipient(s.sessions, { registration: to }, teamPattern);
+  if (byReg.ok) return s.sessions.find((x) => x.id === byReg.session.id) ?? exact;
+  return looksLikeTitle(to) ? `"${to.slice(0, 60)}"는 제목이지 세션이 아님 — 세션 id나 REGISTRATION으로 보낸다` : exact;
 }
 
 function resolveStand(s: Snapshot, stand: string | undefined): string | null | { error: string } {
@@ -320,10 +338,10 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const s = await getSnapshot();
     if (!CLEARANCE_TYPES.includes(body.type)) return c.json({ error: `type은 ${CLEARANCE_TYPES.join("|")} 중 하나` }, 400);
     if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
-    const target = resolveSession(s, String(body.to ?? ""));
-    if (typeof target === "string") return c.json({ error: target }, 400);
     const stand = resolveStand(s, body.stand);
     if (stand && typeof stand === "object") return c.json(stand, 400);
+    const target = clearanceTargetOf(s, String(body.to ?? ""), stand, loadDispatchConfig().teamPattern);
+    if (typeof target === "string") return c.json({ error: target }, 400);
     const clearance = issueClearance({
       to: target.id,
       toName: target.name,
@@ -332,14 +350,14 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
       flight: normalizeFlight(body.flight),
       text: body.text.trim(),
     });
-    return c.json({ clearance, sendTo: target.name, message: formatClearance(clearance, s) });
+    return c.json({ clearance, sendTo: target.name, sendToId: target.id, ...(target.jobId ? { sendToJobId: target.jobId } : {}), ...(target.account ? { sendToAccount: target.account } : {}), message: formatClearance(clearance, s) });
   });
 
   // CAPTAIN의 답을 TOWER가 기록한다(ATC-122). unable은 본문에 reason. 이 메시지에 받을 수 없는 답이면 409
   for (const op of ["readback", "roger", "unable", "standby", "cancel", "undeliverable"] as const) {
     app.post(`/api/clearances/:id/${op}`, async (c) => {
       const body = op === "unable" || op === "undeliverable" ? await c.req.json().catch(() => ({})) : {};
-      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined);
+      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
       if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
       if (!("error" in r) && op === "undeliverable") bustQueue();
       return "error" in r ? c.json(r, 409) : c.json({ clearance: r });

@@ -161,6 +161,10 @@ P3·P5 행을 자른다(K3, 2026-10-02 SUPERVISOR 승인: "live first"). `server
 - **오작동.** `auto-actions.jsonl`은 서버가 한 일, `misfires.jsonl`은 되돌려진 것을 사건마다 한 번 적는다. SCHEDULE: 자동 승인한 초안이 APPLIED가 된 뒤 라벨·TAIL이 되돌려졌거나 CLOSE가 다시 열렸거나 같은 FLIGHT의 같은 종류 뒤 초안이 어긋나는 값을 낸 것(3일 창). FLEET PLAN: STOP 뒤 1시간 안에 같은 AIRCRAFT의 LAUNCH, 1시간 뒤에도 노는 LAUNCH(스냅샷 점검이라 상한 값), 6시간 안의 세 번째 RESTART·REFRESH. `GET /api/autonomy/auto?days=14`가 스위치와 하루별 개수(UTC), 최근 20건을 준다.
 - **만들지 않은 것.** 오작동 개수 화면(지금은 API와 파일이 기록), CLOSE를 Done으로 옮기는 길, ATC-369와 STOP 규칙을 하나로 합치기.
 
+### DISPATCH 자동 운항 구현 (ATC-367)
+
+SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상한을 통과한 모든 ASSIGN·launch 카드를 승인한다. CROSSCHECK 단계, blind 표본, SUPERVISOR 카드가 없다. 스위치는 `dispatch.json`의 `autoDispatch`(기본 on, `fromThisApp`로 SUPERVISOR만, 깨진 파일은 off). 늦게 드러나는 결과는 MISFIRE(`/api/dispatch/misfire`, DISPATCH 탭)로 센다. 4절 P1·P2 행은 더는 SUPERVISOR QUEUE에 오르지 않으므로 leak counter의 PROPOSAL 종류는 0으로 떨어져야 한다. 자세한 것은 [dispatch.md](dispatch.md) "Automatic DISPATCH as built".
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.

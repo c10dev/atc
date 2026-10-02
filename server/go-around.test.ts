@@ -68,7 +68,7 @@ test("GO AROUND 문구: 행동과 UNABLE 조건이 들어 있고, 파일이 많�
   const t = goAroundTextOf({ reason: "dirty", pr: 7, head: "abcdef0123", flight: null, merged: [3, 4], shared: Array.from({ length: 10 }, (_, i) => `f${i}.ts`) });
   assert.match(t, /^GO AROUND: PR #7 head abcdef0 conflicts with base after #3, #4 merged\./);
   assert.match(t, /\(\+2 more\)/);
-  assert.match(t, /Merge origin\/main, resolve, run the checks, push/);
+  assert.match(t, /Merge origin\/main and resolve the conflicts. Run the checks/);
   assert.match(goAroundTextOf({ reason: "prevMerged", pr: 7, head: "abcdef0123", flight: "ATC-7", merged: [6], shared: [] }), /the PR ahead of it in the LANDING SEQUENCE \(#6\) has merged/);
 });
 

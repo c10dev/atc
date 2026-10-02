@@ -17,6 +17,7 @@ import { PriorityMark } from "../ui.tsx";
 import { useAlerts } from "../alerts-runtime.ts";
 import { proposalAlertKey } from "../dispatch-alerts.ts";
 import { AtfmAlert, AtfmPanel, useAtfm } from "./Atfm.tsx";
+import { AutoMisfire } from "./AutoMisfire.tsx";
 import { type ReadinessItem, Readiness2b } from "./Readiness2b.tsx";
 import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./DispatchBriefing.tsx";
 import { FollowingAlert, FollowingPanel, useFollowing } from "./Following.tsx";
@@ -516,6 +517,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
           </span>
         )}
       </div>
+
+      <AutoMisfire refreshKey={String(brief.at ?? now)} />
 
       <h2 className="label">
         ASSIGN <em>FLIGHT → AIRCRAFT</em>

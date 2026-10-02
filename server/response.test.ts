@@ -30,13 +30,13 @@ test("answerError: READBACK은 늘 받고, ROGER는 R만, STANDBY는 W/U만, REC
 test("closingLine: W/U는 세 답을, R은 ROGER를, RECALL은 READBACK <id> RECALL을 청한다", () => {
   assert.equal(
     closingLine("clearance", "W/U", "C-0007"),
-    addressLine("clearance") + '\n— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.',
+    addressLine("clearance") + '\n— Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.',
   );
-  assert.equal(closingLine("clearance", "R", "C-0008"), addressLine("clearance") + '\n— When received, reply to this message with "ROGER C-0008".');
-  assert.equal(closingLine("recall", "W/U", "D-0003"), addressLine("recall") + '\n— When received, reply to this message with "READBACK D-0003 RECALL".');
+  assert.equal(closingLine("clearance", "R", "C-0008"), addressLine("clearance") + '\n— Reply to this message with "ROGER C-0008" when you receive it.');
+  assert.equal(closingLine("recall", "W/U", "D-0003"), addressLine("recall") + '\n— Reply to this message with "READBACK D-0003 RECALL" when you receive it.');
   // 모든 끝줄에 READBACK이나 ROGER <id>가 있다(readiness 점검과 옛 습관)
   // 답 주소 줄(ATC-169): 관제 세션은 이름으로 답하게 한다. CLEARANCE는 TOWER, 나머지는 OCC
-  assert.match(addressLine("clearance"), /session name "TOWER".*not to the from address/);
+  assert.match(addressLine("clearance"), /session name "TOWER".*Do not send it to the from address/);
   for (const k of ["flight-plan", "recall", "crew-change"] as const) assert.match(addressLine(k), /session name "OCC"/);
   for (const line of [closingLine("flight-plan", "W/U", "D-0001"), closingLine("crew-change", "W/U", "CC-0001")]) assert.match(line, /"READBACK (D|CC)-0001"/);
 });

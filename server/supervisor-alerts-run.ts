@@ -78,6 +78,7 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     tickets: s.tickets,
     following: followingNow(s, now),
     proposals,
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
     capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsNow.last,
