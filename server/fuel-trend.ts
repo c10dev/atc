@@ -35,6 +35,15 @@ export interface UsageTrend {
   previous: UsagePeriod;
   weeks: UsagePeriod[]; // 오래된 주 먼저, 마지막이 이번 주
   change: Record<TrendMetric, number | null>; // 지난 기간 대비 비율(changeOf). 견줄 수 없으면 null
+  today: TodayCompare; // 오늘 0시부터 지금까지 대 어제 0시부터 어제 이 시각까지(기간 고르기와 상관없이)
+}
+
+// 어제와 견주기: 하루의 경계는 보는 사람의 시간대(tzOffsetMin, Date.getTimezoneOffset과 같은 부호: KST는 −540)
+export interface TodayCompare {
+  tzOffsetMin: number;
+  current: UsagePeriod; // [오늘 0시, 지금)
+  previous: UsagePeriod; // [어제 0시, 지금 − 24시간)
+  change: Record<TrendMetric, number | null>;
 }
 
 // 화면이 견주는 값. 계산은 여기서만 한다(화면은 보이기만)
@@ -56,6 +65,18 @@ export interface TrendInput {
   now: number;
   days: number;
   weeks?: number;
+  tzOffsetMin?: number; // 기본 0(UTC)
+}
+
+// 시간대 차이(분). 쓸 수 없는 값이면 0(UTC). 지구의 시간대는 −14h…+12h 안이다
+export function tzOffsetOf(q: unknown): number {
+  const n = Number(q);
+  return Number.isInteger(n) && n >= -840 && n <= 840 ? n : 0;
+}
+// 그 시간대의 오늘 0시(UTC ms)
+export function localDayStart(now: number, tzOffsetMin: number): number {
+  const off = tzOffsetMin * 60_000;
+  return Math.floor((now - off) / DAY_MS) * DAY_MS + off;
 }
 
 // 이 기간들을 다 덮으려면 대화 기록을 며칠 읽어야 하나
@@ -115,7 +136,11 @@ export function usageTrend(input: TrendInput): UsageTrend {
   const current = accOf(now - days * DAY_MS, now);
   const previous = accOf(now - 2 * days * DAY_MS, now - days * DAY_MS);
   const weeks = Array.from({ length: nWeeks }, (_, i) => accOf(now - (nWeeks - i) * 7 * DAY_MS, now - (nWeeks - i - 1) * 7 * DAY_MS));
-  const all = [current, previous, ...weeks];
+  const tz = input.tzOffsetMin ?? 0;
+  const dayStart = localDayStart(now, tz);
+  const today = accOf(dayStart, now);
+  const yesterday = accOf(dayStart - DAY_MS, now - DAY_MS);
+  const all = [current, previous, today, yesterday, ...weeks];
   const into = (t: number) => all.filter((a) => t >= a.from && t < a.to);
   const aircraftOf = new Map<string, string | null>(); // session → REGISTRATION(세션마다 한 번만 맞춘다)
 
@@ -154,14 +179,27 @@ export function usageTrend(input: TrendInput): UsageTrend {
   }
   const cur = periodOf(current, first);
   const prev = periodOf(previous, first);
+  const tCur = periodOf(today, first);
+  const tPrev = periodOf(yesterday, first);
   return {
     days,
     historyStart: first === null ? null : new Date(first).toISOString(),
     current: cur,
     previous: prev,
     weeks: weeks.map((w) => periodOf(w, first)),
-    change: Object.fromEntries(TREND_METRICS.map((m) => [m, changeOf(metricOf(cur, m), metricOf(prev, m), prev.coverage)])) as Record<TrendMetric, number | null>,
+    change: changesOf(cur, prev),
+    today: { tzOffsetMin: tz, current: tCur, previous: tPrev, change: changesOf(tCur, tPrev) },
   };
+}
+
+const changesOf = (cur: UsagePeriod, prev: UsagePeriod) =>
+  Object.fromEntries(TREND_METRICS.map((m) => [m, changeOf(metricOf(cur, m), metricOf(prev, m), prev.coverage)])) as Record<TrendMetric, number | null>;
+
+// 시간대 이름: −540 → UTC+9, 330 → UTC−5:30, 0 → UTC
+export function tzName(tzOffsetMin: number): string {
+  if (tzOffsetMin === 0) return "UTC";
+  const m = Math.abs(tzOffsetMin);
+  return `UTC${tzOffsetMin < 0 ? "+" : "−"}${Math.floor(m / 60)}${m % 60 ? `:${String(m % 60).padStart(2, "0")}` : ""}`;
 }
 
 // 지난 기간 대비 변화(비율). 지난 기간이 다 덮이지 않았거나 0이면 null(견줄 수 없다)
@@ -180,7 +218,7 @@ export function changeText(r: number | null): string | null {
 // 지난 기간 이름. 일부만 기록이 있으면 그 날 수를 붙인다(그 값은 그 기간 전체의 값이 아니다)
 export const recordedDays = (coverage: number, days: number) => Math.round(coverage * days * 10) / 10;
 export function previousLabel(prev: Pick<UsagePeriod, "coverage">, days: number): string {
-  return prev.coverage > 0 && prev.coverage < 1 ? `지난 ${days}일(기록 ${recordedDays(prev.coverage, days)}일)` : `지난 ${days}일`;
+  return prev.coverage > 0 && prev.coverage < 1 ? `지난 ${days}일 중 ${recordedDays(prev.coverage, days)}일` : `지난 ${days}일`;
 }
 
 // 견줄 수 없는 까닭. 지난 기간 일부만 기록이 있으면 그 날 수

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type PriceTable, parsePriceTable } from "./fuel-cost.ts";
 import type { FuelRecord } from "./fuel.ts";
-import { changeOf, changeText, coverageOf, noCompareText, previousLabel, trendScanDays, usageTrend } from "./fuel-trend.ts";
+import { changeOf, changeText, coverageOf, localDayStart, noCompareText, previousLabel, trendScanDays, tzName, tzOffsetOf, usageTrend } from "./fuel-trend.ts";
 
 // ATC-389: USAGE TREND. 합성 기록만 쓴다(~/.claude를 읽지 않는다)
 const TABLE = parsePriceTable({
@@ -126,6 +126,45 @@ test("changeText·noCompareText", () => {
   assert.equal(noCompareText({ coverage: 0.4286 }, 7), "지난 기간 기록 3/7일뿐");
   assert.equal(noCompareText({ coverage: 1 }, 7), "지난 기간 0");
   assert.equal(previousLabel({ coverage: 1 }, 7), "지난 7일");
-  assert.equal(previousLabel({ coverage: 0.1583 }, 7), "지난 7일(기록 1.1일)");
+  assert.equal(previousLabel({ coverage: 0.1583 }, 7), "지난 7일 중 1.1일");
   assert.equal(previousLabel({ coverage: 0 }, 14), "지난 14일");
+});
+
+// NOW는 2026-10-02T12:00Z = KST 21:00. KST 오늘 0시는 2026-10-01T15:00Z
+test("localDayStart: 시간대의 오늘 0시. UTC면 그날 00:00Z, KST(−540)면 전날 15:00Z", () => {
+  assert.equal(new Date(localDayStart(NOW, 0)).toISOString(), "2026-10-02T00:00:00.000Z");
+  assert.equal(new Date(localDayStart(NOW, -540)).toISOString(), "2026-10-01T15:00:00.000Z");
+  assert.equal(new Date(localDayStart(Date.parse("2026-10-02T15:30:00Z"), -540)).toISOString(), "2026-10-02T15:00:00.000Z"); // KST 00:30
+  assert.equal(new Date(localDayStart(NOW, 300)).toISOString(), "2026-10-02T05:00:00.000Z"); // UTC−5
+});
+
+test("tzOffsetOf·tzName: 정수 분 −840…840만, 아니면 0", () => {
+  assert.deepEqual(["-540", "330", "abc", "900", "1.5", undefined].map(tzOffsetOf), [-540, 330, 0, 0, 0, 0]);
+  assert.deepEqual([-540, 0, 330, -345].map(tzName), ["UTC+9", "UTC", "UTC−5:30", "UTC+5:45"]);
+});
+
+test("usageTrend.today: 오늘 0시부터 지금까지 대 어제 0시부터 어제 이 시각까지", () => {
+  const kst = (iso: string) => new Date(Date.parse(`${iso}Z`) - 9 * 3_600_000).toISOString(); // KST 벽시계 → Z
+  const t = usageTrend({
+    records: [
+      rec({ t: kst("2026-10-02T08:00:00"), input: 2 * M }), // 오늘 $8
+      rec({ t: kst("2026-10-01T08:00:00"), input: M }), // 어제 같은 시각 전 $4
+      rec({ t: kst("2026-10-01T22:00:00"), input: 10 * M }), // 어제 이 시각(21:00) 뒤: 견주지 않는다
+      rec({ t: kst("2026-10-01T23:59:00") }), // 어제 이 시각 뒤
+      rec({ t: ago(20) }),
+    ],
+    names: NAMES, teamPattern: "^TEAM[\\s_-]?[A-Z]{1,2}$", prices: TABLE, arrivals: [{ arrivedAt: kst("2026-10-02T10:00:00") }], now: NOW, days: 7, weeks: 2, tzOffsetMin: -540,
+  });
+  assert.equal(t.today.tzOffsetMin, -540);
+  assert.equal(t.today.current.from, "2026-10-01T15:00:00.000Z");
+  assert.equal(t.today.previous.to, "2026-10-01T12:00:00.000Z");
+  assert.deepEqual([t.today.current.cost, t.today.previous.cost, t.today.change.cost], [8, 4, 1]);
+  assert.equal(t.today.current.flights, 1);
+  assert.equal(t.today.change.flights, null); // 어제 0건
+});
+
+test("usageTrend.today: 기본은 UTC 하루", () => {
+  const t = run([rec({ t: ago(20) })]);
+  assert.equal(t.today.tzOffsetMin, 0);
+  assert.equal(t.today.current.from, "2026-10-02T00:00:00.000Z");
 });
