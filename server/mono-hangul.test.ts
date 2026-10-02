@@ -4,18 +4,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-
-const HANGUL = /[가-힣]/;
-const OPEN = /<(\w+)\b(?:[^<>]|=>)*?className=(?:"([^"]*)"|\{`([^`]*)`\})(?:[^<>]|=>)*?(?<!=)>([^<{]*)/g;
-
-export function monoHangul(src: string): string[] {
-  const out: string[] = [];
-  for (const m of src.matchAll(OPEN)) {
-    const cls = (m[2] ?? m[3] ?? "").split(/\s+/);
-    if (cls.includes("mono") && HANGUL.test(m[4])) out.push(m[4].trim().replace(/\s+/g, " ").slice(0, 60));
-  }
-  return out;
-}
+import { monoHangul } from "./mono-hangul.ts";
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((n) => {
