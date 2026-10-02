@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FIDS_GROUP_CAP, type FoldedGroup, foldGroup, shortAge } from "../fids-rows.ts";
-import { latestMilestone, type Milestones, milestoneTitle } from "../../../server/milestones.ts";
+import { latestMilestone, type Milestones } from "../../../server/milestones.ts";
 import type { Snapshot, Ticket, TicketColumn } from "../../../server/model.ts";
 import {
   alertCode,
@@ -18,6 +18,7 @@ import { SplitFlap } from "../SplitFlap.tsx";
 import { useMilestones } from "../useMilestones.ts";
 import { AirportCode, PriorityMark, SessionBadge } from "../badges.tsx";
 import { Empty } from "../kit/Empty.tsx";
+import "./Tickets.css";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
@@ -233,8 +234,10 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
   const noContact = alerts.some((a) => a.kind === "no-workspace");
   const tone = phaseTone(t);
   const stand = workspaces[0];
+  // OOOI는 title에만 두지 않는다(원칙 11): OUT 시각과 되돌림을 REMARKS에 보인다
+  const reverted = milestones?.reverted ? ` #${milestones.reverted.number}` : "";
   return (
-    <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
+    <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`}>
       <td className="col-time mono">
         <SplitFlap bare text={t.updatedAt ? formatClock(t.updatedAt, clock) : "—"} />
       </td>
@@ -267,7 +270,7 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
         <PriorityMark priority={t.priority} />
       </td>
       <td className="col-age mono">{shortAge(t.updatedAt, now)}</td>
-      <td className={`fids-remark${latest || noContact ? " has-extra" : ""}`}>
+      <td className={`fids-remark${latest || noContact || milestones?.reverted ? " has-extra" : ""}`}>
         <span className="remark">
           <SplitFlap bare text={flightPhase(t)} />
         </span>
@@ -276,6 +279,8 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
             {latest.name.toUpperCase()} {formatClock(latest.at, clock)}
           </span>
         )}
+        {latest?.name !== "out" && milestones?.out && <span className="remark-ms mono">OUT {formatClock(milestones.out, clock)}</span>}
+        {milestones?.reverted && <span className="remark-rev">PR 되돌림{reverted}</span>}
         {noContact && (
           <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
             NO CONTACT

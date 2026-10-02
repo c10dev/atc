@@ -137,3 +137,7 @@
 .hc-error {
   color: var(--alert);
 }
+/* title에만 있던 "왜 못 누르나"를 화면으로(ATC-418, 원칙 11) */
+.hc-why {
+  font-size: var(--text-xs);
+}

@@ -394,3 +394,16 @@
   align-items: center;
   gap: var(--space-1);
 }
+
+/* CLEARANCE 도장 옆 UNABLE 사유(ATC-418): 색만이 아니라 글자로도 보인다 */
+.stamp-why {
+  color: var(--muted);
+  font: 400 var(--text-2xs) var(--sans);
+  letter-spacing: 0;
+}
+
+/* HOLD 실패(ATC-418): 툴팁에만 있던 오류를 줄에 보인다 */
+.pr-hold-err {
+  color: var(--alert);
+  font-size: var(--text-2xs);
+}

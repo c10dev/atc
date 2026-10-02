@@ -222,12 +222,13 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
             STOP
           </button>
         ) : r.action?.kind === "launch" ? (
-          <button className="config-btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled} title={r.action.title ?? undefined}>
+          <button className="config-btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled}>
             LAUNCH
           </button>
         ) : (
           <span className="faint">이름으로 알아본다 — LAUNCH·STOP 없음</span>
         )}
+        {r.action?.kind === "launch" && r.action.title && <span className="faint"> LAUNCH 못 함: {r.action.title}</span>}
         {r.launchOff && <span className="is-error"> LAUNCH 꺼짐: {r.launchOff}</span>}
       </div>
       <p className="fl-c-line">
@@ -242,9 +243,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
       </p>
       {r.stale.length > 0 && (
         <p className="fl-c-line">
-          <span className="fl-stale" title={`${r.stale.join(", ")} — Claude Code가 멈춘 job을 목록에 남긴 것, 무시해도 됨`}>
+          <span className="fl-stale">
             STALE {r.stale.length}
-          </span>
+          </span>{" "}
+          <span className="faint">{r.stale.join(", ")} — Claude Code가 멈춘 job을 목록에 남긴 것</span>
         </p>
       )}
       {accountEdit(r.name)}
@@ -257,7 +259,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
         CONTROL <em>{count}</em>
       </h2>
       {facts && (
-        <span className="fl-group-facts mono" title="이 그룹의 모든 세션이 같은 사실. 다른 줄에만 따로 표시">
+        <span className="fl-group-facts mono">
           {facts.join(" · ")}
         </span>
       )}
@@ -338,7 +340,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
                 </span>
                 <span className="fl-r-week" aria-hidden="true" />
                 <ContextCell c={r.fob} />
-                <span className="fl-r-burn mono" title={r.fuel?.title ?? "최근 14일 이 세션의 FUEL COST 없음(기록이 없거나 값 없는 모델)"}>
+                <span className="fl-r-burn mono" title={r.fuel?.title ?? undefined}>
                   {r.fuel ? r.fuel.label : <span className="faint">—</span>}
                 </span>
               </>
@@ -367,10 +369,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
                   {o.cwdShort}
                 </code>
                 <span className="fl-other-status">{o.job?.state ?? o.status ?? "?"}</span>
-                <span className="fl-other-idle mono" title={o.lastActiveAt ?? undefined}>
+                <span className="fl-other-idle mono">
                   {idleText(o.idleMin) ?? <span className="faint">idle ?</span>}
                 </span>
-                <span className="fl-other-detail ellipsis" title={o.job?.detail || undefined}>
+                <span className="fl-other-detail ellipsis">
                   {o.job?.detail || <span className="faint">—</span>}
                 </span>
                 {o.account && <span className="fl-r-acct mono">{o.account}</span>}

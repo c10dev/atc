@@ -60,7 +60,7 @@ export function EffectRow({ v, now, onView }: { v: EffectVerdict; now: number; o
         {v.reason}
         {v.wrong ? " · 틀렸다고 표시함" : ""} · <time dateTime={v.at}>{timeAgo(v.at, now)}</time>
       </span>
-      <button type="button" className="ef-btn" disabled={busy} onClick={() => void toggle()} aria-pressed={v.wrong} title="이 평결이 틀렸다고 표시하면 오작동 카운터에 센다. 한 번 더 누르면 거둔다">
+      <button type="button" className="ef-btn" disabled={busy} onClick={() => void toggle()} aria-pressed={v.wrong} title="한 번 더 누르면 거둔다">
         {v.wrong ? "틀림 취소" : "틀림"}
       </button>
       {err && (

@@ -105,7 +105,8 @@ export function LaunchOptions({
       )}
       <label>
         FLIGHT{" "}
-        <input className="fl-input mono" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="선택 — 예: ATC-73" aria-label="FLIGHT" aria-invalid={!flightOk} title="적으면 첫 프롬프트가 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서(/api/dispatch/flight/<FLIGHT>/brief)다" />
+        <input className="fl-input mono" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="선택 — 예: ATC-73" aria-label="FLIGHT" aria-invalid={!flightOk} />
+        <span className="faint fl-hint">적으면 첫 프롬프트가 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서다</span>
         {!flightOk && <span className="fl-error"> 이슈 키(예: ATC-73)</span>}
       </label>
       {d.cap && <p className="fl-launch-note faint">{d.cap}</p>}

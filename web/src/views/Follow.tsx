@@ -129,14 +129,20 @@ function Row({ row, stages, busy, error, moved, onRelease, onChanged, mode, pull
         {at}/{applicable.length}
       </span>
       <div className="fw-now">
-        <span className={row.stuck ? "fw-stuck" : undefined} title={row.stuck?.text}>
+        <span className={row.stuck ? "fw-stuck" : undefined}>
           {row.now}
         </span>
-        {row.stuck && <span className="fw-issue is-warn">막힘</span>}
+        {row.stuck && (
+          <details className="fw-issue-det">
+            <summary className="fw-issue is-warn">막힘</summary>
+            <span className="fw-issue-text is-warn">{row.stuck.text}</span>
+          </details>
+        )}
         {row.issues.map((i) => (
-          <span key={i.code} className={`fw-issue is-${i.severity}`} title={i.text}>
-            {i.code}
-          </span>
+          <details key={i.code} className="fw-issue-det">
+            <summary className={`fw-issue is-${i.severity}`}>{i.code}</summary>
+            <span className={`fw-issue-text is-${i.severity}`}>{i.text}</span>
+          </details>
         ))}
         {pull && <LandingBadge pr={pull} />}
         {row.next && <NextChip row={row} next={row.next} busy={busy} moved={moved} onRelease={onRelease} />}

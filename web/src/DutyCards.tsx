@@ -162,24 +162,37 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
       </div>
     );
   }
+  if (!row.stale)
+    return (
+      <>
+        <div className="du-actions">
+          <button type="button" className="dr-btn" onClick={() => setAsk("disagree")}>
+            {approval ? "거절" : "반대"}
+          </button>
+          {approval ? (
+            <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+              승인(실행)
+            </button>
+          ) : (
+            <button type="button" className="dr-btn is-primary" onClick={() => setAsk("agree")}>
+              동의
+            </button>
+          )}
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </>
+    );
+  // 조건이 바뀌어 새 주기를 기다리는 동안: 왜 못 누르는지(사유)를 화면에 둔다(ATC-418). 승인 버튼은 disabled라 확인으로 넘어가지 않는다
   return (
-    <>
-      <div className="du-actions">
-        <button type="button" className="dr-btn" onClick={() => setAsk("disagree")}>
-          {approval ? "거절" : "반대"}
-        </button>
-        {approval ? (
-          <button type="button" className="dr-btn is-primary" disabled={row.stale} title={row.stale ? "조건이 바뀜 — 다음 주기를 기다린다" : undefined} onClick={() => setAsk("approve")}>
-            승인(실행)
-          </button>
-        ) : (
-          <button type="button" className="dr-btn is-primary" onClick={() => setAsk("agree")}>
-            동의
-          </button>
-        )}
-      </div>
-      {err && <p className="du-err">{err}</p>}
-    </>
+    <div className="du-actions">
+      <button type="button" className="dr-btn" onClick={() => setAsk("disagree")}>
+        거절
+      </button>
+      <button type="button" className="dr-btn is-primary" disabled>
+        승인(실행)
+      </button>
+      <span className="du-hint">조건이 바뀜 — 다음 주기를 기다린다</span>
+    </div>
   );
 }
 

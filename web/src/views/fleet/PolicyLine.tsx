@@ -24,9 +24,10 @@ export function PolicyLine({ refreshKey }: { refreshKey: string }) {
   const rest = denials.byClass.slice(TOP).reduce((n, c) => n + c.n, 0);
   return (
     <p className="fl-policy" aria-label="AIRCRAFT POLICY">
-      <span className={`fl-la-chip${pending.count > 0 ? " is-warn" : ""}`} title={pending.count ? `도구 승인을 기다리는 AIRCRAFT: ${pending.aircraft.join(", ")}` : "도구 승인을 기다리는 AIRCRAFT 없음 — 정상은 0"}>
+      <span className={`fl-la-chip${pending.count > 0 ? " is-warn" : ""}`} title={pending.count ? undefined : "AIRCRAFT는 사람에게 도구 승인을 묻지 않는다 — 정상은 0"}>
         PENDING {pending.count}
       </span>
+      {pending.count > 0 && <span className="faint">{pending.aircraft.join(", ")}</span>}
       <span className="fl-la-chip" title={`policy hook이 지난 ${denials.windowH}시간에 거절한 호출. class만 센다(본문은 기록하지 않음)`}>
         DENIED {denials.windowH}h {denials.total}
       </span>

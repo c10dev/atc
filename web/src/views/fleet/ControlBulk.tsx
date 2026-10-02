@@ -144,7 +144,7 @@ export function BulkBar({ onOpen, disabled }: { onOpen: (op: BulkOp) => void; di
           {BULK_LABEL[op]}
         </button>
       ))}
-      <button type="button" className="config-btn" onClick={() => onOpen("align")} disabled={disabled} title="ACCOUNT가 어긋난 세션만 intended ACCOUNT로 옮긴다">
+      <button type="button" className="config-btn" onClick={() => onOpen("align")} disabled={disabled}>
         {BULK_LABEL.align}
       </button>
     </div>

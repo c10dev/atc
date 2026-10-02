@@ -108,7 +108,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
               <span className="bf-sr">지표</span>
             </th>
             {cols.map((c) => (
-              <th key={c.key} scope="col" className={`bf-kind is-${c.tone}`} title={c.head}>
+              <th key={c.key} scope="col" className={`bf-kind is-${c.tone}`}>
                 <span className="bf-wide">{c.head}</span>
                 <span className="bf-narrow">{c.short}</span>
               </th>

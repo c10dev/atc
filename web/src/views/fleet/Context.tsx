@@ -4,7 +4,7 @@ import type { ContextBadge } from "../../../../server/fuel-context.ts";
 
 export function ContextCell({ c }: { c: ContextBadge | null }) {
   return (
-    <span className={`fl-r-ctx mono${c ? ` lv-${c.level}` : ""}`} title={c?.title ?? "살아 있는 세션의 최근 7일 기록 없음"}>
+    <span className={`fl-r-ctx mono${c ? ` lv-${c.level}` : ""}`} title={c?.title}>
       {c ? <ContextShort short={c.short} /> : <span className="faint">—</span>}
     </span>
   );
@@ -22,10 +22,12 @@ function ContextShort({ short }: { short: string }) {
   );
 }
 
+// 카드 줄: 창 크기·모델·창을 어떻게 알았나는 title(FOB·context·시각은 보이는 글에 있다)
 export function ContextLine({ c }: { c: ContextBadge | null }) {
   if (!c) return null;
+  const why = c.title.split("창: ")[1];
   return (
-    <p className={`fl-ctx lv-${c.level}`} title={c.title}>
+    <p className={`fl-ctx lv-${c.level}`} title={why ? `창: ${why}` : undefined}>
       {c.label}
     </p>
   );
