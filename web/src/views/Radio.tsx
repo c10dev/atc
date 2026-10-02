@@ -7,6 +7,7 @@ import { formatClock, useSettings } from "../settings.ts";
 import { useNow } from "../useSnapshot.ts";
 import "./Radio.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // RADIO 탭(ATC-171, docs/radio.md R2). atc가 이미 기록한 교신을 주파수별로 보여 주기만 한다.
 // 읽기만: 보내기·ACK·승인 버튼이 없다. 소리는 R3. 서버는 R1(GET /api/radio, SSE 토픽 radio).
@@ -221,9 +222,9 @@ export function Radio() {
       <div className="rd-wrap">
         <div className="rd-log" ref={logRef} onScroll={() => { stick.current = atBottom(); if (stick.current) setSeen(total); }} tabIndex={0} aria-label="교신 기록" role="log" aria-live="off">
           {!loaded ? (
-            <p className="empty">불러오는 중…</p>
+            <Empty>불러오는 중…</Empty>
           ) : threads.length === 0 ? (
-            <p className="empty">{txs.length ? "이 필터에 맞는 교신이 없음" : "지난 6시간 동안 기록된 교신이 없음"}</p>
+            <Empty>{txs.length ? "이 필터에 맞는 교신이 없음" : "지난 6시간 동안 기록된 교신이 없음"}</Empty>
           ) : (
             <ul className="rd-list">
               {threads.map((th) => (

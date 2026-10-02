@@ -18,6 +18,7 @@ import {
   type View,
 } from "../../../server/globe.ts";
 import { f1, pathOf, toPx } from "./globe-draw.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // GLOBE G2(ATC-260, docs/globe.md 3.2·3.3): FLIGHT마다 자기 AIRPORT에서 뜨고 내리는 바퀴와 그 위의 비행기.
 // 서버가 상태(state)와 구간 안의 위치(t)를 정해서 보내고, 여기서는 그 자리를 그리기만 한다. 홀딩 레이스트랙과 고어라운드 고리는
@@ -179,7 +180,7 @@ export function FlightRows({ flights }: { flights: readonly GlobeFlight[] }) {
     <section className="globe-rows globe-flight-rows" aria-label="FLIGHT 목록">
       <h2 className="globe-rows-head">FLIGHTS</h2>
       {flights.length === 0 ? (
-        <p className="empty">지금 나는 FLIGHT가 없다.</p>
+        <Empty>지금 나는 FLIGHT가 없다.</Empty>
       ) : (
         <ul>
           {flights.map((f) => {

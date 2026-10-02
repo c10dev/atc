@@ -1,0 +1,36 @@
+/* 접기 하나(kit, ATC-414): 의미 토큰만 쓴다. 머리글은 .label과 같은 모양(옅은 mono 대문자 + 요약) */
+.kit-fold-head {
+  margin: 0 0 var(--space-2);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.18em;
+  color: var(--faint);
+}
+.kit-fold-head button,
+.kit-fold-static {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+.kit-fold-head button {
+  cursor: pointer;
+}
+.kit-fold-head button:hover {
+  color: var(--text);
+}
+.kit-fold-head em {
+  font: 400 var(--text-xs) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.kit-fold [hidden] {
+  display: none;
+}

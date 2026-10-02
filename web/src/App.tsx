@@ -26,6 +26,7 @@ import { useDuty } from "./useDuty.ts";
 import { readoutState } from "../../server/duty-chat.ts";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
+import { Empty } from "./kit/Empty.tsx";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
@@ -285,7 +286,7 @@ export function App({ build }: { build: string }) {
 
       <main className="main">
         {!snapshot || !idx ? (
-          <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
+          <Empty>{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</Empty>
         ) : (
           // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
           <>

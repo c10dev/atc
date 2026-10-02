@@ -29,6 +29,7 @@ import { RadioLayer, useRadioFeed } from "./GlobeRadio.tsx";
 import { SpaceView } from "./GlobeSpace.tsx";
 import "./Globe.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // GLOBE(ATC-254, docs/globe.md): atc의 AIRPORT를 정사영 지구본에 놓고 AIRPORT마다 세워 둔 AIRCRAFT를 보인다. 읽기만 한다.
 // 계산은 server/globe.ts(순수), 장면은 GET /api/globe. SUPERVISOR의 위치·홈·옮긴 AIRPORT·시점은 이 브라우저의 localStorage(atc.globe)에만 둔다.
@@ -364,7 +365,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
   if (airportCode) {
     return (
       <div className="globe">
-        {scene ? <AirportView code={airportCode} scene={scene} txs={txs} motion={motion} now={now} /> : <p className="empty">{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</p>}
+        {scene ? <AirportView code={airportCode} scene={scene} txs={txs} motion={motion} now={now} /> : <Empty>{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</Empty>}
       </div>
     );
   }
@@ -425,10 +426,10 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
         {geoMsg && <strong role="status"> {geoMsg}</strong>}
       </p>
       )}
-      {error && !scene && <p className="empty">GLOBE 장면을 읽지 못했다.</p>}
+      {error && !scene && <Empty>GLOBE 장면을 읽지 못했다.</Empty>}
       <div className="globe-body">
         {mode === "space" ? (
-          scene ? <SpaceView scene={scene} motion={motion} now={now} /> : <p className="empty">{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</p>
+          scene ? <SpaceView scene={scene} motion={motion} now={now} /> : <Empty>{error ? "GLOBE 장면을 읽지 못했다." : "불러오는 중…"}</Empty>
         ) : (
         <svg
           ref={svgRef}
@@ -499,7 +500,7 @@ export function Globe({ refreshKey }: { refreshKey: string }) {
         <section className="globe-rows" aria-label="AIRPORT 목록">
           <h2 className="globe-rows-head">AIRPORTS</h2>
           {rows.length === 0 ? (
-            <p className="empty">{scene ? "열린 AIRPORT가 없다." : "불러오는 중…"}</p>
+            <Empty>{scene ? "열린 AIRPORT가 없다." : "불러오는 중…"}</Empty>
           ) : (
             <ul>
               {rows.map((r) => (

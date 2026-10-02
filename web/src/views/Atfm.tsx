@@ -5,6 +5,7 @@ import { atfmAlertOf } from "../readiness-line.ts";
 import { StateMark } from "./Mark.tsx";
 import "./Atfm.css";
 import { apiGet, apiSend } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
 // 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)와 머지 슬롯(7단계: 켜면 TOWER가 in-slot PR에만 LAND)이다.
@@ -296,7 +297,7 @@ export function AtfmPanel({ atfm, now, alertShown }: { atfm: AtfmState; now: num
             ))}
           </ul>
         ) : (
-          <p className="empty">CLEARED PR 없음</p>
+          <Empty>CLEARED PR 없음</Empty>
         )}
       </details>
 
@@ -394,7 +395,7 @@ function GroundStopSection({ atfm, now }: { atfm: AtfmState; now: number }) {
           })}
         </ul>
       ) : (
-        <p className="empty">출발 중지 없음</p>
+        <Empty>출발 중지 없음</Empty>
       )}
 
       <div className="atfm-switches">
@@ -483,7 +484,7 @@ function SlotFigures({ lands, behind }: { lands: AtfmBrief["data"]["lands"]; beh
           })}
         </ul>
       ) : (
-        <p className="empty">7일 동안 LAND·머지 없음</p>
+        <Empty>7일 동안 LAND·머지 없음</Empty>
       )}
     </div>
   );

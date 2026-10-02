@@ -3,6 +3,7 @@ import type { Session, Snapshot, Ticket, Workspace } from "../../../server/model
 import { hasActiveClaim, type Index, isGateCleanup, isParkedAtGate, sortSessions, timeAgo } from "../derive.ts";
 import { AirportCode, AwayTag, SessionPlace } from "../badges.tsx";
 import { aircraftStatus, aircraftStatusCode, aircraftStatusLabel, callsign, flightNumber, flightPhase, phaseCode, phaseTone } from "../aviation.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 interface Edge {
   from: string;
@@ -143,7 +144,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
               </div>
             );
           })}
-          {graph.sessions.length === 0 && <p className="empty">STAND를 점유한 AIRCRAFT 없음</p>}
+          {graph.sessions.length === 0 && <Empty>STAND를 점유한 AIRCRAFT 없음</Empty>}
         </div>
 
         <div className="map-col">
