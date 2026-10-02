@@ -169,7 +169,15 @@
   border-right: 1px solid var(--line);
   background: none;
   color: var(--faint);
-  cursor: default;
+  cursor: pointer;
+}
+.fold-btn:hover,
+.fold-btn[aria-expanded="true"] {
+  color: var(--text);
+}
+.fold-btn:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
 }
 .top-brand {
   display: none;
@@ -301,9 +309,6 @@
     width: auto;
   }
   /* 상단 바: 첫 줄은 로고 글자와 DUTY, 둘째 줄부터 수치 */
-  .fold-btn {
-    display: none;
-  }
   .top-brand {
     display: flex;
     flex: 1;

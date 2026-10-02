@@ -67,6 +67,15 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
     const m = /^#fleet\/([^/]+)/.exec(location.hash);
     return new Set(m ? [decodeURIComponent(m[1]).toUpperCase()] : []);
   });
+  // 사이드바(ATC-443)가 같은 화면에서 #fleet/TEAM_G로 오면 그 줄을 펼친다
+  useEffect(() => {
+    const f = () => {
+      const m = /^#fleet\/([^/]+)/.exec(location.hash);
+      if (m) setOpen((prev) => new Set(prev).add(decodeURIComponent(m[1]!).toUpperCase()));
+    };
+    window.addEventListener("hashchange", f);
+    return () => window.removeEventListener("hashchange", f);
+  }, []);
   const chooseLayout = (l: Layout) => {
     setLayout(l);
     saveLayout(l);

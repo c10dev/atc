@@ -187,7 +187,7 @@ Open:
 
 ## 7. Shell: rail, sidebar, drawer and CONTROL panel
 
-Decided by the SUPERVISOR on 2026-10-02, over three rounds on a private structure mockup at their real width (about 1000 px) with example data. Rounds 2 and 3 answered with a screenshot and a list. Z1 is built (see "Z1 as built" below); Z2–Z6 are not. Z1–Z6 below are the steps.
+Decided by the SUPERVISOR on 2026-10-02, over three rounds on a private structure mockup at their real width (about 1000 px) with example data. Rounds 2 and 3 answered with a screenshot and a list. Z1 and Z2 are built (see "Z1 as built" and "Z2 as built" below); Z3–Z6 are not. Z1–Z6 below are the steps.
 
 ### 7.1 Today
 
@@ -325,3 +325,19 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
 - **Sidebar rule (7.3).** From 861 to 1279 px an open drawer sets `--sidebar-w: 0` and hides `aside.sidebar` through `.shell[data-drawer]`; nothing is written to the remembered choice. Z2 fills the sidebar and keeps this selector (the sidebar does not exist yet, so only the rule is in place). At 1280 px and wider the sidebar keeps its width.
 - **≤ 860 px.** The column is `position: fixed; inset: 0` and covers the screen; the bottom tab bar is under it. In this mode the drawer behaves as the ATC-406 modal again (`aria-modal="true"`, Tab trap).
 - **ATC-406, what changed.** The hook `useDialog` takes `{ trap, restore }`. Docked (≥ 861 px): `aria-modal="false"`, no Tab trap (the screen stays usable), Escape closes unless the key came from a text field outside the drawer (`dockedEscapeAction`, tested); a text field inside the drawer still only gives up focus. Opening still moves focus into the drawer (and again when the drawer's item changes). Returning focus to the opener moved to `App.tsx` (`openerRef`), because a drawer is re-created when its item changes and loses the control that opened it. Kept as before: focus in on open, scroll to top on a new item, Escape handling in composition and for fields. The GLOBE window and the settings window are unchanged.
+
+### Z2 as built (ATC-443)
+
+- **Where.** `web/src/Sidebar.tsx` fills `aside.sidebar` (the grid area of Z1) and `web/src/Sidebar.css` styles it. `App.tsx` decides whether it is shown and wires the fold button in the top bar. The pure list logic (grouping by AIRPORT, ordering, folding of finished FLIGHTs, search) is `web/src/sidebar-rows.ts`, tested in `server/sidebar-rows.test.ts`.
+- **Width.** `.shell.has-sidebar` sets `--sidebar-w` to the new token `--sidebar-open-w` (260 px). Folded, `--sidebar-w` stays 0 and the `aside` is `hidden`. The drawer rule of 861–1279 px (E6) is Z3's (`.shell[data-drawer]` sets `--sidebar-w: 0` and hides the aside while a drawer is open; the remembered choice is not touched). Z2's `.shell.has-sidebar` sets the open width, and the two selectors are kept apart by order in `Rail.css` / `Sidebar.css`.
+- **Header.** The screen name, then a row with an empty slot for the notifications of Z6 (`.sb-notify`, no width while empty) left of the **search** box. Search filters this list only (FLIGHT key, title, AIRPORT, AIRCRAFT, state word). Esc in the box clears it first. The query is cleared when the screen changes.
+- **What each screen lists.**
+  - **FLIGHTS:** `snapshot.tickets` grouped under their AIRPORT (code, repository name, count). A FLIGHT is shown when it is triage, unstarted or started, or a live session holds it; the backlog is left out as in the FLIGHTS list, and finished ones (completed, canceled, duplicate) from the last 7 days sit behind `끝난 FLIGHT n` in each group. Order: live first, then started before unstarted, then priority, then key. A filled dot means a live session (`occupantsOf`). Choosing one sets `#flight/<KEY>`, which opens the drawer as before.
+  - **FLEET:** `GET /api/fleet` (the call FLEET makes), with the status of a live session taken from the snapshot, under the AIRCRAFT's base AIRPORT, with a state word (AIRBORNE, IDLE, NORDO, ABSENT). Choosing one sets `#fleet/<REGISTRATION>`, and FLEET now also opens that row on `hashchange` (it only did on first load).
+  - **RELEASE:** `GET /api/releases` `ready` (the call the rail badge makes), grouped by the AIRPORT of each ticket. Choosing one opens its FLIGHT drawer.
+  - **METRICS:** OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK, the open one marked `aria-current`.
+  - **HOME:** QUEUE, ALERTS and BRAKES scroll to the section with that `aria-label`. A section that is empty is not drawn (principle 1), so its anchor goes nowhere.
+- **One server addition, no new route.** `Ticket.airport` (an AIRPORT code or null) is set in `server/snapshot.ts` with `airportOfTicket`, the rule DISPATCH already uses (project mapping first, then the team default). The web had no way to know a FLIGHT's AIRPORT, and a second rule in the screen would break principle 4. It is not stored anywhere.
+- **Fold.** The top-bar button (`aria-expanded`, `aria-controls`) folds and unfolds it; the choice is kept in this browser under `atc.sidebar` (`localStorage`, wrapped in try/catch, the sidebar is open when it cannot be read).
+- **≤ 860 px.** The sidebar starts closed (the fold button is visible now). The button opens it over the screen from the left (`.shell.sidebar-over`, 320 px or 86 vw, above a transparent scrim); it closes when an item is chosen, on Esc, on a click outside, and when the rail changes the screen. Focus goes to the search box on open.
+- **Keyboard.** Tab goes fold button → (top bar) … and search → items in order; every item is a button; the finished-FLIGHT fold is a `<details>`; Enter and Space work as usual.

@@ -1,6 +1,20 @@
 # 화면 안내
 
-화면은 왼쪽 **레일**에서 고른다(2026-10-02, ATC-442). 레일은 아이콘만 있고, 마우스를 올리거나 Tab·방향키(위·아래, Home, End)로 가면 이름이 뜬다. 열린 화면에는 막대가 서고 `aria-current`가 붙는다. 일하는 화면은 HOME · RELEASE · FLIGHTS · FLEET · METRICS(NETWORK는 METRICS의 하위 화면이다, ATC-380)이고 기본 화면은 HOME이다. 숫자 배지는 SUPERVISOR가 해야 할 것만 센다: HOME은 QUEUE 항목, RELEASE는 READY 후보. 레일 맨 아래에 GLOBE, HELP, 설정(SUPERVISOR 표시)이 있다. 860px 이하에서는 레일이 화면 아래의 **탭 줄**(글자가 붙는다)이 되고 같은 단추가 모두 거기 있다. 위쪽 **상단 바**에는 숫자판과 시계·LINK가, 오른쪽 끝에 DUTY가 있고(설정에서 켰을 때), 왼쪽 단추는 사이드바 접기 자리다(아직 사이드바가 없어 아무것도 하지 않는다). 나머지는 이렇게 연다.
+화면은 왼쪽 **레일**에서 고른다(2026-10-02, ATC-442). 레일은 아이콘만 있고, 마우스를 올리거나 Tab·방향키(위·아래, Home, End)로 가면 이름이 뜬다. 열린 화면에는 막대가 서고 `aria-current`가 붙는다. 일하는 화면은 HOME · RELEASE · FLIGHTS · FLEET · METRICS(NETWORK는 METRICS의 하위 화면이다, ATC-380)이고 기본 화면은 HOME이다. 숫자 배지는 SUPERVISOR가 해야 할 것만 센다: HOME은 QUEUE 항목, RELEASE는 READY 후보. 레일 맨 아래에 GLOBE, HELP, 설정(SUPERVISOR 표시)이 있다. 860px 이하에서는 레일이 화면 아래의 **탭 줄**(글자가 붙는다)이 되고 같은 단추가 모두 거기 있다. 위쪽 **상단 바**에는 숫자판과 시계·LINK가, 오른쪽 끝에 DUTY가 있고(설정에서 켰을 때), 왼쪽 단추는 **사이드바**를 접고 편다(아래).
+
+**사이드바**(ATC-443): 레일 오른쪽에 열린 화면 안의 목록이 있다. 머리에 화면 이름과 **검색** 칸이 있고, 검색은 이 목록만 거른다(FLIGHT key·제목, AIRCRAFT 이름). 알림이 올 자리는 검색 칸 왼쪽에 비워 뒀다. 화면마다 이렇게 보인다.
+
+| 화면 | 사이드바 |
+|---|---|
+| FLIGHTS | AIRPORT(코드와 저장소 이름)마다 FLIGHT. 살아 있는 세션이 쥔 것이 위, 점이 채워진다. 끝난 FLIGHT(최근 7일)는 `끝난 FLIGHT n` 뒤에 접혀 있다. 고르면 그 FLIGHT 서랍이 열린다 |
+| FLEET | AIRPORT마다 AIRCRAFT와 상태 낱말(AIRBORNE·IDLE·NORDO·ABSENT). 고르면 FLEET에서 그 줄이 펼쳐진다 |
+| RELEASE | READY 후보를 AIRPORT별로. 고르면 FLIGHT 서랍 |
+| METRICS | OPERATIONS · LEAKS · MISFIRE · FUEL · NETWORK. 고르면 그 하위 화면 |
+| HOME | QUEUE · ALERTS · BRAKES. 고르면 그 절로 스크롤한다(비어 있어 그려지지 않은 절은 가지 않는다) |
+
+접힘은 이 브라우저에 기억된다. 860px 이하에서는 사이드바가 처음에 닫혀 있고, 상단 바의 단추로 화면 위에 왼쪽에서 열린다. 항목을 고르거나 Esc, 바깥 누르기, 레일로 화면을 바꾸면 닫힌다.
+
+나머지는 이렇게 연다.
 
 - **GLOBE**: 레일 아래쪽의 **GLOBE** 버튼(또는 `#globe`, `#globe/<AIRPORT>`)이 현재 화면 위에 꽉 찬 보기 모드로 연다. Esc나 닫기 버튼으로 닫으면 열기 전 화면으로 돌아오고, 포커스도 GLOBE 버튼으로 돌아간다. Tab은 창 안에서만 돌며, 공항 화면의 선은 Tab으로 가서 Enter·Space로 고른다. 서랍(FLIGHT·PR·DUTY·IDEAS)도 같다: Tab이 안에서만 돌고, 닫으면 연 곳으로 돌아가며, DUTY 입력칸의 Esc는 칸만 벗어난다.
 - **AIRPORTS**: 설정 창(레일 맨 아래의 SUPERVISOR 표시)의 **AIRPORTS** 분류. `#airports`도 그 분류를 연다. 등록부, 개설·코드 변경·폐쇄, 팀 머지 스위치가 그대로 있다.
