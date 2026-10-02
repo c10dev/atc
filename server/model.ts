@@ -1,4 +1,5 @@
 import type { Restarting } from "./restarting.ts";
+import type { ReleaseView } from "./release.ts";
 import type { AbsentAircraft } from "./dispatch-launch.ts";
 import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
@@ -107,6 +108,7 @@ export interface Ticket {
   related: string[];
   parent: string | null; // 상위 이슈 key (Linear parent)
   children: string[]; // 하위 이슈 key (Linear children)
+  releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 
 // 상위 이슈(하위 이슈를 묶는 컨테이너). Linear의 children이 있거나 다른 FLIGHT의 parent로 지목된 것.
@@ -293,6 +295,7 @@ export interface Snapshot {
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29). 경보(kind stranded)와 FLIGHT FOLLOWING이 읽는다
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
   autoland?: AutolandView; // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시·제외 사유
+  releases?: ReleaseView; // 발권 기록(ATC-362): DISPATCH는 발권한 FLIGHT만 배정한다(gate가 켜졌을 때)
   fuel?: Record<string, FuelRemaining>; // FUEL REMAINING(ATC-55): REGISTRATION(대문자) → 그 ACCOUNT의 가장 새 statusline 값
   fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 하나(ATC-60): 관제 세션만 있는 ACCOUNT도 들어간다
   restarting?: Restarting[]; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT(ATC-91). restartGraceMin 안에서만

@@ -34,6 +34,7 @@ import { regKey } from "./registration.ts";
 import { readRecords } from "./recorder.ts";
 import { launchModeOf } from "./session-origin.ts";
 import { readAbsent } from "./absent-run.ts";
+import { readReleaseView } from "./release-store.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -336,6 +337,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     stranded,
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
     autoland,
+    releases: readReleaseView(),
     fuel,
     fuelAccounts,
     restarting,

@@ -570,6 +570,20 @@ PR에 GO AROUND나 FIX가 필요한데 그 STAND를 쥔 세션이 없으면 TOWE
 - **팀 쪽.** 바꾼 것이 없다: 팀은 `.claude/skills/atc-task/SKILL.md`와 루트 `CLAUDE.md`대로 `GO AROUND`·`FIX`에 답하고 CLEARANCE에 STAND가 실려 있다. 그 FLIGHT를 난 AIRCRAFT가 그 STAND에 더는 없으면 `.claude/worktrees/` 안이므로 `EnterWorktree path=`로(승인 없이) 연다.
 - **만들지 않은 것:** 카드로서의 `why: "repeat"`, ACCOUNT를 넘는 전달(ATC-251: 다른 폴더의 AIRCRAFT는 전처럼 `UNDELIVERED` 카드), TOWER가 스스로 하는 relay.
 
+## 발권 기록 (ATC-362, as built)
+
+DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 원칙 1·10) FLIGHT만 배정한다. 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이다: DISPATCH는 `발권 기록 없음 — 제안 상태, SUPERVISOR가 발권(RELEASE)해야 배정`이라는 이유를 보이며 건너뛰고, SUPERVISOR는 DISPATCH 탭 맨 위 RELEASE 패널에서 클릭 한 번으로 발권한다. 기록은 `releases.jsonl`(상태 폴더, 추가만)이다.
+
+- **발권이 싣는 것.** FLIGHT, 채널, 시각, `hash`: 이슈의 `## Goal`·`## Done when`·`## K effects` 절의 SHA-256 앞 16자리(세 절이 모두 없으면 본문 전체. `Ticket.releaseHash`, Linear 보드를 읽을 때 같이 계산, 추가 필드). 발권 뒤 본문이 바뀌면 해시가 달라져 그 FLIGHT는 다시 제안이 되고(`발권 뒤 목표·완료 기준이 바뀜`) 다시 발권해야 한다. 발권은 목적지와 선언한 K 효과만 싣는다. 우선순위는 따로 있는 규칙이고 그대로다.
+- **채널.**
+  - `screen`: RELEASE 패널의 클릭(`POST /api/releases {flight, hash}`). 서버는 이 화면에서 온 요청만 받는다(`fromThisApp`, 아니면 403). FLIGHT 상태 버튼과 같은 검사라 agent는 만들 수 없다. 화면은 보여 준 해시를 보내고, 그 사이 이슈가 바뀌었으면 409.
+  - `duty-chat`: DUTY 채팅의 SUPERVISOR 본인의 말. Origin 검사를 거치는 `/api/duty/message`로 보낸 글에 `RELEASE ATC-n [ATC-m …]`나 `발권 ATC-n` 줄이 있으면 글(앞 500자)과 함께 발권을 적는다. DUTY가 쓸 수는 없다: 이를 위한 `atcctl` 명령이 없고 DUTY guard는 바뀌지 않았다.
+  - `attested`: 다른 세션(ENGINEERING, 데스크톱)에 한 SUPERVISOR의 말을 그 세션이 `atcctl release attest <FLIGHT> --session <이름> -- <그 말>`로 증언(`POST /api/releases/attest`). 서버는 그 말을 확인할 수 없어(agent가 쓴 글이라 거짓일 수 있다) 기록에 `attested`, 세션 이름, 말을 남기고, RELEASE 패널이 세션마다 attested 수를 세어 표본으로 확인하게 한다. 요청 본문의 `channel`은 읽지 않는다: attest는 `screen` 기록을 만들지 못한다.
+- **일괄 확인.** 이미 Todo에 있는 FLIGHT는 한 번의 확인으로 발권한다. "모두 발권…"이 발권 없는 FLIGHT 목록을 보이고 화면이 보여 준 목록을 발권한다(`POST /api/releases/bulk {flights: [{key, hash}]}`, Origin 검사. 그 사이 바뀐 것은 건너뛰고 알린다). 같은 클릭이 `arm` 줄을 쓴다.
+- **gate가 켜지는 때.** `dispatch.json`의 `releaseGate`: `"auto"`(기본)는 첫 일괄 확인 때 켜진다. 이 변경이 착륙해도 SUPERVISOR가 날리고 싶은 Todo FLIGHT를 확인하기 전까지는 달라지는 것이 없다. `"on"`은 항상, `"off"`는 끔. 없거나 모르는 값은 `auto`.
+- **형식.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases`, `releaseGate`는 모두 추가다. `atcctl release [brief]`가 읽는다. DUTY guard, 루트 규칙, 다른 guard는 바뀌지 않았다.
+- **여기서 정하지 않은 것.** CROSSCHECK가 승인한 SCHEDULE NEW 초안이 Backlog로 가는지, 발권 기록이 생긴 뒤에도 우선순위 규칙이 남는지([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363이 이 기록을 읽는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

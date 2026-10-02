@@ -22,6 +22,7 @@ import { BriefingLines, CardDetails, type CardBrief, FactsLine } from "./Dispatc
 import { FollowingAlert, FollowingPanel, useFollowing } from "./Following.tsx";
 import { ReadinessFold, useFoldOpen } from "./ReadinessFold.tsx";
 import { BriefsPanel } from "./Briefs.tsx";
+import { ReleasePanel } from "./Release.tsx";
 import "./Dispatch.css";
 import { apiGet, apiSend } from "../api.ts";
 
@@ -674,6 +675,8 @@ export function Dispatch({ refreshKey, now }: { refreshKey: string; now: number 
       ) : (
         <p className="empty">아직 결정된 제안 없음</p>
       )}
+
+      <ReleasePanel refreshKey={refreshKey} />
 
       <ReadinessFold id="dp-readiness" open={foldOpen} onOpenChange={setFoldOpen} parts={dispatchLineParts(brief)}>
         {brief.readiness2b?.items?.length ? <Readiness2b items={brief.readiness2b.items} mode={brief.mode} /> : null}
