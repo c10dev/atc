@@ -15,6 +15,11 @@ import { MoonIcon, Starfield } from "./Starfield.tsx";
 import { Ticker } from "./Ticker.tsx";
 import { formatClock, useSettings } from "./settings.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
+import { HelpMenu } from "./HelpMenu.tsx";
+import { GlobeMode } from "./GlobeMode.tsx";
+import { Globe as GlobeIcon } from "lucide-react";
+import { Icon } from "./Icon.tsx";
+import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
 import { useNow, useSnapshot } from "./useSnapshot.ts";
 import { useDuty } from "./useDuty.ts";
@@ -24,8 +29,6 @@ import type { Index } from "./derive.ts";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
-const Globe = lazyTab<{ refreshKey: string }>(() => import("./views/Globe.tsx"), "Globe");
-const Airports = lazyTab<{ snapshot: Snapshot }>(() => import("./views/Airports.tsx"), "Airports");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
@@ -37,18 +40,21 @@ const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
+// 화면(주소 #<id>가 여는 것). 탭 줄에 보이는 것은 ROW뿐이다(ATC-381, docs/layout.md Y6): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
+// NETWORK(Y5)는 METRICS가 이어받을 때까지 탭으로 남는다
 const TABS = [
   { id: "home", code: "HOME" },
+  { id: "release", code: "RELEASE" },
   { id: "flights", code: "FLIGHTS" },
-  { id: "globe", code: "GLOBE" },
-  { id: "airports", code: "AIRPORTS" },
   { id: "fleet", code: "FLEET" },
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
-  { id: "release", code: "RELEASE" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+const IN_ROW = (t: Tab) => t !== "docs";
+// 탭이 아닌 보기: #globe(#globe/<AIRPORT>)는 GLOBE 창을, #airports는 설정 창의 AIRPORTS를 연다
+const headOf = (hash: string) => hash.replace(/^#/, "").split("/")[0];
 
 const connectionLabel = { live: "실시간", connecting: "연결 중", lost: "끊김" } as const;
 
@@ -67,8 +73,10 @@ export function App({ build }: { build: string }) {
   const supervisorAuth = useSupervisorAuth();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [settingsOpen, setSettingsOpen] = useState(() => headOf(location.hash) === "airports");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(() => (headOf(location.hash) === "airports" ? "airports" : null));
+  const [globeOpen, setGlobeOpen] = useState(() => headOf(location.hash) === "globe");
+  const closeSettings = useCallback(() => (setSettingsOpen(false), setSettingsTab(null)), []);
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
 
@@ -89,9 +97,14 @@ export function App({ build }: { build: string }) {
   }, []);
   useEffect(() => {
     // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
-    if (drawerOfHash(location.hash) || location.hash === "#duty") return;
-    if (location.hash.slice(1).split("/")[0] !== tab) history.replaceState(null, "", `#${tab}`);
+    if (drawerOfHash(location.hash) || location.hash === "#duty" || headOf(location.hash) === "globe") return;
+    if (headOf(location.hash) !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
+  // GLOBE 창을 닫으면 열기 전 화면의 주소로 돌아간다
+  const closeGlobe = useCallback(() => {
+    setGlobeOpen(false);
+    history.replaceState(null, "", `#${tabRef.current}`);
+  }, []);
   // 탭 줄이 가로로 넘칠 때 선택한 탭이 보이게(글꼴·수치가 늦게 들어와 폭이 바뀌어도)
   const tabsRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -108,7 +121,16 @@ export function App({ build }: { build: string }) {
       setDrawer(d);
       const isDuty = location.hash === "#duty";
       setDutyOpen(isDuty);
-      if (!d && !isDuty) setTab(initialTab());
+      // #globe는 창, #airports는 설정 창의 AIRPORTS(ATC-381): 탭은 그대로다
+      const head = headOf(location.hash);
+      setGlobeOpen(head === "globe");
+      if (head === "airports") {
+        setSettingsTab("airports");
+        setSettingsOpen(true);
+        history.replaceState(null, "", `#${tabRef.current}`);
+        return;
+      }
+      if (!d && !isDuty && head !== "globe") setTab(initialTab());
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -151,10 +173,10 @@ export function App({ build }: { build: string }) {
             </span>
             <GearIcon />
           </button>
-          {settingsOpen && <SettingsPanel settings={settings} snapshot={snapshot} onClose={closeSettings} />}
+          {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
         </div>
         <nav className="tabs" role="tablist" ref={tabsRef}>
-          {TABS.map((t) => (
+          {TABS.filter((t) => IN_ROW(t.id)).map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
               <span className="tab-code">{t.code}</span>
             </button>
@@ -194,6 +216,13 @@ export function App({ build }: { build: string }) {
             </span>
           </button>
           <AlertBell />
+          <button type="button" className={`readout is-button${globeOpen ? " is-on" : ""}`} onClick={() => (globeOpen ? closeGlobe() : void (location.hash = "globe"))} aria-pressed={globeOpen} aria-label="GLOBE 보기 모드">
+            <b>
+              <Icon icon={GlobeIcon} size={16} />
+            </b>
+            <span>GLOBE</span>
+          </button>
+          <HelpMenu docsOpen={tab === "docs"} />
           <SoundLockChip />
           <div className="readout clock">
             <Clock clock={settings.clock} />
@@ -270,6 +299,13 @@ export function App({ build }: { build: string }) {
           </>
         )}
       </main>
+      {globeOpen && snapshot && (
+        <TabBoundary key="globe" stale={false}>
+          <Suspense fallback={<TabLoading />}>
+            <GlobeMode refreshKey={snapshot.at.slice(0, 16)} onClose={closeGlobe} />
+          </Suspense>
+        </TabBoundary>
+      )}
       {dutyOpen && (
         <TabBoundary key="duty" stale={false}>
           <Suspense fallback={null}>
@@ -298,10 +334,6 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
   switch (tab) {
     case "flights":
       return <Flights snapshot={snapshot} idx={idx} now={now} refreshKey={snapshot.at} />;
-    case "globe":
-      return <Globe refreshKey={refreshKey} />;
-    case "airports":
-      return <Airports snapshot={snapshot} />;
     case "fleet":
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":

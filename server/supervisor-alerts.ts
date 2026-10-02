@@ -374,11 +374,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     if (pr.draft) continue;
     const id = `${pr.repo}#${pr.number}`;
     if (pr.landing === "CLEARED") {
-      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#airports", since: null });
+      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#flights", since: null });
     }
     const hc = pr.humanCheck;
     if (hc?.required && hc.state !== "done") {
-      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#airports", since: null });
+      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#home", since: null });
     }
   }
 
