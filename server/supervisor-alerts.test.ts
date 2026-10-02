@@ -104,7 +104,7 @@ test("SCHEDULE: approval 모드에서 열린 작업(draft·agreed·disagreed)마
   const out = supervisorAlertsOf(base({ schedule: { mode: "approval", ops: [sop("S-0001", "draft"), sop("S-0002", "agreed", { kind: "CLASSIFY" }), sop("S-0003", "disagreed", { kind: "NEW", flight: null })] } }));
   assert.deepEqual(keys(out), ["pending|schedule|S-0001", "pending|schedule|S-0002", "pending|schedule|S-0003"]);
   const [a] = out;
-  assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#schedule", "2026-09-30T01:00:00Z", "tail"]);
+  assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#home", "2026-09-30T01:00:00Z", "tail"]);
   assert.match(a.text, /^SCHEDULE S-0001 — TAIL ATC-146 판정 대기$/);
   assert.equal(out[2].ask, "new");
   assert.match(out[2].text, /^SCHEDULE S-0003 — NEW 판정 대기$/);

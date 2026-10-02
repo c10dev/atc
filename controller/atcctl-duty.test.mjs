@@ -106,3 +106,15 @@ test("duty linear update·comment: 첫 인자가 key, update에는 --parent·--p
   assert.match(dutyLinearText({ key: "ATC-5", state: "Backlog" }), /ATC-5 updated \(Backlog\)/);
   assert.match(dutyLinearText({ key: "ATC-5" }), /ATC-5 written/);
 });
+
+test("duty linear create --blocked-by(ATC-396): 여러 번 쓸 수 있고 create에만 있다", () => {
+  assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "3", "--blocked-by", "ATC-7", "--blocked-by", "ATC-8", "--", "B"]), {
+    action: "create",
+    title: "T",
+    priority: 3,
+    blockedBy: ["ATC-7", "ATC-8"],
+    body: "B",
+  });
+  assert.throws(() => parseDutyLinear(["update", "ATC-5", "--blocked-by", "ATC-7"]), /알 수 없는 옵션 --blocked-by/);
+  assert.throws(() => parseDutyLinear(["create", "--blocked-by"]), /값이 필요함/);
+});

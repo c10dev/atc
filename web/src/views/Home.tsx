@@ -1,14 +1,14 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { actionsOf } from "../../../server/duty-card.ts";
 import { modeLine, modeSegments } from "../../../server/settings-policy.ts";
 import { openAlert, useAlerts } from "../alerts-runtime.ts";
-import { apiSend } from "../api.ts";
+import { apiGet, apiSend } from "../api.ts";
 import { alertLevelLabel, flightNumber } from "../aviation.ts";
 import { buildIndex, timeAgo } from "../derive.ts";
 import { Actions, useQueue } from "../DutyCards.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
-import { homeAlertsOf, stuckRowsOf } from "../home-rows.ts";
+import { homeAlertsOf, prNameOf, type ScheduleHome, scheduleHomeOf, SLIP_LABEL, slipLineOf, stuckRowsOf } from "../home-rows.ts";
 import { atfmAlertOf } from "../readiness-line.ts";
 import { useServerSettings } from "../SettingsServer.tsx";
 import type { PullRequest, Snapshot } from "../../../server/model.ts";
@@ -26,8 +26,27 @@ import "./Home.css";
 // SUPERVISOR QUEUE · WARNING·CAUTION 알림 · 막힌 FLIGHT 줄 · brake 줄(늘 있고 중립). 정상이면 brake 줄 말고는 아무것도 없다(design-language 원칙 1).
 // 새 사실은 없다: 큐와 알림, FOLLOW 보드, ATFM, 설정을 이미 있는 길로 읽고 같은 길로 누른다.
 
+// SCHEDULE 탭이 없어진 뒤(ATC-378) 남은 것: 모드, 지연 WAYPOINT, Linear에서 직접 Done으로 바꿀 CLOSE. 읽기는 `GET /api/schedule/home`
+function useScheduleHome(refreshKey: string): { data: ScheduleHome | null; reload: () => void } {
+  const [data, setData] = useState<ScheduleHome | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/schedule/home")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ScheduleHome) => alive && setData(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey, tick]);
+  const reload = useCallback(() => setTick((n) => n + 1), []);
+  return { data, reload };
+}
+
 export function Home({ refreshKey, now, snapshot, onOpenSettings }: { refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }) {
   const atfm = useAtfm(refreshKey);
+  const schedule = useScheduleHome(refreshKey);
   const alertOn = atfmAlertOf(atfm.brief).active;
   return (
     <section className="home" aria-label="HOME">
@@ -35,7 +54,8 @@ export function Home({ refreshKey, now, snapshot, onOpenSettings }: { refreshKey
       <HomeQueue refreshKey={refreshKey} now={now} snapshot={snapshot} />
       <HomeAlerts />
       <HomeStuck refreshKey={refreshKey} now={now} />
-      <Brakes atfm={atfm} alertOn={alertOn} now={now} onOpenSettings={onOpenSettings} />
+      <HomeSchedule data={schedule.data} now={now} />
+      <Brakes atfm={atfm} alertOn={alertOn} now={now} onOpenSettings={onOpenSettings} schedule={schedule} />
     </section>
   );
 }
@@ -68,6 +88,7 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
               <span className="hm-since faint">{i.since ? timeAgo(i.since, now) : "—"}</span>
             </div>
             <p className="hm-title mono">{i.title}</p>
+            {i.detail && <p className="hm-detail muted">{i.detail}</p>}
             {i.kind === "HUMAN CHECK" && humanPull(i.key) ? (
               <ul className="hc-list">
                 <HumanRow pr={humanPull(i.key)!} idx={idx} nameOf={nameOf} />
@@ -141,9 +162,72 @@ function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
   );
 }
 
+// 지연 WAYPOINT(예외)와 Linear에서 직접 Done으로 바꿀 CLOSE. 둘 다 없으면 아무것도 그리지 않는다
+function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number }) {
+  const { slips, closeManual } = scheduleHomeOf(data);
+  if (slips.length === 0 && closeManual.length === 0) return null;
+  return (
+    <>
+      {slips.length > 0 && (
+        <section className="hm-sec" aria-label="LATE WAYPOINTS">
+          <h2 className="label">
+            LATE WAYPOINTS <em>{slips.length}</em>
+          </h2>
+          <ul className="hm-list">
+            {slips.map((x) => (
+              <li key={x.key} className="hm-row">
+                <div className="hm-head">
+                  <span className="code-chip">{SLIP_LABEL[x.code]}</span>
+                  <span className="mono">
+                    {x.route} · <b>{x.waypoint}</b>
+                  </span>
+                  <span className="hm-since faint">{x.reportedAt ? `OCC 보고 ${timeAgo(x.reportedAt, now)}` : "OCC 보고 전"}</span>
+                </div>
+                <p className="hm-title mono muted">{slipLineOf(x)}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {closeManual.length > 0 && (
+        <section className="hm-sec" aria-label="LINEAR에서 직접 DONE">
+          <h2 className="label">
+            LINEAR에서 직접 DONE <em>{closeManual.length}</em>
+          </h2>
+          <ul className="hm-list">
+            {closeManual.map((x) => (
+              <li key={x.id} className="hm-row">
+                <div className="hm-head">
+                  <span className="mono faint">{x.id}</span>
+                  {x.flight && <OpenFlight k={x.flight} label={flightNumber(x.flight)} />}
+                  <span className="hm-since faint">{timeAgo(x.statusAt, now)}</span>
+                </div>
+                <p className="hm-title">
+                  <span className="muted">{x.title ?? x.flight}</span> · 승인한 CLOSE — OCC는 이슈 상태를 바꾸지 않으니 Linear에서 Done으로 바꾼다 ·{" "}
+                  <a className="mono" href={x.pr.url} target="_blank" rel="noreferrer">
+                    PR {prNameOf(x.pr)}
+                  </a>
+                  {x.url && (
+                    <>
+                      {" · "}
+                      <a href={x.url} target="_blank" rel="noreferrer">
+                        Linear에서 열기
+                      </a>
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
+}
+
 // brake 줄: 늘 있고 중립이다. GROUND STOP·수동 출발 중지(ATFM), STOP ALL, 자동화 스위치의 상태와 DISPATCH 모드.
 // 누르기 전에는 아무것도 펴지지 않는다
-function Brakes({ atfm, alertOn, now, onOpenSettings }: { atfm: ReturnType<typeof useAtfm>; alertOn: boolean; now: number; onOpenSettings: () => void }) {
+function Brakes({ atfm, alertOn, now, onOpenSettings, schedule }: { atfm: ReturnType<typeof useAtfm>; alertOn: boolean; now: number; onOpenSettings: () => void; schedule: ReturnType<typeof useScheduleHome> }) {
   const { server } = useServerSettings();
   const [atfmOpen, setAtfmOpen] = useState(false);
   const [stopAll, setStopAll] = useState(false);
@@ -174,6 +258,27 @@ function Brakes({ atfm, alertOn, now, onOpenSettings }: { atfm: ReturnType<typeo
     }
   };
 
+  // SCHEDULE 모드(S1 그림자 ↔ S2 승인): SCHEDULE 탭에 있던 스위치가 여기로 왔다. 같은 길(POST /api/schedule/mode)
+  const scheduleMode = schedule.data?.mode ?? null;
+  const switchSchedule = async () => {
+    if (!scheduleMode) return;
+    const next = scheduleMode === "shadow" ? "approval" : "shadow";
+    const text =
+      next === "approval"
+        ? 'SCHEDULE을 승인 운용(S2)으로 켤까요?\n\n켜면 승인한 SCHEDULE 작업을 OCC가 Linear에 씁니다(linear-guard가 입력을 비교). 준비: vocado 규칙의 "Linear에는 리더만 쓴다" 변경, Linear에 rating:SEC·UI·DATA·DOCS 라벨.'
+        : "SCHEDULE을 그림자 운용(S1)으로 돌릴까요? 이미 발부한 작업은 그대로 두고, 새로 발부하지 않습니다(linear-guard가 모든 쓰기를 막음).";
+    if (!confirm(text)) return;
+    setErr(null);
+    try {
+      const res = await apiSend("POST", "/api/schedule/mode", { mode: next });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      schedule.reload();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+  };
+
   return (
     <section className="hm-brakes" aria-label="BRAKES">
       <div className="hm-brow">
@@ -198,6 +303,11 @@ function Brakes({ atfm, alertOn, now, onOpenSettings }: { atfm: ReturnType<typeo
         {dispatchMode && (
           <button type="button" className="hm-btn" onClick={() => void switchMode()} title="DISPATCH 모드(2a 그림자 ↔ 2b 승인). 자동 운항은 승인 운용에서만 일한다">
             DISPATCH {dispatchMode === "approval" ? "APPROVAL" : "SHADOW"} — {dispatchMode === "approval" ? "2a로" : "2b로"}
+          </button>
+        )}
+        {scheduleMode && (
+          <button type="button" className="hm-btn" onClick={() => void switchSchedule()} title="SCHEDULE 모드(S1 그림자 ↔ S2 승인). S2에서 승인한 초안을 OCC가 Linear에 쓴다">
+            SCHEDULE {scheduleMode === "approval" ? "APPROVAL" : "SHADOW"} — {scheduleMode === "approval" ? "S1로" : "S2로"}
           </button>
         )}
         <button type="button" className="hm-btn" onClick={onOpenSettings}>

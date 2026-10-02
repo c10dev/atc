@@ -478,6 +478,7 @@ test("atcctl duty stand·stand-done·linear는 duty 하위 명령으로 통과, 
     "node ../controller/atcctl.mjs duty stand charter-desk",
     "node ../controller/atcctl.mjs duty stand-done charter-desk",
     "node ../controller/atcctl.mjs duty linear create --title 'T' --priority 2 --state Todo -- 'Body with `code`'".replace("`code`", "code"),
+    "node ../controller/atcctl.mjs duty linear create --title 'T' --priority 3 --state Backlog --blocked-by ATC-7 --blocked-by ATC-8 -- 'Body'", // ATC-396: guard는 옵션 이름을 가르지 않는다(atcctl과 서버가 가른다). 이 줄이 통과해도 guard의 닫힌 조건은 그대로다
     "node ../controller/atcctl.mjs duty linear update ATC-1 --priority 3",
     "node ../controller/atcctl.mjs duty linear comment ATC-1 -- 'Note'",
   ]) assert.equal(bash(c), null, c);

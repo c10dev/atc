@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { homeAlertsOf, stuckRowsOf } from "../web/src/home-rows.ts";
+import { homeAlertsOf, prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf, stuckRowsOf } from "../web/src/home-rows.ts";
 import { proposalAskOf } from "./duty-card.ts";
 import { type FollowInput, followRowOf } from "./follow.ts";
 import type { Milestones } from "./milestones.ts";
@@ -69,4 +69,13 @@ test("FOLLOW 줄의 proposalInfo: 줄을 이끄는 제안의 상태와 AIRCRAFT,
   const approved = { id: "D-7", at: ago(60), kind: "ASSIGN", flight: "ATC-1", aircraft: "f", aircraftName: "TEAM_F", airport: "ATCC", score: 1, factors: [], status: "approved", decidedAt: null, statusAt: ago(30), timeline: { approved: ago(30) }, reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null, crosscheck: null } as unknown as Proposal;
   assert.deepEqual(followRowOf("ATC-1", base({ proposals: [approved] })).proposalInfo, { id: "D-7", status: "approved", aircraftName: "TEAM_F", departedStand: null, departedVia: null });
   assert.equal(followRowOf("ATC-1", base({})).proposalInfo, null);
+});
+
+test("SCHEDULE을 나눈 뒤(ATC-378): LATE WAYPOINTS 한 줄, 아무것도 없으면 그릴 것이 없다", () => {
+  assert.equal(slipLineOf({ targetDate: "2026-10-05", eta: "2026-10-09", days: 4 }), "목표 2026-10-05 · ETA 2026-10-09 · 4일");
+  assert.equal(slipLineOf({ targetDate: null, eta: null, days: null }), "목표 — · ETA 모름");
+  assert.equal(SLIP_LABEL["target-passed"], "목표일 지남");
+  assert.equal(prNameOf({ repo: "/p/vocado_nextjs", number: 400 }), "vocado_nextjs#400");
+  assert.deepEqual(scheduleHomeOf(null), { slips: [], closeManual: [] });
+  assert.deepEqual(scheduleHomeOf({ mode: "approval", slips: null, closeManual: [] }), { slips: [], closeManual: [] }, "마일스톤을 못 읽어도(null) 그릴 것 없음");
 });

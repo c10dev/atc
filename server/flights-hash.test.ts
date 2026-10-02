@@ -14,6 +14,7 @@ test("옛 주소: #follow·#strips는 목록, #board는 보드, #radar는 레이
   assert.equal(canonicalHash("#teams"), "#flights");
   assert.equal(canonicalHash("#tickets"), "#flights/board");
   assert.equal(canonicalHash("#dispatch"), "#home");
+  assert.equal(canonicalHash("#schedule"), "#home"); // ATC-378
 });
 
 test("하위 경로는 이어 붙고, 보기가 정해진 옛 주소에는 붙지 않는다. 지금 주소는 그대로", () => {

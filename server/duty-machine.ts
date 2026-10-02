@@ -7,6 +7,7 @@ export const CRASH_WINDOW_MS = 5 * 60_000;
 export interface DutyMsg {
   text: string;
   image?: { mediaType: string; file: string }; // 붙인 그림: 상태 폴더 duty-images/ 아래 파일 이름
+  review?: string; // 서버가 시작한 REVIEW 턴(ATC-396)의 한 줄 표시. 있으면 대화 기록에는 SUPERVISOR 글이 아니라 이 줄(notice)이 남는다
 }
 
 export type DutyPhase = "idle" | "thinking" | "down";

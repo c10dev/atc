@@ -361,8 +361,8 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
         aircraft: null,
         flight: op.flight,
         text: `SCHEDULE ${op.id} — ${op.kind}${op.flight ? ` ${op.flight}` : ""} 판정 대기`,
-        next: "SCHEDULE 탭에서 승인하거나 거절한다",
-        link: "#schedule",
+        next: "HOME의 QUEUE에서 승인하거나 거절한다",
+        link: "#home",
         since: op.statusAt,
         ask: op.kind.toLowerCase(),
       });

@@ -10,9 +10,10 @@ export const TITLE_MAX = 200;
 export const BODY_MAX = 60_000;
 export const COMMENT_MAX = 20_000;
 export const LABELS_MAX = 12;
+export const BLOCKED_BY_MAX = 5;
 
 export type LinearOp =
-  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[] }
+  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[]; blockedBy?: string[] }
   | { action: "update"; key: string; title?: string; body?: string; priority?: number; state?: string; labels?: string[] }
   | { action: "comment"; key: string; body: string };
 export type LinearParse = { ok: true; op: LinearOp } | { ok: false; error: string };
@@ -41,7 +42,7 @@ export function parseLinearBody(raw: unknown): LinearParse {
   if (!b) return bad("본문은 JSON 객체");
   const known = (names: string[]) => Object.keys(b).find((k) => !names.includes(k));
   if (b.action === "create") {
-    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels"]);
+    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels", "blockedBy"]);
     if (extra) return bad(`알 수 없는 칸: ${extra}`);
     const title = text(b.title, TITLE_MAX);
     const body = text(b.body, BODY_MAX);
@@ -65,6 +66,13 @@ export function parseLinearBody(raw: unknown): LinearParse {
       const l = labelsOf(b.labels);
       if (!l) return bad(`labels는 라벨 이름 목록(${LABELS_MAX}개까지)`);
       op.labels = l;
+    }
+    // 이 이슈를 막는 FLIGHT(ATC-396): 이미 받아들여진 FLIGHT의 후속이 그 뒤에 기다리게 한다
+    if (b.blockedBy !== undefined) {
+      const raw = Array.isArray(b.blockedBy) ? b.blockedBy : null;
+      const keys = raw?.map(key);
+      if (!raw || !keys || raw.length === 0 || raw.length > BLOCKED_BY_MAX || keys.some((k) => k === null)) return bad(`blockedBy는 ATC-<n> 목록(1~${BLOCKED_BY_MAX}개)`);
+      op.blockedBy = [...new Set(keys as string[])];
     }
     return { ok: true, op };
   }
