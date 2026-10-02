@@ -3,7 +3,7 @@ import { FollowNext } from "./FollowNext.tsx";
 import { canonicalHash } from "./legacy-hash.ts";
 import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
@@ -143,10 +143,28 @@ export function App({ build }: { build: string }) {
   const subjectOf = (a: (typeof alerts)[number]) =>
     a.ticketKey ? flightNumber(a.ticketKey) : (a.workspacePath?.split("/").pop() ?? a.sessionIds?.map(nameOf).join(", "));
 
+  // 열린 서랍 종류(ATC-444). 서랍 열의 너비와 사이드바 접기(7.3)가 이것을 읽는다
+  const drawerKind = dutyOpen ? "duty" : drawer ? (drawer.kind === "ideas" || drawer.kind === "idea" ? "ideas" : "flight") : null;
+  // 서랍을 연 컨트롤을 기억했다가 서랍이 닫히면 거기로 포커스를 돌려준다. 서랍은 항목이 바뀔 때마다 다시 그려져 서랍 안에서는 그 컨트롤을 잃는다.
+  // 자식 서랍의 포커스 이동(passive effect)보다 먼저 돌도록 layout effect다
+  const openerRef = useRef<HTMLElement | null>(null);
+  const drawerWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    const open = drawerKind !== null;
+    if (open && !drawerWasOpen.current) {
+      const a = document.activeElement;
+      openerRef.current = a instanceof HTMLElement && a !== document.body ? a : null;
+    } else if (!open && drawerWasOpen.current) {
+      const o = openerRef.current;
+      openerRef.current = null;
+      if (o?.isConnected) o.focus();
+    }
+    drawerWasOpen.current = open;
+  }, [drawerKind]);
   const brandTitle = `ATC · LOCAL CONTROL · ${location.port || "80"}`;
   const brandMark = settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />;
   return (
-    <div className="app shell">
+    <div className="app shell" data-drawer={drawerKind ?? undefined}>
       {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
       <Rail
         tab={tab}
@@ -286,7 +304,6 @@ export function App({ build }: { build: string }) {
         </main>
         <section className="panel-area" hidden />
       </div>
-      <div className="drawer-col" hidden />
       {globeOpen && snapshot && (
         <TabBoundary key="globe" stale={false}>
           <Suspense fallback={<TabLoading />}>
@@ -294,24 +311,27 @@ export function App({ build }: { build: string }) {
           </Suspense>
         </TabBoundary>
       )}
-      {dutyOpen && (
-        <TabBoundary key="duty" stale={false}>
-          <Suspense fallback={null}>
-            <DutyDrawer chat={duty} onClose={closeDuty} airports={snapshot?.airports ?? []} refreshKey={snapshot?.at ?? ""} now={now} />
-          </Suspense>
-        </TabBoundary>
-      )}
-      {drawer && !dutyOpen && (
-        <TabBoundary key={JSON.stringify(drawer)} stale={false}>
-          <Suspense fallback={null}>
-            {drawer.kind === "ideas" || drawer.kind === "idea" ? (
-              <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
-            ) : (
-              <Drawer target={drawer} onClose={closeDrawer} now={now} />
-            )}
-          </Suspense>
-        </TabBoundary>
-      )}
+      {/* 서랍 열(ATC-444): FLIGHT·PR, DUTY, IDEAS가 한 칸을 나눠 쓴다. 하나를 열면 다른 하나는 닫힌다(DUTY가 먼저) */}
+      <div className="drawer-col" hidden={!drawerKind}>
+        {dutyOpen && (
+          <TabBoundary key="duty" stale={false}>
+            <Suspense fallback={null}>
+              <DutyDrawer chat={duty} onClose={closeDuty} airports={snapshot?.airports ?? []} refreshKey={snapshot?.at ?? ""} now={now} />
+            </Suspense>
+          </TabBoundary>
+        )}
+        {drawer && !dutyOpen && (
+          <TabBoundary key={JSON.stringify(drawer)} stale={false}>
+            <Suspense fallback={null}>
+              {drawer.kind === "ideas" || drawer.kind === "idea" ? (
+                <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
+              ) : (
+                <Drawer target={drawer} onClose={closeDrawer} now={now} />
+              )}
+            </Suspense>
+          </TabBoundary>
+        )}
+      </div>
     </div>
   );
 }

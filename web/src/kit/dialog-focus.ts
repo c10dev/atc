@@ -31,3 +31,10 @@ export function escapeAction(key: string, target: Target, composing: boolean, de
   if (key !== "Escape" || composing || defaultPrevented) return "ignore";
   return isTextEntry(target) ? "leave-field" : "close";
 }
+
+// 옆에 붙은 서랍(ATC-444)의 Escape: 화면이 계속 쓰이므로, 서랍 밖의 글 입력칸에서 누른 Escape는 서랍이 가로채지 않는다.
+// 서랍 안이거나 입력칸이 아닌 곳이면 modal과 같다(닫기, 서랍 안 입력칸에서는 칸만 벗어나기).
+export function dockedEscapeAction(key: string, target: Target, composing: boolean, defaultPrevented: boolean, inside: boolean): EscapeAction {
+  const act = escapeAction(key, target, composing, defaultPrevented);
+  return act === "leave-field" && !inside ? "ignore" : act;
+}
