@@ -115,7 +115,10 @@ test("bash outside a STAND: reads only, no writes", () => {
 test("other tools", () => {
   ok(decide({ tool_name: "EnterWorktree", cwd: "/home/c10/projects/atc", tool_input: { name: "a" } }));
   ok(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to: "OCC" } }));
-  no(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to: "TEAM_K" } }), /message-other-team/);
+  ok(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to: "TOWER" } }));
+  ok(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to: "ENGINEERING" } }));
+  for (const to of ["DUTY", "MCC", "CROSSCHECK", "TEAM_K"]) no(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to } }), /message-other/);
+  no(decide({ tool_name: "SendMessage", cwd: STAND, tool_input: { to: "TEAM_K" } }), /message-other/);
   ok(decide({ tool_name: "mcp__playwright__browser_navigate", cwd: STAND, tool_input: { url: "http://localhost:7702/" } }));
   no(decide({ tool_name: "mcp__playwright__browser_navigate", cwd: STAND, tool_input: { url: "https://example.com/" } }), /browser-non-local/);
   ok(decide({ tool_name: "mcp__plugin_playwright_playwright__browser_click", cwd: STAND, tool_input: {} }));
@@ -148,4 +151,39 @@ test("CLI: prints a PermissionRequest decision and records only denials (class, 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ATC-369 검토: hook이 정의한 경로 class를 우회하는 길을 막는다
+test("inline code: node -e, python3 -c, stdin code and awk cannot write or read what the paths forbid", () => {
+  for (const c of ["node -e \"require('fs').writeFileSync(process.env.HOME+'/.claude/x','')\"", "node -p 1", "node --eval 1", "node <<'EOF'\nconsole.log(1)\nEOF", "node", "python3 -c 'print(1)'", "python3 -", "python3 -Sc 'print(1)'", "python3 <<'EOF'\nprint(1)\nEOF", "awk 'BEGIN{system(\"id\")}'", "less /etc/passwd"]) no(bash(c), /inline-code|stdin-code|no-script|command:/);
+  ok(bash("node --test server/a.test.ts"));
+  ok(bash("node server/index.ts"));
+  ok(bash("python3 scripts/x.py --flag"));
+  no(bash("node /home/c10/.claude/hooks/x.js"), /read:/);
+});
+
+test("file operands are resolved against cwd and classified for every reader", () => {
+  no(bash("cat docs/../../../../../../.claude/.credentials.json"), /read:/);
+  no(bash("cat ../../../../../.claude/.credentials.json"), /read:/);
+  no(bash("jq . ~/.claude/.credentials.json"), /read:/);
+  no(bash("jq . /home/c10/.claude-acct-1/.credentials.json"), /read:/);
+  no(bash("grep token ~/.claude/.credentials.json"), /read:/);
+  no(bash("grep -e token -r /home/c10/.claude"), /read:/);
+  no(bash("rg token /home/c10/.claude-acct-1"), /read:/);
+  no(bash("sed -n 1p /home/c10/.claude/.credentials.json"), /read:/);
+  no(bash("head -n 3 /home/c10/projects/atc/.env.local"), /read:/);
+  no(bash("find /home/c10/.claude -name '*.json'"), /read:/);
+  no(bash("cut -d, -f1 /home/c10/.claude/x"), /read:/);
+  ok(bash("grep -rn 'foo$' server docs"));
+  ok(bash("grep -e 'a$' -e 'b' server/a.ts"));
+  ok(bash("sed -n '1,5p' server/a.ts"));
+  ok(bash("jq .name package.json"));
+  ok(bash("head -n 5 server/a.ts"));
+  ok(bash("find . -name '*.ts' -not -path './node_modules/*'"));
+});
+
+test("an inline git config (-c) runs commands and is denied", () => {
+  no(bash("git -c core.sshCommand='sh -c id' fetch"), /git-c/);
+  no(bash("git -ccore.pager=x log"), /git-c/);
+  ok(bash("git log -3"));
 });

@@ -4,7 +4,7 @@
 // - 거절은 모두 `<state>/policy-denials.jsonl`에 한 줄: 시각·AIRCRAFT·세션·도구·분류(class). 명령·경로의 본문은 남기지 않는다
 // atc 서버가 `claude --bg --settings`로 모든 AIRCRAFT LAUNCH에 싣는다(server/policy-hook.ts). 관제 세션과 기존 guard·hook은 건드리지 않는다.
 // fail-closed: 입력을 못 읽거나 해석이 깨지면 거절한다. 이 hook이 모든 호출을 거절·허용하는 보안 경계는 아니다 —
-// STAND 안에서 node·npm이 도는 것은 지금까지와 같은 신뢰이고, 여기서 정하는 것은 "사람을 기다리지 않고 알려진 것만 하고 나머지는 거절"이다.
+// STAND 안의 스크립트 파일을 node·npm이 도는 것은 지금까지와 같은 신뢰이고(인라인 코드 node -e·python3 -c와 awk는 거절), 여기서 정하는 것은 "사람을 기다리지 않고 알려진 것만 하고 나머지는 거절"이다.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -79,8 +79,8 @@ export function readClass(raw, cwd, stand) {
 // ── Bash ──
 const WRAPPERS = new Set(["env", "command", "nohup", "exec", "time", "builtin", "nice", "timeout", "if", "then", "else", "elif", "do", "while", "until", "!", "{", "}"]);
 const BAD_ENV = new Set(["PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "NODE_OPTIONS", "BASH_ENV", "ENV", "SHELLOPTS", "PS4"]);
-const READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", "rg", "egrep", "fgrep", "sort", "uniq", "cut", "tr", "diff", "cmp", "stat", "file", "du", "df", "date", "echo", "printf", "pwd", "true", "false", "test", "[", "[[", "which", "type", "basename", "dirname", "realpath", "readlink", "jq", "awk", "sleep", "seq", "ps", "nproc", "uname", "whoami", "id", "hostname", "column", "comm", "nl", "tac", "rev", "md5sum", "sha256sum", "xxd", "od", "less", "more", "sed", "find", "tsc", "vite", "python3", "node", "set", "unset", "export", "wait", "read", "local", "return", "exit", "cd", ":", "git", "npm", "npx", "curl", "gh", "cp", "mv", "rm", "mkdir", "touch", "tee", "chmod", "ln", "kill", "source", "."]);
-const PATH_READERS = new Set(["cat", "head", "tail", "less", "more", "ls", "wc", "stat", "file", "du", "diff", "cmp", "sort", "uniq", "find", "nl", "tac", "rev", "xxd", "od", "md5sum", "sha256sum", "realpath", "readlink"]);
+const READERS = new Set(["ls", "cat", "head", "tail", "wc", "grep", "rg", "egrep", "fgrep", "sort", "uniq", "cut", "tr", "diff", "cmp", "stat", "file", "du", "df", "date", "echo", "printf", "pwd", "true", "false", "test", "[", "[[", "which", "type", "basename", "dirname", "realpath", "readlink", "jq", "sleep", "seq", "ps", "nproc", "uname", "whoami", "id", "hostname", "column", "comm", "nl", "tac", "rev", "md5sum", "sha256sum", "xxd", "od", "sed", "find", "tsc", "vite", "python3", "python", "node", "set", "unset", "export", "wait", "read", "local", "return", "exit", "cd", ":", "git", "npm", "npx", "curl", "gh", "cp", "mv", "rm", "mkdir", "touch", "tee", "chmod", "ln", "kill", "source", "."]);
+const PATH_READERS = new Set(["cat", "head", "tail", "ls", "wc", "stat", "file", "du", "diff", "cmp", "sort", "uniq", "find", "nl", "tac", "rev", "xxd", "od", "md5sum", "sha256sum", "realpath", "readlink"]);
 const NPM_OK = new Set(["test", "run", "ci", "install", "i", "ls", "view", "outdated", "exec", "pack", "prune", "rebuild", "start"]);
 const NPX_OK = new Set(["tsc", "vite", "playwright", "tsx", "prettier", "eslint"]);
 const GIT_OK = new Set(["status", "diff", "log", "show", "add", "commit", "push", "fetch", "pull", "merge", "rebase", "checkout", "switch", "branch", "restore", "rev-parse", "rev-list", "ls-files", "ls-tree", "cherry-pick", "apply", "remote", "blame", "show-ref", "merge-base", "diff-tree", "grep", "mv", "rm", "reset", "describe", "shortlog", "name-rev", "for-each-ref", "cat-file", "config", "tag", "notes", "stash", "worktree", "symbolic-ref", "update-index", "count-objects", "whatchanged", "range-diff", "check-ignore", "format-patch", "am", "revert", "version", "help", "ls-remote", "diff-index", "diff-files", "hash-object", "mktemp"]);
@@ -108,6 +108,34 @@ function subsOf(word) {
 // 쓰기 대상이 될 수 있는 인자(옵션·`-` 제외)
 const operands = (args) => args.filter((a) => !a.startsWith("-") || a === "-");
 
+// 읽기 명령이 파일로 여는 인자(옵션 제외). grep·rg·sed·jq의 첫 비옵션은 패턴·스크립트·필터라 뺀다(-e·--regexp·--expression이 있으면 그 값이 패턴)
+const PATTERN_FIRST = new Set(["grep", "rg", "egrep", "fgrep", "sed", "jq"]);
+const FILE_READERS = new Set([...PATH_READERS, "grep", "rg", "egrep", "fgrep", "sed", "jq", "cut", "comm", "column", "basename", "dirname", "node", "python3", "python"]);
+function fileOperandsOf(name, args) {
+  if (!FILE_READERS.has(name)) return [];
+  if (name === "find") {
+    const out = [];
+    for (const a of args) {
+      if (a.startsWith("-") || a === "(" || a === "!") break;
+      out.push(a);
+    }
+    return out;
+  }
+  const out = [];
+  let explicit = false;
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (/^(-e|--regexp|--expression)$/.test(a)) {
+      explicit = true;
+      k++; // 값은 패턴
+    } else if (/^--(regexp|expression)=/.test(a)) explicit = true;
+    else if (a.startsWith("-") && a !== "-") continue;
+    else out.push(a);
+  }
+  if (PATTERN_FIRST.has(name) && !explicit) out.shift();
+  return out;
+}
+
 function gitVerdict(args, ctx) {
   let i = 0;
   let cwd = ctx.cwd;
@@ -118,7 +146,7 @@ function gitVerdict(args, ctx) {
       if (!w.ok) return deny(`git-C:${w.cls}`);
       cwd = resolve(cwd, expandHome(args[i + 1]));
       i += 2;
-    } else if (a === "-c") i += 2;
+    } else if (a === "-c" || /^-c./.test(a)) return deny("git-c"); // core.sshCommand·alias.x=!… 가 명령을 돌린다
     else if (/^--(git-dir|work-tree|exec-path)/.test(a)) return deny("git-dir-override");
     else i++;
   }
@@ -226,13 +254,17 @@ function commandVerdict(words, ctx) {
   }
   if (name === "bash" || name === "sh" || name === "zsh" || name === "eval" || name === "xargs" || name === "sudo" || name === "ssh" || name === "scp" || name === "systemctl" || name === "docker") return deny(`command:${name}`);
   if (!READERS.has(name)) return deny(`command:${name}`);
-  // 읽기 인자: 읽기 명령은 비밀과 Claude 설정을 읽지 못하게(grep·rg의 패턴은 경로처럼 보여 뺀다)
-  if (PATH_READERS.has(name)) {
-    for (const a of operands(args)) {
-      if (!/^(\/|~|\$\{?HOME|\.\.\/)/.test(a)) continue;
-      const r = readClass(a, ctx.cwd, ctx.stand);
-      if (!r.ok && !writeClass(a, ctx.cwd, ctx.stand).ok) return deny(`read:${r.cls}`);
-    }
+  // 인라인 코드: node -e·python3 -c처럼 명령줄이나 stdin으로 받은 코드는 무엇이든 쓰고 읽을 수 있어 STAND 규칙을 지킬 수 없다. 스크립트 파일(STAND 안)만 돌린다
+  if (name === "node" || name === "python3" || name === "python") {
+    const inline = name === "node" ? /^(-e|--eval|-p|--print|--input-type|-pe|-ep|-r|--require)(=|$)/ : /^(-c|-)$/;
+    if (words.some((w) => /^\d*<</.test(w) || w === "<<<")) return deny(`${name}:stdin-code`);
+    if (args.some((a) => inline.test(a) || (name !== "node" && /^-[a-zA-Z]*c/.test(a)))) return deny(`${name}:inline-code`);
+    if (!operands(args).length) return deny(`${name}:no-script`);
+  }
+  // 읽기 인자: 읽기 명령은 비밀과 Claude 설정을 읽지 못하게. 파일 인자는 cwd 기준으로 풀어 모두 분류한다(`docs/../../.claude/x`, `jq . ~/.claude/x`, `grep x file`도)
+  for (const a of fileOperandsOf(name, args)) {
+    const r = readClass(a, ctx.cwd, ctx.stand);
+    if (!r.ok && !writeClass(a, ctx.cwd, ctx.stand).ok) return deny(`read:${r.cls}`);
   }
   switch (name) {
     case "cd": {
@@ -325,6 +357,7 @@ export function bashVerdict(command, ctx, depth = 0) {
 const FILE_WRITE = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FILE_READ = new Set(["Read", "Glob", "Grep", "LS"]);
 const FREE_TOOLS = new Set(["EnterWorktree", "ExitWorktree", "Skill", "Agent", "Task", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TodoWrite", "ToolSearch", "WebSearch", "ScheduleWakeup", "Monitor", "ExitPlanMode", "EnterPlanMode", "ReportFindings", "SendFeedback", "AskUserQuestion"]);
+const SEND_OK = new Set(["OCC", "TOWER", "ENGINEERING"]);
 const PLAYWRIGHT = /^mcp__(?:plugin_[a-z0-9-]+_)?playwright__/i;
 
 // → {behavior: "allow"|"deny", cls}
@@ -342,7 +375,8 @@ export function decide(input) {
     return v(readClass(p, cwd, stand));
   }
   if (tool === "Bash") return v(bashVerdict(ti.command, { cwd, stand, depth: 0 }));
-  if (tool === "SendMessage") return /^TEAM_/i.test(String(ti.to ?? "")) ? { behavior: "deny", cls: "message-other-team" } : { behavior: "allow", cls: "sendmessage" };
+  // 보고와 교신 답은 일을 맡긴 세션(OCC·ENGINEERING)과 CLEARANCE를 보낸 TOWER에게만(CLAUDE.md "교신"). 다른 팀·DUTY·MCC 등에는 보내지 않는다
+  if (tool === "SendMessage") return SEND_OK.has(String(ti.to ?? "").trim().toUpperCase()) ? { behavior: "allow", cls: "sendmessage" } : { behavior: "deny", cls: "message-other" };
   if (PLAYWRIGHT.test(tool)) {
     if (/browser_navigate$/.test(tool) && !LOCAL_URL.test(String(ti.url ?? ""))) return { behavior: "deny", cls: "browser-non-local" };
     return { behavior: "allow", cls: "playwright" };
