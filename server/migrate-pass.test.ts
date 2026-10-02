@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pullKey } from "./landing.ts";
 import { ALL, driftReason, type MigrateRecord, otherReasonOf, shaOf, type PassIo, rehearsalHeld, rehearsalPass } from "./migrate-run.ts";
-import { classify, declarationCheck } from "./migration-declare.ts";
+import { scrub } from "./sources/supabase-sql.ts";
+import { classify, declarationCheck, usesWord } from "./migration-declare.ts";
 import { hostedDbOf, type MigrationGate } from "./migration-gate.ts";
 import type { RunResult } from "./migration-rehearsal.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
@@ -13,14 +13,13 @@ test("SECURITY DEFINER가 긴 달러 본문 뒤에 와도 sensitive로 본다", 
   assert.equal(classify("create function g() returns text as $$ select 'security definer' $$ language sql").kind, "additive");
 });
 
-const GATE_WHY = "보안 게이트: … — 마이그레이션 게이트: 호스티드 DB에 아직 없는 마이그레이션 1개";
 const DB = hostedDbOf({ provider: "supabase", projectRef: "abcd1234", testProjectRef: "wxyz5678" })!;
 const PR = { repo: "/r", number: 7, head: "h1", url: "https://github.com/o/n/pull/7", landing: "CLEARED", draft: false, ticketKey: "ATC-9" } as unknown as PullRequest;
 const GATE_MISSING: MigrationGate = { involved: true, ok: false, reason: "x", versions: ["1"], missing: ["1"], paths: ["m/1_a.sql"] };
 const APPLIED = { status: "applied", steps: [], failedStep: null, restorePoint: null } as RunResult;
 
 interface Over {
-  exclusion?: string | null;
+  changed?: string[]; // PR이 고친 파일(안다면)
   gate?: MigrationGate;
   switches?: Record<string, boolean>;
   tried?: boolean;
@@ -32,7 +31,7 @@ interface Over {
 }
 function pass(over: Over = {}) {
   const calls = { rehearse: 0, held: 0, noted: [] as { result?: string }[], revoked: [] as string[] };
-  const s = { airports: [{ id: "a", code: "ATCC", name: "n", repo: "/r" }], pulls: [PR], tickets: [{ key: "ATC-9", stateType: over.state ?? "unstarted" }], autoland: { exclusions: { [pullKey(PR)]: over.exclusion === undefined ? GATE_WHY : over.exclusion } } } as unknown as Snapshot;
+  const s = { airports: [{ id: "a", code: "ATCC", name: "n", repo: "/r" }], pulls: [over.changed ? ({ ...PR, changed: over.changed } as PullRequest) : PR], tickets: [{ key: "ATC-9", stateType: over.state ?? "unstarted" }] } as unknown as Snapshot;
   const io: PassIo = {
     switches: () => over.switches ?? { ATCC: true },
     hostedDb: () => DB,
@@ -55,7 +54,7 @@ test("rehearsalPass: 스위치·모드·GROUND STOP·시도한 head·다른 제�
   const ok = pass();
   await ok.run();
   assert.deepEqual([ok.calls.rehearse, ok.calls.held, ok.calls.noted[0]?.result], [1, 0, "ok"]);
-  const blocked: Over[] = [{ switches: {} }, { mode: "update" }, { stopped: true }, { tried: true }, { exclusion: "HOLD" }, { exclusion: null }, { other: "HUMAN CHECK" }, { gate: { ...GATE_MISSING, missing: [] } }, { gate: { ...GATE_MISSING, involved: false } }];
+  const blocked: Over[] = [{ switches: {} }, { mode: "update" }, { stopped: true }, { tried: true }, { changed: ["web/a.ts"] }, { other: "HUMAN CHECK" }, { gate: { ...GATE_MISSING, missing: [] } }, { gate: { ...GATE_MISSING, involved: false } }];
   for (const over of blocked) {
     const x = pass(over);
     await x.run();
@@ -111,6 +110,35 @@ test("선언 검사: 파일 중간의 COMMIT·BEGIN은 멈추고, 맨 앞 BEGIN�
   assert.equal(mid.ok, false);
   assert.match(mid.stopped[0]!.why, /트랜잭션 문장/);
   assert.equal(declarationCheck(f("create table public.t (a int); commit; create table public.u (a int);"), K1).ok, false);
+});
+
+test("rehearsalPass: 표시 문구가 아니라 구조로 고른다(바뀐 파일에 마이그레이션 폴더가 있으면 돈다)", async () => {
+  const hit = pass({ changed: ["supabase/migrations/1_a.sql"] });
+  await hit.run();
+  assert.equal(hit.calls.rehearse, 1);
+});
+
+test("usesWord: 부정으로만 나오는 낱말은 쓴 것이 아니다", () => {
+  assert.equal(usesWord("K1: adds a grant to anon", "grant"), true);
+  assert.equal(usesWord("K1: no grant changes", "grant"), false);
+  assert.equal(usesWord("K1: without any role change", "role"), false);
+  assert.equal(usesWord("K1: not a policy change, but a grant", "grant"), true);
+  assert.equal(usesWord("K1: never changes the owner", "owner"), false);
+});
+
+test("트리거는 선언이 trigger를 적어야 통과한다", () => {
+  const f = [{ path: "m/1_a.sql", sql: "create trigger t before insert on public.songs for each row execute function f();" }];
+  assert.equal(declarationCheck(f, "K1: adds public.songs").ok, false);
+  assert.equal(declarationCheck(f, "K1: adds a trigger on public.songs").ok, true);
+  assert.equal(declarationCheck(f, "K1: no trigger changes").ok, false);
+});
+
+test("scrub: 공급자 오류에서 행 값(DETAIL, Key (열)=(값))을 걷어 낸다", () => {
+  const raw = '{"message":"duplicate key value violates unique constraint","detail":"Key (email)=(a@b.c) already exists."}';
+  const out = scrub(raw);
+  assert.ok(!out.includes("a@b.c"));
+  assert.ok(out.includes("duplicate key"));
+  assert.ok(!scrub("ERROR: x\nDETAIL: Key (id)=(42) already exists.").includes("42"));
 });
 
 test("선언 검사: CREATE EXTENSION은 선언이 extension을 적어야 통과한다", () => {

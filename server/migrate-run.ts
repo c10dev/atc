@@ -14,7 +14,7 @@ import { config } from "./config.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { pullKey, slugOfUrl } from "./landing.ts";
 import { loadMigrate, notReadyWhy } from "./migrate-config.ts";
-import { type HostedDb, MISSING_REASON_PREFIX, type MigrationGate, migrationGateOf, migrationVersionOf } from "./migration-gate.ts";
+import { type HostedDb, type MigrationGate, migrationGateOf, migrationVersionOf } from "./migration-gate.ts";
 import { type MigrationFile, type RehearsalIo, type RunResult, type RunStatus, rehearse, type StepRecord } from "./migration-rehearsal.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { releaseHashOf, sectionsOf } from "./release.ts";
@@ -240,7 +240,6 @@ export async function rehearsalPass(
 ): Promise<void> {
   if (o.mode !== "merge") return;
   const sw = io.switches();
-  const exclusions = s.autoland?.exclusions ?? {};
   const records = io.records();
   for (const a of s.airports) {
     if (!sw[a.code] || !o.airports.includes(a.code) || o.stopped(a.code)) continue;
@@ -248,8 +247,8 @@ export async function rehearsalPass(
     if (notReadyWhy(db, io.token()) || !db) continue;
     for (const p of s.pulls.filter((x) => x.repo === a.repo && x.landing === "CLEARED" && !x.draft)) {
       const slug = slugOfUrl(p.url);
-      const why = exclusions[pullKey(p)];
-      if (!slug || typeof why !== "string" || !why.includes(`마이그레이션 게이트: ${MISSING_REASON_PREFIX}`) || triedHead(records, slug, p.number, p.head)) continue;
+      // 표시 문구가 아니라 구조로 고른다: 바뀐 파일(알면)에 마이그레이션 폴더가 있고, 새로 읽은 게이트가 "아직 없는 버전"을 말하고, 다른 제외가 없을 때(아래)
+      if (!slug || (p.changed && !p.changed.some((f) => f.startsWith(`${db.migrationsDir}/`))) || triedHead(records, slug, p.number, p.head)) continue;
       // 지금 이 head를 새로 읽어 확인한다(캐시 없이): 새 마이그레이션이 정말 아직 없나
       let gate: MigrationGate;
       try {

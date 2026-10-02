@@ -6,6 +6,14 @@ import type { Row, SqlRunner } from "../migration-rehearsal.ts";
 
 const BASE = "https://api.supabase.com/v1/projects";
 
+// 공급자 오류 본문에서 행 값이 들어갈 수 있는 부분을 걷어 낸다: Postgres의 DETAIL 줄, `Key (열)=(값)`, JSON의 detail 칸. 기록과 화면에 남는 글이라 값이 새지 않게
+export function scrub(text: string): string {
+  return text
+    .replace(/\\?"detail\\?"\s*:\s*\\?"(?:[^"\\]|\\.)*\\?"/gi, '"detail":"[removed]"')
+    .replace(/DETAIL:[^\n"]*/g, "DETAIL: [removed]")
+    .replace(/Key \([^)]*\)=\([^)]*\)/g, "Key [removed]");
+}
+
 // 메시지에서 토큰과 Bearer 값을 지운다. 응답 본문의 일부도 토큰을 되울릴 수 있다고 보고 한 번 더 거른다
 export function redact(text: string, token: string): string {
   let t = text;
@@ -29,7 +37,7 @@ export function supabaseRunner(projectRef: string, token: string, fetchFn: typeo
         throw new Error(redact(`DB 호출 실패: ${String((e as Error).message ?? e)}`, token));
       }
       const text = await res.text().catch(() => "");
-      if (!res.ok) throw new Error(redact(`DB가 거절함(HTTP ${res.status}): ${text.slice(0, 240)}`, token));
+      if (!res.ok) throw new Error(redact(`DB가 거절함(HTTP ${res.status}): ${scrub(text).slice(0, 240)}`, token));
       try {
         const body = text ? JSON.parse(text) : [];
         return Array.isArray(body) ? (body as Row[]) : [];

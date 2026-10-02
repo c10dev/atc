@@ -101,6 +101,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^alter function [\w."(),\s]+ security\b/, "security"],
   [/\bowner to\b/, "owner"],
   [/^create or replace\b/, "replace"],
+  [/^create (or replace )?(constraint )?trigger\b/, "trigger"], // 기존 표의 쓰기 동작을 바꾼다
 ];
 const TXN = /^(begin|commit|end|start transaction)\b/;
 
@@ -154,6 +155,12 @@ export interface DeclarationResult {
 
 const mentions = (declared: string, table: string) => new RegExp(`(^|[^\\w])(?:[\\w"]+\\.)?"?${table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"?($|[^\\w])`, "i").test(declared);
 
+// 낱말이 K1 글에 "쓰였나": 부정("no grant changes", "without role")으로만 나오면 쓴 것이 아니다
+export function usesWord(k1: string, word: string): boolean {
+  const stripped = k1.replace(new RegExp(`\\b(?:no|not|never|without|non|nor)\\b(?:\\W+\\w+){0,2}?\\W+${word}`, "gi"), " ");
+  return new RegExp(`\\b${word}`, "i").test(stripped);
+}
+
 // 선언 글의 K1 부분: `K1`부터 다음 `K2`·`K3` 앞까지. K1이 없으면 null
 export function k1Of(declared: string): string | null {
   const m = /\bK1\b[\s\S]*?(?=\bK[23]\b|$)/i.exec(declared);
@@ -186,8 +193,8 @@ export function declarationCheck(files: readonly { path: string; sql: string }[]
         stopped.push({ file: f.path, sql: c.sql, why: "K1 효과가 선언되지 않음" });
       } else if (c.kind === "destructive" || c.kind === "unknown") {
         stopped.push({ file: f.path, sql: c.sql, why: c.why ?? "" });
-      } else if (c.kind === "sensitive" && (c.needs ?? []).some((w) => !new RegExp(`\\b${w}`, "i").test(k1text!))) {
-        const miss = (c.needs ?? []).filter((w) => !new RegExp(`\\b${w}`, "i").test(k1text!));
+      } else if (c.kind === "sensitive" && (c.needs ?? []).some((w) => !usesWord(k1text!, w))) {
+        const miss = (c.needs ?? []).filter((w) => !usesWord(k1text!, w));
         stopped.push({ file: f.path, sql: c.sql, why: `K1 선언에 ${miss.map((w) => `\`${w}\``).join(", ")}가 없음(접근·기존 동작을 바꾸는 문장)` });
       } else if (c.kind === "dml" && !(c.table && mentions(k1text!, c.table))) {
         stopped.push({ file: f.path, sql: c.sql, why: `선언에 없는 DML(표 ${c.table ?? "?"})` });
