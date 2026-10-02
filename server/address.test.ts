@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type AddressSession, causeOf, failureRouteOf, looksLikeTitle, resolveRecipient, standHolderOf } from "./address.ts";
+import { type AddressSession, causeOf, looksLikeTitle, resolveRecipient, standHolderOf } from "./address.ts";
 import { sendAddressOf } from "./proposals.ts";
 import { relayBriefOf, type Relay } from "./relay.ts";
 
@@ -40,27 +40,9 @@ test("STAND를 쥔 살아 있는 세션", () => {
   assert.equal(standHolderOf(sessions, null), null);
 });
 
-test("세션이 없는 AIRCRAFT는 absent → DISPATCH가 RESUME·LAUNCH를 제안한다", () => {
+test("세션이 없는 AIRCRAFT는 absent(cause)로 거절한다", () => {
   const r = resolveRecipient([s({ id: "1", name: "TEAM_B" })], { registration: "TEAM_A" });
   assert.ok(!r.ok && r.cause === "absent");
-  const at = "2026-10-02T10:00:00Z";
-  const now = Date.parse(at) + 2 * 60_000;
-  assert.deepEqual(failureRouteOf({ at, cause: "absent", attempts: 1, sessionLive: false, dutyOn: true }, now), { stage: "dispatch", action: "propose-resume-or-launch" });
-});
-
-test("실패 뒤의 길: 재시도 한 번 → DUTY → SUPERVISOR(DUTY가 꺼져 있으면 건너뜀)", () => {
-  const at = "2026-10-02T10:00:00Z";
-  const min = (n: number) => Date.parse(at) + n * 60_000;
-  const f = { at, cause: "stale-address" as const, attempts: 1, sessionLive: true, dutyOn: true };
-  assert.equal(failureRouteOf(f, min(1)).action, "retry");
-  assert.equal(failureRouteOf({ ...f, attempts: 2 }, min(1)).stage, "duty"); // 재시도도 실패
-  assert.equal(failureRouteOf(f, min(6)).stage, "duty");
-  assert.equal(failureRouteOf(f, min(30)).stage, "supervisor");
-  assert.equal(failureRouteOf({ ...f, dutyOn: false, attempts: 2 }, min(1)).stage, "supervisor");
-  // 세션 없이 DISPATCH 시간이 지나면 DUTY, 그다음 SUPERVISOR
-  const absent = { ...f, cause: "absent" as const, sessionLive: false };
-  assert.equal(failureRouteOf(absent, min(11)).stage, "duty");
-  assert.equal(failureRouteOf(absent, min(25)).stage, "supervisor");
 });
 
 test("causeOf: 사유 글을 원인으로, 명시한 원인이 먼저", () => {

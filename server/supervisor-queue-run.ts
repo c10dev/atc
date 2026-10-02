@@ -6,7 +6,6 @@ import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
-import { loadDutyConfig } from "./duty-config.ts";
 import { allClearances } from "./clearances.ts";
 import { allProposals } from "./proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
@@ -47,7 +46,6 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
-    dutyOn: loadDutyConfig().l1,
   };
 }
 

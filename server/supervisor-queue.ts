@@ -8,7 +8,6 @@ import { waitsOnHuman } from "./human-check.ts";
 import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
 import type { RelayOffer } from "./relay-offer.ts";
 import type { UpdateKind } from "./update.ts";
-import { causeOf, failureRouteOf, type FailureInput } from "./address.ts";
 
 // SUPERVISOR QUEUE(ATC-194, docs/ui-visibility.md 3.1, docs/duty.md Q1): SUPERVISOR의 결정을 기다리는 것 하나의 목록.
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
@@ -53,7 +52,6 @@ export interface QueueInput {
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
-  dutyOn?: boolean; // DUTY(L1)가 켜져 있다(ATC-353): 켜져 있으면 닿지 못한 글이 DUTY 단계를 거친 뒤에야 SUPERVISOR 카드가 된다
 }
 
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
@@ -116,27 +114,19 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
     const dir = inp.folders?.find((f) => f.label === t?.account)?.dir ?? null;
     return handCardOf(to, reason, { session: t, folderDir: dir, defaultDir: inp.defaultDir ?? "" });
   };
-  // 닿지 못한 글의 길(ATC-353): 재시도 → DISPATCH(RESUME·LAUNCH 제안) → DUTY → SUPERVISOR. 앞 단계에 있는 동안은 카드를 두지 않는다(시각으로 단계가 올라가므로 조용히 사라지지 않는다)
-  const surfaces = (to: string, f: Omit<FailureInput, "sessionLive" | "dutyOn">) => {
-    const t = liveSessionOf(inp.sessions.map((x) => ({ ...x, status: x.status ?? "idle" })), to);
-    return failureRouteOf({ ...f, sessionLive: Boolean(t && String(t.lastActiveAt ?? "") >= f.at), dutyOn: Boolean(inp.dutyOn) }, now).stage === "supervisor";
-  };
   for (const r of inp.relays ?? []) {
     if (r.status !== "undeliverable") continue;
-    if (!surfaces(r.to, { at: r.statusAt, cause: causeOf(r.reason, r.cause), attempts: 1 })) continue;
     const reason = r.reason ?? "undeliverable";
     out.push({ kind: "UNDELIVERED", key: r.id, since: r.statusAt, title: `RELAY ${r.id} → ${r.to}`, hash: "#fleet", hand: { source: "RELAY", id: r.id, to: r.to, reason, text: r.text, card: handFor(r.to, reason) } });
   }
   for (const c of inp.clearances ?? []) {
     if (!c.undeliverableAt || c.handAt || now - Date.parse(c.undeliverableAt) > 3 * 86_400_000) continue;
     const reason = c.undeliverableReason ?? "undeliverable";
-    if (!surfaces(c.toName, { at: c.undeliverableAt, cause: causeOf(c.undeliverableReason, c.undeliverableCause), attempts: 1 })) continue;
     out.push({ kind: "UNDELIVERED", key: c.id, since: c.undeliverableAt, title: `${c.type} ${c.id} → ${c.toName}`, hash: "#radar", hand: { source: "CLEARANCE", id: c.id, to: c.toName, reason, text: c.text, card: handFor(c.toName, reason) } });
   }
   for (const p of inp.proposals) {
     if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;
     const reason = p.undelivered.reason;
-    if (!surfaces(p.aircraftName, { at: p.undelivered.at, cause: causeOf(reason, p.undelivered.cause), attempts: p.undelivered.n })) continue;
     out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#dispatch", hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
   }
 

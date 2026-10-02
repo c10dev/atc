@@ -21,13 +21,9 @@ const proposal = (o: Partial<QueueInput["proposals"][number]> = {}): QueueInput[
 const pull = (o: Partial<QueueInput["pulls"][number]> = {}): QueueInput["pulls"][number] =>
   ({ repo: "/x/atc", number: 7, head: "abc1234def", draft: false, landing: "APPROACH", humanCheck: null, ticketKey: "ATC-7", landBy: "mcc", ...o }) as QueueInput["pulls"][number];
 
-test("UNDELIVERED (ATC-353): no SUPERVISOR card while the message is in an earlier stage (retry, DISPATCH, DUTY); it appears when the stages pass", () => {
-  const undelivered = (min: number) => proposal({ id: "D-0001", status: "approved", aircraftName: "TEAM_A", undelivered: { at: ago(min), reason: "no live session", n: 1, cause: "absent" } });
-  const items = (min: number, dutyOn = false) => supervisorQueueOf({ ...empty(), proposals: [undelivered(min)], dutyOn }, NOW).filter((i) => i.kind === "UNDELIVERED");
-  assert.equal(items(2).length, 0); // DISPATCH proposes RESUME or LAUNCH
-  assert.equal(items(12, true).length, 0); // DUTY stage
-  assert.equal(items(12, false).length, 1); // DUTY off: stage skipped
-  assert.equal(items(30, true).length, 1); // DUTY could not deliver: SUPERVISOR card
+test("UNDELIVERED (ATC-353): the hand-delivery card shows at once, as before (no stage holds it back)", () => {
+  const p = proposal({ id: "D-0001", status: "approved", aircraftName: "TEAM_A", undelivered: { at: ago(1), reason: "no live session", n: 1, cause: "absent" } });
+  assert.equal(supervisorQueueOf({ ...empty(), proposals: [p] }, NOW).filter((i) => i.kind === "UNDELIVERED").length, 1);
 });
 
 test("empty input gives an empty queue and zero counts for every kind", () => {

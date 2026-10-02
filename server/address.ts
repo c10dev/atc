@@ -77,38 +77,3 @@ export function causeOf(reason: string | null | undefined, explicit?: string | n
   if (/no live session|세션 없음|세션이 없|not running|absent|no such session|not found/i.test(r)) return "absent";
   return "other";
 }
-
-// ── 실패한 뒤의 길 ──
-// 1) retry: 그 AIRCRAFT의 다음 CHECK IN이나 relaunch 뒤에 한 번 다시 보낸다
-// 2) dispatch: 세션이 없다 → DISPATCH가 RESUME이나 LAUNCH 카드를 제안한다
-// 3) duty: DUTY 카드
-// 4) supervisor: DUTY도 못 전했을 때만 SUPERVISOR의 손으로 전하는 카드
-// 단계는 시각으로 정해진다(기본값: 재시도 5분, DISPATCH 10분, DUTY 20분 — 실패 시각부터의 누적). 시각은 ATC-353 PILOT'S DISCRETION
-export type Stage = "retry" | "dispatch" | "duty" | "supervisor";
-export const STAGE_ORDER: readonly Stage[] = ["retry", "dispatch", "duty", "supervisor"];
-export const STAGE_MIN = { retry: 5, dispatch: 10, duty: 20 } as const;
-
-export interface FailureInput {
-  at: string; // 실패 알림 시각
-  cause: UndeliveredCause;
-  attempts: number; // 이 글의 실패 횟수(첫 실패 = 1)
-  sessionLive: boolean; // 지금 받는 이의 세션이 살아 있다(CHECK IN·relaunch가 있었다)
-  dutyOn: boolean; // DUTY(L1)가 켜져 있다. 꺼져 있으면 duty 단계는 건너뛴다
-}
-export interface FailureRoute {
-  stage: Stage;
-  action: "retry" | "propose-resume-or-launch" | "duty-card" | "supervisor-card";
-}
-
-export function failureRouteOf(f: FailureInput, now: number): FailureRoute {
-  const age = (now - Date.parse(f.at)) / 60_000;
-  const absent = f.cause === "absent" && !f.sessionLive;
-  // 한 번만 다시 보낸다: 첫 실패이고, 받는 이가 있거나 곧 돌아올 때(세션이 없는 absent는 DISPATCH로)
-  if (f.attempts < 2 && !absent && age < STAGE_MIN.retry) return { stage: "retry", action: "retry" };
-  if (absent && age < STAGE_MIN.dispatch) return { stage: "dispatch", action: "propose-resume-or-launch" };
-  if (f.dutyOn && age < STAGE_MIN.duty) return { stage: "duty", action: "duty-card" };
-  return { stage: "supervisor", action: "supervisor-card" };
-}
-
-// 시각 기준 지금의 단계. SUPERVISOR 카드는 supervisor 단계가 되어서야 뜬다
-export const surfacesToSupervisor = (f: FailureInput, now: number) => failureRouteOf(f, now).stage === "supervisor";

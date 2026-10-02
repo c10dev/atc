@@ -185,10 +185,10 @@ export function unreachableWhy(target: Pick<Session, "name" | "account"> | null,
 
 // TOWER의 brief에 실리는 줄: 아직 보내지 않은 relay. text는 고치지 않고 그대로 CLEARANCE로
 // sessions를 주면 보낼 때의 살아 있는 세션(id·job id·ACCOUNT)을 덧붙인다(ATC-353, 선택 필드). 이름이 바뀌었어도 만들 때 저장한 id로 찾는다
-export function relayBriefOf(relays: readonly Relay[], now = Date.now(), sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[] = []) {
+export function relayBriefOf(relays: readonly Relay[], now = Date.now(), sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[] = [], teamPattern?: string) {
   return relays
     .filter((r) => r.status === "queued")
-    .map((r) => ({ ...sendAddressOf(r, sessions), id: r.id, to: r.to, kind: r.kind, type: clearanceTypeOf(r), flight: r.flight, pr: r.pr, ...(r.stand ? { stand: r.stand } : {}), text: r.text, ageMin: Math.round((now - Date.parse(r.at)) / 60_000) }));
+    .map((r) => ({ ...relaySendAddressOf(r, sessions, teamPattern), id: r.id, to: r.to, kind: r.kind, type: clearanceTypeOf(r), flight: r.flight, pr: r.pr, ...(r.stand ? { stand: r.stand } : {}), text: r.text, ageMin: Math.round((now - Date.parse(r.at)) / 60_000) }));
 }
 
 // ── 받을 AIRCRAFT 제안(ATC-308, 순수) ──────────────────────────────────
@@ -221,8 +221,8 @@ export function lastAircraftOf(flight: string | null, x: LastAircraftInput): str
 
 // relay의 보낼 때 받는 이: 만들 때 저장한 세션 id → job id → REGISTRATION 순으로 찾는다. 못 찾으면 필드 없음(TOWER가 그대로 `to`로 보내고 실패하면 undeliverable)
 export interface SendAddress { sendTo?: string; sendToId?: string; sendToJobId?: string; sendToAccount?: string }
-export function sendAddressOf(r: Pick<Relay, "to" | "toSessionId" | "toJobId">, sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[]): SendAddress {
+export function relaySendAddressOf(r: Pick<Relay, "to" | "toSessionId" | "toJobId">, sessions: readonly Pick<Session, "id" | "name" | "status" | "jobId" | "account" | "lastActiveAt">[], teamPattern?: string): SendAddress {
   if (!sessions.length) return {};
-  const x = resolveRecipient(sessions, { sessionId: r.toSessionId, jobId: r.toJobId, registration: r.to });
+  const x = resolveRecipient(sessions, { sessionId: r.toSessionId, jobId: r.toJobId, registration: r.to }, teamPattern);
   return x.ok ? { sendTo: x.session.name, sendToId: x.session.id, ...(x.session.jobId ? { sendToJobId: x.session.jobId } : {}), ...(x.session.account ? { sendToAccount: x.session.account } : {}) } : {};
 }
