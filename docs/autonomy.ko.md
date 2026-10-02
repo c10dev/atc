@@ -205,6 +205,16 @@ SUPERVISOR가 2026-10-02에 승인한 K3 완화: 서버가 planner 필터와 상
 - **한계를 그대로 적는다.** 이것은 호스트에서 요청을 위조하는 세션을 막는다. root가 될 수 있는 세션(호스트 사용자가 `docker`·`sudo` 그룹이다: `docker`는 `/etc`를 마운트할 수 있고 `sudo`는 지금 비밀번호가 필요하다), 서비스 코드나 유닛 파일을 고치고 재시작을 기다리는 세션, SUPERVISOR의 Mac을 읽는 세션은 막지 못한다. 이것들은 이 검사가 아니라 착륙 규칙(K3)의 일이다. 비밀은 SSH 터널과 loopback에서 평문으로 지나가는데, 같은 사용자의 프로세스는 추가 권한 없이 그것을 엿볼 수 없다.
 - **바꾸지 않은 것.** `atcctl`과 guard: 허용 목록의 라우트로 에이전트가 하는 일은 그대로 된다. 기록 형식은 바꾸지 않았다.
 
+### EFFECT CHECK 구현 (ATC-402)
+
+원칙 7은 배포한 FLIGHT가 바꾸려던 것을 바꿨는지 묻는다. 작업 지시서에 `## Measure` 절이 생겼다([rules.ko.md](rules.ko.md) "작업 지시서"): `metric: <종류>:<이름>`, `direction: down|up`, `window: <n>d`(1d~30d), 또는 `None`. 종류는 atc가 이미 기록하는 것이다: `leak:<종류>`·`leak-minutes:<종류>`(`leaks.jsonl`), `misfire:dispatch`, `alert:<alertKind>`(FLIGHT RECORDER의 `alert.raised`), `clearance:<TYPE>`.
+
+- **평결.** `server/effect-check-run.ts`가 10분마다, 지난 37일 안에 배포됐고 아직 평결이 없는 FLIGHT를 본다(OOOI의 IN, 배포가 없는 AIRPORT는 ON, 되돌려진 ON은 건너뛴다). 본문은 Linear에서 읽고(주기마다 15건까지, 아직 안 읽은 것과 최근 배포를 먼저, `None`을 포함한 해석은 하루 캐시라 후보가 얼마든 정해진 주기 수 안에 모두 본다. 배포 뒤 하루가 안 지난 FLIGHT는 읽지 않는다. metric 이름은 글자·숫자·공백·`-`·`_`·`:` 32자까지라 본문 글이 REVIEW 프롬프트에 들어가지 못한다), `배포 + 창`이 지나면 배포 앞 창의 수와 뒤 같은 창의 수를 견준다(`server/effect-check.ts`의 `judge`): `improved`(적은 방향으로 20% 이상, 하나 이상 움직임), `worse`(반대로 그만큼), `not improved`, `too little data`(그 기록이 앞 창 전체를 덮지 않거나, `down`은 앞 창에 3건 미만, `up`은 앞뒤 합쳐 3건 미만). `None`이나 절이 없거나 모양이 틀리면 평결이 없다.
+- **기록.** `effect-verdicts.jsonl`, 추가만: FLIGHT마다 `verdict` 한 줄(처음 것이 이긴다. 측정, 두 수, 이유, 발권 id가 든다)과 `mark` 줄. `releaseIdOf`(`server/release.ts`)는 `<FLIGHT>@<발권 시각>`이고, leak 기록이 붙잡은 FLIGHT의 발권 id를 싣는다(`release`, 전에는 늘 null). 그래서 leak이 그것을 없애려던 FLIGHT에 이어진다.
+- **어디에 보이나.** FLIGHT 서랍의 `EFFECT CHECK` 줄(평결, 두 수, **틀림** 버튼), HOME의 `EFFECT` 구역(틀렸다고 표시하지 않은 `not improved`·`worse`, 오작동 수 포함). `GET /api/effect[?flight=KEY]`는 `{ on, verdicts, misfire, open, skipped }`(`skipped`는 지난 주기가 아직 못 읽은 본문 수). DUTY REVIEW 프롬프트가 열린 나쁜 평결을 싣는다(`openEffectLines`). 새 트리거는 없다.
+- **스위치와 misfire.** `effect-check.json`의 `on`(기본 on)은 설정 → OPERATIONS → EFFECT CHECK에서만 바꾼다(SUPERVISOR 자격이 있는 요청, `atcctl` 명령 없음). **misfire**는 SUPERVISOR가 틀렸다고 표시한 평결이다(`POST /api/effect/mark {flight, wrong}`, 다른 쓰기처럼 SUPERVISOR 전용): `misfire { verdicts, wrong, share }`.
+- **형식**(추가만): `effect-verdicts.jsonl`, `effect-check.json`, `Leak.release`, `ServerSettings.effectCheck`.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C15, C16이고(C14는 대체됨), C9와 C18은 K1–K3 승인을 내보낼 때로 옮기며, 나머지는 이들을 받친다.

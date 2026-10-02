@@ -136,7 +136,7 @@ test("needsSupervisor: SUPERVISOR-only actions need it, atcctl's writes and read
     ["POST", "/api/schedule/ops/S-1/approve"], ["POST", "/api/schedule/ops/S-1/reject"], ["PUT", "/api/settings"], ["POST", "/api/pr/ATCC/12/merge"],
     ["POST", "/api/fleet/TEAM_A/launch"], ["POST", "/api/fleet/TEAM_A/stop"], ["POST", "/api/control/TOWER/stop"], ["POST", "/api/relay"], ["POST", "/api/relay/R-0001/hand"],
     ["POST", "/api/clearances/C-0001/hand"], ["POST", "/api/mcc/hold"], ["POST", "/api/autoland/hold"], ["PUT", "/api/accounts"], ["DELETE", "/api/airports/x"], ["POST", "/api/duty/message"],
-    ["POST", "/api/duty/charters/d1/confirm"], ["POST", "/api/fleet/crew-change/x/approve"], ["PATCH", "/api/fleet/TEAM_A"], ["POST", "/api/fleet"],
+    ["POST", "/api/duty/charters/d1/confirm"], ["POST", "/api/fleet/crew-change/x/approve"], ["PATCH", "/api/fleet/TEAM_A"], ["POST", "/api/fleet"], ["POST", "/api/effect/mark"],
   ] as const;
   for (const [m, p] of need) assert.equal(needsSupervisor(m, p), true, `${m} ${p}`);
   const free = [

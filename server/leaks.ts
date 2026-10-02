@@ -79,7 +79,7 @@ export interface LeakOpen {
   controlBuilt: boolean;
   title: string;
   flight: string | null;
-  release: string | null; // ATC-362 릴리스 기록이 서면 그 id. 지금은 늘 null(추가 필드)
+  release: string | null; // 붙잡힌 FLIGHT의 발권 기록 id(release.ts releaseIdOf, ATC-402). 발권되지 않은 일이면 null
   since: string; // 사람이 기다리기 시작한 시각(큐의 since, 모르면 처음 본 시각)
 }
 export interface LeakClose {
@@ -107,7 +107,7 @@ export const CLOSE_AFTER_MISSES = 2;
 // 주기 하나: 지금의 큐와 열린 leak을 맞춘다. 바뀐 만큼만 줄을 돌려준다(없으면 빈 배열).
 // ready가 false면(입력이 아직 없다: RTS 재시작 직후 첫 스냅샷에 PR이 없음 등, ATC-385) 큐가 비어 보이는 것이 사실이 아니다:
 // 열린 leak은 계속 기다리는 중이라 지금 본 것으로 치고(분이 이어진다) 아무것도 열거나 닫지 않는다. 입력이 돌아오면 한 번의 기다림이 한 leak으로 이어진다
-export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[], now: number, ready = true): LeakRecord[] {
+export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[], now: number, ready = true, releaseOf: (flight: string | null) => string | null = () => null): LeakRecord[] {
   if (!ready) {
     for (const o of open.values()) {
       o.lastSeen = now;
@@ -139,7 +139,7 @@ export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[
       controlBuilt: v.control.built,
       title: i.title,
       flight: i.flight ?? null,
-      release: null,
+      release: releaseOf(i.flight ?? null), // 붙잡힌 FLIGHT의 발권 id(ATC-402). 발권 기록이 없으면 null
       since: i.since ?? new Date(now).toISOString(),
     };
     open.set(id, { rec, lastSeen: now, misses: 0 });
