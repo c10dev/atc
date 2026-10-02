@@ -196,6 +196,8 @@ export interface Clearance {
   undeliverableReason?: string | null;
   undeliverableCause?: string | null; // 닿지 못한 원인(ATC-353, address.ts CAUSES). 옛 기록에는 없다
   handAt?: string | null; // SUPERVISOR가 손으로 전했다고 표시한 시각(op hand): 카드를 닫는다
+  // FIX·GO AROUND를 보낼 때 그 AIRCRAFT가 이 STAND 말고 하고 있던 다른 FLIGHT(ATC-387). null이면 다른 FLIGHT 없음, 없으면(옛 기록·다른 종류) 모른다
+  elsewhere?: string | null;
 }
 
 export type TrafficEventKind =

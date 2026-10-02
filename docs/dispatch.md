@@ -6,7 +6,7 @@ DISPATCH proposes **which FLIGHT (Linear ticket) to send to which AIRCRAFT (team
 
 > Status: the DISPATCH session merged into the OCC session (`atc/occ/`, [occ.md](occ.md)) on 2026-09-26; the work below is unchanged. 2a (shadow operation) running; 2b (approval operation) implemented behind `mode` and off by default (2026-09-26). See "Turning on 2b". Decisions are listed under "Decisions" at the end.
 >
-> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work).
+> Settled while implementing: under the 1-FLIGHT-per-TEAM rule, a HOLDING AIRCRAFT that holds the STAND of an unfinished FLIGHT is never assigned a FLIGHT that needs a STAND, however long it has been idle (the "30 minutes" rule in 5.1 is not used). It can take one `SURVEY` or `CHECK`, which need no STAND ([fleet.md](fleet.md) 5.1, 2026-09-27). RELEASE only looks at projects mapped to an AIRPORT (code work). Since ATC-387 a FLIGHT that only waits to land (open PR, nothing for the AIRCRAFT to do) no longer counts against that rule; see "Waiting PRs do not use the AIRCRAFT's slot".
 
 ## 1. Current facts
 
@@ -652,6 +652,18 @@ K3: this decides what the Claude Code auto-mode classifier lets a FLIGHT change,
 - **A fresh AIRCRAFT.** A running session cannot take new `--settings`, so the planner pairs such a FLIGHT only with an AIRCRAFT that is launched for it (a launch card).
 - **Only the server.** `launchAircraft` takes the entries as a separate server-built argument, not as an option, and the LAUNCH route drops `settings` and `k3` from the request body. Supervisor-route authentication (ATC-373) protects the routes that start a launch.
 - **Record.** The FLIGHT RECORDER `launch` line carries `flight` and `k3: { release, stand, entries }`.
+
+## Waiting PRs do not use the AIRCRAFT's slot (ATC-387)
+
+An AIRCRAFT whose FLIGHT only waits to land does not sit idle. Before, a started FLIGHT with an open PR kept its AIRCRAFT "stopped" until the PR merged; now it does not count against the slot.
+
+- **"Only waits to land"** (`waitsToLandOf`, `server/dispatch.ts`): every open PR of the FLIGHT is not a Draft, has no open FIX or GO AROUND CLEARANCE for the FLIGHT, and carries no block the AIRCRAFT could act on. Allowed blocks: none (CLEARED), `checks-pending`, `no-review`, `review-stale`, `stacked`, `merge-unknown` (`WAITING_BLOCKS`). Any other block (`checks-failed`, `review-findings`, `changes-requested`, `dirty`, `behind`, `blocked`, `no-checks`, `los`, `draft`, or a code added later) means there is something to do, so the FLIGHT keeps using the slot. A FLIGHT with no PR keeps the slot.
+- **Effect**: a waiting FLIGHT is left out of `holding` (the `perTeam` load), out of the open-FLIGHT count and out of the "stopped" reason, for AIRCRAFT with a session and for ABSENT ones (`tail:`). `AircraftState.waiting` lists them (the `reason` reads `착륙 대기 PR n건 … 다음 FLIGHT는 새 STAND`). A FLIGHT that is working (no PR yet, a failing check, findings, a FIX) still uses the slot, so one AIRCRAFT still works on one FLIGHT.
+- **Cap**: `dispatch.json` `slots.waitingPr` (default 2). An AIRCRAFT holding that many waiting PRs is not assigned a STAND FLIGHT until one lands (STAND-free SURVEY and CHECK still go).
+- **New STAND**: the AIRCRAFT starts the next FLIGHT in a new STAND and keeps the earlier one. The ASSIGN card stores `waitingFlights`, and the FLIGHT PLAN gets one line: the earlier FLIGHT only waits to land in its own STAND, start this one in a NEW STAND, and handle a FIX or GO AROUND for the earlier PR in the earlier STAND.
+- **FIX and GO AROUND still arrive**: TOWER sends them to the sessions holding the PR's STAND by claim. A claim goes stale after `ATC_CLAIM_TTL_MIN` (180), so `keptStandClaims` (`server/snapshot.ts`) keeps the stale claim of a live session on a STAND that has an open PR (one per STAND, the session that touched it last; a STAND another session holds now is left alone). It is added after conflicts, alerts and health are computed, so only the holder lookups see it. The CLEARANCE carries the earlier STAND, so the AIRCRAFT handles it there.
+- **Measured**: a FIX or GO AROUND CLEARANCE records `elsewhere` when it is issued: the other started FLIGHT the target session holds in a different STAND, or `null`. METRICS → OPERATIONS adds the tile `FIX·GO AROUND READBACK` with the median to READBACK for AIRCRAFT busy on another FLIGHT against those that were not (`clearances.fixReadback`); older CLEARANCEs without the field are in neither group.
+- **Formats** (additive): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
 
 ## DIRECT briefs (ATC-32)
 
