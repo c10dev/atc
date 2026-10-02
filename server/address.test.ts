@@ -58,7 +58,8 @@ test("causeOf: 사유 글을 원인으로, 명시한 원인이 먼저", () => {
 test("FLIGHT PLAN 보낼 때 주소: 만들 때의 이름이 아니라 지금 살아 있는 세션(id·job id·ACCOUNT를 덧붙임)", () => {
   const sessions = [s({ id: "sid-9", name: "TEAM_A", jobId: "job9", account: "acct-3" })];
   const a = sendAddressOf({ registration: "TEAM_A", aircraftName: "TEAM_A-old" }, { sessions: sessions as never });
-  assert.deepEqual(a, { sendTo: "TEAM_A", sendToId: "sid-9", sendToJobId: "job9", sendToAccount: "acct-3" });
+  // sendTo는 제안의 aircraftName 그대로(send-guard가 그 이름과 비교한다), 살아 있는 세션의 이름은 sendToName
+  assert.deepEqual(a, { sendTo: "TEAM_A-old", sendToName: "TEAM_A", sendToId: "sid-9", sendToJobId: "job9", sendToAccount: "acct-3" });
   // 못 찾으면 옛 이름 그대로, 추가 필드 없음
   assert.deepEqual(sendAddressOf({ registration: "TEAM_Z", aircraftName: "TEAM_Z" }, { sessions: [] }), { sendTo: "TEAM_Z" });
 });

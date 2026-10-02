@@ -534,12 +534,12 @@ export function noLiveSessionWhyOf(p: Pick<Proposal, "launch" | "registration" |
   return `${p.aircraftName ?? reg}: ${NO_SESSION_SEND_WHY}`;
 }
 
-// 보낼 때의 받는 이(ATC-353): 만들 때 저장한 이름이 아니라 그 REGISTRATION의 살아 있는 세션. 못 찾으면 옛 이름을 그대로 쓰고 추가 필드는 없다.
-// sendTo는 그대로 SendMessage 주소(이름)이고, sendToId·sendToJobId·sendToAccount는 새 선택 필드다
+// 보낼 때의 받는 이(ATC-353): 그 REGISTRATION의 살아 있는 세션. sendTo는 그대로 제안의 aircraftName이다 — OCC의 send-guard가 받는 이를 이 이름과 비교하므로 바꾸지 않는다.
+// 살아 있는 세션을 찾으면 선택 필드 sendToName(그 세션의 지금 이름)·sendToId·sendToJobId·sendToAccount를 더한다. 못 찾으면 없다
 export function sendAddressOf(p: Pick<Proposal, "registration" | "aircraftName"> & Partial<Pick<Proposal, "aircraft">>, s: Pick<Snapshot, "sessions">, teamPattern?: string) {
   const r = resolveRecipient(s.sessions, { registration: regOfProposal(p, teamPattern) }, teamPattern);
   if (!r.ok) return { sendTo: p.aircraftName };
-  return { sendTo: r.session.name, sendToId: r.session.id, ...(r.session.jobId ? { sendToJobId: r.session.jobId } : {}), ...(r.session.account ? { sendToAccount: r.session.account } : {}) };
+  return { sendTo: p.aircraftName, sendToName: r.session.name, sendToId: r.session.id, ...(r.session.jobId ? { sendToJobId: r.session.jobId } : {}), ...(r.session.account ? { sendToAccount: r.session.account } : {}) };
 }
 
 // ACCOUNT 사이 전달(ATC-251): OCC와 받을 AIRCRAFT의 관찰한 ACCOUNT가 다르면 FLIGHT PLAN이 닿지 않는다. 한쪽이라도 모르면 막지 않는다

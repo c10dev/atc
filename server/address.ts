@@ -72,7 +72,7 @@ export function causeOf(reason: string | null | undefined, explicit?: string | n
   if (/\bis a title\b|bad recipient|not a (?:session|recipient)/i.test(r)) return "bad-recipient";
   if (/cross-?ACCOUNT|ACCOUNT 불일치|different ACCOUNT|ATC-251/i.test(r)) return "cross-account";
   if (/TOWER is not running|OCC is not running|control session (?:is )?(?:down|not running)/i.test(r)) return "tower-down";
-  if (/RESTARTING|restart|새 세션이 뜬 뒤/i.test(r)) return "restarting";
+  if (/\bRESTARTING\b|새 세션이 뜬 뒤/.test(r)) return "restarting";
   if (/ENOENT|stale address|old address|renamed/i.test(r)) return "stale-address";
   if (/no live session|세션 없음|세션이 없|not running|absent|no such session|not found/i.test(r)) return "absent";
   return "other";

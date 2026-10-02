@@ -279,6 +279,7 @@ export function clearanceTargetOf(s: Pick<Snapshot, "sessions">, toRaw: string, 
   }
   const exact = resolveSession(s as Snapshot, to);
   if (typeof exact !== "string") return exact;
+  if (/개라 ID로/.test(exact)) return exact; // 같은 이름의 세션이 둘 이상이면 REGISTRATION으로 조용히 고르지 않고 거절한다
   const byReg = resolveRecipient(s.sessions, { registration: to }, teamPattern);
   if (byReg.ok) return s.sessions.find((x) => x.id === byReg.session.id) ?? exact;
   return looksLikeTitle(to) ? `"${to.slice(0, 60)}"는 제목이지 세션이 아님 — 세션 id나 REGISTRATION으로 보낸다` : exact;

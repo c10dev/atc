@@ -184,6 +184,9 @@ test("CLEARANCE 받는 이(ATC-353): 이름·콜사인이 먼저, 없으면 REGI
   assert.match(clearanceTargetOf(s, "TEAM_Z", null) as string, /찾을 수 없음/);
   assert.equal((clearanceTargetOf(s, "", "/w/atc-9") as Session).id, "s-e");
   assert.equal(typeof clearanceTargetOf(s, "", null), "string");
+  // 같은 이름의 세션이 둘이면 REGISTRATION으로 조용히 고르지 않고 거절한다
+  const dup = snapshot({ sessions: [session("a1", "TEAM_A"), session("a2", "TEAM_A")] });
+  assert.match(clearanceTargetOf(dup, "TEAM_A", null) as string, /2개/);
 });
 
 test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·W/U 끝줄(HOLD는 READBACK·UNABLE·STANDBY)", () => {
