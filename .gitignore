@@ -2,3 +2,9 @@ node_modules/
 dist/
 .env.local
 *.log
+# media/intro renders: the MP4 goes to ~/atc-media/intro by default. Never commit video, GIFs or frames
+media/**/*.mp4
+media/**/*.gif
+media/**/*.png
+media/intro/out/
+media/intro/frames/
