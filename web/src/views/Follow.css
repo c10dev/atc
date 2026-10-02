@@ -142,7 +142,7 @@
   color: var(--faint);
 }
 .fw-dot small {
-  font-size: 8px;
+  font-size: var(--text-2xs);
   color: var(--faint);
   letter-spacing: 0.02em;
 }

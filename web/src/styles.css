@@ -170,14 +170,8 @@ button {
 .fl-r-week,
 .fl-r-ctx,
 .fl-r-burn,
-.fl-actuals,
 .fl-ctx,
 .fc-count,
-.dp-score,
-.dp-age,
-.dp-count,
-.sc-age,
-.sc-cand-count,
 .fp-age,
 .du-since,
 .activity-ago {
@@ -334,9 +328,6 @@ button {
 .tab-code {
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
-}
-.tab-label {
-  font-size: var(--text-xs);
 }
 .tab[aria-selected="true"] {
   color: var(--tab-on);
@@ -1430,11 +1421,6 @@ a.val:hover {
   color: var(--tone);
   white-space: nowrap;
 }
-.column-label {
-  font-weight: 600;
-  color: var(--fids-title);
-  white-space: nowrap;
-}
 .column-alias {
   font: 400 var(--text-xs) var(--mono);
   color: var(--faint);
@@ -1720,7 +1706,6 @@ a.ticket:hover {
   color: var(--faint);
 }
 /* 비행 단계 머리 줄(ATC-316): 이름은 단계 색(상태), 수는 중립. 그룹은 앞 5건만 보이고 "N more"로 펼친다 */
-.fids-table th.fids-group-th,
 .fids-group-head th {
   padding: var(--space-2) var(--space-3);
   border-top: 2px solid var(--tone);
@@ -1867,7 +1852,7 @@ a.ticket:hover {
   }
 }
 
-/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 10개, 로고+탭+수치 ≈ 1740px): 탭을 헤더 둘째 줄로 */
+/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 6개 + 로고 + 수치, 1760px 이하): 탭을 헤더 둘째 줄로 */
 @media (min-width: 861px) and (max-width: 1760px) {
   .console {
     height: auto;
@@ -3456,8 +3441,6 @@ a.ticket:hover {
 .acct-env legend { padding: 0 4px; }
 .acct-env label { display: inline-flex; align-items: center; gap: 4px; }
 .acct-done { margin-top: 8px; }
-.acct-next { margin: 4px 0 0; padding-left: 20px; }
-.acct-next li { margin: 3px 0; }
 .acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
 .acct-login { margin: 4px 0 2px; }
 /* PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫. 보통 수준은 무채색, INFO부터 amber, HOLD부터 alert(서버가 정한 수준) */

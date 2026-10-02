@@ -8,11 +8,5 @@
   },
   "web/src/styles.css": {
     "color-literal": 43
-  },
-  "web/src/views/Follow.css": {
-    "font-size-px": 1
-  },
-  "web/src/views/Globe.css": {
-    "font-size-px": 2
   }
 }
