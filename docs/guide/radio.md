@@ -24,7 +24,7 @@
 [ATC C-0007] BRAVO (TEAM_B) · HOLD
 STAND vocado-voc-175 · FLIGHT VOC175
 Wait until DELTA finishes
-— Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
+— Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.
 ```
 
 - 팀 리더는 끝줄이 청하는 답으로 답한다(위 "답하는 말"). 형식 없이 거부하거나 질문하면 TOWER가 SUPERVISOR에게 전한다.
@@ -59,9 +59,9 @@ FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 ·
 - `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 받는 쪽은 그 PR의 STAND를 쥔 팀이다. 문구는 atc 서버가 만들고 TOWER는 그대로 보낸다. 번호는 같은 저장소·같은 base의 CLEARED PR 안에서 센 순번이다. 다른 저장소의 PR이 머지돼도 rebase할 필요가 없어서다:
 
   ```
-  LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now — check that base is current before merging.
+  LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now. Check that base is current before you merge.
   LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.
-  LANDING sequence 1 (TNNS): PR #21. Clear to LAND now — check that base is current before merging.
+  LANDING sequence 1 (TNNS): PR #21. Clear to LAND now. Check that base is current before you merge.
   ```
 
   1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 rebase하고 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
@@ -72,7 +72,7 @@ FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 ·
   [ATC C-0012] ECHO (TEAM_E) · INFO
   STAND vocado-voc-52-persistent-exec · FLIGHT VOC52
   PR #389 cannot LAND: the review is only on the earlier commit 3510a91; head 4cbacd8 needs a review
-  — When received, reply to this message with "ROGER C-0012".
+  — Reply to this message with "ROGER C-0012" when you receive it.
   ```
 
 - 같은 본문으로는 다시 보내지 않는다. atc가 막힘 코드로 정하므로(마지막 INFO 끝의 `[blocks: …]` 표지와 견준다) 서버가 재시작돼도 빠지거나 두 번 가지 않고, CI가 끝나거나 head가 바뀌어도 같은 막힘이면 다시 가지 않는다(ATC-270). CI 진행 중이나 GitHub 계산 중처럼 기다리면 풀리는 것은 알리지 않는다. 리뷰 지적은 INFO가 아니라 아래 FIX가 맡는다.
@@ -91,9 +91,9 @@ Goal: …
 Done when: …
 Constraints: …
 DISPATCH note: CAUTION · …
-Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.
-— Reply to this message with "READBACK D-0003" if you take it, "UNABLE D-0003 — reason" if you cannot, or "STANDBY D-0003" if you need time.
-Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.
+If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.
+— Reply to this message with "READBACK D-0003" if you take it. Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.
+Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.
 ```
 
 - FLIGHT PLAN은 DIRECT 지시서다. Goal·Done when·Constraints(이슈 본문의 목표·완료 기준·제약)는 보낼 때 옮긴다. 세션끼리 주고받는 글이라 이 문구들은 영어다(ATC-126). 늘 지키는 규칙(CLAUDE.md, guard, 브랜치 보호)은 적지 않는다.
@@ -108,11 +108,11 @@ SUPERVISOR가 보낸 FLIGHT PLAN을 거둬들이면 OCC가 서버가 만든 문�
 
 ```
 [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
-FLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.
+FLIGHT VOC193 · AIRPORT VCDO. This FLIGHT PLAN is withdrawn.
 권한 정리
 Reason: 우선순위 바뀜
-Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.
-— When received, reply to this message with "READBACK D-0003 RECALL".
+Stop work. Do not clean up the STAND (worktree). Leave it as it is. Then another AIRCRAFT can pick it up.
+— Reply to this message with "READBACK D-0003 RECALL" when you receive it.
 ```
 
 - CAPTAIN은 작업을 멈추고, 워크트리는 그대로 두고, `READBACK D-0003 RECALL`로 답한다(RECALL을 꼭 붙인다).
@@ -132,7 +132,7 @@ CREW leaving (stop them and do not call them again)
 …
 When applied, leave only the line "TEAM_H CREW CHANGE CC-0001 COMPLETE".
 
-— Reply to this message with "READBACK CC-0001" if you take it, "UNABLE CC-0001 — reason" if you cannot, or "STANDBY CC-0001" if you need time.
+— Reply to this message with "READBACK CC-0001" if you take it. Reply with "UNABLE CC-0001 — reason" if you cannot. Reply with "STANDBY CC-0001" if you need time.
 ```
 
 - CAPTAIN은 받으면 `READBACK CC-0001`로 답하고, 팀원을 바꾼 뒤 `COMPLETE` 한 줄을 남긴다. OCC가 READBACK을 기록한다(`crew-change readback`).

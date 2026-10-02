@@ -205,7 +205,7 @@ DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
   <ticket title and URL, Goal · Done when · Constraints from the issue, DISPATCH note>
   <PILOT'S DISCRETION line>
   — If you take it, reply "READBACK D-0003"; if you can't, "UNABLE D-0003 — reason"; if you need time, "STANDBY D-0003" (ATC-122).
-  Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision. (see "DIRECT briefs")
+  Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision. (see "DIRECT briefs")
 CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
      STAND-free FLIGHT (SURVEY, CHECK): DEPARTED at the READBACK itself (no STAND to wait for)
@@ -444,11 +444,11 @@ OCC:        atcctl dispatch recalled D-0003 → atc: RECALLED
 
   ```
   [DISPATCH D-0003] RECALL · BRAVO (TEAM_B)
-  FLIGHT VOC193 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn.
+  FLIGHT VOC193 · AIRPORT VCDO. This FLIGHT PLAN is withdrawn.
   <ticket title>
   사유: <SUPERVISOR's reason>
-  Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.
-  — When received, reply to this message with "READBACK D-0003 RECALL".
+  Stop work. Do not clean up the STAND (worktree). Leave it as it is. Then another AIRCRAFT can pick it up.
+  — Reply to this message with "READBACK D-0003 RECALL" when you receive it.
   ```
 
   The reply names the RECALL (`READBACK D-0003 RECALL`) so it can't be confused with the FLIGHT PLAN's `READBACK D-0003`.
@@ -630,7 +630,7 @@ AUTOPILOT is not used for this. It means a machine flies while the pilot watches
 
 Standing rules stay where they are (vocado `CLAUDE.md` and `AGENTS.md`, atc `CLAUDE.md`, guards, branch protection, approval gates) and briefs don't repeat them. Short briefs are safe because those don't change.
 
-**The brief.** Line 2 of every brief is `BRIEF: DIRECT`. Then the FLIGHT, its title and link, and three fields taken from the issue body (`server/briefs.ts` `directSectionsOf`): labeled `Goal:`, `Done when:` and `Constraints:` (ATC-126; the brief text is English). They are found in the issue body under `목표` / Goal / Outcome, `완료 기준` / Acceptance / Done criteria / Done when / Exit criteria, and `이 작업만의 제약` / Constraints / Hard constraints / 금지 / Forbidden / Invariants / Not in scope. The fields carry the text as written (ATC-58): Linear's backslash escapes are removed (`\~31 K` → `~31 K`), an issue link to `linear.app/<workspace>/issue/<KEY>/…` becomes the bare key (`ATC-46`; a link with its own text keeps it, `the design (ATC-46)`), a PR mention, which Linear stores as a link to `linear.app/<workspace>/review/…`, becomes its link text (`chaehy5665/atc#134`, ATC-70), and code spans and fenced blocks are left as they are. A one-line field that is a list item starts on its own line. Exit criteria and constraints are carried in full; only the goal is cut at 600 characters of that cleaned text on a line break (ATC-35). If the three fields together pass 4,000 characters, the brief keeps the goal and says `Read the full done criteria and constraints in the issue body.` instead of carrying a partial list, since a list cut after its first item hides the rules that follow. A normal issue fits: the ATC-34 body (about 3,200 characters) is the test fixture. Allowed scope, context and verification stay in the linked issue. Without an exit-criteria field the brief says to follow the issue's exit criteria. It ends with the PILOT'S DISCRETION line, the READBACK request, and `Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.`
+**The brief.** Line 2 of every brief is `BRIEF: DIRECT`. Then the FLIGHT, its title and link, and three fields taken from the issue body (`server/briefs.ts` `directSectionsOf`): labeled `Goal:`, `Done when:` and `Constraints:` (ATC-126; the brief text is English). They are found in the issue body under `목표` / Goal / Outcome, `완료 기준` / Acceptance / Done criteria / Done when / Exit criteria, and `이 작업만의 제약` / Constraints / Hard constraints / 금지 / Forbidden / Invariants / Not in scope. The fields carry the text as written (ATC-58): Linear's backslash escapes are removed (`\~31 K` → `~31 K`), an issue link to `linear.app/<workspace>/issue/<KEY>/…` becomes the bare key (`ATC-46`; a link with its own text keeps it, `the design (ATC-46)`), a PR mention, which Linear stores as a link to `linear.app/<workspace>/review/…`, becomes its link text (`chaehy5665/atc#134`, ATC-70), and code spans and fenced blocks are left as they are. A one-line field that is a list item starts on its own line. Exit criteria and constraints are carried in full; only the goal is cut at 600 characters of that cleaned text on a line break (ATC-35). If the three fields together pass 4,000 characters, the brief keeps the goal and says `Read the full done criteria and constraints in the issue body.` instead of carrying a partial list, since a list cut after its first item hides the rules that follow. A normal issue fits: the ATC-34 body (about 3,200 characters) is the test fixture. Allowed scope, context and verification stay in the linked issue. Without an exit-criteria field the brief says to follow the issue's exit criteria. It ends with the PILOT'S DISCRETION line, the READBACK request, and `Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.`
 
 - **FLIGHT PLAN** (`formatFlightPlan`): `dispatch release` reads the issue body from Linear (read-only) and stores the brief as the proposal's `message`. If Linear can't be read, the FLIGHT PLAN still goes out without the fields. send-guard compares the stored text as before.
 - **Assignment by another session** (ENGINEERING, a person): `GET /api/dispatch/flight/:key/brief?to=TEAM_X` returns the same shape as `{key, brief: "DIRECT", text}` to paste. A hand-written brief works too as long as it has the `BRIEF: DIRECT` line.

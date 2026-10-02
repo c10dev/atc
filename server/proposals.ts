@@ -832,7 +832,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
-  const hold = p.hold.length ? `HOLD — start after the preceding FLIGHT ${p.hold.map(flightNumber).join(", ")} is done` : null;
+  const hold = p.hold.length ? `HOLD: start after the preceding FLIGHT ${p.hold.map(flightNumber).join(", ")} is done` : null;
   return [
     `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
     DIRECT_LINE,
@@ -860,13 +860,13 @@ export function formatRecall(p: Pick<Proposal, "id" | "flight" | "airport" | "st
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   return [
     `[DISPATCH ${p.id}] RECALL · ${who}`,
-    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} — this FLIGHT PLAN is withdrawn.`,
+    `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"}. This FLIGHT PLAN is withdrawn.`,
     ticket?.title ?? p.flight,
     `Reason: ${reason}`,
     // STAND 없이 DEPARTED한 FLIGHT(SURVEY·CHECK)에는 정리할 STAND가 없다. 중간 결과를 남기게 한다
     isStandFreeAirborne(p)
-      ? "Stop work. If you have interim results, leave a link or one line — so another AIRCRAFT can pick it up."
-      : "Stop work. Do not clean up the STAND (worktree); leave it as is — so another AIRCRAFT can pick it up.",
+      ? "Stop work. If you have interim results, leave a link or one line. Then another AIRCRAFT can pick them up."
+      : "Stop work. Do not clean up the STAND (worktree). Leave it as it is. Then another AIRCRAFT can pick it up.",
     closingLine("recall", responseOf("recall"), p.id),
   ].join("\n");
 }

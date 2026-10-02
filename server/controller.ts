@@ -39,8 +39,8 @@ function sessionLabel(s: Session | undefined, id: string) {
 // p3: 해결·답글된 Codex P3 지적이 남은 채 CLEARED인 PR(ATC-28). 막지는 않지만 LAND 글에 남긴다
 export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null, p3 = 0): string {
   const head = `LANDING sequence ${repoSeq}${airport ? ` (${airport})` : ""}: PR #${pr}${flight ? ` (${flight})` : ""}.`;
-  const note = p3 ? ` Codex P3 findings left: ${p3} (resolved or answered; they do not block landing).` : "";
-  if (prevPr == null) return `${head} Clear to LAND now — check that base is current before merging.${note}`;
+  const note = p3 ? ` Codex P3 findings left: ${p3}. They are resolved or answered. They do not block landing.` : "";
+  if (prevPr == null) return `${head} Clear to LAND now. Check that base is current before you merge.${note}`;
   return `${head} Rebase and LAND after the PR ahead (#${prevPr}) merges.${note}`;
 }
 

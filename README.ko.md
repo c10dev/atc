@@ -242,7 +242,7 @@ journalctl --user -u atc -f           # 로그
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
   Do not touch this STAND until the team ahead finishes and hands it off
-  — Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
+  — Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.
   ```
 
 - 팀 세션과 TOWER 세션의 권한 모드(자동 승인 여부)가 다르면 메시지가 사용자 승인 대기로 잡힐 수 있다.

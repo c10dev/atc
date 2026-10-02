@@ -270,10 +270,10 @@ test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORIT
       "https://linear.app/x/VOC-193",
       "Done when: Follow the done criteria in the issue body (link).",
       "DISPATCH note: CAUTION · DB 권한 작업",
-      "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.",
-      '— Send your reply to the session name "OCC" (SendMessage to: "OCC"), not to the from address: the address changes when OCC restarts.',
-      '— Reply to this message with "READBACK D-0007" if you take it, "UNABLE D-0007 — reason" if you cannot, or "STANDBY D-0007" if you need time.',
-      "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.",
+      "If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.",
+      '— Send your reply to the session name "OCC" (SendMessage to: "OCC"). Do not send it to the from address. The address changes when OCC restarts.',
+      '— Reply to this message with "READBACK D-0007" if you take it. Reply with "UNABLE D-0007 — reason" if you cannot. Reply with "STANDBY D-0007" if you need time.',
+      "Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),
   );
 });
@@ -299,7 +299,7 @@ test("FLIGHT PLAN 문구(ATC-271): notes는 지시서 뒤에 들어가고, 없�
 test("FLIGHT PLAN 문구: HOLD가 있으면 선행 FLIGHT 줄이 들어간다", () => {
   const [p] = fold([create("D-0008", "VOC-192", "b", 10), { op: "hold", id: "D-0008", at: iso(9), blockedBy: ["VOC-180"] }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "별도 이슈", url: "u", priority: 2 }, "TEAM_F");
-  assert.ok(msg.includes("HOLD — start after the preceding FLIGHT VOC180 is done"));
+  assert.ok(msg.includes("HOLD: start after the preceding FLIGHT VOC180 is done"));
 });
 
 test("HOLD: 제안은 열린 목록에서 빠지고, AIRCRAFT는 놓아 주되 FLIGHT는 잡아 둔 채 선행이 끝나면 풀린다", () => {
@@ -525,7 +525,7 @@ test("RECALL: sent·accepted → recalling → recalled, departed·approved에�
   // 문구: 머리, FLIGHT, 사유, STAND를 두라는 말, READBACK 방법
   const text = formatRecall(fold(base)[0], { title: "권한 정리" }, "TEAM_B", "우선순위 바뀜");
   assert.equal(text.split("\n")[0], "[DISPATCH D-0001] RECALL · BRAVO (TEAM_B)");
-  assert.match(text, /FLIGHT VOC1 · AIRPORT VCDO — this FLIGHT PLAN is withdrawn/);
+  assert.match(text, /FLIGHT VOC1 · AIRPORT VCDO. This FLIGHT PLAN is withdrawn/);
   assert.match(text, /Reason: 우선순위 바뀜/);
   assert.match(text, /Do not clean up the STAND \(worktree\)/);
   assert.match(text, /"READBACK D-0001 RECALL"/);
@@ -879,7 +879,7 @@ test("FLIGHT PLAN 문구(DIRECT): 긴 이슈(ATC-34)도 완료 기준·제약을
   assert.ok(msg.includes("any PR the SUPERVISOR marks \"hold\""));
   assert.ok(msg.includes("puts AUTOLAND in GROUND STOP"));
   assert.ok(msg.includes("The atc repo's own landing (structure merges auto/flagged) is out of scope."));
-  assert.ok(msg.endsWith("Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision."));
+  assert.ok(msg.endsWith("Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision."));
 });
 
 test("STANDBY D-xxxx(ATC-122): sent에서만 받고, 첫 STANDBY부터 READBACK overdue 10분을 한 번 다시 센다", () => {
