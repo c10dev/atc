@@ -192,6 +192,7 @@ export interface Clearance {
   // 닿지 못해 TOWER가 닫음(ATC-271, op undeliverable): 취소와 같이 닫히고(cancelledAt) 사유가 남는다. SUPERVISOR QUEUE의 손으로 전하는 카드가 읽는다
   undeliverableAt?: string | null;
   undeliverableReason?: string | null;
+  undeliverableCause?: string | null; // 닿지 못한 원인(ATC-353, address.ts CAUSES). 옛 기록에는 없다
   handAt?: string | null; // SUPERVISOR가 손으로 전했다고 표시한 시각(op hand): 카드를 닫는다
 }
 

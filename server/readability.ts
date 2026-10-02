@@ -1,5 +1,6 @@
 import type { Transmission } from "./radio.ts";
 import type { TrafficEvent } from "./model.ts";
+import { CAUSES, causeOf, type UndeliveredCause } from "./address.ts";
 import { DEFAULT_TEAM_PATTERN, regKey } from "./registration.ts";
 
 // READABILITY R0(ATC-176, docs/readability.md): 무선 교신의 질을 재는 순수 함수. 기록(RADIO의 교신)과 대화 기록에서 뽑은 답 한 줄, 이벤트에서 계산하고
@@ -124,6 +125,7 @@ export interface Bucket {
   received: Size; // 팀 → 관제: 대화 기록에서 본 메시지 전체(봉투 포함)
   compliance: { goAround: Compliance; flightPlan: Compliance; recall: Compliance };
   phraseology: Phraseology;
+  undelivered: { n: number; causes: Record<UndeliveredCause, number> }; // 닿지 못한 호출의 원인별 수(ATC-353). 옛 줄에는 없다
 }
 export interface Readability {
   window: { from: string; to: string };
@@ -152,6 +154,7 @@ interface Acc {
   received: { n: number; chars: number };
   comp: Comp;
   ph: Phraseology;
+  undelivered: Record<UndeliveredCause, number>;
 }
 const newAcc = (): Acc => ({
   calls: 0, replied: 0, late: 0, noReply: 0, withdrawn: 0, overdue: 0, latency: [],
@@ -159,6 +162,7 @@ const newAcc = (): Acc => ({
   sent: { n: 0, chars: 0 }, received: { n: 0, chars: 0 },
   comp: { goAround: [], flightPlan: [], recall: [], n: { goAround: 0, flightPlan: 0, recall: 0 } },
   ph: { checked: 0, missingHead: 0, multilineUnable: 0, wrongId: 0 },
+  undelivered: Object.fromEntries(CAUSES.map((c) => [c, 0])) as Record<UndeliveredCause, number>,
 });
 const size = (s: { n: number; chars: number }): Size => ({ n: s.n, chars: s.chars, tokens: tokensOf(s.chars) });
 const comp = (values: number[], applicable: number): Compliance => ({ ...statOf(values), applicable, complied: values.length, unknown: applicable - values.length });
@@ -170,6 +174,7 @@ function finalize(a: Acc): Bucket {
     sent: size(a.sent), received: size(a.received),
     compliance: { goAround: comp(a.comp.goAround, a.comp.n.goAround), flightPlan: comp(a.comp.flightPlan, a.comp.n.flightPlan), recall: comp(a.comp.recall, a.comp.n.recall) },
     phraseology: a.ph,
+    undelivered: { n: CAUSES.reduce((n, c) => n + a.undelivered[c], 0), causes: a.undelivered },
   };
 }
 
@@ -277,6 +282,10 @@ export function readabilityOf(transmissions: readonly Transmission[], replies: r
         a.noReply++;
         if (toMs - ms(c.at) > OVERDUE_MS) a.overdue++;
       }
+    }
+    if (c.undelivered !== undefined) {
+      const cause = causeOf(c.undelivered, c.undeliveredCause);
+      for (const a of accs) a.undelivered[cause]++;
     }
     for (const r of visible) {
       if (r.kind !== "UNABLE") continue;

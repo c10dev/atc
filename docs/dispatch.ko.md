@@ -614,6 +614,17 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
 - **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만), 적용 전 뒤쪽 제외(HUMAN CHECK) 확인. 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
 
+## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
+
+FLIGHT PLAN·CLEARANCE·RELAY는 만들 때 저장한 이름으로 주소를 정했기 때문에, 재시작·이름 바꾸기·ACCOUNT 이동 뒤에는 아무도 답하지 않는 이름으로 갔다. 메시지 문구와 guard가 읽는 머리는 그대로이고, 바뀐 것은 누구에게 가는가와 실패한 뒤의 길뿐이다. 기록은 모두 새 선택 필드만 더한다.
+
+- **보낼 때 정한다**(`server/address.ts`, 순수). `resolveRecipient`가 저장한 세션 id → job id → REGISTRATION → (다른 것이 없을 때만) 정확한 세션 이름 순으로 살아 있는 세션을 찾는다. 제목은 받는 이로 거절한다(`looksLikeTitle`: 공백, `#`, 따옴표, `ATC-353` 같은 이슈 키, 40자 초과. cause `bad-recipient`). `standHolderOf`는 STAND를 쥔 살아 있는 세션을 준다. `POST /api/clearances`는 `to` 없이 `stand`만 오면 이것을 쓴다. 이름이 바뀐 세션도 id로 찾고, 이름이 겹치면 가장 최근에 움직인 살아 있는 세션이다.
+- **보이는 곳.** FLIGHT PLAN의 보내기 답(`release`, `recall-send`)에 `sendTo`(그대로: 제안의 `aircraftName`. `occ/send-guard.mjs`가 받는 이를 이 이름과 비교한다)와 선택 필드 `sendToName`(살아 있는 세션의 지금 이름)·`sendToId`·`sendToJobId`·`sendToAccount`가 있다. `POST /api/clearances`는 제목인 `to`를 거절하고 같은 필드를 돌려준다. RELAY는 만들 때 `toSessionId`·`toJobId`·`toAccount`를 저장하고, TOWER의 brief는 그 id로 큐에 있는 relay마다 살아 있는 `sendTo…` 필드를 주고, TOWER 매뉴얼은 `sendToId`가 있으면 그것으로 `issue`하라고 한다. `POST /api/clearances`는 `to`를 이름·콜사인·세션 id로 먼저, 그다음 REGISTRATION(가장 최근의 살아 있는 세션)으로 찾고, 그래도 없을 때만 제목이라고 거절한다. 같은 이름의 살아 있는 세션이 둘이면 모호하다고 거절한다.
+- **실패 뒤의 길: 있는 것.** 닿지 못한 글은 원인과 함께 기록되고, 손으로 전하는 `UNDELIVERED` 카드는 전처럼 곧바로 뜬다. 이미 아는 ACCOUNT 사이 실패도 늦추지 않는다.
+- **아직 안 만든 것.** 재시도(그 AIRCRAFT의 다음 CHECK IN이나 relaunch 뒤) → DISPATCH의 RESUME·LAUNCH 제안 → DUTY 카드 → 그다음에야 SUPERVISOR 카드로 가는 단계 길은 아직 없는 행위자(CLEARANCE·RELAY의 재시도 트리거, DUTY 카드)가 필요하다. 그것이 생기기 전에는 카드를 붙잡아 두지 않는다: 아무도 모르는 채 붙잡힌 카드는 전보다 늦다. 닿지 못한 FLIGHT PLAN은 이미 `approved`로 돌아가 다음 release가 다시 보내고, 세션이 없는 AIRCRAFT의 launch 카드는 DISPATCH 계획이 이미 낸다.
+- **원인.** `undelivered`(FLIGHT PLAN)·`undeliverable`(CLEARANCE·RELAY)는 선택 `cause`를 받는다. 없으면 사유에서 읽는다(`causeOf`): `absent`, `cross-account`, `tower-down`, `restarting`, `bad-recipient`, `stale-address`, `other`. `cause` / `undeliverableCause`로 저장한다.
+- **READABILITY.** 하루 기록의 모든 bucket에 `undelivered: { n, causes }`가 있다. 닿지 못한 것으로 닫힌 호출(`Transmission.undelivered`·`undeliveredCause`)에서 센다. undeliverable로 닫힌 CLEARANCE는 RADIO에서 `cancel` 대신 `undelivered`로 닫히지만, 둘 다 거둔 호출이라 다른 수는 바뀌지 않는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

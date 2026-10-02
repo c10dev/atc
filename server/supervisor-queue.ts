@@ -47,8 +47,8 @@ export interface QueueInput {
   sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account">>)[];
   blockedMin: number;
   // 손으로 전하는 카드(ATC-271): 모두 없으면 카드가 없다
-  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason">[];
-  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "handAt">[];
+  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason" | "cause">[];
+  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause" | "handAt">[];
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)

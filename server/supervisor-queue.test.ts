@@ -21,6 +21,11 @@ const proposal = (o: Partial<QueueInput["proposals"][number]> = {}): QueueInput[
 const pull = (o: Partial<QueueInput["pulls"][number]> = {}): QueueInput["pulls"][number] =>
   ({ repo: "/x/atc", number: 7, head: "abc1234def", draft: false, landing: "APPROACH", humanCheck: null, ticketKey: "ATC-7", landBy: "mcc", ...o }) as QueueInput["pulls"][number];
 
+test("UNDELIVERED (ATC-353): the hand-delivery card shows at once, as before (no stage holds it back)", () => {
+  const p = proposal({ id: "D-0001", status: "approved", aircraftName: "TEAM_A", undelivered: { at: ago(1), reason: "no live session", n: 1, cause: "absent" } });
+  assert.equal(supervisorQueueOf({ ...empty(), proposals: [p] }, NOW).filter((i) => i.kind === "UNDELIVERED").length, 1);
+});
+
 test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);

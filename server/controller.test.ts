@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fold } from "./clearances.ts";
-import { buildBrief, formatClearance, landTextOf, resolveSession } from "./controller.ts";
+import { buildBrief, clearanceTargetOf, formatClearance, landTextOf, resolveSession } from "./controller.ts";
 import { DEFAULT_ATFM } from "./atfm.ts";
 import { diffSnapshots, EventLog } from "./events.ts";
 import type { Alert, Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot, Ticket, Workspace } from "./model.ts";
@@ -174,6 +174,19 @@ test("세션 찾기: 이름·콜사인·ID, 겹치는 이름은 거절", () => {
   assert.equal((resolveSession(s, "x2") as Session).id, "x2");
   assert.match(resolveSession(s, "Design") as string, /2개/);
   assert.match(resolveSession(s, "nobody") as string, /찾을 수 없음/);
+});
+
+test("CLEARANCE 받는 이(ATC-353): 이름·콜사인이 먼저, 없으면 REGISTRATION, 제목은 거절, STAND만 오면 쥔 세션", () => {
+  const s = snapshot({ sessions: [{ ...session("s-e", "TEAM_E"), workspacePath: "/w/atc-9" }, session("sp", "ROMEO ALPHA")] });
+  assert.equal((clearanceTargetOf(s, "TEAM_E", null) as Session).id, "s-e");
+  assert.equal((clearanceTargetOf(s, "ROMEO ALPHA", null) as Session).id, "sp"); // 공백이 있어도 이름으로 먼저 찾는다
+  assert.match(clearanceTargetOf(s, "ATC-353 address by live session id", null) as string, /제목/);
+  assert.match(clearanceTargetOf(s, "TEAM_Z", null) as string, /찾을 수 없음/);
+  assert.equal((clearanceTargetOf(s, "", "/w/atc-9") as Session).id, "s-e");
+  assert.equal(typeof clearanceTargetOf(s, "", null), "string");
+  // 같은 이름의 세션이 둘이면 REGISTRATION으로 조용히 고르지 않고 거절한다
+  const dup = snapshot({ sessions: [session("a1", "TEAM_A"), session("a2", "TEAM_A")] });
+  assert.match(clearanceTargetOf(dup, "TEAM_A", null) as string, /2개/);
 });
 
 test("CLEARANCE 문구: 콜사인·STAND·FLIGHT·W/U 끝줄(HOLD는 READBACK·UNABLE·STANDBY)", () => {
