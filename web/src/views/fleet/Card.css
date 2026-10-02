@@ -204,11 +204,15 @@
 .fl-name-conflict,
 .fl-absent,
 .fl-origin-note,
+.fl-health,
 .fl-rules {
   margin: 0;
   letter-spacing: 0;
   font: var(--text-md) var(--sans);
   overflow-wrap: anywhere;
+}
+.fl-health {
+  color: var(--muted);
 }
 .fl-acct-hold,
 .fl-rename,
@@ -720,7 +724,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 }
 .fl-launch-cap {
   min-width: 0;
-  max-width: 28ch;
+  max-width: 60ch;
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }

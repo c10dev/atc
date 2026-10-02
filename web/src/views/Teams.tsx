@@ -322,7 +322,7 @@ export function LandingBadge({ pr }: { pr: PullRequest }) {
   // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않는다. 사슬을 함께 보인다
   if (pr.blocks.some((b) => b.code === "stacked")) {
     return (
-      <span className="pr-badge is-approach" title={`STACKED: ${blocksTip(pr)}`}>
+      <span className="pr-badge is-approach" title="STACKED: base가 기본 브랜치가 아니라 이 PR은 CLEARED가 되지 않는다. 사슬을 함께 본다">
         STACKED{pr.stack ? ` ${pr.stack.chain.map((x) => `#${x}`).join(" → ")}` : ""}
       </span>
     );
@@ -330,7 +330,7 @@ export function LandingBadge({ pr }: { pr: PullRequest }) {
   return (
     <span
       className={`pr-badge ${cleared ? "is-cleared" : "is-approach"}`}
-      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개\n${blocksTip(pr)}`}
+      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개 — 아래에 이름과 문장`}
     >
       {cleared ? "CLEARED TO LAND" : "APPROACH"}
       {!cleared && n > 0 && <b className="pr-count">{n}</b>}
@@ -450,15 +450,22 @@ function HoldButton({ pr, landing }: { pr: PullRequest; landing: LandingIndex })
     setBusy(false);
   };
   return (
-    <button
-      className={`pr-hold${held ? " is-held" : ""}`}
-      onClick={() => void toggle()}
-      disabled={busy}
-      aria-pressed={held}
-      title={error ?? (held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)")}
-    >
-      {held ? "HOLD ✓" : "HOLD"}
-    </button>
+    <>
+      <button
+        className={`pr-hold${held ? " is-held" : ""}`}
+        onClick={() => void toggle()}
+        disabled={busy}
+        aria-pressed={held}
+        title={held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)"}
+      >
+        {held ? "HOLD ✓" : "HOLD"}
+      </button>
+      {error && (
+        <span className="pr-hold-err" role="alert">
+          HOLD 실패 — {error}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -522,7 +529,7 @@ const blockShort: Record<LandingBlockCode, string> = {
 };
 
 // 막는 조건: 짧은 이름 한 줄, 펼치면(키보드로도) 전체 문장
-function BlockList({ pr }: { pr: PullRequest }) {
+export function BlockList({ pr }: { pr: PullRequest }) {
   if (pr.landing === "CLEARED" || !pr.blocks.length) return null;
   return (
     <details className="pr-more">
@@ -651,7 +658,6 @@ const RECENT_READBACK_MS = 30 * 60_000;
 // CLEARANCE: 답 대기(파랑), 10분 넘게 답 없음(주황), UNABLE(빨강), 최근 30분 안에 답 받음(점선).
 // 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER가 닫는다. 첫 STANDBY부터 10분을 한 번 다시 센다
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
-  const { clock } = useSettings();
   const answeredAt = (c: Clearance) => c.readbackAt ?? c.unableAt ?? null;
   const shown = clearances.filter((c) => {
     const at = answeredAt(c);
@@ -664,7 +670,7 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
         const base = c.standbyAt && c.standbyAt >= c.at ? c.standbyAt : c.at;
         const overdue = !answeredAt(c) && now - Date.parse(base) > OVERDUE_MS;
         const tone = c.unableAt ? "red" : c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
-        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 제목(title)에
+        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 옆에 함께 보인다(제목에만 두지 않는다)
         const state = c.unableAt
           ? "UNABLE"
           : c.readbackAt
@@ -675,8 +681,9 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
                 ? "STANDBY"
                 : "READBACK 대기";
         return (
-          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}${c.unableReason ? ` — ${c.unableReason}` : ""}`}>
+          <span key={c.id} className={`stamp ${tone}`} title={c.text}>
             {c.id} {c.type} · {state}
+            {c.unableReason && <span className="stamp-why"> — {c.unableReason}</span>}
           </span>
         );
       })}

@@ -22,10 +22,12 @@ CROSSCHECK (Claude Opus) only marks DISPATCH and SCHEDULE items. Only this sessi
 | Command | What it does |
 |---|---|
 | `node ../controller/atcctl.mjs landing queue` | PRs waiting for a review (`pending`), PRs excluded from external review (`excluded` with the reason), recent reviews (`recent`) |
-| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | Review packet: PR title and body, the FLIGHT's acceptance criteria (`flight.acceptance`) and forbidden changes (`flight.forbidden`), changed files, `head`, diff (cut when long, `diffTruncated: true`) |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | Review packet: PR title and body, the FLIGHT's acceptance criteria (`flight.acceptance`) and forbidden changes (`flight.forbidden`), changed files, `head`, diff (cut when long, `diffTruncated: true`), `diffSource` (`pr-diff` or `files-api`), `removedFiles` |
 | `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<review>'` | Record a review on that head |
 | Read `../docs/…` | Design docs when needed |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
+
+When `diffTruncated` is true, write the range you saw in the review, and leave findings (P1) if the cut part could hide a risk. `diffSource: "files-api"` means GitHub refused a diff that was too large (over 20,000 lines) and atc joined the per-file patches: `diffTruncated` is always true (some files may have no patch), and removed files have no patch and appear by name only in `removedFiles`. Files that are only named, or that have no patch, count as not seen; do not pass when such a file could hide a risk.
 
 The record command runs only after the guard checks this session's **real model** in its transcript. Anything other than Claude Sonnet (`claude-sonnet-…`) is blocked — then don't record; write "blocked by the model check" in the LOG. The guard also attaches the model name to the record. Don't try to set it with `--model` or an environment variable in front of the command (blocked). Run the record command on its own, with no pipe or chaining.
 

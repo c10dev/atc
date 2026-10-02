@@ -84,9 +84,7 @@ export function FlightBrakes({ p, mode = "approval", fresh, onDone }: { p: Brake
         {cancel && btn("cancel", "CANCEL…", `${p.id} ${fn} CANCEL — 확인`, "is-recall")}
       </span>
       {p.status === "approved" && fresh && !fresh.ok && (
-        <span className="fb-note faint" title="FRESH START를 할 수 없는 이유">
-          FRESH START 불가 — {fresh.why}
-        </span>
+        <span className="fb-note faint">FRESH START 불가 — {fresh.why}</span>
       )}
       {open === "recall" && recall && (
         <form

@@ -5,6 +5,7 @@ import "./Network.css";
 import { RouteMap } from "./RouteMap.tsx";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 import { dotShapeOf } from "../kit/dot.ts";
 
 // 4단계 NETWORK: ROUTE(Linear 프로젝트)·AIRCRAFT·28일 추이를 한눈에. 읽기만 한다.
@@ -213,15 +214,6 @@ function Sources({ sources }: { sources: NetworkData["sources"] }) {
   );
 }
 
-// 넓은 표는 자기 상자 안에서만 가로로 넘긴다(키보드로도 넘기게 초점을 받는다).
-function Scroll({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="nw-scroll" role="region" aria-label={label} tabIndex={0}>
-      {children}
-    </div>
-  );
-}
-
 // 목표 미달: 색에 더해 ▼ 표시와 스크린 리더용 글자로 말한다.
 function Short({ short, children, title }: { short: boolean; children: ReactNode; title?: string }) {
   if (!short) return <>{children}</>;
@@ -243,8 +235,8 @@ function Routes({ routes }: { routes: RouteRow[] }) {
       {!routes.length ? (
         <Empty className="nw-empty">보여 줄 ROUTE가 없음 — FLEET에서 AIRCRAFT에 ROUTE(Linear 프로젝트)를 정하면 여기 나온다.</Empty>
       ) : (
-        <Scroll label="ROUTES 표">
-          <table className="mx-table nw-table">
+        <TableScroll label="ROUTES 표">
+          <table className="kit-table nw-table">
             <thead>
               <tr>
                 <th>ROUTE</th>
@@ -278,7 +270,7 @@ function Routes({ routes }: { routes: RouteRow[] }) {
               ))}
             </tbody>
           </table>
-        </Scroll>
+        </TableScroll>
       )}
     </>
   );
@@ -314,8 +306,8 @@ function Aircraft({ aircraft }: { aircraft: AircraftRow[] }) {
         <Empty className="nw-empty">운항 중인 AIRCRAFT가 없음 — FLEET 탭의 ENTRY INTO SERVICE로 등록한다.</Empty>
       ) : (
         <>
-          <Scroll label="AIRCRAFT 표">
-            <table className="mx-table nw-table">
+          <TableScroll label="AIRCRAFT 표">
+            <table className="kit-table nw-table">
               <thead>
                 <tr>
                   <th>AIRCRAFT</th>
@@ -367,7 +359,7 @@ function Aircraft({ aircraft }: { aircraft: AircraftRow[] }) {
                 ))}
               </tbody>
             </table>
-          </Scroll>
+          </TableScroll>
           <p className="mx-note">
             {anyShort ? "▼ 목표 미달. " : ""}목표가 없으면 "—". TARGETS는 FLEET에서 정하고, 실적은 보여 주기만 한다(배정·점수에 쓰지 않음).
           </p>
@@ -564,8 +556,8 @@ function DailyTable({ days, gates }: { days: DayRow[]; gates: GateRow[] }) {
   return (
     <details className="nw-daily">
       <summary>일별 표로 보기</summary>
-      <Scroll label="TRENDS 일별 표">
-        <table className="mx-table nw-table">
+      <TableScroll label="TRENDS 일별 표">
+        <table className="kit-table nw-table">
           <caption className="nw-sr">TRENDS 일별 값, 최신 날짜부터. 일치율과 CROSSCHECK 일치는 그날까지 누적</caption>
           <thead>
             <tr>
@@ -612,7 +604,7 @@ function DailyTable({ days, gates }: { days: DayRow[]; gates: GateRow[] }) {
             ))}
           </tbody>
         </table>
-      </Scroll>
+      </TableScroll>
     </details>
   );
 }

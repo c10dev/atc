@@ -30,7 +30,7 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
   - HOME imports `Drawer.css`, `DutyDrawer.css` and `fleet/Fleet.css` to borrow their classes.
   - The night block restyles strips and FIDS by selector.
 - **Checks today:**
-  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
+  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, token family per colour property (ATC-437), `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
   - `server/theme-contrast.test.ts` (ATC-408, ATC-438): a declared table of (foreground, background, minimum) pairs checked in every theme found in `styles.css`; see section 4.
   - `server/boundaries.test.ts` (ATC-335): import cycles, and web → Node imports.
   - Nothing checks which layer may use which.
@@ -96,6 +96,12 @@ Rules:
 - `web/src/kit/Segmented.tsx` (`.segmented`): the two settings copies in one component; `role="radiogroup"`, one tab stop, arrow keys, Home and End select (`nextSegment`). The ATFM switch row in `Atfm.tsx` is a different control (a labelled switch with three modes) and stays.
 - `--layer` and `--layer-hover` are defined on `:root` (`--panel`, `--panel-2`); a container may redefine them for its children. Segmented reads them; no kit file uses a domain token, a literal or a screen class.
 
+#### U7 as built (ATC-413)
+
+- `web/src/kit/Table.css` (`.kit-table`): the base table: header row, row divider, `tabular-nums`, and `.num` on `th` and `td` for right-aligned numbers (Craft 3.5.7). It reads `--layer` and `--layer-hover`; no domain token, literal or screen class. `web/src/kit/TableScroll.tsx` (`.kit-scroll`) is the one scroll region for a wide table: a named `role="region"` with a tab stop.
+- `mx-table` (METRICS DAILY and MISFIRE, NETWORK) and the NETWORK-only `Scroll` / `.nw-scroll` / `.mx-scroll` are gone; screens keep only layout (`.nw-table` turns the collapse off so row heads can stick). The ROUTE map line uses `.kit-scroll` as well.
+- Four tables are still separate styles: `apt-table`, `bf-table`, `mf-table`, `fids-table`; they move to the base in later units.
+
 ### L2 Patterns
 
 The patterns of design-language section 4: row and expanded detail, card (header, alert band, body grid, folded history), section (heading plus body), queue item, status row.
@@ -116,7 +122,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | Boundary | Check | Status |
 |---|---|---|
 | No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, `em`, spacing, radius, z-index; ATC-410) | built, ratcheted |
-| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
+| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | built (ATC-437): rule `token-family` and the two tables `TOKEN_FAMILIES` and `PROP_FAMILIES` in `server/css-lint.ts`; today's count is in the baseline |
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
 | A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | built (ATC-436): a `kit/` file imports no screen file and no stylesheet outside `kit/`; a screen imports no stylesheet that belongs to another screen. Today's four exceptions are an allow list that only shrinks, each with the unit that removes it (HOME's three: S1, ATC-422; `SettingsAlerts` → `alerts.css`: S6, ATC-430) |
 | Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |

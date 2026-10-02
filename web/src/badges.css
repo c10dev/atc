@@ -17,6 +17,15 @@
   align-self: center;
 }
 
+/* 세션 배지의 상태 낱말(ATC-418): 점 색만으로 상태를 말하지 않는다. 이름(mono·대문자) 옆이라 sans·보통 굵기 */
+.sb-state {
+  margin-left: var(--space-1);
+  font-family: var(--sans);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
 /* FLIGHT STRIPS 구간 도장: 소속 AIRPORT 밖 STAND */
 .stamp.away {
   color: var(--stamp-gray);
@@ -46,6 +55,10 @@
   font-family: var(--sans); /* needs는 사람이 읽는 글(C2): 이름·코드가 아니라 문장 */
   font-weight: 400;
   letter-spacing: 0;
+}
+/* 기다린 시각(ATC-418): NEEDS YOU가 언제부터인지 화면에 보인다 */
+.needs-you-when {
+  font-weight: 400;
 }
 /* PENDING approval(ATC-327): 사람의 결정을 기다림이라 --alert가 아니라 --blue */
 .needs-you.is-pending {

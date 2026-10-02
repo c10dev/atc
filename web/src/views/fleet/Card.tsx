@@ -61,25 +61,20 @@ function RepositionNote({ r }: { r: LastReposition | null }) {
 // LOGBOOK 최근 FLIGHT는 이만큼만 먼저 보이고 나머지는 더 보기
 const LOG_ROWS = 5;
 
-// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만(14일 건수·착륙 대기 중앙값은 툴팁)
-function factsOf(a: AircraftView) {
-  const x = a.actuals;
-  return [
-    `최근 14일 ARRIVED ${x.total} · 되돌림 ${x.reverted} · LOS ${x.los}`,
-    x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}(PR을 연 뒤 머지될 때까지. 정시율에는 넣지 않는다)` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
+// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만.
+// 14일 건수(ARRIVED)와 착륙 대기 중앙값(PR을 연 뒤 머지될 때까지, 정시율에는 넣지 않는다)은 이번 주 줄의 캡션에 보인다
 function PerformanceKv({ a }: { a: AircraftView }) {
   const x = a.actuals;
   const t = a.targets;
   const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
   const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
-  const facts = factsOf(a);
   return (
     <>
-      <Kv label="이번 주" tone={weekShort ? "short" : undefined} target={t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : undefined} title={facts}>
+      <Kv
+        label="이번 주"
+        tone={weekShort ? "short" : undefined}
+        target={[t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : null, `14일 ${x.total}`, x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}` : null].filter(Boolean).join(" · ")}
+      >
         {x.week}
       </Kv>
       <Kv
@@ -91,12 +86,12 @@ function PerformanceKv({ a }: { a: AircraftView }) {
         {x.onTime.rate == null ? "—" : pct(x.onTime.rate)}
       </Kv>
       {x.reverted > 0 && (
-        <Kv label="되돌림" tone="bad" title={facts}>
+        <Kv label="되돌림" tone="bad">
           {x.reverted}
         </Kv>
       )}
       {x.los > 0 && (
-        <Kv label="LOS" tone="bad" title={facts}>
+        <Kv label="LOS" tone="bad">
           {x.los}
         </Kv>
       )}
@@ -174,11 +169,14 @@ function LogTable({ a }: { a: AircraftView }) {
                 {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
                 <td className={`muted tn${e.pr ? " mono" : " fl-log-note"}`}>{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
                 <td className="r tn mono" title={blockTitle}>
-                  <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
+                  <span className={e.onTime === false ? "fl-late" : undefined}>
+                    {e.blockMin == null ? "—" : blockTime(e.blockMin)}
+                    {e.onTime === false ? " 지연" : ""}
+                  </span>
                   {e.landingWaitMin != null && (
-                    <span className="muted" title="착륙 대기(PR → 머지)">
+                    <span className="muted">
                       {" "}
-                      +{blockTime(e.landingWaitMin)}
+                      +{blockTime(e.landingWaitMin)} 대기
                     </span>
                   )}
                 </td>
@@ -316,6 +314,15 @@ export function Card({
       </li>,
     );
   }
+  // health(ATC-45): 행은 짧은 상태 글만 보인다. 오류 한 줄과 다음 한 걸음은 여기(펼친 곳)에서 보인다
+  // 승인 대기(PENDING)는 위 NEEDS YOU 줄이 이미 보인다. 같은 말을 두 번 하지 않는다
+  if (a.health && !(a.health.code === "PENDING" && a.job?.state === "blocked")) {
+    alerts.push(
+      <li key="health" className="fl-health">
+        {a.health.detail} <span className="faint">— {a.health.next}</span>
+      </li>,
+    );
+  }
   if (pendingNeedsOf(a)) {
     alerts.push(
       <li key="pending" className="fl-needs-you">
@@ -335,8 +342,8 @@ export function Card({
   if (a.accountHold) {
     raise("amber");
     alerts.push(
-      <li key="hold" className="fl-acct-hold" title={ACCOUNT_HOLD_NEXT}>
-        {accountHoldLabel(a.accountHold, now)} <span className="faint">· {accountHoldDetail(a.accountHold)}</span>
+      <li key="hold" className="fl-acct-hold">
+        {accountHoldLabel(a.accountHold, now)} <span className="faint">· {accountHoldDetail(a.accountHold)} — {ACCOUNT_HOLD_NEXT}</span>
       </li>,
     );
   }
@@ -473,12 +480,7 @@ export function Card({
             </span>
           )}
           {stale.length > 0 && (
-            <span
-              className="fl-stale-mark mono"
-              title={`${stale.map((x) => x.id).join(", ")} — claude agents --json에 pid·status 없이 남은 멈춘 background job. Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다. LAUNCH를 막지 않고 상한에 세지 않는다`}
-            >
-              STALE {stale.length}
-            </span>
+            <span className="fl-stale-mark mono">STALE {stale.length} — pid 없이 남은 멈춘 job</span>
           )}
         </div>
         <div className="fl-actions fl-head-actions">
@@ -486,7 +488,7 @@ export function Card({
             <span className="fl-launch">
               <span className="fl-split" role="group" aria-label="LAUNCH">
                 {!optsOpen && (
-                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} title={defaults.cap || undefined} onClick={() => runLaunch()}>
+                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
                     {launchBusy ? "띄우는 중…" : "LAUNCH"}
                   </button>
                 )}
@@ -503,8 +505,8 @@ export function Card({
                 </button>
               </span>
               {!optsOpen && (
-                <span className="fl-launch-cap faint" title={defaults.refused ?? (defaults.cap || undefined)}>
-                  {defaults.refused ? `LAUNCH 불가 — ${defaults.refused}` : defaults.caption}
+                <span className="fl-launch-cap faint">
+                  {defaults.refused ? `LAUNCH 불가 — ${defaults.refused}` : `${defaults.caption}${defaults.cap ? ` · ${defaults.cap}` : ""}`}
                 </span>
               )}
             </span>

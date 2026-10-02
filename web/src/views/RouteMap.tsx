@@ -161,7 +161,7 @@ function RouteCard({ route, windowDays }: { route: Route; windowDays: number }) 
       </header>
       {route.waypoints.length ? (
         <>
-          <div className="nw-scroll rm-scroll">
+          <div className="kit-scroll rm-scroll">
             <Line route={route} selected={open} onPick={(id) => setOpen((o) => (o === id ? null : id))} />
           </div>
           {sel && <Detail w={sel} route={route} windowDays={windowDays} onClose={() => setOpen(null)} />}

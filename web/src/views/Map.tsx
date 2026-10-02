@@ -131,7 +131,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           {graph.sessions.map((s) => {
             const status = aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id)));
             return (
-              <div key={s.id} className={`blk ac is-${status}`} title={`${s.name} · ${aircraftStatusLabel[status]}`} {...nodeProps(sid(s.id))}>
+              <div key={s.id} className={`blk ac is-${status}`} {...nodeProps(sid(s.id))}>
                 <i className="tgt" aria-label={aircraftStatusLabel[status]} />
                 <div className="blk-l1">
                   <strong className="ellipsis">{callsign(s)}</strong>
@@ -156,7 +156,6 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
               <div
                 key={w.path}
                 className={`blk stand${claimed ? "" : " is-free"}${conflict ? " is-los" : ""}`}
-                title={w.path}
                 {...nodeProps(wid(w.path))}
               >
                 <i className="tgt" />
@@ -166,6 +165,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                   {conflict && <span className="los-tag" title="LOSS OF SEPARATION">LOS</span>}
                   {w.dirty ? <span className="dirty" title={`변경 파일 ${w.dirty}개`}>Δ{w.dirty}</span> : null}
                 </div>
+                <div className="blk-l2 mono faint ellipsis">{w.path}</div>
                 <div className="blk-l2">{w.branch ?? `detached ${w.head}`}</div>
               </div>
             );
@@ -177,12 +177,12 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
           {graph.tickets.map((t) => {
             const noContact = (idx.alertsByTicket.get(t.key) ?? []).some((a) => a.kind === "no-workspace");
             const tone = phaseTone(t);
+            const phase = flightPhase(t);
             return (
               <a
                 key={t.key}
                 className={`blk fp tone-${tone}${noContact ? " is-nocontact" : ""}`}
                 href={t.url ?? undefined}
-                title={`${t.key} · ${t.state}`}
                 target="_blank"
                 rel="noreferrer"
                 {...nodeProps(tid(t.key))}
@@ -195,7 +195,7 @@ export function MapView({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index
                   ) : (
                     <span className="ph">
                       {phaseCode[tone]}
-                      {flightPhase(t) !== phaseCode[tone] && <> <em>{flightPhase(t)}</em></>}
+                      {phase !== phaseCode[tone] && <> <em>{phase}</em></>}
                     </span>
                   )}
                 </div>

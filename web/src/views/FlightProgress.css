@@ -1,0 +1,6 @@
+/* FLIGHT 진행의 OOOI 시각 줄(ATC-418, FlightProgress.tsx). 막대·칸 모양은 Teams.css에 있고, 이 파일은 이 컴포넌트가 더한 줄만 갖는다 */
+.flp-times {
+  flex: 1 1 100%;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+}

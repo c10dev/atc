@@ -97,8 +97,7 @@ export function FuelSummary({ a }: { a: AircraftView }) {
           <Kv
             label="NET/FLT"
             tone={costShort ? "short" : undefined}
-            target={t.fuelPerFlight != null ? `목표 ≤ ${usd(t.fuelPerFlight)}` : undefined}
-            title={`값을 매긴 FLIGHT의 평균. NET은 LEAK을 뺀 것. FUEL COST ${f.costPerFlight === null ? "—" : `${usd(f.costPerFlight)}/FLT`}`}
+            target={[t.fuelPerFlight != null ? `목표 ≤ ${usd(t.fuelPerFlight)}` : null, f.costPerFlight !== null ? `FUEL COST ${usd(f.costPerFlight)}/FLT` : null].filter(Boolean).join(" · ")}
           >
             {f.netPerFlight === null ? "—" : usd(f.netPerFlight)}
           </Kv>
@@ -106,13 +105,12 @@ export function FuelSummary({ a }: { a: AircraftView }) {
             label="CACHE HIT"
             text
             tone={cacheShort ? "short" : undefined}
-            target={t.cacheHit != null ? `목표 ${pct(t.cacheHit)}` : undefined}
-            title={`값을 매긴 FLIGHT의 FUEL COST 가운데 CREW(서브에이전트) 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}. CREW 출력은 하한`}
+            target={[t.cacheHit != null ? `목표 ${pct(t.cacheHit)}` : null, `CREW 몫 ${f.crewShare === null ? "—" : pct(f.crewShare)}`].join(" · ")}
           >
             CAPTAIN {hitText(f.cacheHit?.captain)} · CREW {hitText(f.cacheHit?.crew)}
           </Kv>
           {f.unexpected > 0 && (
-            <Kv label="TRIP FUEL 넘음" tone="bad" title="비슷한 FLIGHT들의 범위(TRIP FUEL p90)를 넘은 FLIGHT 수">
+            <Kv label="TRIP FUEL 넘음" tone="bad">
               {f.unexpected}/{f.checked}
             </Kv>
           )}

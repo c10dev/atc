@@ -16,7 +16,7 @@
   white-space: nowrap;
 }
 .chip[aria-pressed="true"] {
-  border-color: var(--chip-ink, var(--text));
+  border-color: var(--cyan); /* 선택됨: 선 토큰이나 신호 토큰만 테두리가 된다(token-family) */
 }
 button.chip {
   cursor: pointer;

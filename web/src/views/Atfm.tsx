@@ -283,13 +283,13 @@ export function AtfmPanel({ atfm, now, alertShown }: { atfm: AtfmState; now: num
                 </a>
                 <span className="atfm-slot">{s.slot === "in-slot" ? "in-slot" : "waiting-slot"}</span>
                 {config.slots === "on" && s.slot === "waiting-slot" && <span className="atfm-tag t-on">LAND 보류</span>}
-                <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수">
+                <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수(∞는 제한 없음)">
                   {s.lanePos}/{s.limit ?? "∞"}
                 </span>
                 {s.urgent && <span className="atfm-tag t-warn">URGENT</span>}
                 {s.landTimedOut && (
-                  <span className="atfm-tag t-on" title={s.landAt ? `LAND ${s.landAt}` : undefined}>
-                    LAND 30분 초과
+                  <span className="atfm-tag t-on" title="LAND가 나간 뒤 30분이 지나도 머지되지 않음">
+                    LAND 30분 초과{s.landAt && ` · ${s.landAt.slice(11, 16)}Z`}
                   </span>
                 )}
                 <span className="atfm-text faint">{s.title}</span>

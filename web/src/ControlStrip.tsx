@@ -67,7 +67,7 @@ export function ControlStrip({ snapshot, now }: { snapshot: Snapshot | null; now
         ))}
       </div>
       {allControlDown(list?.sessions) && (
-        <button type="button" className="cs-recovery" onClick={open} title="관제 세션이 하나도 떠 있지 않다. FLEET의 CONTROL SESSIONS에서 LAUNCH ALL을 미리 본다">
+        <button type="button" className="cs-recovery" onClick={open}>
           모두 내려감 · LAUNCH ALL
         </button>
       )}
