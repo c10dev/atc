@@ -28,10 +28,11 @@ interface Over {
   result?: RunResult | null;
   mode?: string;
   stopped?: boolean;
+  state?: string; // FLIGHT의 상태 종류(기본 unstarted)
 }
 function pass(over: Over = {}) {
-  const calls = { rehearse: 0, held: 0, noted: [] as { result?: string }[] };
-  const s = { airports: [{ id: "a", code: "ATCC", name: "n", repo: "/r" }], pulls: [PR], autoland: { exclusions: { [pullKey(PR)]: over.exclusion === undefined ? GATE_WHY : over.exclusion } } } as unknown as Snapshot;
+  const calls = { rehearse: 0, held: 0, noted: [] as { result?: string }[], revoked: [] as string[] };
+  const s = { airports: [{ id: "a", code: "ATCC", name: "n", repo: "/r" }], pulls: [PR], tickets: [{ key: "ATC-9", stateType: over.state ?? "unstarted" }], autoland: { exclusions: { [pullKey(PR)]: over.exclusion === undefined ? GATE_WHY : over.exclusion } } } as unknown as Snapshot;
   const io: PassIo = {
     switches: () => over.switches ?? { ATCC: true },
     hostedDb: () => DB,
@@ -43,6 +44,7 @@ function pass(over: Over = {}) {
       return over.result === undefined ? APPLIED : over.result;
     },
     note: (r) => void calls.noted.push(r),
+    revoke: (flight) => void calls.revoked.push(flight),
   };
   const run = () =>
     rehearsalPass(s, { mode: over.mode ?? "merge", airports: ["ATCC"], stopped: () => over.stopped === true, otherExclusion: async () => over.other ?? null, hold: () => void calls.held++ }, io);
@@ -103,4 +105,18 @@ test("rehearsalPass: 멈추면(live-changed 포함) 이 head는 머지 후보에
   const none = pass({ result: null });
   await none.run();
   assert.equal(none.calls.held, 1);
+});
+
+test("rehearsalPass: 멈춘 FLIGHT의 발권은 Todo(unstarted)일 때만 거둔다", async () => {
+  const stopped = { status: "stopped", steps: [{ step: "rehearsal", ok: false, detail: "boom", at: "t" }], failedStep: "rehearsal", restorePoint: null } as RunResult;
+  const todo = pass({ result: stopped });
+  await todo.run();
+  assert.deepEqual(todo.calls.revoked, ["ATC-9"]);
+  const flying = pass({ result: stopped, state: "started" });
+  await flying.run();
+  assert.deepEqual(flying.calls.revoked, []);
+  assert.equal(flying.calls.held, 1, "머지 후보에서는 어느 경우에도 뺀다");
+  const ok = pass();
+  await ok.run();
+  assert.deepEqual(ok.calls.revoked, []);
 });

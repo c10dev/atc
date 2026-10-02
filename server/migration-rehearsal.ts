@@ -125,6 +125,7 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
     }
     done("rehearsal", true, `시험 DB에 적용, 점검 ${io.smoke.length}개 통과`);
   } catch (e) {
+    await io.test.query("rollback;").catch(() => {}); // 한 요청이 BEGIN 뒤에서 실패하면 세션이 중단된 채일 수 있다: 시험 DB의 열린 트랜잭션을 닫아 본다(공급자가 어떻게 돌리는지는 확인하지 못했다)
     return stop("rehearsal", msg(e));
   }
 
@@ -145,6 +146,7 @@ export async function rehearse(files: readonly MigrationFile[], io: RehearsalIo)
     }
     done("live-apply", true, `실전에 적용 ${appliedLive.join(", ")}`);
   } catch (e) {
+    await io.live.query("rollback;").catch(() => {}); // 위와 같다: 실패한 파일의 열린 트랜잭션을 닫아 본다
     return stop("live-apply", `${appliedLive.length ? `적용됨 ${appliedLive.join(", ")} · ` : "실전은 그대로 · "}실패: ${msg(e)}`, appliedLive.length ? "live-changed" : "stopped");
   }
 

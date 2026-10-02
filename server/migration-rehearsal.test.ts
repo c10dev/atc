@@ -142,6 +142,15 @@ test("리허설: 시험 DB가 실전과 다른 버전이거나 시험 적용이 
   assert.match((await rehearse(FILES, dup.io)).steps.at(-1)!.detail, /이미 실전에 적용/);
 });
 
+test("리허설: 적용이 실패하면 열린 트랜잭션을 닫으려고 ROLLBACK을 한 번 보낸다(시험·실전 각각)", async () => {
+  const t = fake({ failTest: true });
+  await rehearse(FILES, t.io);
+  assert.deepEqual(t.calls.filter((c) => c.sql === "rollback;").map((c) => c.db), ["test"]);
+  const l = fake({ failLive: true });
+  await rehearse(FILES, l.io);
+  assert.deepEqual(l.calls.filter((c) => c.sql === "rollback;").map((c) => c.db), ["live"]);
+});
+
 test("리허설: 복원점을 못 만들면 실전에 쓰지 않는다", async () => {
   const x = fake({ restore: async () => { throw new Error("no backup"); } });
   const r = await rehearse(FILES, x.io);

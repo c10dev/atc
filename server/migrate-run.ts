@@ -94,6 +94,9 @@ async function filesOf(slug: string, number: number, head: string, db: HostedDb)
     const sql = await gh(["api", "-H", "Accept: application/vnd.github.raw", `repos/${slug}/contents/${f.path}?ref=${head}`]);
     out.push({ path: f.path, version, name: f.path.slice(db.migrationsDir.length + 1).replace(/^\d+_/, "").replace(/\.sql$/, ""), sql });
   }
+  // 파일 목록은 지금 head로, 내용은 p.head로 읽는다: 사이에 head가 움직였으면 같은 PR이 아니므로 멈춘다
+  const now = (await gh(["api", `repos/${slug}/pulls/${number}`, "--jq", ".head.sha"])).trim();
+  if (now !== head) throw new Error(`head가 움직임(${now.slice(0, 7)})`);
   return out.sort((a, b) => a.version.localeCompare(b.version));
 }
 
@@ -148,7 +151,6 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   } catch (e) {
     const detail = redact(`마이그레이션 파일을 못 읽음: ${String((e as Error).message ?? e)}`, token);
     note({ kind: "run", status: "stopped", detail }, []);
-    sendBack(p.ticketKey, detail);
     return null;
   }
   const versions = files.map((f) => f.version);
@@ -157,7 +159,6 @@ export async function rehearseOne(p: PullRequest, airport: string, db: HostedDb,
   const last = r.steps[r.steps.length - 1];
   const detail = redact(r.status === "applied" ? "실전에 적용됨 — 다음 주기에 AUTOLAND 마이그레이션 게이트가 통과해 머지" : `${r.failedStep}에서 멈춤: ${last?.detail ?? ""}`, token);
   note({ kind: "run", status: r.status, detail, restorePoint: r.restorePoint }, versions);
-  if (r.status !== "applied") sendBack(p.ticketKey, `마이그레이션 리허설 ${detail}`);
   return r;
 }
 
@@ -170,6 +171,7 @@ export interface PassIo {
   gate: (slug: string, number: number, db: HostedDb) => Promise<MigrationGate>; // 이 head를 캐시 없이 새로 읽은 게이트
   rehearse: (p: PullRequest, airport: string, db: HostedDb) => Promise<RunResult | null>;
   note: (r: Parameters<typeof appendRecord>[0]) => void;
+  revoke: (flight: string, reason: string) => void; // 멈춘 FLIGHT의 발권을 거둔다(sendBack)
 }
 const defaultPassIo: PassIo = {
   switches: () => loadMigrate().airports,
@@ -182,6 +184,7 @@ const defaultPassIo: PassIo = {
   },
   rehearse: (p, airport, db) => rehearseOne(p, airport, db),
   note: appendRecord,
+  revoke: (flight, reason) => void sendBack(flight, reason),
 };
 
 // AUTOLAND 주기에서: 이번 주기에 리허설할 PR 하나를 골라 돌린다. 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 마이그레이션 게이트뿐인 것
@@ -227,7 +230,12 @@ export async function rehearsalPass(
       if (other) continue;
       const r = await io.rehearse(p, a.code, db);
       // 멈췄으면(실전이 이미 바뀌었어도) 이 head는 머지하지 않는다. 적용 뒤 검사가 실패하면 버전 줄이 이미 있어 ATC-329 게이트가 통과해 버리기 때문이다
-      if (r?.status !== "applied") o.hold(p);
+      if (r?.status !== "applied") {
+        o.hold(p);
+        // 발권을 거두는 것은 아직 시작하지 않은(Todo) FLIGHT만: 이미 날고 있는 FLIGHT에는 발권이 DISPATCH 후보 밖이라 영향이 없고 기록만 늘린다
+        const t = p.ticketKey ? s.tickets.find((x) => x.key === p.ticketKey) : undefined;
+        if (t && t.stateType === "unstarted") io.revoke(t.key, redact(`마이그레이션 리허설 ${r ? `${r.failedStep}에서 멈춤: ${r.steps[r.steps.length - 1]?.detail ?? ""}` : "마이그레이션 파일을 못 읽음"}`, io.token()));
+      }
       io.note({ op: "migrate", mode: "merge", airport: a.code, slug, number: p.number, head: p.head, result: r?.status === "applied" ? "ok" : r?.status === "live-changed" ? "failed" : "excluded", detail: r ? (r.status === "applied" ? "마이그레이션 리허설 통과, 실전에 적용" : `마이그레이션 리허설 ${r.failedStep}에서 멈춤(${r.status})`) : "마이그레이션 파일을 못 읽음" });
       return; // 한 주기에 하나
     }
