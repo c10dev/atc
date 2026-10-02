@@ -64,7 +64,7 @@ import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { mountSinceLook } from "./since-look-run.ts";
-import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
@@ -209,7 +209,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "SUPERVISOR"),
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
-  const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+  const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
   const wip = wipView(readWips(), now);
   return { arrivalMissing, restartSafety: restartSafetyOf({ inFlight, arrivalMissing, wip, now }) };
 }, loadRoutes);
@@ -310,6 +310,7 @@ mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
+app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
 app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));

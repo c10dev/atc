@@ -2,7 +2,7 @@ import { type AlertLevel, alertLevel } from "./alert-level.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
 import { registrationOf } from "./registration.ts";
 import { attachCommandOf } from "./session-origin.ts";
-import type { FollowItem } from "./following.ts";
+import type { EndedKey, FollowItem } from "./following.ts";
 import type { FollowRow } from "./follow.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
 import type { LandBy } from "./land-by.ts";
@@ -166,6 +166,9 @@ export interface AlertsInput {
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
   // PENDING approval(ATC-327): 지금(now)과 CAUTION으로 올리는 분(pendingMin), AIRCRAFT(REGISTRATION)별로 기다리는 RADIO 호출. 없으면 전과 같다(ADVISORY)
   pending?: { now: number; pendingMin: number; calls: ReadonlyMap<string, WaitingCall[]>; teamPattern?: string };
+  // 주인 없는 조건(ATC-385): 주인 없는 변경(unattended)·종료된 세션의 점유(orphan)가 afterMs(기본 UNOWNED_AFTER_MS) 넘게 그대로면 CAUTION 수에서 빠지고 한 줄(`alert|cleanup`)로 접힌다.
+  // since: alertKeyOf → 처음 본 시각(ms). 접힌 key는 ended에 모은다(있으면). 없으면 접지 않는다. 변경은 지우지 않는다 — 알림에서 접을 뿐이다
+  unowned?: { now: number; since: ReadonlyMap<string, number>; afterMs?: number; ended?: EndedKey[] };
   follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
 
@@ -192,7 +195,7 @@ export function stuckLineOf(row: Pick<FollowAlertRow, "issues" | "finished" | "c
 }
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
-const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
+export const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
 
 const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   "await-supervisor": "그 세션에서 직접 go를 친다",
@@ -214,6 +217,13 @@ const NEXT_BY_STUCK: Partial<Record<string, string>> = {
 // STAND 이름(ATC-152): 워크트리 이름, 없으면 경로의 마지막 마디
 export const standNameOf = (path: string, names: ReadonlyMap<string, string | undefined>) => names.get(path) || path.replace(/\/+$/, "").split("/").pop() || path;
 
+// 주인 없는 조건: 어느 쪽에도 주인(세션)이 없는 STAND의 일. 오래 그대로면 CAUTION이 아니라 정리 줄 하나로 접는다(ATC-385)
+export const UNOWNED_KINDS: ReadonlySet<Alert["kind"]> = new Set(["unattended", "orphan"]);
+export const UNOWNED_AFTER_MS = 6 * 3_600_000;
+export const CLEANUP_KEY = "alert|cleanup";
+export const alertKeyOf = (a: Pick<Alert, "key" | "kind" | "workspacePath" | "ticketKey" | "sessionIds">): string =>
+  `alert|${a.key ?? [a.kind, a.workspacePath ?? "", a.ticketKey ?? "", (a.sessionIds ?? []).join(",")].join("|")}`;
+
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
 
 export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
@@ -225,13 +235,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   const nameOf = new Map(inp.sessions.map((s) => [s.id, s.name]));
   const standNames = new Map(inp.workspaces.map((w) => [w.path, w.name]));
 
+  const stale: { a: Alert; first: number }[] = [];
   // 1) ALERT(ATC-110 등급 그대로). health 종류는 LIMIT·RESUME·STALLED·NETWORK 같은 AIRCRAFT health
   for (const a of inp.alerts) {
     const ids = a.sessionIds ?? [];
     const aircraft = ids.map((id) => nameOf.get(id)).filter(Boolean).join(", ") || null;
     const health = ids.map((id) => inp.sessions.find((s) => s.id === id)?.health).find(Boolean);
+    const key = alertKeyOf(a);
+    const first = inp.unowned?.since.get(key);
+    if (inp.unowned && UNOWNED_KINDS.has(a.kind) && first !== undefined && inp.unowned.now - first >= (inp.unowned.afterMs ?? UNOWNED_AFTER_MS)) {
+      stale.push({ a, first });
+      inp.unowned.ended?.push({ key, rule: "unowned-stale" });
+      continue;
+    }
     out.push({
-      key: `alert|${a.key ?? [a.kind, a.workspacePath ?? "", a.ticketKey ?? "", ids.join(",")].join("|")}`,
+      key,
       group: a.kind === "health" ? "health" : "alert",
       level: alertLevel(a, idx),
       cue: null,
@@ -242,6 +260,25 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: health?.next ?? "",
       link: "#strips",
       since: null,
+    });
+  }
+
+  // 1b) 오래 주인이 없는 것은 한 줄로(ATC-385): 개수만 센다. 자동으로 지우지 않는다
+  if (stale.length) {
+    const changes = stale.filter((x) => x.a.kind === "unattended");
+    const claims = stale.filter((x) => x.a.kind === "orphan");
+    const names = stale.slice(0, 3).map((x) => (x.a.workspacePath ? standNameOf(x.a.workspacePath, standNames) : x.a.message));
+    out.push({
+      key: CLEANUP_KEY,
+      group: "alert",
+      level: "advisory",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `정리 대기 ${stale.length}건 — 주인 없는 변경 ${changes.length}곳, 종료된 세션의 점유 ${claims.length}곳이 ${Math.round((inp.unowned!.afterMs ?? UNOWNED_AFTER_MS) / 3_600_000)}시간 넘게 그대로 (${names.join(", ")}${stale.length > 3 ? " …" : ""})`,
+      next: "STAND를 확인해 커밋·푸시하거나 직접 정리한다. atc는 변경을 지우지 않는다",
+      link: "#strips",
+      since: new Date(Math.min(...stale.map((x) => x.first))).toISOString(),
     });
   }
 
