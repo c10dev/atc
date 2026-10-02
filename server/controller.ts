@@ -7,6 +7,7 @@ import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueCle
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
+import { looksLikeTitle } from "./address.ts";
 import { allRelays } from "./relay-run.ts";
 import { config } from "./config.ts";
 import type { EventLog } from "./events.ts";
@@ -231,7 +232,7 @@ export function buildBrief(
     },
     landingQueue,
     // SUPERVISOR가 화면에서 AIRCRAFT에게 보낸 글(ATC-271). TOWER는 text를 고치지 않고 type의 CLEARANCE로 그대로 보낸 뒤 `atcctl relay issued`로 표시한다
-    relays: relayBriefOf(relays, now),
+    relays: relayBriefOf(relays, now, s.sessions),
     // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)
     groundStops: (s.atfm?.groundStops ?? []).map((g) => ({ airport: g.airport, trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, since: g.since })),
     github: s.github,
@@ -320,6 +321,8 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const s = await getSnapshot();
     if (!CLEARANCE_TYPES.includes(body.type)) return c.json({ error: `type은 ${CLEARANCE_TYPES.join("|")} 중 하나` }, 400);
     if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
+    // 받는 이는 세션 id나 세션 이름. PR·FLIGHT 제목은 주소가 아니다(ATC-353)
+    if (!s.sessions.some((x) => x.id === body.to) && looksLikeTitle(String(body.to ?? ""))) return c.json({ error: `"${String(body.to ?? "").slice(0, 60)}"는 제목이지 세션이 아님 — 세션 id나 REGISTRATION으로 보낸다` }, 400);
     const target = resolveSession(s, String(body.to ?? ""));
     if (typeof target === "string") return c.json({ error: target }, 400);
     const stand = resolveStand(s, body.stand);
@@ -332,14 +335,14 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
       flight: normalizeFlight(body.flight),
       text: body.text.trim(),
     });
-    return c.json({ clearance, sendTo: target.name, message: formatClearance(clearance, s) });
+    return c.json({ clearance, sendTo: target.name, sendToId: target.id, ...(target.jobId ? { sendToJobId: target.jobId } : {}), ...(target.account ? { sendToAccount: target.account } : {}), message: formatClearance(clearance, s) });
   });
 
   // CAPTAIN의 답을 TOWER가 기록한다(ATC-122). unable은 본문에 reason. 이 메시지에 받을 수 없는 답이면 409
   for (const op of ["readback", "roger", "unable", "standby", "cancel", "undeliverable"] as const) {
     app.post(`/api/clearances/:id/${op}`, async (c) => {
       const body = op === "unable" || op === "undeliverable" ? await c.req.json().catch(() => ({})) : {};
-      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined);
+      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
       if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
       if (!("error" in r) && op === "undeliverable") bustQueue();
       return "error" in r ? c.json(r, 409) : c.json({ clearance: r });

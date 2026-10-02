@@ -596,6 +596,16 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **형식.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases`, `releaseGate`는 모두 추가다. `atcctl release [brief]`가 읽는다. DUTY guard, 루트 규칙, 다른 guard는 바뀌지 않았다.
 - **여기서 정하지 않은 것.** CROSSCHECK가 승인한 SCHEDULE NEW 초안이 Backlog로 가는지, 발권 기록이 생긴 뒤에도 우선순위 규칙이 남는지([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363이 이 기록을 읽는다.
 
+## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
+
+FLIGHT PLAN·CLEARANCE·RELAY는 만들 때 저장한 이름으로 주소를 정했기 때문에, 재시작·이름 바꾸기·ACCOUNT 이동 뒤에는 아무도 답하지 않는 이름으로 갔다. 메시지 문구와 guard가 읽는 머리는 그대로이고, 바뀐 것은 누구에게 가는가와 실패한 뒤의 길뿐이다. 기록은 모두 새 선택 필드만 더한다.
+
+- **보낼 때 정한다**(`server/address.ts`, 순수). `resolveRecipient`가 저장한 세션 id → job id → REGISTRATION → (다른 것이 없을 때만) 정확한 세션 이름 순으로 살아 있는 세션을 찾는다. 제목은 받는 이로 거절한다(`looksLikeTitle`: 공백, `#`, 따옴표, `ATC-353` 같은 이슈 키, 40자 초과. cause `bad-recipient`). `standHolderOf`는 STAND를 쥔 살아 있는 세션을 준다. 이름이 바뀐 세션도 id로 찾고, 이름이 겹치면 가장 최근에 움직인 살아 있는 세션이다.
+- **보이는 곳.** FLIGHT PLAN의 보내기 답(`release`, `recall-send`)에 `sendTo`(살아 있는 세션의 이름, 못 찾으면 저장한 이름)와 선택 필드 `sendToId`·`sendToJobId`·`sendToAccount`가 있다. `POST /api/clearances`는 제목인 `to`를 거절하고 같은 필드를 돌려준다. RELAY는 만들 때 `toSessionId`·`toJobId`·`toAccount`를 저장하고, TOWER의 brief는 그 id로 큐에 있는 relay마다 살아 있는 `sendTo…` 필드를 준다.
+- **실패 뒤의 길.** `failureRouteOf`(순수)가 실패 뒤 경과 시간으로 네 단계를 지난다: **retry**(그 AIRCRAFT의 다음 CHECK IN이나 relaunch 뒤 한 번, 5분 안), **dispatch**(세션이 없는 AIRCRAFT: DISPATCH가 기존 launch 카드로 RESUME·LAUNCH를 제안, 10분 안), **duty**(`duty.json`의 `l1`이 켜져 있을 때만, 실패 뒤 20분 안), 마지막이 **supervisor**. SUPERVISOR QUEUE의 `UNDELIVERED` 카드는 마지막 단계에서야 뜨므로 SUPERVISOR가 먼저 복사해 붙여 넣지 않는다. 같은 FLIGHT PLAN이 두 번째로 실패하면 재시도를 건너뛴다. 시간 창은 PILOT'S DISCRETION(ATC-353)이고 `address.ts`의 상수다.
+- **원인.** `undelivered`(FLIGHT PLAN)·`undeliverable`(CLEARANCE·RELAY)는 선택 `cause`를 받는다. 없으면 사유에서 읽는다(`causeOf`): `absent`, `cross-account`, `tower-down`, `restarting`, `bad-recipient`, `stale-address`, `other`. `cause` / `undeliverableCause`로 저장한다.
+- **READABILITY.** 하루 기록의 모든 bucket에 `undelivered: { n, causes }`가 있다. 닿지 못한 것으로 닫힌 호출(`Transmission.undelivered`·`undeliveredCause`)에서 센다. undeliverable로 닫힌 CLEARANCE는 RADIO에서 `cancel` 대신 `undelivered`로 닫히지만, 둘 다 거둔 호출이라 다른 수는 바뀌지 않는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

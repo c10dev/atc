@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { causeOf } from "./address.ts";
 import { dirname, join } from "node:path";
 import { config } from "./config.ts";
 import type { Clearance, ClearanceType } from "./model.ts";
@@ -9,11 +10,12 @@ import { type Answer, answerError, overdueBase, responseOf } from "./response.ts
 const FILE = join(config.stateDir, "clearances.jsonl");
 export const CLEARANCE_TYPES: ClearanceType[] = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "GO AROUND", "FIX", "REPORT", "INFO"];
 
-type Base = Omit<Clearance, "readbackAt" | "cancelledAt" | "ackWord" | "unableAt" | "unableReason" | "standbyAt" | "standbys" | "undeliverableAt" | "undeliverableReason" | "handAt">;
+type Base = Omit<Clearance, "readbackAt" | "cancelledAt" | "ackWord" | "unableAt" | "unableReason" | "standbyAt" | "standbys" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause" | "handAt">;
 export type ClearanceOp =
   | ({ op: "issue" } & Base)
   | { op: "readback" | "roger" | "standby" | "cancel" | "hand"; id: string; at: string }
-  | { op: "unable" | "undeliverable"; id: string; at: string; reason: string };
+  | { op: "unable"; id: string; at: string; reason: string }
+  | { op: "undeliverable"; id: string; at: string; reason: string; cause?: string };
 export type ClearanceAnswerOp = "readback" | "roger" | "unable" | "standby" | "cancel" | "undeliverable";
 
 // 닫힌 CLEARANCE(READBACK·ROGER·UNABLE·취소)에는 더 답하지 않는다. 먼저 온 닫힘만 남는다.
@@ -44,6 +46,7 @@ export function fold(ops: ClearanceOp[]): Clearance[] {
         c.cancelledAt = o.at;
         c.undeliverableAt = o.at;
         c.undeliverableReason = o.reason;
+        c.undeliverableCause = causeOf(o.reason, o.cause);
       }
       continue;
     }
@@ -121,14 +124,15 @@ export function clearanceAnswerError(c: Clearance, op: ClearanceAnswerOp): strin
   return answerError("clearance", responseOf("clearance", c.type), ANSWER[op]);
 }
 
-export function markClearance(id: string, op: ClearanceAnswerOp, reason?: string): Clearance | { error: string } | null {
+export function markClearance(id: string, op: ClearanceAnswerOp, reason?: string, cause?: string): Clearance | { error: string } | null {
   const current = allClearances().find((c) => c.id === id);
   if (!current) return null;
   const error = clearanceAnswerError(current, op);
   if (error) return { error };
   if (op === "unable" || op === "undeliverable") {
     if (!reason?.trim()) return { error: op === "unable" ? "UNABLE에는 CAPTAIN의 사유가 필요함" : "undeliverable에는 사유가 필요함" };
-    append({ op, id, at: new Date().toISOString(), reason: reason.trim().slice(0, 300) });
+    const text = reason.trim().slice(0, 300);
+    append(op === "undeliverable" ? { op, id, at: new Date().toISOString(), reason: text, cause: causeOf(text, cause) } : { op, id, at: new Date().toISOString(), reason: text });
   } else if (!((op === "readback" || op === "roger") && current.readbackAt)) {
     append({ op, id, at: new Date().toISOString() });
   }
