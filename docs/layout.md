@@ -126,7 +126,7 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 
 ### Not built yet
 
-Y3–Y6.
+Everything (Y1–Y6).
 
 ## 5. Risks
 

@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Icon } from "./Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
-import { type CardAction, actionsOf, cardKey, cardViewOf, queueHeadOf } from "../../server/duty-card.ts";
+import { type CardAction, actionsOf, cardKey, cardViewOf, proposalAskOf, queueHeadOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
@@ -185,12 +185,11 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
 
 // DISPATCH 카드(ATC-377): 자동 운항이 꺼져 있을 때의 ASSIGN·launch 카드와 RELEASE 카드의 승인·거절. DISPATCH 탭이 하던 같은 길(/approve·/reject, 2a면 /verdict)을 부른다.
 // 누르면 카드 안에서 한 번 확인한다. 모드는 누를 때 서버에서 읽는다
-function ProposalButtons({ id, title, onDone }: { id: string; title: string; onDone: () => void }) {
+function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: () => void }) {
   const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const launch = /LAUNCH/i.test(title);
   const run = async () => {
     if (!ask) return;
     setBusy(true);
@@ -214,9 +213,7 @@ function ProposalButtons({ id, title, onDone }: { id: string; title: string; onD
     return (
       <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
         <p className="du-hint">
-          {ask === "approve"
-            ? `${id}를 승인하면 ${launch ? "atc가 세션이 없는 AIRCRAFT를 LAUNCH하고 새 세션이 뜬 뒤 DISPATCH가 FLIGHT PLAN을 보냅니다" : "DISPATCH가 그 AIRCRAFT에게 FLIGHT PLAN을 보냅니다"}.`
-            : `${id}를 거절합니다. 같은 짝은 24시간 다시 제안하지 않습니다.`}
+          {proposalAskOf(id, ask, card)}
         </p>
         {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
         <div className="du-actions">
@@ -388,7 +385,7 @@ export function Actions({ item, actions, onDone }: { item: QueueItem; actions: C
         ) : a.op === "fleet-plan" ? (
           <FleetPlanButtons key={n} id={item.key} onDone={onDone} />
         ) : a.op === "proposal" ? (
-          <ProposalButtons key={n} id={item.key} title={item.title} onDone={onDone} />
+          <ProposalButtons key={n} id={item.key} card={item.card} onDone={onDone} />
         ) : (
           <UpdateButton key={n} onDone={onDone} />
         ),

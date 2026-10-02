@@ -8,6 +8,7 @@ import { timeAgo } from "../derive.ts";
 import { Actions, useQueue } from "../DutyCards.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
+import { homeAlertsOf, stuckRowsOf } from "../home-rows.ts";
 import { atfmAlertOf } from "../readiness-line.ts";
 import { useServerSettings } from "../SettingsServer.tsx";
 import type { Snapshot } from "../../../server/model.ts";
@@ -32,7 +33,7 @@ export function Home({ refreshKey, now, snapshot, onOpenSettings }: { refreshKey
       <HomeQueue refreshKey={refreshKey} now={now} snapshot={snapshot} />
       <HomeAlerts />
       <HomeStuck refreshKey={refreshKey} now={now} />
-      <Brakes atfm={atfm} alertOn={alertOn} now={now} onOpenSettings={onOpenSettings} refreshKey={refreshKey} />
+      <Brakes atfm={atfm} alertOn={alertOn} now={now} onOpenSettings={onOpenSettings} />
     </section>
   );
 }
@@ -66,7 +67,7 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
 // WARNING·CAUTION 알림(조건). 큐로 가는 것과 막힌 FLIGHT 줄(아래)이 이미 알리는 것은 빼서 한 곳에만 둔다
 function HomeAlerts() {
   const { items } = useAlerts();
-  const shown = items.filter((a) => (a.level === "warning" || a.level === "caution") && a.dest === "alerts" && !a.key.startsWith("follow|stuck|"));
+  const shown = homeAlertsOf(items);
   if (shown.length === 0) return null;
   return (
     <section className="hm-sec" aria-label="ALERTS">
@@ -92,10 +93,7 @@ function HomeAlerts() {
 // 막힌 FLIGHT 줄: FOLLOW 보드가 이미 센 막힘(한도를 넘긴 줄). 줄에서 CANCEL·RECALL을 누를 수 있다
 function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
   const { data, reload } = useFollowBoard(refreshKey);
-  const seen = new Set<string>();
-  const rows = (data?.bundles ?? [])
-    .flatMap((b) => b.rows)
-    .filter((r) => r.stuck && !r.finished && !seen.has(r.key) && (seen.add(r.key), true));
+  const rows = stuckRowsOf(data?.bundles ?? []);
   if (rows.length === 0) return null;
   return (
     <section className="hm-sec" aria-label="막힌 FLIGHT">
@@ -117,7 +115,7 @@ function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
                 {r.next.label}
               </a>
             )}
-            {r.proposalInfo && <FlightBrakes p={{ ...r.proposalInfo, flight: r.key }} onDone={() => void reload()} />}
+            {r.proposalInfo && <FlightBrakes p={{ ...r.proposalInfo, flight: r.key }} mode={data?.dispatchMode} onDone={() => void reload()} />}
           </li>
         ))}
       </ul>
@@ -127,13 +125,12 @@ function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
 
 // brake 줄: 늘 있고 중립이다. GROUND STOP·수동 출발 중지(ATFM), STOP ALL, 자동화 스위치의 상태와 DISPATCH 모드.
 // 누르기 전에는 아무것도 펴지지 않는다
-function Brakes({ atfm, alertOn, now, onOpenSettings, refreshKey }: { atfm: ReturnType<typeof useAtfm>; alertOn: boolean; now: number; onOpenSettings: () => void; refreshKey: string }) {
+function Brakes({ atfm, alertOn, now, onOpenSettings }: { atfm: ReturnType<typeof useAtfm>; alertOn: boolean; now: number; onOpenSettings: () => void }) {
   const { server } = useServerSettings();
   const [atfmOpen, setAtfmOpen] = useState(false);
   const [stopAll, setStopAll] = useState(false);
   const [mode, setMode] = useState<"shadow" | "approval" | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  void refreshKey;
   const brief = atfm.brief;
   const stops = brief ? brief.groundStops.filter((s) => s.enforced).length : 0;
   const manual = brief ? brief.config.manualStops.length : 0;
