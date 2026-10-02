@@ -1,6 +1,6 @@
 # UI refactor plan: the web screen against the design system
 
-> Status (2026-10-02): **survey and plan.** Nothing here changes a screen. Written in an ENGINEERING session at the SUPERVISOR's request ("전체 UI를 디자인 시스템에 맞춰 일관되게 개선한다 — 지금은 조사와 계획만"). Audited commit: `origin/main` `bbb1c70`. The work units in section 4 are proposals for DUTY or ENGINEERING to file in Linear. Check Linear for an existing issue before filing each one: the duplicate check could not be run from this session.
+> Status (2026-10-02): **survey and plan; the twelve questions are decided** (section 6, the SUPERVISOR's answers on 2026-10-02). Nothing here changes a screen. Written in an ENGINEERING session at the SUPERVISOR's request ("전체 UI를 디자인 시스템에 맞춰 일관되게 개선한다 — 지금은 조사와 계획만"). Audited commit: `origin/main` `bbb1c70`. The work units in section 4 are proposals for DUTY or ENGINEERING to file in Linear. Check Linear for an existing issue before filing each one: the duplicate check could not be run from this session.
 
 Related:
 - [design-language.md](design-language.md): the rules, the 3.5 Craft section and the section 5 checklist. This plan applies them; it adds no new rule.
@@ -159,7 +159,7 @@ These need no decision. Apart from the fix itself, nothing should look different
 | **U1 Leftovers** | <ul><li>Give `dp-btn` and `dp-error` a real style: rename them to the button and error classes the rest of HOME uses, or add base rules in `Atfm.css`.</li><li>Delete the dead classes (3.4).</li><li>Fix the three wrong fallbacks and the missing `--space-2-5`.</li><li>Replace the three literal font sizes: `Follow.css:145` (8 px to `--text-2xs`) and `Globe.css` ×2.</li><li>Fix the `styles.css:1869` comment.</li></ul> | `Atfm.tsx`/`.css`, `styles.css`, `Drawer.css`, `Docs.css`, `Fleet.css`, `Follow.css`, `Globe.css` | S | ATFM buttons have a styled base in the three themes; `font-size-px` drops to 0 in the baseline; no `var()` fallback differs from its token. |
 | **U2 Dialog behaviour** | Extract a `useDialog` hook from `SettingsPanel.tsx:93-136`: focus in, Tab trap, Escape, focus back to the opener, scroll lock. Use it in:<ul><li>`Drawer`, `DutyDrawer`, `IdeasDrawer`. Escape inside a text field first leaves the field.</li><li>`GlobeMode`, which also gets `aria-modal`.</li></ul>Give `GlobeAirport.tsx:179` a keyboard path (`role="button"`, `tabIndex=0`, Enter / Space). Decide whether `fleet/usePanelFocus.ts` folds into the hook. | `Drawer.tsx`, `DutyDrawer.tsx`, `IdeasDrawer.tsx`, `GlobeMode.tsx`, `views/GlobeAirport.tsx`, `SettingsPanel.tsx`, new hook | M | <ul><li>With a drawer open, Tab and Shift+Tab stay inside it.</li><li>Closing returns focus to the button that opened it.</li><li>Escape in the DUTY textarea does not close the drawer.</li><li>A GLOBE line can be picked with the keyboard.</li></ul> |
 | **U3 Narrow overflow** | <ul><li>Wrap both `mx-table`s in the existing focusable `Scroll` region (Network) or `.mf-scroll`.</li><li>`Checkride.css:14` gets `minmax(min(320px, 100%), 1fr)`.</li><li>`.view-menu` gets `width: min(300px, 100vw - 2 * var(--gutter))`.</li></ul> | `views/Metrics.tsx`, `views/MetricsMisfire.tsx`, `Checkride.css`, `styles.css` | S | No horizontal page scroll at 375 and 390 px on METRICS (all sub-views), FLEET → CHECKRIDE and FLIGHTS → BOARD options. |
-| **U4 Lint extension** | Add rules to `server/css-lint.ts`, as Q6 decides:<ul><li>spacing literals (px in padding / margin / gap / inset)</li><li>radius literals</li><li>`em` font sizes</li><li>a `.ts` scan for colour literals</li></ul>Then record the new baseline. | `server/css-lint.ts`, `server/css-lint.test.ts`, `web/css-lint-baseline.json` | M | The tests cover each new rule; the baseline holds today's counts, so later units can only lower them. Needs **Q6**. |
+| **U4 Lint extension** | Add three rules to `server/css-lint.ts` (Q6):<ul><li>spacing literals (px in padding / margin / gap / inset)</li><li>radius literals</li><li>`em` font sizes</li></ul>`.ts` files stay outside the scan (Q6); U9 pins the `settings.ts` swatches with a test instead. Then record the new baseline. | `server/css-lint.ts`, `server/css-lint.test.ts`, `web/css-lint-baseline.json` | M | The tests cover each new rule; the baseline holds today's counts, so later units can only lower them. |
 
 ### Phase 1: shared primitives
 
@@ -167,12 +167,12 @@ Each primitive is extracted from the best existing instance, not designed fresh.
 
 | Unit | What | Size | Done when |
 |---|---|---|---|
-| **U5 Button** | <ul><li>A base `.btn`, plus a quiet and an emphasis variant and a destructive one, from the identical `fb-` / `rl-` / `hm-` / `apt-btn` four.</li><li>One modifier naming scheme.</li><li>Migrate those four in the same PR.</li></ul>Needs **Q8**. | M | The four old classes are gone; one height token for controls; the emphasis modifier has one name. |
+| **U5 Button** | <ul><li>A base `.btn`, plus a quiet and an emphasis variant and a destructive one, from the identical `fb-` / `rl-` / `hm-` / `apt-btn` four.</li><li>A CSS class, not a React component (Q8). Modifiers `.is-primary` and `.is-danger`; `.primary`, `.danger` and `.is-stop` are retired as their screens move.</li><li>Migrate those four in the same PR.</li></ul> | M | The four old classes are gone; one height token for controls; the emphasis modifier has one name. |
 | **U6 Chip, tag, dot** | <ul><li>Bases for the three kinds in design-language 4.4: chip = pill, selectable or counted; tag = 2 px, mono, uppercase; dot.</li><li>The dot never stands alone without a word or an accessible name. This fixes `ActivityLine` (3.1).</li><li>Migrate `.tag`, `.code-chip`, `.dr-chip`, `.fl-chip`.</li></ul> | M | <ul><li>Those four use the bases.</li><li>`ActivityLine` reads in greyscale.</li><li>No new chip class is added outside the bases.</li></ul> |
 | **U7 Table** | <ul><li>A base table rule: header, row line, `tabular-nums`, right-aligned numbers per Craft 3.5.7.</li><li>The `Scroll` wrapper as a shared component.</li><li>Migrate `mx-table`, which U3 has just touched.</li></ul> | S | `mx-table` uses the base; the base sets numeric alignment once. |
 | **U8 Empty, fold, segmented** | <ul><li>One empty-state component (design-language 4.6).</li><li>One fold component that always shows a count and opens by click or key (4.3, the old C8).</li><li>One `Segmented` replacing the two copies.</li></ul> | M | <ul><li>`Segmented` exists once.</li><li>The fold is used by at least one screen (HOME sections).</li><li>The empty component replaces `.empty` call sites.</li></ul> |
-| **U9 Colour literals to tokens** | <ul><li>Move the base-rule literals of 3.2 (`.tone-alert`, ticker, `.prio`, `.los-tag`, `.bay-rail`, holders, `.fl-shade`) into `:root` and the theme blocks.</li><li>Make the `settings.ts` swatches read from the tokens, or pin them with a test.</li><li>Give `--magenta`, `--gold` and `--display` a `:root` default.</li></ul> | M | `color-literal` in `styles.css` counts only the `:root` and theme blocks; the swatches cannot drift. |
-| **U10 Spacing and radius sweep** | <ul><li>Put the 75 spacing literals and the 9 radius literals onto the scale, file by file: `alerts.css`, `Drawer.css`, `Docs.css`, `Metrics.css`, `FleetPlan.css`, `Teams.css`, `MetricsFuel.css`, `Card.css`.</li><li>Leave the `styles.css` screen sections to their screen units.</li></ul>Needs **U4** and **Q7**. | M | The spacing and radius counts in the baseline drop to the `styles.css` screen sections only. |
+| **U9 Colour literals to tokens** | <ul><li>Move the base-rule literals of 3.2 (`.tone-alert`, ticker, `.prio`, `.los-tag`, `.bay-rail`, holders, `.fl-shade`) into `:root` and the theme blocks.</li><li>Pin the `settings.ts` swatches with a `node:test` that compares them with the theme tokens in `styles.css` (the lint does not scan `.ts`, Q6).</li><li>Give `--magenta`, `--gold` and `--display` a `:root` default.</li></ul> | M | `color-literal` in `styles.css` counts only the `:root` and theme blocks; the swatches cannot drift. |
+| **U10 Spacing and radius sweep** | <ul><li>Put the 75 spacing literals and the 9 radius literals onto the scale, file by file: `alerts.css`, `Drawer.css`, `Docs.css`, `Metrics.css`, `FleetPlan.css`, `Teams.css`, `MetricsFuel.css`, `Card.css`.</li><li>Every off-scale value snaps to the nearest step, with no exception (Q7): 1 and 2.5 px → `--space-0-5`, 3 and 4.5 px → `--space-1`, 10 px → `--space-2` or `--space-3` by context, 14 px → `--space-3`, 20 and 22 px → `--space-6`. Borders are not spacing and keep 1 px.</li><li>Leave the `styles.css` screen sections to their screen units.</li></ul>Needs **U4**. | M | The spacing and radius counts in the baseline drop to the `styles.css` screen sections only. |
 
 ### Phase 2: one PR per screen
 
@@ -188,40 +188,41 @@ It also checks Craft 3.5 on that screen: colour budget, font roles, three sizes,
 |---|---|---|
 | **S1** | HOME (with `Atfm`, `HumanCheck`, `SinceLook`) | Stop importing `Drawer.css`, `DutyDrawer.css` and `Fleet.css` for borrowed classes; use the primitives. Use the fold (U8) for the sections. |
 | **S2** | RELEASE | `rl-btn` is already migrated in U5. Check the candidate rows against 4.1 (row and detail). |
-| **S3a** | FLIGHTS → LIST and the AIRCRAFT STRIPS fold | STRIPS lines 1217–1397 go to `Teams.css`. Fix the parked strip contrast (3.1) within Q1's answer. |
+| **S3a** | FLIGHTS → LIST and the AIRCRAFT STRIPS fold | STRIPS lines 1217–1397 go to `Teams.css`. Rename the FLIGHTS classes `fl-view`, `fl-views` to `ft-` (Q9). The parked strip contrast is D1's. |
 | **S3b** | FLIGHTS → BOARD (FIDS) | Lines 1398–1847 go to a new `Tickets.css`. `fids-table` goes onto the U7 base. |
 | **S3c** | FLIGHTS → RADAR | Lines 889–1216 go to a new `Map.css`. |
 | **S3d** | FLIGHTS → RADIO | `--blue` only for NEEDS YOU and HANDOFF (old WO5); use the width at 1280. |
-| **S4** | FLEET | Move `fl-btn` onto `.btn` and `fl-chip` onto the chip base. Rename the prefix if **Q9** says so. |
-| **S5** | METRICS (OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK) | `mf-table`, `nw-table` and `bf-table` onto the table base. Enlarge the `mf-table` sort buttons. |
+| **S4** | FLEET | Move `fl-btn` onto `.btn` and `fl-chip` onto the chip base. FLEET keeps `fl-` (Q9). |
+| **S5** | METRICS (OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK) | `mf-table`, `nw-table` and `bf-table` onto the table base. The `mf-table` sort buttons get a 24 px target (D3). |
 | **S6** | Settings window, including AIRPORTS | Lines 2252–2882 and 3345–3492 go to a new `SettingsPanel.css`. Merge the two `.settings-section` rules. `config-btn` onto `.btn`. Re-measure `apt-table` at 390 px. |
 | **S7** | Drawers (FLIGHT, PR, DUTY, IDEAS) and `DutyCards` | `dr-btn` and `dr-chip` onto the primitives; drawer radii from the tokens. |
 | **S8** | Header, ALERT line, ticker, bell, UPDATE bar | Lines 238–812 move next to `App.tsx`. Add live regions to `ul.alerts`, the ticker and the bell count. Re-measure the header at 390 px and its running animations (old WO8 and C6). |
 | **S9** | Themes | Move the cockpit and night blocks into their own files. Any per-view override still left in them moves to its view. Comes last, after the screens have taken their sections. |
 
-### Phase 3: units that wait for a decision
+### Phase 3: units set by the decisions
 
-| Unit | What | Waits for |
-|---|---|---|
-| **D1** | Restore 4.5:1 for `--faint` on every layer, and remove opacity from text (`.activity.is-idle`, `.bell-item.is-acked`, `.du-card.is-gone`, `.strip.is-parked`); mark state another way (a word or a weight). | Q1 |
-| **D2** | One breakpoint set as tokens in a comment block, and every `@media` moved onto it (including `ControlStrip.css` 767 / 1761). | Q2 |
-| **D3** | Touch targets. | Q4 |
-| **D4** | Motion follows the OS live (`matchMedia` change listener) as Q5 decides. | Q5 |
-| **D5** | Tooltip pass (L6, old C3): move tooltips that hold the only copy of a decision value onto the screen. | Q10 |
-| **D6** | Mono for IDs, codes and numbers only (old C2); replace the 36 text glyphs with Lucide icons (old C5). | — (can start any time after U6) |
-| **D7** | A light theme and `prefers-color-scheme`. | Q3; only if chosen |
-| **D8** | Font-weight tokens or fewer weights; the 10 px floor for codes. | Q11, Q12 |
+Each of these was waiting on a question; section 6 answers them all, so each can be filed.
+
+| Unit | What | Decision | Size |
+|---|---|---|---|
+| **D1** | <ul><li>Lighten `--faint` in radar and night until it is 4.5:1 or more on `--panel-3`, and check it on every other layer of all three themes.</li><li>Raise `--paper-muted` on parked paper to 4.5:1.</li><li>Remove opacity from text (`.activity.is-idle`, `.bell-item.is-acked`, `.du-card.is-gone`, `.strip.is-parked`); mark the state another way (a word or a weight).</li></ul> | Q1 (a) | S |
+| **D2** | <ul><li>Breakpoints 860, 600 and 480, plus 1760 for the header only, written in the `:root` comment block (CSS variables cannot be used in `@media`).</li><li>Move every `@media` onto them: 640 and 700–767 go to 600 or 860, 960–1180 to 860, `ControlStrip.css` 767 / 1761 to 860 / 1760.</li><li>Re-check each moved layout at 390, ~1000 and 1280 px.</li></ul> | Q2 | M |
+| **D3** | Keep the 24 px desktop minimum; no `pointer: coarse` rule. Raise the controls under 24 px: the `mf-table` sort buttons (with S5) and `.docs-toc` buttons. | Q4 (a) | S |
+| **D4** | Reduced motion from the OS always wins: listen to the `matchMedia` change and set `data-motion="off"` while the OS asks for less, whatever the saved setting says. The setting still turns motion off when the OS allows it. Update the settings hint. | Q5 (a) | S |
+| **D5** | Tooltip pass (L6, old C3), limited to tooltips that hold a number or a state not on the screen. They move onto the screen; tooltips that explain how a value is made stay. | Q10 (a) | M |
+| **D6** | Mono for IDs, codes and numbers only (old C2); replace the 36 text glyphs with Lucide icons (old C5). | — (after U6) | M |
+| **D7** | **A light theme as a fourth choice** in settings, not picked by the OS. It needs:<ul><li>values for every colour token, including paper, FIDS, stamps and series</li><li>`color-scheme: light` in its block (`:root` fixes `dark` today)</li><li>the Starfield and backdrop off</li><li>4.5:1 for `--faint` on every layer</li><li>a swatch entry in `settings.ts`, pinned by U9's test</li></ul>The values are proposed in the PR and checked by the SUPERVISOR before landing. | Q3 (b) | L |
+| **D8** | <ul><li>Retire weight 500 (17 uses) to 400 or 600 by role; no weight tokens.</li><li>Raise `--text-2xs` from 10 to **11 px**; 11 px becomes the floor for every text. In compact density `--text-2xs` and `--text-xs` are then both 11 px.</li><li>Update the `:root` comment ("영문 약호는 10") and design-language 3.3 in the same PR.</li><li>Re-check the header readouts and table headers at 860 and 1280 px, since uppercase codes grow by 10 %.</li></ul> | Q11 (b), Q12 (b) | M |
 
 ## 5. Order and dependencies
 
 ```
 Phase 0   U1 ─┐
-          U2 ─┼─→ U4 (Q6) ─┐
-          U3 ─┘            │
-Phase 1        U5 (Q8)  U6  U7  U8  U9  U10 (U4, Q7)
-                 └───┴───┴───┴───┴───┘
-Phase 2   S1 S2 S3a S3b S3c S3d S4 S5 S6 S7 S8   (any order) ─→ S9
-Phase 3   D1..D8, each when its question is answered
+          U2 ─┼─→ U4 ─┐
+          U3 ─┘       │
+Phase 1        U5  U6  U7  U8  U9  U10 (after U4)
+Phase 2   S1 S2 S3a S3b S3c S3d S4 S5 S6 S7 S8   (any order) ─→ S9 ─→ D7
+Phase 3   D1 D4 (now) · D2 D3 D5 D6 D8 (any time, D6 after U6) · D7 (after U9 and S9)
 ```
 
 - **Start with U2 and U3.** They fix keyboard and narrow-screen bugs, need no decision and touch few files. U1 can run beside them.
@@ -229,26 +230,28 @@ Phase 3   D1..D8, each when its question is answered
 - **Phase 1 before phase 2.** A screen unit without the primitives would just create one more local button and chip.
 - **One screen unit at a time per file group.** layout.md section 5 names the conflict risk: many AIRCRAFT edit screen files every day. Screen units are small and land as they pass; there is no long-lived restyle branch, and no single PR splits all of `styles.css`.
 - **S9 last.** The theme blocks hold per-view overrides that move with their screens.
-- **D1 early once Q1 is answered.** It is a broken promise, not a polish item.
+- **D1 and D4 early.** Both fix a broken promise, are small and are now decided.
+- **D7 last.** A light theme is easiest once every colour is a token (U9) and each theme lives in its own file (S9).
+- **D8 before the screen units where possible.** It changes text sizes on every screen; landing it early means each screen unit checks its layout once.
 
-## 6. Questions for the SUPERVISOR
+## 6. Decisions (SUPERVISOR, 2026-10-02)
 
-Each question blocks the unit named after it. The recommendation is a starting point, not a decision.
+The twelve questions of the first draft, answered by the SUPERVISOR in the ENGINEERING session. Where the answer differs from the draft's recommendation, the recommendation is given in brackets.
 
-| # | Question | Options | Recommended |
+| # | Question | Decision | Unit |
 |---|---|---|---|
-| Q1 | `--faint` misses 4.5:1 on `--panel-3` (radar 4.44, night ~4.36). How should it be fixed? (D1) | (a) lighten `--faint` in radar and night; (b) darken `--panel-3`; (c) forbid `--faint` text on `--panel-3` and use `--muted` there; (d) relax the promise to 4.5:1 on panel and panel-2 only | (a): the smallest change that keeps the promise everywhere |
-| Q2 | Which breakpoints does atc keep? (D2) | Today 13 widths. Proposed set: 860 (layout collapses), 600 (drawers and small panels), 480 (single column). Retire 640, 700, 720, 760, 767, 960, 1100, 1180; 1760 stays for the header only | 860 / 600 / 480, plus 1760 for the header |
-| Q3 | Is a light theme, or following `prefers-color-scheme`, in scope? (D7) | (a) no, atc stays dark; (b) a light theme as a fourth choice; (c) a light theme picked automatically by the OS | (a) for this plan; a light theme is its own design draft |
-| Q4 | Touch targets: what is the minimum? (D3) | (a) keep the 24 px desktop minimum; (b) 44 px under `@media (pointer: coarse)` only; (c) 44 px everywhere | (b): the SUPERVISOR also reads atc on a phone, and (b) leaves the desktop console dense |
-| Q5 | Should a saved motion setting override the OS's reduced-motion request? design-language section 1 says the `motion` setting follows the OS by default, and principle 10 says both switches stop motion; the code does the first only. (D4) | (a) the OS always wins when it asks for less; (b) the saved choice wins (today) | (a): principle 10 names both switches |
-| Q6 | What should the lint extension check? (U4) | Spacing literals, radius literals, `em` font sizes, colour literals in `.ts`; any subset | All four |
-| Q7 | Off-scale spacing values (1, 2.5, 3, 10, 14, 20, 22 px): snap them to the scale or add tokens? (U10) | (a) snap to the nearest step; (b) add tokens for the ones that recur; (c) allow 1 px hairlines only | (a) plus (c) |
-| Q8 | Button primitive: a CSS class or a React component, and which modifier names? (U5) | (a) CSS class `.btn` with `.is-primary` / `.is-danger`; (b) a `<Button variant>` component in `ui.tsx` | (a): smallest change, and `is-` is already the commonest naming in the code |
-| Q9 | Rename FLEET's `fl-` prefix, which FLIGHTS also uses? (S4) | (a) leave it; (b) rename FLIGHTS' few classes (`fl-view`, `fl-views`) to `ft-`; (c) rename FLEET's | (b): FLIGHTS has the fewer classes |
-| Q10 | Tooltip pass scope, now that DISPATCH has gone (238 `title=` left)? (D5) | (a) only tooltips that hold a number or a state not on the screen; (b) every tooltip | (a), as principle 11 says |
-| Q11 | Font weights: add tokens, or cut the weights in use (700, 600, 500, 400)? (D8) | (a) tokens for 400 / 600 / 700; (b) retire 500 (17 uses) and keep literals | (a) |
-| Q12 | Is 10 px `--text-2xs` (95 uses, for uppercase codes) acceptable? (D8) | (a) keep 10 px for uppercase codes only; (b) raise the floor to 11 px | (a); Korean text already stays at 11 px or more. `--text-xs` and `--text-sm` stay two tokens (DL7 keeps them apart in compact) |
+| Q1 | `--faint` misses 4.5:1 on `--panel-3`: how is it fixed? | **Lighten `--faint`** in radar and night | D1 |
+| Q2 | Which breakpoints stay? | **860, 600, 480**, plus 1760 for the header only | D2 |
+| Q3 | A light theme? | **Yes, as a fourth theme** chosen in settings (recommended: not in this plan) | D7 |
+| Q4 | Minimum target size? | **Keep 24 px**; no larger targets on touch (recommended: 44 px under `pointer: coarse`) | D3 |
+| Q5 | Saved motion setting or the OS's reduced motion? | **The OS wins** when it asks for less | D4 |
+| Q6 | What does the lint extension check? | **Spacing literals, radius literals, `em` font sizes.** Not colour literals in `.ts` (recommended: all four) | U4, U9 |
+| Q7 | Off-scale spacing values? | **Snap every one to the nearest step**, no 1 px exception (recommended: allow 1 px hairlines) | U10 |
+| Q8 | Button primitive? | **CSS class `.btn`** with `.is-primary` / `.is-danger` | U5 |
+| Q9 | The shared `fl-` prefix? | **FLIGHTS' classes become `ft-`**; FLEET keeps `fl-` | S3a, S4 |
+| Q10 | Tooltip pass scope? | **Only tooltips holding a number or a state** not on the screen | D5 |
+| Q11 | Font weights? | **Retire 500**; no weight tokens (recommended: tokens for 400 / 600 / 700) | D8 |
+| Q12 | 10 px `--text-2xs`? | **Raise the floor to 11 px** (recommended: keep 10 px for codes). This changes the `:root` comment and design-language 3.3 | D8 |
 
 ## 7. Not covered
 
