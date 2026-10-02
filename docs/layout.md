@@ -134,9 +134,18 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 - **The default tab is HOME** now (RADAR was the default and no longer exists); the SINCE LAST LOOK line (ATC-383) is at the top of HOME.
 - **Dropped:** the page titles `FOLLOW`, `STRIPS`, `FIDS`, `RADAR`, `RADIO` and the HUMAN CHECK block's `CHOICE·ACCOUNT·DEVICE PR만…` hint line. The strips are no longer a first-level view: they sit in the folded block of LIST.
 
+### Y3 as built (ATC-378)
+
+- SCHEDULE is no longer a tab. `#schedule` opens HOME (`web/src/legacy-hash.ts`); the queue item hash, the `pending|schedule` alert link and the DUTY card link now say `#home`. `Schedule.tsx`, its CSS, `ReadinessFold` and `scheduleLineParts` are deleted.
+- **LATE WAYPOINTS** are a HOME section, drawn only when there is one. **LINEAR에서 직접 DONE** (approved CLOSE drafts, which OCC never writes) is a second section, also only when there is one. Both come from the new read-only `GET /api/schedule/home` (`mode`, `slips`, `closeManual`), so HOME does not load the whole SCHEDULE brief.
+- **Drafts are approved in the QUEUE.** A SCHEDULE queue item has inline **승인** / **거절** (`ScheduleButtons`, one confirmation, reject takes a reason). In S2 it calls `/api/schedule/ops/:id/approve|reject`. TARGET and ROUTE have no apply path, so they get **동의** / **거절** and call `/verdict` (a recorded shadow verdict, nothing is written). The item carries OCC's reason line (`detail`, 240 characters) so the row says what it approves. The switch `SCHEDULE AUTO` only decides whether the server approves first; with it off, the drafts wait in the QUEUE.
+- The S1 ↔ S2 switch moved to the BRAKES row (`SCHEDULE SHADOW — S2로`), the same route.
+- NEW drafts stay RELEASE candidates (Y1); their link now says `HOME에서 승인`.
+- Removed with the tab: the S1 verdict screen, CROSSCHECK chips, judge-family chips, the CANDIDATES, IN PROGRESS and RECENT tables and the READINESS fold (S2 gate numbers, ROUTES WITHOUT WAYPOINTS). In S1 a draft is not a queue item (as before), so with SCHEDULE AUTO off and S1 on nobody judges it and it expires after 3 days. The server routes (`/verdict`, `/crosscheck`, `/brief`) are unchanged.
+
 ### Not built yet
 
-Y3 (SCHEDULE taken apart), Y5, Y6. The tab row still has GLOBE, AIRPORTS, NETWORK, SCHEDULE and DOCS until those steps land.
+Y5, Y6. The tab row still has GLOBE, AIRPORTS, NETWORK and DOCS until those steps land.
 
 ## 5. Risks
 

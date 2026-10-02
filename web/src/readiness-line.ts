@@ -28,10 +28,6 @@ export interface DispatchLineIn {
   gate?: GateIn;
   gate3?: { dispatched?: number; ready?: boolean; target?: { dispatched: number } };
 }
-export interface ScheduleLineIn {
-  gate?: GateIn;
-  routesWithoutWaypoints?: unknown[] | null;
-}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -73,13 +69,6 @@ export function dispatchLineParts(b: DispatchLineIn): LinePart[] {
     const t = g3.target?.dispatched;
     out.push(part("stage3", "S3", isNum(t) ? `${g3.dispatched}/${t}` : String(g3.dispatched), g3.ready ? "ok" : "bad", g3.ready ? "✓" : "✗"));
   }
-  return out;
-}
-
-export function scheduleLineParts(b: ScheduleLineIn): LinePart[] {
-  const out = gateParts(b.gate);
-  const n = Array.isArray(b.routesWithoutWaypoints) ? b.routesWithoutWaypoints.length : 0;
-  if (n > 0) out.push(part("no-waypoint", "WAYPOINT 없는 ROUTE", String(n), "bad"));
   return out;
 }
 

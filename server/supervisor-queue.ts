@@ -23,6 +23,7 @@ export interface QueueItem {
   title: string;
   hash: string; // 그 항목이 있는 화면 주소
   hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
+  detail?: string; // SCHEDULE: OCC의 근거 한 줄. 탭이 없어 큐 줄이 판정 화면이라, 무엇을 승인하는지 보이게 한다(ATC-378)
   card?: { kind: Proposal["kind"]; launch: boolean }; // PROPOSAL: 승인하면 무슨 일이 일어나는지 가르는 것(ASSIGN은 FLIGHT PLAN, launch는 LAUNCH 먼저, RELEASE는 FLIGHT PLAN 없음, ATC-377)
   offer?: RelayOffer; // RELAY: STAND를 쥔 세션이 없는 GO AROUND·FIX를 SUPERVISOR가 전하는 카드(ATC-308)
 }
@@ -39,7 +40,7 @@ export interface HandItem {
 
 export interface QueueInput {
   proposals: (Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt" | "awaitSupervisor" | "undelivered"> & Partial<Pick<Proposal, "launch">>)[];
-  schedule: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
+  schedule: { mode: ScheduleMode; ops: (Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt"> & Partial<Pick<ScheduleOp, "reason">>)[] };
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
   // landBy: TOWER가 쓰는 landByOf의 결과. "supervisor"이고 CLEARED면 SUPERVISOR가 머지한다
@@ -74,7 +75,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   if (inp.schedule.mode === "approval") {
     for (const op of inp.schedule.ops) {
       if (op.status !== "draft") continue;
-      out.push({ kind: "SCHEDULE", key: op.id, since: op.statusAt, title: `${op.kind}${op.flight ? ` ${op.flight}` : ""}`, hash: "#schedule" });
+      out.push({ kind: "SCHEDULE", key: op.id, since: op.statusAt, title: `${op.kind}${op.flight ? ` ${op.flight}` : ""}`, hash: "#home", ...(op.reason ? { detail: op.reason.slice(0, 240) } : {}) });
     }
   }
 

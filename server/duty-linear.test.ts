@@ -93,3 +93,13 @@ test("라벨 이름 → id: 대소문자 무시, 없는 이름은 missing(새 �
   assert.deepEqual(resolveLabels(["nope", "Feature"], avail), { ids: ["2"], missing: ["nope"] });
   assert.deepEqual(resolveLabels([], avail), { ids: [], missing: [] });
 });
+
+test("create blockedBy(ATC-396): ATC-<n> 목록 1~5개, 중복은 합치고, 틀리면 거절한다", () => {
+  const base = { action: "create", title: "T", body: "B", priority: 3 };
+  assert.deepEqual(ok({ ...base, blockedBy: ["atc-7", "ATC-7", "ATC-8"] }), { action: "create", title: "T", body: "B", priority: 3, state: "Backlog", labels: [], blockedBy: ["ATC-7", "ATC-8"] });
+  assert.match(err({ ...base, blockedBy: [] }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: "ATC-7" }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: ["VOC-1"] }), /blockedBy/);
+  assert.match(err({ ...base, blockedBy: ["ATC-1", "ATC-2", "ATC-3", "ATC-4", "ATC-5", "ATC-6"] }), /blockedBy/);
+  assert.match(err({ action: "update", key: "ATC-5", priority: 2, blockedBy: ["ATC-7"] }), /알 수 없는 칸: blockedBy/);
+});

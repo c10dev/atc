@@ -69,7 +69,7 @@ export interface ServerSettings {
   // DUTY(ATC-220): duty.json. 기본 꺼짐. 켜면 SUPERVISOR가 첫 글을 보낼 때 이 서버가 `claude -p`를 띄운다(ACCOUNT의 FUEL을 쓴다)
   // 마이그레이션 리허설(ATC-368, K1·K2): hostedDb가 있는 AIRPORT마다 스위치. 켜려면 시험 DB와 토큰이 있어야 한다(why가 이유). 토큰은 있는지만
   migrate: { tokenSet: boolean; airports: { code: string; enabled: boolean; why: string | null }[] };
-  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
+  duty: Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review"> & { accountWarning: string | null }; // accountWarning: 등록부에 없는 ACCOUNT라 ~/.claude로 돈다(ATC-242)
   judges: { jev: { mode: JudgeMode; engine: "stub" | "jev"; apiKeySet: boolean; lastRunAt: string | null; lastError: string | null; judged: number } };
 }
 
@@ -100,6 +100,7 @@ export interface SettingsPatch {
   fleetPlanReposition?: RepositionMode; // fleet-plan.json에 쓴다(ATC-179). SUPERVISOR만: 이 화면 Origin이 있어야 받는다
   dutyCharter?: "off" | "shadow" | "on"; // duty.json의 charter(ATC-233): DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. SUPERVISOR만(이 화면 Origin)
   dutyAccount?: string; // duty.json의 account(ATC-242): 등록부의 라벨만. 바뀌면 다음 글부터 새 대화. SUPERVISOR만
+  dutyReview?: "off" | "on"; // duty.json의 review(ATC-396): 서버가 SUPERVISOR의 글 없이 DUTY 점검 턴을 시작하는 스위치. 기본 on. SUPERVISOR만(이 화면 Origin)
   dutyEnabled?: "off" | "on"; // duty.json에 쓴다(ATC-220). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 끄면 실행 중인 프로세스가 끝난다
   migrateRehearsal?: Record<string, boolean>; // migrate.json에 쓴다(ATC-368, K1·K2). AIRPORT 코드 → 켜짐. 켜기는 시험 DB와 토큰이 준비된 AIRPORT만. SUPERVISOR만(이 화면 Origin, atcctl 명령 없음)
   judgesJev?: JudgeMode; // judges.json에 쓴다(ATC-36). SUPERVISOR만: 이 화면 Origin이 있어야 받는다. 데이터 반출을 켜는 스위치
@@ -149,14 +150,13 @@ export function readServerSettings(): ServerSettings {
     controlRecycle: loadRecycle(),
     fleetPlan: { reposition: loadReposition().mode, repositionDailyMax: loadReposition().dailyMax },
     voice: { engine: config.ttsEngine, voice: config.ttsVoice },
-    duty: (({ enabled, account, idleMin, charter }) => ({ enabled, account, idleMin, charter, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
+    duty: (({ enabled, account, idleMin, charter, review }) => ({ enabled, account, idleMin, charter, review, accountWarning: effectiveDutyFolder(account, accountFolders(), config.claudeDir).warning }))(loadDutyConfig()),
     migrate: {
       tokenSet: Boolean(config.supabaseMigrateToken),
       airports: loadRegistry()
         .entries.filter((e) => !e.closed && hostedDbOfAirport(e.path))
         .map((e) => ({ code: e.code, enabled: loadMigrate().airports[e.code.toUpperCase()] === true, why: notReadyWhy(hostedDbOfAirport(e.path), config.supabaseMigrateToken) })),
-    },
-    judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
+    },    judges: { jev: { mode: loadJudges().jev, engine: engineName(), apiKeySet: Boolean(config.typesafeApiKey), ...judgeStatus.jev } },
   };
 }
 
@@ -268,7 +268,7 @@ export function mountSettings(app: Hono) {
     // judgesJev는 judges.json에 쓴다(ATC-36)
     // mccMode는 mcc.json에 쓴다(docs/mcc.md)
     // fuelHold는 dispatch.json fuel.hold에 쓴다(ATC-55)
-    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, scheduleAuto, fleetPlanAuto, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyAccount, migrateRehearsal, ...rest } = body as Record<string, unknown>;
+    const { reviewSecurity, autolandMode, autolandReviewedSecurity, autoRevert, judgesJev, mccMode, fuelHold, autoApprove, autoApproveLaunch, autoDispatch, scheduleAuto, fleetPlanAuto, controlRecycleMode, controlRecycleCaps, controlRecycleAuto, fleetPlanReposition, dutyEnabled, dutyCharter, dutyReview, dutyAccount, migrateRehearsal, ...rest } = body as Record<string, unknown>;
     if (fuelHold !== undefined && fuelHold !== "off" && fuelHold !== "on") return c.json({ errors: { fuelHold: `off 또는 on` } }, 400);
     if (autoApprove !== undefined && !AUTO_MODES.includes(autoApprove as AutoMode)) return c.json({ errors: { autoApprove: `off, shadow, on 중 하나` } }, 400);
     if (autoApproveLaunch !== undefined && !AUTO_MODES.includes(autoApproveLaunch as AutoMode)) return c.json({ errors: { autoApproveLaunch: `off, shadow, on 중 하나` } }, 400);
@@ -297,6 +297,7 @@ export function mountSettings(app: Hono) {
     }
     if (fleetPlanReposition !== undefined && !REPOSITION_MODES.includes(fleetPlanReposition as RepositionMode)) return c.json({ errors: { fleetPlanReposition: `off, shadow, approval, auto 중 하나` } }, 400);
     if (dutyEnabled !== undefined && dutyEnabled !== "off" && dutyEnabled !== "on") return c.json({ errors: { dutyEnabled: `off 또는 on` } }, 400);
+    if (dutyReview !== undefined && dutyReview !== "off" && dutyReview !== "on") return c.json({ errors: { dutyReview: `off 또는 on` } }, 400);
     const dutyAcct = dutyAccount === undefined ? null : dutyAccountPatchOf(dutyAccount, observedLabelsOn(accountFolders()) ? accountFolders().map((f) => f.label) : []);
     if (dutyAcct && !dutyAcct.ok) return c.json({ errors: { dutyAccount: dutyAcct.error } }, 400);
     if (dutyCharter !== undefined && dutyCharter !== "off" && dutyCharter !== "shadow" && dutyCharter !== "on") return c.json({ errors: { dutyCharter: `off, shadow, on 중 하나` } }, 400);
@@ -340,9 +341,10 @@ export function mountSettings(app: Hono) {
     for (const ch of migrateChanges) setMigrateAirport(ch.code, ch.on, ch.db, config.supabaseMigrateToken);
     if (dutyEnabled !== undefined) await setDutyConfig({ enabled: dutyEnabled === "on" });
     if (dutyCharter !== undefined) await setDutyConfig({ charter: dutyCharter });
+    if (dutyReview !== undefined) await setDutyConfig({ review: dutyReview === "on" });
     if (dutyAcct?.ok) await setDutyConfig({ account: dutyAcct.label });
     console.log(
-      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...migrateChanges.map((m) => `migrate.${m.code}=${m.on ? "on" : "off"}`), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
+      `[atc] settings updated: ${[...Object.keys(env), ...(reviewSecurity !== undefined ? [`externalReview.security=${reviewSecurity}`] : []), ...(fuelHold !== undefined ? [`fuel.hold=${fuelHold}`] : []), ...(autoApprove !== undefined ? [`autoApprove=${autoApprove}`] : []), ...(autoApproveLaunch !== undefined ? [`autoApproveLaunch=${autoApproveLaunch}`] : []), ...(autoDispatch !== undefined ? [`autoDispatch=${autoDispatch}`] : []), ...(scheduleAuto !== undefined ? [`schedule.auto=${scheduleAuto}`] : []), ...(fleetPlanAuto !== undefined ? [`fleet-plan.auto=${fleetPlanAuto}`] : []), ...(autolandMode !== undefined ? [`autoland.mode=${autolandMode}`] : []), ...(autoRevert !== undefined ? [`autoRevert=${autoRevert}`] : []), ...(autolandReviewedSecurity !== undefined ? [`autoland.reviewedSecurity=${autolandReviewedSecurity}`] : []), ...(judgesJev !== undefined ? [`judges.jev=${judgesJev}`] : []), ...(mccMode !== undefined ? [`mcc.mode=${mccMode}`] : []), ...(dutyEnabled !== undefined ? [`duty.enabled=${dutyEnabled}`] : []), ...migrateChanges.map((m) => `migrate.${m.code}=${m.on ? "on" : "off"}`), ...(dutyCharter !== undefined ? [`duty.charter=${dutyCharter}`] : []), ...(dutyReview !== undefined ? [`duty.review=${dutyReview}`] : []), ...(dutyAcct?.ok ? [`duty.account=${dutyAcct.label}`] : [])].join(", ")}`,
     );
     return c.json(readServerSettings());
   });

@@ -137,6 +137,16 @@ export async function createDutyIssue(input: CreateInput): Promise<{ key: string
   return { key: d.issueCreate.issue.identifier, url: d.issueCreate.issue.url };
 }
 
+// blocker가 blocked를 막는다(Linear 관계 `blocks`, ATC-396). 이슈를 만든 직후 부른다
+export async function createDutyBlocks(blockerId: string, blockedId: string): Promise<void> {
+  ready();
+  const d = await gqlDuty<{ issueRelationCreate: { success: boolean } }>(
+    `mutation DutyBlocks($input: IssueRelationCreateInput!) { issueRelationCreate(input: $input) { success } }`,
+    { input: { issueId: blockerId, relatedIssueId: blockedId, type: "blocks" } },
+  );
+  if (!d.issueRelationCreate.success) throw new Error("Linear가 막는 관계를 받아들이지 않음");
+}
+
 export interface UpdateInput {
   title?: string;
   description?: string;

@@ -360,3 +360,32 @@ test("D3: 받아들인 카드·초안은 duty.jsonl과 이벤트에 글 사이�
   assert.equal(r.rt.history().lines.filter((l) => l.kind === "card").length, 1, "기록 쪽수에도 카드가 들어 있다");
   r.rt.dispose();
 });
+
+// ── REVIEW 턴(ATC-396) ──
+test("sendReview: 서버가 시작한 턴. 기록에는 SUPERVISOR 글이 아니라 한 줄(notice)이 남고, 도는 동안만 reviewTurn이 참이다", async () => {
+  const r = rig();
+  assert.equal(r.rt.reviewTurn(), false);
+  assert.deepEqual(await r.rt.sendReview("slow review prompt text", "DUTY REVIEW R-0001 · schedule · test"), { verdict: "sent" });
+  assert.equal(r.rt.reviewTurn(), true);
+  // 돌고 있는 동안 둘째 점검은 시작하지 않는다(SUPERVISOR의 글이 먼저다)
+  assert.deepEqual(await r.rt.sendReview("again", "x"), { verdict: "refused", reason: "busy" });
+  await idle(r);
+  assert.equal(r.rt.reviewTurn(), false, "턴이 끝나면 풀린다");
+  const kinds = r.log().map((l) => l.kind);
+  assert.deepEqual(kinds, ["notice", "text", "usage"]);
+  assert.equal(r.log()[0]!.text, "DUTY REVIEW R-0001 · schedule · test");
+  assert.equal(r.log()[1]!.text, "re:slow review prompt text", "DUTY는 지시문을 받았다");
+  assert.ok(!r.log().some((l) => l.kind === "user"), "긴 지시문은 SUPERVISOR 글처럼 남지 않는다");
+  // 다음 SUPERVISOR의 글은 평소처럼 기록된다
+  await r.rt.send("hello");
+  await until(() => r.log().filter((l) => l.kind === "text").length === 2);
+  assert.ok(r.log().some((l) => l.kind === "user" && l.text === "hello"));
+  r.rt.dispose();
+});
+
+test("sendReview: DUTY가 꺼져 있으면 시작하지 않는다", async () => {
+  const r = rig({ cfg: { enabled: false } });
+  assert.deepEqual(await r.rt.sendReview("x", "y"), { verdict: "refused", reason: "off" });
+  assert.ok(!existsSync(join(r.state, "duty-session.json")));
+  r.rt.dispose();
+});
