@@ -275,6 +275,8 @@
 /* METRICS 하위 화면(ATC-137): OPERATIONS · FUEL */
 .mx-sub {
   display: inline-flex;
+  flex-wrap: wrap; /* 하위 화면이 다섯이라 좁은 폭(390px)에서 줄을 바꾼다(ATC-380) */
+  max-width: 100%;
   gap: var(--space-1);
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--line);
