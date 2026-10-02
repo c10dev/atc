@@ -83,6 +83,15 @@ export interface FollowInput {
   undelivered?: Undelivered[]; // 보냈지만 닿지 않은 FLIGHT PLAN(ATC-183)
   launchFails?: LaunchFail[]; // launch 카드 승인 때 LAUNCH가 실패했거나 새 세션이 뜨지 않음(ATC-129)
   arrivalReports?: Map<string, ArrivalReport>; // FLIGHT → 기록된 도착 보고(ATC-124, arrival-report.ts)
+  endRules?: boolean; // false면 끝 규칙을 쓰지 않는다(전후 비교용, 기본 true)
+  ended?: EndedKey[]; // 끝 규칙(ATC-385)으로 빠진 문제를 여기에 모은다(알림이 끝난 뒤 24시간 안에 돌아오는지 세는 데 쓴다). 없으면 모으지 않는다
+}
+
+// 끝 규칙(ATC-385): 원인이 끝나서 알림에서 뺀 문제의 key(`<FLIGHT>|<code>|…`)와 어느 규칙이 뺐나
+export type EndRule = "flight-closed" | "unable-pr-gone" | "unable-readback" | "unowned-stale";
+export interface EndedKey {
+  key: string;
+  rule: EndRule;
 }
 
 // CAPTAIN의 UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 FLIGHT PLAN(decline). FLIGHT가 없는 CREW CHANGE는 OCC 브리핑(crew-change brief의 unable)에 있다
@@ -92,6 +101,7 @@ export interface Unable {
   aircraft: string | null;
   reason: string;
   at: string;
+  pr?: number; // 그 UNABLE이 가리킨 PR 번호(CLEARANCE 본문의 `PR #n`). 없으면 PR로는 끝나지 않는다
 }
 export const UNABLE_KEEP_MS = DAY; // 하루 보이고 빠진다
 export const REPORT_GRACE_MS = 30 * MIN; // PR이 머지(ON)된 뒤 도착 보고가 기록되기를 기다리는 시간(ATC-124)
@@ -145,15 +155,46 @@ export function undeliveredOf(proposals: Pick<Proposal, "id" | "flight" | "aircr
   return out;
 }
 
-// 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수)
-export function unablesOf(clearances: Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason">[], proposals: Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName">[], now: number): Unable[] {
+// UNABLE이 가리킨 PR 번호: CLEARANCE 본문의 첫 `PR #n`(GO AROUND·FIX 등). 없으면 undefined
+export const prOfText = (text: string): number | undefined => {
+  const m = /\bPR #(\d+)/i.exec(text);
+  return m ? Number(m[1]) : undefined;
+};
+
+// 스냅샷의 CLEARANCE와 제안에서 최근 UNABLE(순수). 원인이 끝나면 하루가 안 됐어도 뺀다(ATC-385):
+//  - 그 UNABLE이 가리킨 PR이 이제 열려 있지 않다(머지됨·닫힘). openPrs가 없으면(GitHub를 아직 못 읽음) 이 규칙은 쓰지 않는다
+//  - 같은 주제에 나중에 READBACK이 왔다: 같은 FLIGHT·같은 종류의 CLEARANCE가 그 뒤에 READBACK됐거나, 같은 FLIGHT의 ASSIGN이 그 뒤에 READBACK(accepted)됐다
+// FLIGHT가 닫힌 경우는 followingOf가 FLIGHT째로 뺀다. ended를 주면 뺀 것의 key를 모은다
+export function unablesOf(
+  clearances: (Pick<Clearance, "id" | "flight" | "toName" | "unableAt" | "unableReason"> & Partial<Pick<Clearance, "type" | "text" | "readbackAt">>)[],
+  proposals: (Pick<Proposal, "id" | "flight" | "kind" | "status" | "statusAt" | "reason" | "aircraftName"> & Partial<Pick<Proposal, "timeline">>)[],
+  now: number,
+  opts: { openPrs?: ReadonlySet<number>; ended?: EndedKey[]; endRules?: boolean } = {},
+): Unable[] {
   const out: Unable[] = [];
-  for (const c of clearances)
-    if (c.flight && c.unableAt && now - Date.parse(c.unableAt) < UNABLE_KEEP_MS)
-      out.push({ flight: c.flight, id: c.id, aircraft: c.toName, reason: c.unableReason ?? "", at: c.unableAt });
-  for (const p of proposals)
-    if (p.kind === "ASSIGN" && p.status === "declined" && now - Date.parse(p.statusAt) < UNABLE_KEEP_MS)
-      out.push({ flight: p.flight, id: p.id, aircraft: p.aircraftName, reason: p.reason ?? "", at: p.statusAt });
+  const end = (flight: string, id: string, rule: EndRule) => opts.ended?.push({ key: `${flight}|unable|${id}`, rule });
+  for (const c of clearances) {
+    if (!c.flight || !c.unableAt || now - Date.parse(c.unableAt) >= UNABLE_KEEP_MS) continue;
+    const pr = prOfText(c.text ?? "");
+    const rules = opts.endRules !== false;
+    if (rules && pr !== undefined && opts.openPrs && !opts.openPrs.has(pr)) {
+      end(c.flight, c.id, "unable-pr-gone");
+      continue;
+    }
+    if (rules && clearances.some((o) => o.id !== c.id && o.flight === c.flight && o.type === c.type && o.readbackAt && o.readbackAt > c.unableAt!)) {
+      end(c.flight, c.id, "unable-readback");
+      continue;
+    }
+    out.push({ flight: c.flight, id: c.id, aircraft: c.toName, reason: c.unableReason ?? "", at: c.unableAt, ...(pr !== undefined ? { pr } : {}) });
+  }
+  for (const p of proposals) {
+    if (p.kind !== "ASSIGN" || p.status !== "declined" || now - Date.parse(p.statusAt) >= UNABLE_KEEP_MS) continue;
+    if (opts.endRules !== false && proposals.some((o) => o.id !== p.id && o.kind === "ASSIGN" && o.flight === p.flight && o.timeline?.accepted && o.timeline.accepted > p.statusAt)) {
+      end(p.flight, p.id, "unable-readback");
+      continue;
+    }
+    out.push({ flight: p.flight, id: p.id, aircraft: p.aircraftName, reason: p.reason ?? "", at: p.statusAt });
+  }
   return out;
 }
 
@@ -284,6 +325,7 @@ export function followingOf(inp: FollowInput): FollowItem[] {
   for (const x of inp.launchFails ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
   for (const x of inp.undelivered ?? []) if (!targets.some((t) => t.flight === x.flight)) targets.push({ flight: x.flight, proposal: null, aircraft: x.aircraft });
   for (const r of inp.arrivalReports?.values() ?? []) if (blockedFresh(r, inp.now) && !targets.some((t) => t.flight === r.flight)) targets.push({ flight: r.flight, proposal: null, aircraft: null });
+  const ticketOf = (flight: string) => inp.tickets.find((t) => t.key === flight);
   return targets
     .map((t) => {
       const f = followOne(t, inp);
@@ -400,6 +442,12 @@ export function followingOf(inp: FollowInput): FollowItem[] {
       return f;
     })
     .filter((f) => {
+      // 티켓이 닫힌(Done·Canceled) FLIGHT는 따라가지 않는다: 문제도 함께 빠진다(ATC-385). STRANDED만 남는다 — 그때는 변경이 정말 main에 없다
+      if (inp.endRules !== false && isClosed(ticketOf(f.flight))) {
+        for (const i of f.issues) if (i.code !== "stranded") inp.ended?.push({ key: i.key, rule: "flight-closed" });
+        f.issues = f.issues.filter((i) => i.code === "stranded");
+        return f.issues.length > 0;
+      }
       if (f.issues.some((i) => i.code === "stranded" || i.code === "unable" || i.code === "launch" || i.code === "undelivered" || i.code === "blocked-report")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;
       return !(f.standFree || isClosed(inp.tickets.find((t) => t.key === f.flight)));
@@ -441,13 +489,13 @@ export function ackReported(items: FollowItem[], r: Reported, keys: string[], no
 
 // ── API ──
 
-export function followingNow(s: Snapshot, now = Date.now()): FollowItem[] {
+export function followingNow(s: Snapshot, now = Date.now(), ended?: EndedKey[], endRules = true): FollowItem[] {
   const health = new Map(s.sessions.filter((x) => x.status !== "dead" && x.health).map((x) => [regKey(x.name), x.health!]));
   const min = loadReportThreshold();
   const reports = new Map(s.sessions.filter((x) => x.status === "idle" && x.report && needsDecision(x.report, min)).map((x) => [regKey(x.name), { id: x.report!.id, at: x.report!.turnAt, p: x.report!.decisionP }]));
   const language = new Map(s.sessions.filter((x) => x.status !== "dead" && x.languageAt).map((x) => [regKey(x.name), x.languageAt!]));
   const proposals = allProposals();
-  return followingOf({ language, proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now), undelivered: undeliveredOf(proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()) });
+  return followingOf({ language, proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now, { ...(s.github.enabled && s.github.fetchedAt ? { openPrs: new Set((s.pulls ?? []).map((p) => p.number)) } : {}), ...(ended ? { ended } : {}), endRules }), undelivered: undeliveredOf(proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()), endRules, ...(ended ? { ended } : {}) });
 }
 
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {

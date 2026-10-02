@@ -70,7 +70,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
     pulls: s.pulls,
     clearances: s.clearances ?? [],
     milestones,
-    following: followingNow(s, now),
+    following: followingNow(s, now, undefined, false), // FOLLOW 줄은 끝난 FLIGHT의 단계도 읽는다(ATC-385: 끝 규칙은 알림·FLIGHT FOLLOWING 쪽만)
     progress: progressNow(s, milestones, now),
     plan,
     noDeploy,
