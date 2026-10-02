@@ -33,4 +33,4 @@ SUPERVISOR (사용자) ─ 판정·승인·머지, 최종 권한
 1. [빠른 시작](quickstart.md): atc를 띄우고 TOWER·OCC 세션을 연다.
 2. [개념과 용어](concepts.md): 화면에 나오는 항공 용어.
 3. [일 맡기기](requesting.md): 작은 수정은 팀에 직접, 티켓이 필요한 일은 CHARTER DESK로.
-4. [판정하기](reviewing.md): DISPATCH·SCHEDULE 탭에서 "승인했을 것 / 거절했을 것".
+4. [판정하기](reviewing.md): HOME에서 남은 승인과 brake.

@@ -35,7 +35,7 @@ guard가 막은 것이다(fail-closed). 관제 세션은 다시 시도하지 않
 
 FOLLOW 줄의 "지금 글"(`우선순위 없음`, `HOLD — …`, `AIRCRAFT 없음 (…)`)에 DISPATCH가 배정하지 않은 이유가 있다. 흔한 이유:
 
-- 우선순위 없음 → Linear에서 우선순위를 정한다(또는 SCHEDULE의 PRIORITIZE 초안을 보고).
+- 우선순위 없음 → Linear에서 우선순위를 정한다(또는 HOME의 QUEUE에 온 PRIORITIZE 초안을 보고).
 - 상위 이슈 → 하위 이슈가 작업이다.
 - `tail:` 팀이 바쁨 / 자격 있는 팀 없음 → FLEET 탭에서 자격을 주거나 라벨을 조정한다.
 - 거절한 짝은 24시간 동안 다시 제안하지 않는다.
@@ -46,13 +46,13 @@ FOLLOW 줄의 "지금 글"(`우선순위 없음`, `HOLD — …`, `AIRCRAFT 없�
 atc는 `.env.local`의 `LINEAR_TEAM_KEY`(주 팀)만 읽는다. 팀을 더 읽으려면 설정 창 LINEAR 분류의 **TEAMS**에 쉼표로 적는다(`LINEAR_TEAM_KEYS=VOC,ATC`). 저장하면 바로 다시 읽는다.
 
 - 한 팀을 읽지 못하면 연결 상태에 그 팀과 오류가 나온다. 그 팀은 마지막으로 읽은 티켓을 계속 보인다.
-- 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. 그 팀의 프로젝트와 마일스톤은 NETWORK 탭 ROUTE MAP과 SCHEDULE 탭 LATE WAYPOINTS·ROUTES WITHOUT WAYPOINTS에도 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
+- 더 읽은 팀의 FLIGHT는 RADAR·STRIPS·FIDS에만 보인다. 그 팀의 프로젝트와 마일스톤은 NETWORK 탭 ROUTE MAP과 HOME의 LATE WAYPOINTS에도 보인다. DISPATCH 제안과 SCHEDULE 초안은 `~/.local/state/atc/dispatch.json`의 `candidateTeams`에 든 팀만 받는다(비면 주 팀만). 그 밖의 팀에 SCHEDULE 초안을 쓰면 "SCHEDULE 후보가 아님"으로 거절된다.
 - 팀의 FLIGHT가 어느 AIRPORT인지는 프로젝트 매핑이 먼저이고, 매핑에 없으면 `teamAirports`(기본 `ATC → ATCC`)를 쓴다.
 - 브랜치·워크트리 이름에는 그 팀의 key를 넣는다(`claude/atc-12-…`, 워크트리 도구는 `worktree-atc-12-…`). 그래야 STAND와 LOGBOOK이 그 FLIGHT를 찾는다.
 
 ## 초안이 사라졌다
 
-SCHEDULE 초안은 FLIGHT가 Todo·Backlog를 벗어나거나, Linear에 이미 반영됐거나, 3일 동안 판정이 없으면 닫힌다. TAIL·WAYPOINT는 In Progress여도 남고, FLIGHT가 닫히면 닫힌다. WAYPOINT는 그 FLIGHT가 다른 WAYPOINT에 붙어도 닫힌다. 최근 7일 표에서 사유를 본다.
+SCHEDULE 초안은 FLIGHT가 Todo·Backlog를 벗어나거나, Linear에 이미 반영됐거나, 3일 동안 판정이 없으면 닫힌다. TAIL·WAYPOINT는 In Progress여도 남고, FLIGHT가 닫히면 닫힌다. WAYPOINT는 그 FLIGHT가 다른 WAYPOINT에 붙어도 닫힌다. 사유는 서버 기록(`schedule.jsonl`)에 남는다.
 
 ## PR이 CLEARED TO LAND가 안 된다
 

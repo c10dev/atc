@@ -60,6 +60,20 @@ test("SCHEDULE: draft ops in approval mode only", () => {
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "shadow", ops } }, NOW), []);
 });
 
+test("SCHEDULE(ATC-378): 줄은 HOME을 가리키고, OCC의 근거 한 줄(240자까지)을 detail로 싣는다", () => {
+  const long = "근거 ".repeat(200);
+  const ops = [
+    { id: "S-1", kind: "NEW", flight: null, status: "draft", statusAt: ago(3), reason: "중복 아님: 요청이 새 화면" },
+    { id: "S-2", kind: "TAIL", flight: "ATC2", status: "draft", statusAt: ago(3), reason: long },
+    { id: "S-3", kind: "TAIL", flight: "ATC3", status: "draft", statusAt: ago(3) },
+  ] as QueueInput["schedule"]["ops"];
+  const out = supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops } }, NOW);
+  assert.deepEqual(out.map((i) => i.hash), ["#home", "#home", "#home"]);
+  assert.equal(out[0].detail, "중복 아님: 요청이 새 화면");
+  assert.equal(out[1].detail!.length, 240);
+  assert.equal(out[2].detail, undefined, "근거가 없으면 칸도 없다");
+});
+
 test("FLEET PLAN: open and not stale", () => {
   const p = (id: string, o: object = {}) => ({ id, kind: "LAUNCH", aircraft: "TEAM_B", status: "open", at: ago(20), stale: false, ...o }) as QueueInput["fleetPlan"][number];
   const q = supervisorQueueOf({ ...empty(), fleetPlan: [p("F-1"), p("F-2", { stale: true }), p("F-3", { status: "executing" })] }, NOW);
