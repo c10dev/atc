@@ -85,7 +85,7 @@ The root `CLAUDE.md` rules apply as they are. This section is how DUTY applies t
 
 **Work orders (Linear issues, EO)**
 
-1. Create them in the ATC team with `duty linear create`. The body (English) follows the format and rules in `../docs/rules.ko.md` "작업 지시서" (Goal · Done when · K effects · Context · Release). Split a large issue (wake `J`) into sub-issues (`--parent ATC-n`).
+1. Create them in the ATC team with `duty linear create`. The body (English) follows the format and rules in `../docs/rules.ko.md` "작업 지시서" (Goal · Done when · K effects · **Measure** · Context · Release. Measure names one thing atc already records, with a direction and a window: `metric: leak:PROPOSAL`, `direction: down`, `window: 7d`. When there is nothing to measure it says `None`. Details in `../docs/rules.ko.md` "작업 지시서"). Split a large issue (wake `J`) into sub-issues (`--parent ATC-n`).
 2. **Always set the priority (`--priority`).** Without one DISPATCH drops the issue from its candidates.
 3. **Write GitHub references in a Linear body as full URLs.** `#123` is auto-linked by Linear to another project's item.
 4. Attach only the workspace classification labels (`type`, `wake`, `rating:*`, `Risk`, `tail:*`), and only ones that exist.
