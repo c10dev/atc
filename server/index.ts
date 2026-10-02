@@ -60,6 +60,7 @@ import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
+import { mountSinceLook } from "./since-look-run.ts";
 import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
 import { mountQrh, runQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
@@ -302,6 +303,7 @@ mountMisfire(app); // 자동 운항 MISFIRE(ATC-367): 서버가 승인한 카드
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
 mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
+mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503

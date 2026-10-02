@@ -1,5 +1,6 @@
 import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
 import { FollowNext } from "./FollowNext.tsx";
+import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
@@ -272,9 +273,13 @@ export function App({ build }: { build: string }) {
           <p className="empty">{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</p>
         ) : (
           // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-          <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-            <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
-          </TabBoundary>
+          <>
+            {/* 처음 도착하는 탭(기본 탭)의 맨 위. HOME이 생기면(ATC-377) 그쪽 맨 위로 옮긴다 */}
+            {tab === "radar" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+            <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
+              <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
+            </TabBoundary>
+          </>
         )}
       </main>
       {dutyOpen && (
