@@ -281,7 +281,7 @@ function Leaks({ fuel }: { fuel: FuelData }) {
           <tbody>
             {leaks.map((l) => (
               <tr key={l.key} className={l.outside ? "mf-outside" : undefined}>
-                <td className="mono">{l.label}{l.outside && <span className="faint"> (LEAK 밖)</span>}</td>
+                <td><span className="mono">{l.label}</span>{l.outside && <span className="faint"> (LEAK 밖)</span>}</td>
                 <td className="num">{l.count}</td>
                 <td className="num">{tokensText(l.tokens)}</td>
                 <td className="num">{l.cost ? money(l.cost) : l.unpricedTokens ? "no price" : "—"}</td>

@@ -313,7 +313,7 @@ function Brakes({ atfm, alertOn, now, onOpenSettings, schedule }: { atfm: Return
         <span className="hm-chip mono" title="main 깨짐 등으로 실제로 걸린 GROUND STOP과 GROUND DELAY">
           GROUND STOP <b>{stops}</b>
         </span>
-        <span className="hm-chip mono" title="SUPERVISOR가 손으로 건 출발 중지">
+        <span className="hm-chip" title="SUPERVISOR가 손으로 건 출발 중지">
           수동 출발 중지 <b>{manual}</b>
         </span>
         <button type="button" className="hm-btn" aria-expanded={atfmOpen} onClick={() => setAtfmOpen((v) => !v)}>
