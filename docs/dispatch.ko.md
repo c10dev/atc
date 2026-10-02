@@ -642,6 +642,17 @@ DISPATCH가 자기 카드를 스스로 승인하므로(ATC-367) 판정 화면이
 
 `#dispatch`는 HOME을 연다.
 
+## K3 발권이 classifier에 닿는 길, 만든 것 (ATC-372)
+
+K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정하고, LAUNCH 플래그를 바꾼다([autonomy.md](autonomy.md) C9). 항목은 서버만, 발권 기록에서 만든다.
+
+- **선언.** 이슈 `## K effects` 절에 효과마다 한 줄: `K3[<라벨>]: <바꾸는 통제> | files: <경로>, <경로>`. 라벨은 `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review`(classifier의 soft_deny 라벨). 경로는 저장소 기준 상대 경로이고 글롭과 `..`은 없다. 맞지 않는 `K3` 줄은 무시한다(항목 없음): 그 FLIGHT는 classifier 아래에 남는다.
+- **항목을 만드는 때.** FLIGHT의 발권이 `screen`이나 `duty-chat` 채널이고 해시가 지금 이슈 본문과 같을 때. `attested` 발권은 항목을 만들지 않는다: agent가 증언을 쓸 수 있다(`server/k3-allow.ts`의 `k3LaunchOf`).
+- **LAUNCH가 넘기는 것.** `--settings '{"autoMode":{"allow":["$defaults", <항목>…]}}'`. 선언마다 항목 하나이고 라벨, 통제, 파일, STAND(`<repo>/.claude/worktrees/<flight>-*`), 발권 id(`<FLIGHT>@<해시>`)를 적고 "Code only; nothing is executed against production during the FLIGHT"를 말한다. `$defaults`는 항목이 아니다: 없으면 `allow`가 classifier의 기본 allow 목록을 통째로 대신한다. 그 밖에는 더하지 않는다: ACCOUNT settings의 정적 allow, `bypassPermissions`, 정책 훅 모두 없다.
+- **새 AIRCRAFT.** 돌고 있는 세션은 새 `--settings`를 받지 못하므로, 플래너는 이런 FLIGHT를 그 FLIGHT를 위해 띄우는 AIRCRAFT(launch 카드)에만 짝짓는다.
+- **서버만.** `launchAircraft`는 항목을 옵션이 아니라 서버가 만든 별도 인자로 받고, LAUNCH 라우트는 요청 본문의 `settings`·`k3`를 버린다. LAUNCH를 시작하는 라우트는 SUPERVISOR 라우트 인증(ATC-373)이 지킨다.
+- **기록.** FLIGHT RECORDER의 `launch` 줄에 `flight`와 `k3: { release, stand, entries }`가 남는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

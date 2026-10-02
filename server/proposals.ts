@@ -1235,7 +1235,7 @@ export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Pro
 // index.ts가 session-control.ts를 넘긴다. 이 승인 말고는 카드로 세션을 띄우는 길이 없다
 export interface DispatchLauncher {
   max: number;
-  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시)
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
 }
 
 // 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
@@ -1445,7 +1445,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
             cap: launchCapOf(s.sessions, allProposals(), launcher.max, tp),
             approve: { op: "approve", id, at, via, ...blind },
             append,
-            launch: () => launcher.launch(s, reg, id, !!p.resume),
+            launch: () => launcher.launch(s, reg, id, !!p.resume, p.flight),
             now: () => new Date().toISOString(),
           });
           if (!r.ok) return c.json({ error: r.error, proposal: allProposals().find((x) => x.id === id) }, r.status as 409);

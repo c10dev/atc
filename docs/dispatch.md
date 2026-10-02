@@ -642,6 +642,17 @@ DISPATCH approves its own cards (ATC-367), so the tab that held the verdict UI w
 
 `#dispatch` opens HOME.
 
+## K3 releases reach the classifier, as built (ATC-372)
+
+K3: this decides what the Claude Code auto-mode classifier lets a FLIGHT change, and it changes LAUNCH flags ([autonomy.md](autonomy.md) C9). Only the server builds the entries, from the release record.
+
+- **Declaration.** In the issue's `## K effects` section, one line per effect: `K3[<label>]: <the control being changed> | files: <path>, <path>`. `<label>` is one of `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review` (the classifier's soft_deny labels). Paths are repo-relative, no globs, no `..`. A `K3` line that does not fit is ignored (no entry): the FLIGHT stays under the classifier.
+- **When entries are built.** The FLIGHT's release is in the `screen` or `duty-chat` channel and its hash still matches the issue body. An `attested` release never builds an entry, because an agent can write an attestation (`k3LaunchOf` in `server/k3-allow.ts`).
+- **What a launch passes.** `--settings '{"autoMode":{"allow":["$defaults", <entry>…]}}'`, one entry per declaration, naming the label, the control, the files, the STAND (`<repo>/.claude/worktrees/<flight>-*`) and the release id (`<FLIGHT>@<hash>`), and stating "Code only; nothing is executed against production during the FLIGHT". `$defaults` is not an entry: without it `allow` replaces the classifier's built-in allow list. Nothing else is added: no static allow in ACCOUNT settings, no `bypassPermissions`, nothing through the policy hook.
+- **A fresh AIRCRAFT.** A running session cannot take new `--settings`, so the planner pairs such a FLIGHT only with an AIRCRAFT that is launched for it (a launch card).
+- **Only the server.** `launchAircraft` takes the entries as a separate server-built argument, not as an option, and the LAUNCH route drops `settings` and `k3` from the request body. Supervisor-route authentication (ATC-373) protects the routes that start a launch.
+- **Record.** The FLIGHT RECORDER `launch` line carries `flight` and `k3: { release, stand, entries }`.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.
