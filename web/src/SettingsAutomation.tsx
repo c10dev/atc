@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode, useEffect, useState } from "react";
+import type { KDay } from "../../server/k-approval.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf } from "../../server/settings-policy.ts";
@@ -431,6 +432,19 @@ function AutoRevertDays({ days }: { days: RevertDayView[] }) {
     </ul>
   );
 }
+function KApprovalDays({ days }: { days: KDay[] }) {
+  const shown = [...days].reverse().filter((d) => d.landed > 0);
+  if (!shown.length) return null;
+  return (
+    <ul className="dp-misfire">
+      {shown.map((d) => (
+        <li key={d.day}>
+          <span className="mono">{d.day}</span> K 승인 착륙 <b>{d.landed}</b> · revert <b>{d.reverted}</b> · ROLLBACK <b>{d.rolledBack}</b>
+        </li>
+      ))}
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -459,6 +473,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   autoRevert: (s) => {
     const days = (switchOf(s, "autoRevert")?.data as { days?: RevertDayView[] } | undefined)?.days;
     return days ? <AutoRevertDays days={days} /> : null;
+  },
+  mccKApproval: (s) => {
+    const days = (switchOf(s, "mccKApproval")?.data as { days?: KDay[] } | undefined)?.days;
+    return days ? <KApprovalDays days={days} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),

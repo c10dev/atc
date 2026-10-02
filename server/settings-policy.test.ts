@@ -9,7 +9,7 @@ const INDEX = settingsIndexOf(switchViews());
 test("modeLine: 선언된 스위치를 한 줄로, 기본은 꺼짐(자동 운항·SCHEDULE·FLEET PLAN·CODEX LANE은 기본 on)", () => {
   assert.equal(
     modeLine(modeSegments(switchViews())),
-    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on",
+    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on",
   );
 });
 
@@ -95,7 +95,7 @@ test("설정 색인: 분류마다 블록이 하나 이상, 같은 코드는 한 
 test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 항목과 같다", () => {
   const old = [
     ["landing", "AUTOLAND", "착륙 자동화", "update merge ground stop autoland.mode"],
-    ["landing", "MCC", "atc 착륙·RETURN TO SERVICE", "shadow land rts land+rts rollback 배포 shadow gate mcc.mode"],
+    ["landing", "MCC", "atc 착륙·RETURN TO SERVICE", "shadow land rts land+rts rollback 배포 shadow gate mcc.mode k approval kApproval K3 발권 user 등급 착륙 release"],
     ["landing", "REVIEW", "Codex 한도 때 착륙 리뷰", "보안 pr sonnet deepseek exclude externalReview.security"],
     ["landing", "MIGRATE", "마이그레이션 리허설", "migrate 마이그레이션 리허설 hostedDb 시험 DB PITR migrateRehearsal"],
     ["landing", "AUTO REVERT", "main이 빨개지면 lander 머지 자동 되돌림", "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop"],

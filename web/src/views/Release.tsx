@@ -37,6 +37,16 @@ interface Proposal {
   kEffects: string | null;
   priority: number;
 }
+// attested 발권에 K 효과가 선언돼 있고 SUPERVISOR 확인이 아직 없는 것(ATC-391): 누르면 K 권한이 착륙까지 간다
+interface KPending {
+  key: string;
+  title: string | null;
+  hash: string;
+  at: string;
+  session: string | null;
+  words: string | null;
+  kEffects: string | null;
+}
 interface Recent {
   key: string;
   title: string | null;
@@ -64,6 +74,7 @@ interface ReleaseData {
   filed: Filed[];
   proposals: Proposal[];
   unreleased: Row[];
+  kPending?: KPending[];
   recent: Recent[];
   channels: Record<Channel, number>;
   attested: Record<string, number>;
@@ -158,6 +169,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     });
   const fireReady = (r: Row) => run(r.key, () => send("/api/releases/fire", { flight: r.key, hash: r.hash }));
   const releaseTodo = (r: Row) => run(r.key, () => send("/api/releases", { flight: r.key, hash: r.hash }));
+  const confirmK = (r: KPending) => run(`k-${r.key}`, () => send("/api/releases/k-confirm", { flight: r.key, hash: r.hash }));
   const releaseAll = () => run("all", () => send("/api/releases/bulk", { flights: data.unreleased.map((r) => ({ key: r.key, hash: r.hash })) }));
 
   // gate가 아직 꺼져 있으면(일괄 확인 전) 안내만: 지금은 발권 없이도 배정한다
@@ -324,6 +336,32 @@ export function Release({ refreshKey }: { refreshKey: string }) {
           </>
         )}
       </section>
+
+      {(data.kPending ?? []).length > 0 && (
+        <section className="rl" aria-label="K 효과 확인">
+          <h3 className="label">
+            K 효과 확인 <em>{(data.kPending ?? []).length}건 — attested 발권만으로는 K 권한이 착륙까지 가지 않습니다</em>
+          </h3>
+          <ul className="rl-list">
+            {(data.kPending ?? []).map((r) => (
+              <li key={r.key}>
+                <b>
+                  <OpenFlight k={r.key} />
+                </b>
+                <span className="rl-title">{r.title ?? "—"}</span>
+                <span className="faint rl-kind">
+                  attested{r.session ? ` · ${r.session}` : ""}
+                  {r.words ? ` · “${r.words.slice(0, 80)}”` : ""}
+                </span>
+                <KEffects text={r.kEffects} />
+                <button type="button" className="rl-btn" disabled={busy !== null} onClick={() => confirmK(r)} aria-label={`${r.key} K 효과 확인`}>
+                  K 효과 확인
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rl" aria-label="최근 발권">
         <h3 className="label">

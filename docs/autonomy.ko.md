@@ -357,6 +357,18 @@ K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow
 - **K2: 비밀, 돈, 법적 문구, 권리, atc 통제를 벗어나는 데이터.** 선언은 환경 키의 이름(값은 절대 아님), 결제·법적 문구, 권리 증거, 새 외부 전송처나 더 넓은 필드 허용 목록을 적는다(D14). 공개 전 검사기(C17)가 push 때 비밀이나 비공개 AIRPORT 내용을 찾아내면 새 화살이다. 카드는 비밀 값을 절대 찍지 않는다.
 - **K3: guard, 권한, `.claude/`, 자율 규칙, 그리고 모든 풀기.** 선언은 무엇을 넓히는지 적는다. 서버는 권한 집합과 규칙 손잡이의 차이(allow 추가, deny 제거, hook 제거, 푸는 쪽으로 움직인 손잡이. 원칙 3)를 계산해 선언과 맞댄다. 선언보다 넓거나 방향을 계산할 수 없으면 새 화살이다.
 
+### K 승인이 착륙까지 가는 길 구현 내용 (ATC-391)
+
+SUPERVISOR는 K 효과를 발권 때 한 번 승인하고, 승인한 것을 그대로 만든 PR은 머지 때 두 번째 사람 단계 없이 MCC가 착륙시킨다. **처음부터 켜져 있다(live first)**. 끄는 스위치 하나, `mcc.json`의 `kApproval`(기본 `on`, 정확히 `off`일 때만 꺼진다)은 설정 창(MCC 줄 "K APPROVAL", `PUT /api/settings {mccKApproval}`, SUPERVISOR만, `atcctl` 명령 없음)에서만 바꾼다. 순수 규칙은 `kApprovalOf`(`server/k-approval.ts`)이고, `landBlocksOf`는 이것이 `ok`일 때만 `user` 등급 PR의 L3를 푼다. 착륙의 나머지 조건(L2, L4–L8: head의 INSPECTION `pass`, CI, 머지 상태, HOLD, GROUND STOP, RTS)은 그대로다.
+
+- **성립해야 하는 것.** (1) PR의 FLIGHT에 지금 유효한 발권 기록이 있다(해시가 지금 이슈 본문과 같다). (2) 그 발권이 서버가 확인할 수 있는 길, 화면이나 DUTY 채팅(`screen`·`duty-chat`)이다. (3) 이슈가 K3 효과를 ATC-372 모양(`## K effects`의 `K3[<라벨>]: <통제> | files: <경로>`)으로 선언했고 diff의 모든 `user` 등급 파일이 선언한 파일 가운데 있다. (4) head의 INSPECTION이 pass이고 CI가 통과했다(L4·L6). 선언한 파일을 PR이 건드리지 않아도 된다: 선언은 상한이다.
+- **attested만으로는 K 권한이 없다.** `attested` 발권(다른 세션이 SUPERVISOR가 한 말을 증언)은 L3를 풀지 못한다. RELEASE 화면은 K3 효과를 선언한 FLIGHT의 attested 발권을 "K 효과 확인"에 보이고, SUPERVISOR의 클릭 한 번(`POST /api/releases/k-confirm`, 화면에서만, 그 발권의 해시에 `releases.jsonl`의 `k-confirm` 줄)이 K 권한을 준다. 그 클릭도 발권 때의 일이다. 새 발권이나 고친 이슈는 확인을 없앤다.
+- **SUPERVISOR 몫으로 남는 것, 이유와 함께**(L3 문구·`mcc queue`·packet의 `kApproval.why`): 선언을 넘는 변경(`beyond-declaration`: 선언하지 않은 `user` 등급 파일, 새 화살), 의심의 ESCALATE(풀지 않는다), P0·P1 지적(INSPECTION `findings`, L6), 이 검사 자체를 바꾸는 PR(`check-itself`). `k-approval.ts`에 목록이 둘이다: `CHECK_CORE`(규칙과 길 그 자체: `k-approval.ts`·`k3-allow.ts`·`mcc.ts`·`mcc-run.ts`·`land-by.ts`·`release.ts`·`release-run.ts`·`release-store.ts`)는 **어느 착륙 등급이든** PR을 멈춘다. 이 파일 대부분이 `landing-tier.mjs`에서 `auto`·`flagged`라서 `landBlocksOf`가 L3를 걸고(`checkPath`) `landBy`는 `supervisor`와 `why: "check"`를 준다. `CHECK_CONTEXT`(검사가 기대는 곳: `origin.ts`·`supervisor-auth.ts`·`settings.ts`·`index.ts`·`landing.ts`·`sources/linear.ts`·`.github/`·`deploy/`·`mcc/`)는 보통 PR도 많이 건드려서(`server/index.ts`는 거의 모든 라우트 PR) K 승인으로 착륙하려는 `user` 등급 PR만 막고, 그 밖의 PR은 전처럼 착륙한다, 마이그레이션·SQL·비밀·키 경로(`k1-k2`: K1·K2 선언은 아직 읽지 않는다), FLIGHT·발권·선언이 없거나, FLIGHT가 이미 끝나거나 취소됐거나(`flight-closed`: 발권은 FLIGHT가 열려 있는 동안만 K 권한을 준다) 발권이 낡았거나 `K3` 줄이 깨졌을 때(`no-flight`·`no-release`·`stale`·`no-declaration`·`unreadable-declaration`), 스위치 꺼짐(`off`).
+- **기록하고 센다.** `mcc.jsonl`의 `land` 줄에 `k: {release, flight, channel}`가 붙는다(발권 id는 `<FLIGHT>@<해시>`, K3 LAUNCH allow 항목과 같다). 설정 창은 UTC 날짜별(최근 7일)로 이렇게 착륙한 PR 수, 그 가운데 자동 되돌림 PR이 열린 수(`auto-revert.jsonl`), 착륙 뒤 처음 나온 RTS 결과가 ROLLBACK인 수를 보인다. GitHub에서 손으로 되돌린 것은 알 수 없다.
+- **누가 착륙시키나.** 그런 PR의 `landBy`는 `supervisor`가 아니라 `mcc`라서 TOWER가 팀에 아무것도 보내지 않고 PR 서랍도 MCC를 착륙시키는 쪽으로 보인다. `kApproval.ok`가 아닌 user 등급 PR은 이유와 함께 `supervisor`다.
+- **바뀐 관제 규칙(PR 본문에 따로 적음).** `mcc/CLAUDE.md`·`CLAUDE.en.md`(서버가 풀어 준 `user` PR은 MCC가 착륙시키고 등급만으로 ESCALATE하지 않는다), `mcc/.claude/agents/inspector.md`(ESCALATE는 의심일 때, packet에 `kApproval`), 루트 `CLAUDE.md`·`CLAUDE.en.md`(`user` 항목에 예외).
+- **만들지 않은 것:** K1·K2 선언(K3만 읽는다), 손으로 한 revert 수, 선언한 통제와 변경이 말로 맞는지의 라벨별 확인(검사는 파일로 하고 변경은 INSPECTION이 읽는다).
+
 ## 7. SUPERVISOR의 주간 보고
 
 기존 기록으로 C8이 만드는 한 쪽짜리 보고이고, NETWORK 탭(이미 착륙 대기를 보인다)의 블록과 주 1회 ANNUNCIATOR 알림으로 보인다. SUPERVISOR가 숫자를 보는 곳이다. 풀기 카드(원칙 3)는 언제든 올 수 있다.

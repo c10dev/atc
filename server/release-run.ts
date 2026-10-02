@@ -22,6 +22,8 @@ import {
   kEffectsOf,
   chatRelease,
   chatReleaseKeys,
+  kConfirmOf,
+  kPendingOf,
   foldReleases,
   releaseGateOn,
   releaseStateOf,
@@ -138,6 +140,17 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const channels = { screen: 0, "duty-chat": 0, attested: 0 };
   for (const r of records) if (Date.parse(r.at) >= since) channels[r.channel]++;
   const recent = records.slice(0, 15).map((r) => ({ key: r.flight, title: titleOf(r.flight), channel: r.channel, at: r.at, via: r.via ?? null, session: r.session ?? null }));
+  // K 효과를 선언했는데 attested뿐인 발권(ATC-391): SUPERVISOR가 한 번 눌러야 K 권한이 착륙까지 간다(발권 때의 일). 지금 본문의 해시와 같은 발권만
+  const ticketOf = (k: string) => s.tickets.find((t) => t.key === k);
+  const kPending = kPendingOf(view, (k) => Boolean(ticketOf(k)?.k3?.length) && ticketOf(k)?.releaseHash === view.records[k]?.hash).map((r) => ({
+    key: r.flight,
+    title: titleOf(r.flight),
+    hash: r.hash,
+    at: r.at,
+    session: r.session ?? null,
+    words: r.words ?? null,
+    kEffects: ticketOf(r.flight)?.kEffects ?? null,
+  }));
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
@@ -146,6 +159,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     filed,
     proposals: d.proposals?.() ?? [],
     unreleased,
+    kPending,
     released,
     recent,
     channels,
@@ -239,6 +253,19 @@ export function mountReleases(app: Hono, snapshot: () => Promise<Snapshot>, deps
     if (!lines.length) return c.json({ error: "발권한 FLIGHT가 없음", skipped }, 409);
     deps.append([...lines, { op: "arm", at: at.toISOString(), flights: lines.length }]);
     return c.json({ released: lines.length, skipped });
+  });
+
+  // attested 발권의 K 효과 확인(ATC-391): 화면 클릭 한 번(fromThisApp). 서버가 확인할 수 없는 증언에 SUPERVISOR가 직접 K 권한을 준다 — 발권 때의 일이지 머지 때가 아니다
+  app.post("/api/releases/k-confirm", async (c) => {
+    if (!fromThisApp(c)) return c.json({ error: "K 확인은 이 화면에서 보낸 요청만 받습니다(SUPERVISOR 전용)" }, 403);
+    const body = await readBody(c);
+    if (!body || typeof body.flight !== "string") return c.json({ error: "flight(FLIGHT key)가 필요함" }, 400);
+    const s = await deps.snapshot();
+    const t = s.tickets.find((x) => x.key === body.flight);
+    const r = kConfirmOf(foldReleases(deps.lines()), body.flight, t?.releaseHash, body.hash, Boolean(t?.k3?.length), deps.now());
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    deps.append([r.value]);
+    return c.json({ confirm: r.value });
   });
 
   app.post("/api/releases/attest", async (c) => {

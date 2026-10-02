@@ -33,7 +33,7 @@ Only the rules that sessions changing atc's code (team sessions, ENGINEERING, se
 - Never open a PR as a Draft (MCC does not land a Draft). Report unfinished work without a PR.
 - Team sessions, DUTY and ENGINEERING do not merge. Merging follows the LANDING CLEARANCE tier (`deploy/landing-tier.mjs`, decided by the changed file paths).
   - `auto` (read-only server, screen, docs, tests) and `flagged` (control-session manuals and CLI, server code with external side effects): MCC lands it when CI (`check`) passes and the MCC INSPECTION is `pass`; the user may merge first. For `flagged`, list the changed control rules and external-side-effect files separately in the PR body and the report. No GitHub auto-merge.
-  - `user` (guards, `.claude/`, root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`, `rulebook/`): the user merges. A PR that changes a production state format or is hard to reverse, or that leaves doubt in review, is also raised as `user` (write it in the body's tier; MCC INSPECTION escalates).
+  - `user` (guards, `.claude/`, root `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`, `rulebook/`): the user merges. Exception: a PR within the K3 effects approved at release lands via MCC (`docs/mcc.md`). A PR that changes a production state format or is hard to reverse, or that leaves doubt in review, is also raised as `user` (write it in the body's tier; MCC INSPECTION escalates).
   - A `user` or ESCALATE PR has a "Behavior change" section in its body (a BEFORE/AFTER text diagram, format in `atc-task` section 7). MCC INSPECTION flags a missing diagram or one that disagrees with the diff as P1.
 
 ## Code

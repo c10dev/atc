@@ -19,6 +19,7 @@ export type ReleaseLine =
       words?: string; // duty-chat: SUPERVISOR 글 앞부분, attested: 증언한 말
       session?: string; // attested: 증언한 세션 이름
     }
+  | { op: "k-confirm"; flight: string; hash: string; at: string } // ATC-391: attested 발권의 K 효과를 SUPERVISOR가 RELEASE 화면에서 한 번 확인(화면 클릭만). 그 발권의 해시와 같을 때만 센다
   | { op: "revoke"; flight: string; at: string; reason: string; by: string } // 발권을 거둔다(ATC-368: 마이그레이션 리허설이 멈추면 FLIGHT는 제안으로 돌아와 다시 발권해야 한다). 이후의 발권이 다시 세운다
   | { op: "arm"; at: string; flights: number }; // 일괄 확인: 이 줄부터 발권 없는 FLIGHT는 배정하지 않는다(설정 releaseGate "auto")
 
@@ -30,6 +31,7 @@ export interface ReleaseRecord {
   via?: "click" | "bulk";
   words?: string;
   session?: string;
+  kConfirm?: { at: string; hash: string }; // attested 발권에 SUPERVISOR가 한 K 확인(ATC-391). 새 발권이 오면 없어진다
 }
 
 export interface ReleaseView {
@@ -93,6 +95,9 @@ export function foldReleases(lines: readonly ReleaseLine[]): ReleaseView {
       const { op: _op, ...r } = l;
       records[l.flight] = r;
       delete revoked[l.flight];
+    } else if (l.op === "k-confirm") {
+      const r = records[l.flight];
+      if (r && r.hash === l.hash && l.at >= r.at) r.kConfirm = { at: l.at, hash: l.hash };
     }
   }
   return { armedAt, records, revoked };
@@ -190,3 +195,20 @@ export function attestedCounts(lines: readonly ReleaseLine[]): Record<string, nu
 export function bulkTargets(tickets: readonly (Flight & { priority?: number })[], view: ReleaseView | null | undefined): Flight[] {
   return tickets.filter((t) => t.stateType === "unstarted" && releaseStateOf(t.key, t.releaseHash, view) !== "released");
 }
+
+// attested 발권의 K 효과 확인(ATC-391): 화면 클릭 한 번. attested 발권이 있고 해시가 지금 본문과 같고 선언한 K 효과가 있을 때만
+export function kConfirmOf(view: ReleaseView | null | undefined, flight: string, hash: string | null | undefined, shownHash: unknown, hasDeclaration: boolean, at: Date): Verdict<ReleaseLine> {
+  if (!KEY.test(flight)) return { ok: false, status: 400, error: "FLIGHT key 형식이 아님" };
+  const r = view?.records[flight];
+  if (!r) return { ok: false, status: 404, error: `${flight}에 발권 기록이 없음` };
+  if (r.channel !== "attested") return { ok: false, status: 409, error: `${flight}의 발권은 attested가 아님(${r.channel}) — 확인이 필요 없음` };
+  if (!hash || hash !== r.hash) return { ok: false, status: 409, error: `${flight}가 발권 뒤 바뀜 — 다시 발권해야 함` };
+  if (typeof shownHash === "string" && shownHash !== hash) return { ok: false, status: 409, error: `${flight}가 화면에 보인 뒤 바뀜 — 새로 고쳐 다시 확인` };
+  if (!hasDeclaration) return { ok: false, status: 409, error: `${flight}에 읽히는 K 효과 선언이 없음` };
+  if (r.kConfirm?.hash === hash) return { ok: false, status: 409, error: `${flight}는 이미 확인함` };
+  return { ok: true, value: { op: "k-confirm", flight, hash, at: now(at) } };
+}
+
+// K 효과를 선언했는데 SUPERVISOR 확인이 없는 attested 발권(RELEASE 화면의 한 번 클릭 목록)
+export const kPendingOf = (view: ReleaseView, declares: (flight: string) => boolean): ReleaseRecord[] =>
+  Object.values(view.records).filter((r) => r.channel === "attested" && r.kConfirm?.hash !== r.hash && declares(r.flight));
