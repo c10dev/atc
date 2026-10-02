@@ -12,6 +12,7 @@ import type { Proposal } from "./proposals.ts";
 import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
 import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { type CapIdleHint, idleText } from "./other-background.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
@@ -350,10 +351,10 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     });
   }
 
-  // 4b) SCHEDULE 판정(approval 모드만): 열린 작업(draft·agreed·disagreed)은 SUPERVISOR의 승인·거절을 기다린다
-  if (inp.schedule?.mode === "approval") {
+  // 4b) SCHEDULE 판정(approval 모드만): draft는 SUPERVISOR의 승인·거절을 기다린다. 기다림의 정의는 QUEUE와 같은 함수 하나(schedule-waiting.ts, ATC-450)
+  if (inp.schedule) {
     for (const op of inp.schedule.ops) {
-      if (op.status !== "draft" && op.status !== "agreed" && op.status !== "disagreed") continue;
+      if (!scheduleWaitsOnSupervisor(inp.schedule.mode, op)) continue;
       out.push({
         key: `pending|schedule|${op.id}`,
         group: "pending",

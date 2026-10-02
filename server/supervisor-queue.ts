@@ -4,6 +4,7 @@ import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
 import type { FleetProposal } from "./fleet-plan.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { waitsOnHuman } from "./human-check.ts";
 import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
 import type { RelayOffer } from "./relay-offer.ts";
@@ -74,12 +75,10 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
     out.push({ kind: "PROPOSAL", key: p.id, since: p.statusAt, title: `${p.kind} ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""}`, hash: "#home", card: { kind: p.kind, launch: Boolean(p.launch) } });
   }
 
-  // SCHEDULE: approval 모드에서 판정을 기다리는 draft. shadow는 게이트 판정이라 SUPERVISOR 결정이 아니다
-  if (inp.schedule.mode === "approval") {
-    for (const op of inp.schedule.ops) {
-      if (op.status !== "draft") continue;
-      out.push({ kind: "SCHEDULE", key: op.id, since: op.statusAt, title: `${op.kind}${op.flight ? ` ${op.flight}` : ""}`, hash: "#home", ...(op.reason ? { detail: op.reason.slice(0, 240) } : {}) });
-    }
+  // SCHEDULE: approval 모드에서 판정을 기다리는 draft. shadow는 게이트 판정이라 SUPERVISOR 결정이 아니다(알림 4b와 같은 함수, ATC-450)
+  for (const op of inp.schedule.ops) {
+    if (!scheduleWaitsOnSupervisor(inp.schedule.mode, op)) continue;
+    out.push({ kind: "SCHEDULE", key: op.id, since: op.statusAt, title: `${op.kind}${op.flight ? ` ${op.flight}` : ""}`, hash: "#home", ...(op.reason ? { detail: op.reason.slice(0, 240) } : {}) });
   }
 
   // FLEET PLAN: 열려 있고 최근 주기가 아직 내는 제안(옛것은 승인해도 거절되므로 뺀다)

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type QueueInput, queueCountsOf, supervisorQueueOf, supervisorQueueView } from "./supervisor-queue.ts";
+import { type AlertsInput, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { summaryOf, type SummaryInput } from "./supervisor-summary.ts";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -173,4 +175,18 @@ test("BACKLOG(ATC-401): 쏘거나 버리지 않은 제안이 RELEASE 화면을 �
   assert.equal(items[0]!.since, ago(50));
   assert.equal(queueCountsOf(items).BACKLOG, 2);
   assert.equal(supervisorQueueOf(empty(), NOW).filter((i) => i.kind === "BACKLOG").length, 0, "제안이 없으면 줄이 없다");
+});
+
+// ATC-450: 알림 4b·QUEUE의 SCHEDULE 줄·SUMMARY의 pending.schedule은 같은 함수(schedule-waiting.ts)를 읽는다
+test("SCHEDULE waiting (ATC-450): shadow-era agreed/disagreed ops make no alert, no queue row and no summary count; a draft makes all three", () => {
+  const sop = (id: string, status: string, kind = "TAIL") => ({ id, kind, flight: "ATC-146", status, statusAt: ago(5) });
+  const ops = [sop("S-1", "draft"), sop("S-2", "agreed", "CLASSIFY"), sop("S-3", "disagreed", "NEW")];
+  const alerts = supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, schedule: { mode: "approval", ops: ops as never } } as AlertsInput);
+  assert.deepEqual(alerts.map((a) => a.key), ["pending|schedule|S-1"]);
+  const queue = supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops: ops as never } }, NOW);
+  assert.deepEqual(queue.filter((i) => i.kind === "SCHEDULE").map((i) => i.key), ["S-1"]);
+  assert.equal(summaryOf({ items: alerts, waiting: [], fuelAccounts: [], rts: null, working: 0, at: "2026-09-30T12:00:00Z" } as unknown as SummaryInput).pending.schedule, 1);
+  const none = [sop("S-2", "agreed"), sop("S-3", "disagreed")];
+  assert.deepEqual(supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, schedule: { mode: "approval", ops: none as never } } as AlertsInput), []);
+  assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops: none as never } }, NOW), []);
 });
