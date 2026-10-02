@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { Icon } from "../../Icon.tsx";
+import { Icon } from "../../kit/Icon.tsx";
 
 // 카드의 접는 칸(ATC-325, 디자인 취향 v1 / 디자인 언어 원칙 7): 한 줄 요약이 먼저, 누르면 그 자리에서 열린다. 정보는 지우지 않고 접는다.
 // 라벨 칸 폭과 왼쪽 가장자리는 모든 칸이 같다(.fl-fold-head의 격자). 어느 칸이 열렸는지는 이 브라우저에만 기억한다(localStorage, 못 쓰면 닫힘).

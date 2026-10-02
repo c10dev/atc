@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useRef } from "react";
-import { useDialog } from "./useDialog.ts";
-import { IconButton } from "./Icon.tsx";
+import { useDialog } from "./kit/useDialog.ts";
+import { IconButton } from "./kit/Icon.tsx";
 import { lazyTab } from "./lazyTab.tsx";
 import "./GlobeMode.css";
 

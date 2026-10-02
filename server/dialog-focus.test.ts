@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { escapeAction, isTextEntry, trapMove } from "../web/src/dialog-focus.ts";
+import { escapeAction, isTextEntry, trapMove } from "../web/src/kit/dialog-focus.ts";
 
 test("trapMove: Tab wraps at the ends and enters from outside", () => {
   assert.equal(trapMove(2, 3, false), "first");

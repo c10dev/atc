@@ -85,6 +85,7 @@ ATC 로고를 누르면 설정 창이 열린다(`SettingsPanel.tsx`, Esc나 바�
 | `src/SplitFlap.tsx` | Solari 스플릿 플랩 글자. 칸이 드럼(공백, A–Z, 0–9, `: - . /`) 순으로 최대 6판, 왼쪽부터 넘어간다. 판(타일)은 실제 판처럼 떨어지고, 판 없는 글자는 한 글자씩 떨어져 앉는다. 화면에 보이는 판만 움직인다 |
 | `src/Ticker.tsx` | 흐르는 ALERT 티커 |
 | `src/Starfield.tsx` | Night Sky 배경(30fps 제한, 탭이 가려지면 멈춤)과 오늘의 달 모양 아이콘 |
-| `src/ui.tsx` | 작은 공용 조각: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |
-| `src/styles.css`, `src/ui.css`, `src/views/*.css` | 테마 토큰과 스타일 |
+| `src/badges.tsx`, `src/badges.css` | 작은 공용 도메인 배지: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |
+| `src/kit/` | 공용 구성 요소(L1 primitive): `Icon.tsx`(`Icon`, `IconButton`), `useDialog.ts`·`dialog-focus.ts`(다이얼로그 초점 규칙). primitive마다 `.css` 하나, 동작이 필요할 때만 `.tsx` ([design-system.md](../docs/design-system.md)) |
+| `src/styles.css`, `src/views/*.css` | 테마 토큰과 스타일 |
 | `src/views/*.tsx` | 탭마다 파일 하나. FLEET는 폴더 `src/views/fleet/`이고, 부분(쪽 틀, 운항 상태 목록, 카드, FUEL, ENTRY INTO SERVICE, LAUNCH·CREW BRIEFING 패널, 편집기)마다 파일 하나에 CSS가 옆에 있다 |

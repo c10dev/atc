@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { OpenFlight } from "../FlightLink.tsx";
 import { apiGet, apiSend } from "../api.ts";
-import { PriorityMark } from "../ui.tsx";
+import { PriorityMark } from "../badges.tsx";
 import "./Release.css";
 
 // RELEASE 화면(ATC-376, docs/layout.md Y1): SUPERVISOR가 화살을 쏘는 한 곳(`#release`).

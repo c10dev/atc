@@ -6,7 +6,7 @@ import { type Activity, activityParts } from "../../server/activity.ts";
 import { standNeedsHint } from "../../server/stand-hint.ts";
 import { callsign } from "./aviation.ts";
 import { type Index, sessionLocation } from "./derive.ts";
-import "./ui.css";
+import "./badges.css";
 
 // 저장소 = AIRPORT 코드(대문자 4자). 마우스를 올리면 저장소 이름과 경로.
 // plain: 툴팁 없이(FIDS처럼 줄마다 붙는 곳. 저장소 경로는 숫자뿐인 툴팁이라 화면에 두지 않는다)

@@ -114,7 +114,7 @@ Sections 2 to 3.4 decide *what* a screen shows. This section decides how calm an
    - *Check:* no border inside a card except table rows, inputs and the header divider.
 5. **Spacing rhythm.** Inside a block, related lines sit `--space-1` to `--space-2` apart; blocks inside a card `--space-4`; cards `--space-3` to `--space-4`; sections `--gap-section`. Padding inside a card is at least `--space-4` on every side. Things that line up (labels, values, numbers) share one left edge.
    - *Check:* the label column and the value column of a card each have one left edge.
-6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
+6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8; `Icon` and `IconButton` in `web/src/kit/Icon.tsx`) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
    - *Check:* the PR adds no new text glyph used as an icon.
 7. **Numbers.** `font-variant-numeric: tabular-nums` on every number that changes or sits in a column. Numbers in tables align right; units stay with the number (`32%`, `$4.34`, `287k`).
    - *Check:* changing numbers do not shift their neighbours.

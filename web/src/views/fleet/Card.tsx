@@ -1,5 +1,5 @@
 import { ChevronDown, Ellipsis, X } from "lucide-react";
-import { Icon, IconButton } from "../../Icon.tsx";
+import { Icon, IconButton } from "../../kit/Icon.tsx";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -18,7 +18,7 @@ import { OpenFlight } from "../../FlightLink.tsx";
 import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
 import { jobKnownText } from "../../../../server/job-age.ts";
-import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../ui.tsx";
+import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../badges.tsx";
 import { pendingNeedsOf } from "../../../../server/pending.ts";
 import { formatClock, useSettings } from "../../settings.ts";
 import { CrewChangePending, CrewTable } from "../FleetCrew.tsx";

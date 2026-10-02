@@ -20,8 +20,8 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
     - domain groups (`--paper-*`, `--stamp-*`, `--fids-*`, `--phase-*`, `--series-*`)
   - The cockpit and night blocks write literal values for about 55 of them. There is no palette tier under the semantic names, so every theme is tuned by hand, value by value.
 - **Primitives barely exist.**
-  - `web/src/Icon.tsx` (`Icon`, `IconButton`) is the only shared building block.
-  - `web/src/ui.tsx` holds 11 domain badges (`SessionBadge`, `NeedsYou` …), not primitives.
+  - `web/src/kit/Icon.tsx` (`Icon`, `IconButton`) and the dialog hook `web/src/kit/useDialog.ts` are the only shared building blocks.
+  - `web/src/badges.tsx` (was `ui.tsx`) holds 11 domain badges (`SessionBadge`, `NeedsYou` …), not primitives.
   - Buttons come in about 55 class families, chips in about 20, tables in 6. There are 3 copied drawer shells.
   - U5–U8 and U2 of the refactor plan are about to add the first real primitives.
 - **Patterns exist in prose only** (design-language section 4: row and detail, card, fold, chips / tags / dots, empty states). Each screen builds them its own way.
@@ -80,14 +80,14 @@ A new theme (the light theme, D7) cannot land unless the table passes.
 | Fold | Component (`aria-expanded`, Enter / Space, the count in the header) | U8 (ATC-414) |
 | Empty state | CSS class, or a one-line component | U8 |
 | Segmented control | Component (radio semantics, arrow keys) | U8 |
-| Dialog behaviour | Hook (focus in, Tab trap, focus return, Escape, scroll lock) | U2 (ATC-406) |
-| Icon, IconButton | Component (`web/src/Icon.tsx`, already built) | — |
+| Dialog behaviour | Hook (focus in, Tab trap, focus return, Escape, scroll lock; `web/src/kit/useDialog.ts`, already built) | U2 (ATC-406) |
+| Icon, IconButton | Component (`web/src/kit/Icon.tsx`, already built) | — |
 
 Rules:
 - A primitive's CSS uses semantic and contextual tokens only: no domain token, no literal, no screen class.
 - Its states are attributes: `[aria-pressed]`, `[aria-expanded]`, `[data-tone="alert"]`.
 - Its own adjustable values are local custom properties, e.g. `--btn-h`.
-- Primitives live in `web/src/kit/`, one `.css` per primitive and a `.tsx` where behaviour needs one (decision S3). Today's `web/src/ui.tsx` holds domain badges and is renamed to say so.
+- Primitives live in `web/src/kit/`, one `.css` per primitive and a `.tsx` where behaviour needs one (decision S3). `web/src/badges.tsx` (was `ui.tsx`, renamed in ATC-435) holds the domain badges and `web/src/badges.css` their styles; they are not primitives.
 
 ### L2 Patterns
 
