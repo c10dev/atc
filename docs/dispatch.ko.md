@@ -570,6 +570,18 @@ PR에 GO AROUND나 FIX가 필요한데 그 STAND를 쥔 세션이 없으면 TOWE
 - **팀 쪽.** 바꾼 것이 없다: 팀은 `.claude/skills/atc-task/SKILL.md`와 루트 `CLAUDE.md`대로 `GO AROUND`·`FIX`에 답하고 CLEARANCE에 STAND가 실려 있다. 그 FLIGHT를 난 AIRCRAFT가 그 STAND에 더는 없으면 `.claude/worktrees/` 안이므로 `EnterWorktree path=`로(승인 없이) 연다.
 - **만들지 않은 것:** 카드로서의 `why: "repeat"`, ACCOUNT를 넘는 전달(ATC-251: 다른 폴더의 AIRCRAFT는 전처럼 `UNDELIVERED` 카드), TOWER가 스스로 하는 relay.
 
+## PR holder 구현 내용(ATC-354)
+
+STAND를 쥔 세션이 없고 GO AROUND나 FIX가 남은 PR은 지금까지 SUPERVISOR를 기다렸다(위의 `RELAY` 카드). 이제 DISPATCH가 먼저 holder를 고르고, 아무도 받을 수 없을 때만 SUPERVISOR에게 묻는다.
+
+- **선택**(`holderOf`, `server/pr-holder.ts`, 순수 함수). 착륙 대기열 PR 가운데 쥔 세션 없는 GO AROUND·FIX가 남은 것(RELAY 카드와 같은 `noHolderPickOf`)마다: (1) 그 FLIGHT를 난 AIRCRAFT(`lastAircraftOf`)가 놀고 있고 필요한 TYPE RATING이 있으면 그것(`resumed`), (2) 아니면 PR의 AIRPORT 소속이고 TYPE RATING이 FLIGHT를 덮는 놀고 있는 AIRCRAFT(세션이 살아 있는 것, 그다음 LAUNCH가 필요한 것, REGISTRATION 순), (3) 없으면 받을 AIRCRAFT가 없는 것이라 `RELAY` 카드가 남는다. "놀고 있다"는 planner의 `available`이면서 예약이 없고, 멈춘·RESTARTING이 아니고, 이번 계획이 ASSIGN·RESUME으로 고르지 않았고, 열린(판정 대기·승인됨) ASSIGN 카드를 쥐지 않은 것이다. `rating:SEC`와 `Risk:` FLIGHT는 `SEC`가 필요하므로(`classOf`) 그 TYPE RATING이 있는 AIRCRAFT에만 간다. FLIGHT를 난 AIRCRAFT에 SEC가 없으면 그것도 건너뛴다.
+- **카드.** `holderPlansOf`(같은 파일)가 선택을 `plan.holders`로 바꾸고, `runDispatch`가 `planDispatch` 뒤에 붙이고, `syncOps`가 `prHolder` 필드(`key`=PR·head·type, `type`, `text`, `reason`, `branch`, `stand`, `resumed`)가 있는 보통의 `ASSIGN` 제안을 쓴다. 다른 ASSIGN처럼 CROSSCHECK와 SUPERVISOR 판정을 거치고, AIRCRAFT에 세션이 없으면 같은 LAUNCH 단계를 쓴다. PR·head·type마다 카드 하나: 판정 대기부터 출발까지 살아 있는 카드는 매 주기 `plan.holders`에 남아 `syncOps`가 닫았다 다시 만들지 않는다. 끝난 카드(거절·UNABLE·RECALL)는 그 head에서 다시 제안하지 않고 그 PR은 `relay` 경로로 간다. SUPERSEDED·EXPIRED면 다시 낼 수 있다. `autoApprove`가 켜져 있으면(ATC-334) PR HOLDER 카드도 다른 ASSIGN처럼 CROSSCHECK가 동의할 때 자동 승인된다. `openProposals`에 세지 않는다. 계획에 같은 PR·head·type·AIRCRAFT가 있는 동안 유효하고, 쥔 세션이 생기거나 PR이 닫히거나 head가 바뀌거나 AIRCRAFT가 받을 수 없게 되면 SUPERSEDED.
+- **FLIGHT PLAN.** `formatFlightPlan`이 `PR HOLDER — PR #n … You hold it now: continue on branch … · STAND … Do not merge; the landing rules are unchanged.`와 보류 중인 글을 인용 줄(`> …`)로 더한다. TOWER가 보냈을 글(`goAroundOf`·`fixOf`)과 같다.
+- **FLIGHT 없는 PR.** `ticketKey`가 없는 PR은 브랜치 이름(`ticketKeyFromBranch`, 알려진 이슈의 key여야 한다)으로 이슈를 찾는다. 못 찾으면 DUTY로 간다: DUTY brief에 `ORPHAN PRS` 구역이 생긴다(저장소 이름과 번호만).
+- **RELAY 카드.** `relayOffersOf`가 `holderRoutes`(마지막 `runDispatch`의 결과, `server/pr-holder-state.ts`)를 받는다. 경로가 `relay`인 PR만 카드가 된다. 첫 계산 전에는 카드가 없고, `holderRoutes`를 안 주면 ATC-308 그대로다.
+- **그대로인 것:** 새 holder는 머지하지 않고, AIRPORT 머지 규칙과 LANDING CLEARANCE 등급은 바뀌지 않는다. GO AROUND·FIX가 없는 PR에는 holder 카드가 없다.
+- **아직 없음:** DUTY에게 보내는 메시지(brief에 PR을 싣기만 한다), TYPE RATING이 맞는 AIRCRAFT가 여럿일 때 부하로 고르기.
+
 ## 발권 기록 (ATC-362, as built)
 
 DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 원칙 1·10) FLIGHT만 배정한다. 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이다: DISPATCH는 `발권 기록 없음 — 제안 상태, SUPERVISOR가 발권(RELEASE)해야 배정`이라는 이유를 보이며 건너뛰고, SUPERVISOR는 DISPATCH 탭 맨 위 RELEASE 패널에서 클릭 한 번으로 발권한다. 기록은 `releases.jsonl`(상태 폴더, 추가만)이다.

@@ -30,6 +30,8 @@ export interface OfferInput {
   relays: readonly Pick<Relay, "type" | "pr" | "text" | "status">[];
   lastAircraft: LastAircraftInput;
   now: number;
+  // PR HOLDER(ATC-354, pr-holder.ts)의 경로. 주면 relay로 간 PR만 카드가 된다(AIRCRAFT가 이어받거나 DUTY로 가면 SUPERVISOR 카드가 없다). 안 주면 지금처럼 모두
+  holderRoutes?: ReadonlyMap<string, { kind: string }> | null;
 }
 
 type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports">;
@@ -67,6 +69,7 @@ export function relayOffersOf(s: OfferSnapshot, x: OfferInput): RelayOffer[] {
   for (const p of s.pulls.filter(inSequence)) {
     const pick = noHolderPickOf(p, s, x);
     if (!pick || taken(x.relays, pick.type, p.number, p.head.slice(0, 7))) continue;
+    if (x.holderRoutes !== undefined && x.holderRoutes?.get(offerKey(p, pick.type))?.kind !== "relay") continue; // 아직 계산 전이거나 AIRCRAFT·DUTY가 맡는다
     const ws = p.standPath ? wsByPath.get(p.standPath) : undefined;
     out.push({
       key: offerKey(p, pick.type),

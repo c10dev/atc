@@ -16,6 +16,7 @@ import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, t
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
+import type { PrHolder } from "./pr-holder.ts";
 import { NOT_RELEASED_WHY, releaseGateOn, releaseStateOf, STALE_RELEASE_WHY, type ReleaseGateMode } from "./release.ts";
 
 // 2단계 DISPATCH: 어떤 FLIGHT를 어떤 AIRCRAFT에 보낼지 계산한다(순수 함수 planDispatch).
@@ -233,7 +234,7 @@ export function airportOfTicket(t: Pick<Ticket, "key" | "project">, cfg: Pick<Di
 
 export interface Factor {
   // standFree·independence는 0점짜리 표시(점수를 바꾸지 않고 왜 이 짝인지 보여 준다)
-  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence" | "resume";
+  id: "priority" | "wait" | "unblock" | "affinity" | "conflict" | "route" | "waypoint" | "overlap" | "overlapSame" | "standFree" | "independence" | "resume" | "holder";
   label: string;
   value: number;
   weight: number;
@@ -253,6 +254,7 @@ export interface AssignPlan {
   launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129): 승인하면 LAUNCH 뒤 FLIGHT PLAN
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 이어서
   supervisorConfirm?: string[]; // 예측 경로 중 사용자 등급 파일(ATC-120). 있을 때만
+  prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다
 }
 
 export interface ReleasePlan {
@@ -337,6 +339,7 @@ export interface Plan {
   unserved?: Unserved[];
   // RESUME 카드(ATC-129): 한도로 끊긴 FLIGHT를 같은 REGISTRATION에(launch). 슬롯·열린 제안 수에 세지 않는다
   resume?: AssignPlan[];
+  holders?: AssignPlan[]; // PR HOLDER 카드(ATC-354, pr-holder.ts holderPlansOf). planDispatch 뒤에 runDispatch가 붙인다
 }
 
 // no-aircraft: 자격 있는 AIRCRAFT가 모두 바쁘거나 다른 FLIGHT를 받음, unqualified: 살아 있는 AIRCRAFT 중 자격을 가진 것이 없음,

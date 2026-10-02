@@ -138,7 +138,7 @@ async function tick() {
     if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
       lastDispatchAt = Date.now();
       void refreshOverlap(next); // 파일 겹침(ATC-71): 이번 주기에 읽은 것은 다음 계획부터 쓴다
-      runDispatch(next);
+      runDispatch(next, Date.now(), () => eventLog.since(null).events); // PR HOLDER(ATC-354)가 GO AROUND 글을 만들 때 TOWER와 같은 사건을 본다
       runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
     }
     if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
