@@ -260,7 +260,7 @@ setInterval(() => {
 }, 60_000).unref();
 mountControlRecycle(app);
 mountSettings(app);
-mountAccounts(app);
+mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tick을 열었고 그 tick이 일을 했는지(읽기만)

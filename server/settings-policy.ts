@@ -88,7 +88,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "agents", code: "CONTROL", label: "관제 세션", words: "control sessions launch stop tower occ mcc" },
   { tab: "agents", code: "STANDS", label: "점유 규칙", words: "stand handoff airport 폴더 ATC_CLAIM_TTL_MIN ATC_HANDOFF_GRACE_MIN ATC_PROJECTS_DIR 유예" },
   { tab: "agents", code: "CALLSIGNS", label: "콜사인", words: "team 음성 알파벳 alpha" },
-  { tab: "accounts", code: "ACCOUNTS", label: "ACCOUNT 폴더", words: "account add login 계정 추가 로그인 CLAUDE_CONFIG_DIR statusline health hook acct" },
+  { tab: "accounts", code: "ACCOUNTS", label: "ACCOUNT 폴더", words: "account add login 계정 추가 로그인 CLAUDE_CONFIG_DIR statusline health hook acct plan usage refresh 요금제 한도 사용량" },
   { tab: "alerts", code: "NOTIFY", label: "브라우저 알림", words: "notification 알림 권한" },
   { tab: "alerts", code: "SOUND", label: "소리", words: "warning caution call 방해 금지 quiet 톤" },
   { tab: "alerts", code: "VOICE", label: "음성 콜아웃", words: "tts piper espeak kokoro 목소리 무전 radio" },

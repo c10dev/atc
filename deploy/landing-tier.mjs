@@ -43,9 +43,10 @@ export const SIDE_EFFECT = [
   ["server/fleet-plan-run.ts", "FLEET PLAN 실행: AIRCRAFT 세션 시작·정지 시점"],
   ["server/fresh-start-run.ts", "FRESH START(ATC-73): 승인된 ASSIGN을 받을 AIRCRAFT의 백그라운드 세션 STOP과 새 세션 LAUNCH 시점 — SUPERVISOR 클릭만"],
   ["server/control-recycle-run.ts", "CONTROL RECYCLE 실행: 관제 세션 정지·시작 시점(ATC-166, 스위치 off 기본)"],
+  ["server/account-usage-run.ts", "REFRESH(ATC-348): ACCOUNT 폴더에서 `claude -p \"/usage\"` 실행(모델 호출 없음, 한도 %만 읽음, MCP·hook 끔) — SUPERVISOR 클릭만"],
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
   ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
-  ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN 시점(POST /api/accounts/add, /api/accounts/:label/login, SUPERVISOR만)"],
+  ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN·REFRESH 시점(POST /api/accounts/add, /api/accounts/:label/login, /api/accounts/:label/usage, SUPERVISOR만)"],
   ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
@@ -61,11 +62,12 @@ export const SIDE_EFFECT_HELPERS = [
   ["addAccount", "server/account-add.ts", "ACCOUNT 폴더 만들기·settings.json 쓰기"],
   ["startLogin", "server/account-login.ts", "claude auth login 프로세스 시작"],
   ["submitCode", "server/account-login.ts", "로그인 코드 전달과 온보딩 칸 쓰기"],
+  ["refreshUsage", "server/account-usage-run.ts", "claude -p /usage 프로세스 실행(한도 읽기)"],
 ];
 // 명령·외부 API를 쓰지만 읽기만 하는 서버 코드(SHIP)
 export const READ_ONLY = [
   ["server/airports.ts", "rev-list·rev-parse만 읽음"],
-  ["server/account-health.ts", "claude auth status --json만 부름(loggedIn·authMethod만 남김), settings.json 읽기(ATC-146)"],
+  ["server/account-health.ts", "claude auth status --json만 부름(loggedIn·authMethod·요금제만 남김, ATC-348), settings.json 읽기(ATC-146)"],
   ["server/rules-state.ts", "log만 읽음"],
   ["server/overlap-run.ts", "git merge-base·diff·status·rev-parse만 읽음(파일 겹침, ATC-71)"],
   ["server/sources/git.ts", "worktree list·status·log·for-each-ref만 읽음"],
