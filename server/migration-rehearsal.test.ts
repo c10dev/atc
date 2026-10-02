@@ -219,6 +219,12 @@ test("리허설: 단계는 끝나는 즉시 알리고, 실전에 쓰기 직전�
   assert.deepEqual(e, [], "실전 앞에서 멈추면 표시도 없다");
 });
 
+test("선언 검사: 꺼 둔 트리거를 다시 켜는 ENABLE TRIGGER는 trigger를 적어야 통과한다", () => {
+  const f = [{ path: "m/1_a.sql", sql: "alter table public.songs enable trigger t;" }];
+  assert.equal(declarationCheck(f, "K1: adds public.songs").ok, false);
+  assert.equal(declarationCheck(f, "K1: re-enables a trigger on public.songs").ok, true);
+});
+
 test("선언 검사: ALTER FUNCTION … SET(search_path 등)은 replace를 적어야 통과한다", () => {
   const f = [{ path: "m/1_a.sql", sql: "alter function public.f() set search_path = public;" }];
   assert.equal(declarationCheck(f, "K1: adds public.t").ok, false);

@@ -52,8 +52,8 @@ export interface MigrationGate {
   paths: string[]; // 게이트가 맡은(새 마이그레이션) 파일
 }
 
-// 게이트 사유의 앞머리: 새 마이그레이션이 호스티드 DB에 아직 없을 때. 마이그레이션 리허설(ATC-368)이 "막힌 것이 이것뿐"인 PR을 고를 때 쓴다
-export const MISSING_REASON_PREFIX = "호스티드 DB에 아직 없는 마이그레이션";
+// 게이트 사유의 앞머리: 새 마이그레이션이 호스티드 DB에 아직 없을 때
+const MISSING_REASON_PREFIX = "호스티드 DB에 아직 없는 마이그레이션";
 
 const none: MigrationGate = { involved: false, ok: true, reason: null, versions: [], missing: [], paths: [] };
 
