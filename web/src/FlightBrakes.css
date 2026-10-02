@@ -20,7 +20,7 @@
   border-color: var(--cyan);
 }
 .fb .btn.is-confirm {
-  background: var(--layer-hover);
+  background: var(--panel-3);
 }
 .fb-note {
   font-size: var(--text-sm);

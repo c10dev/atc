@@ -1,5 +1,6 @@
 import { Component, type ComponentType, type ReactNode, lazy } from "react";
 import { isChunkLoadError } from "../../server/version.ts";
+import { Empty } from "./kit/Empty.tsx";
 
 // 탭 view를 따로 불러온다(React.lazy). view는 이름 있는 export라 default로 감싼다.
 // 첫 화면(RADAR)과 공용 부분(머리글, 새 버전 알림, SSE)은 메인 번들에 있다.
@@ -9,9 +10,9 @@ export function lazyTab<P extends object>(load: () => Promise<Record<string, unk
 
 // 탭을 불러오는 동안의 자리 표시(테마 토큰을 쓰는 .empty)
 export const TabLoading = () => (
-  <p className="empty tab-loading" role="status">
+  <Empty className="tab-loading" role="status">
     화면 불러오는 중…
-  </p>
+  </Empty>
 );
 
 interface BoundaryProps {

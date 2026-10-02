@@ -3,6 +3,7 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { apiGet, apiSend } from "../api.ts";
 import { PriorityMark } from "../badges.tsx";
 import "./Release.css";
+import { Empty } from "../kit/Empty.tsx";
 
 // RELEASE 화면(ATC-376, docs/layout.md Y1): SUPERVISOR가 화살을 쏘는 한 곳(`#release`).
 // 후보(READY Backlog, 에이전트 제안) · 발권 없는 Todo · 최근 발권. 발권 기록은 ATC-362의 길 그대로이고, 이 화면의 클릭만 screen 발권을 만든다(서버가 Origin을 검사한다).
@@ -144,8 +145,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     load();
   }, [load, refreshKey]);
 
-  if (!loaded) return <p className="empty">발권 후보 불러오는 중…</p>;
-  if (!data) return <p className="empty">발권 기록을 읽지 못했습니다. 서버를 새 버전으로 올린 뒤 다시 엽니다.</p>;
+  if (!loaded) return <Empty>발권 후보 불러오는 중…</Empty>;
+  if (!data) return <Empty>발권 기록을 읽지 못했습니다. 서버를 새 버전으로 올린 뒤 다시 엽니다.</Empty>;
 
   const run = async (id: string, fn: () => Promise<unknown>) => {
     setBusy(id);

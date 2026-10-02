@@ -22,6 +22,7 @@ import "../Drawer.css";
 import "../DutyDrawer.css";
 import "./fleet/Fleet.css";
 import "./Home.css";
+import { Fold } from "../kit/Fold.tsx";
 
 // HOME(`#home`, ATC-377, docs/layout.md Y2): SUPERVISOR에게 아직 남은 일 한 화면. K1~K3 승인과 예외, 그리고 fleet 전체 brake.
 // SUPERVISOR QUEUE · WARNING·CAUTION 알림 · 막힌 FLIGHT 줄 · brake 줄(늘 있고 중립). 정상이면 brake 줄 말고는 아무것도 없다(design-language 원칙 1).
@@ -78,10 +79,7 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
     return (snapshot.pulls ?? []).find((p) => `${p.repo.replace(/\/+$/, "").split("/").pop()}#${p.number}` === id && p.uiChange && p.humanCheck);
   };
   return (
-    <section className="hm-sec" aria-label="SUPERVISOR QUEUE">
-      <h2 className="label">
-        QUEUE <em>{queue.items.length}</em>
-      </h2>
+    <Fold title="QUEUE" label="SUPERVISOR QUEUE" count={queue.items.length}>
       <ul className="hm-list">
         {queue.items.map((i) => (
           <li key={`${i.kind}/${i.key}`} className="hm-row">
@@ -101,7 +99,7 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
@@ -111,10 +109,7 @@ function HomeAlerts() {
   const shown = homeAlertsOf(items);
   if (shown.length === 0) return null;
   return (
-    <section className="hm-sec" aria-label="ALERTS">
-      <h2 className="label">
-        ALERTS <em>{shown.length}</em>
-      </h2>
+    <Fold title="ALERTS" label="ALERTS" count={shown.length} foldable={!shown.some((x) => x.level === "warning")}>
       <ul className="hm-list">
         {shown.map((a) => (
           <li key={a.key} className={`hm-row lv-${a.level}`}>
@@ -127,7 +122,7 @@ function HomeAlerts() {
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
@@ -137,10 +132,7 @@ function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
   const rows = stuckRowsOf(data?.bundles ?? []);
   if (rows.length === 0) return null;
   return (
-    <section className="hm-sec" aria-label="막힌 FLIGHT">
-      <h2 className="label">
-        STUCK <em>{rows.length}</em>
-      </h2>
+    <Fold title="STUCK" label="막힌 FLIGHT" count={rows.length}>
       <ul className="hm-list">
         {rows.map((r) => (
           <li key={r.key} className="hm-row">
@@ -160,7 +152,7 @@ function HomeStuck({ refreshKey, now }: { refreshKey: string; now: number }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
@@ -171,10 +163,7 @@ function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number })
   return (
     <>
       {slips.length > 0 && (
-        <section className="hm-sec" aria-label="LATE WAYPOINTS">
-          <h2 className="label">
-            LATE WAYPOINTS <em>{slips.length}</em>
-          </h2>
+        <Fold title="LATE WAYPOINTS" label="LATE WAYPOINTS" count={slips.length}>
           <ul className="hm-list">
             {slips.map((x) => (
               <li key={x.key} className="hm-row">
@@ -189,13 +178,10 @@ function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number })
               </li>
             ))}
           </ul>
-        </section>
+        </Fold>
       )}
       {closeManual.length > 0 && (
-        <section className="hm-sec" aria-label="LINEAR에서 직접 DONE">
-          <h2 className="label">
-            LINEAR에서 직접 DONE <em>{closeManual.length}</em>
-          </h2>
+        <Fold title="LINEAR에서 직접 DONE" label="LINEAR에서 직접 DONE" count={closeManual.length}>
           <ul className="hm-list">
             {closeManual.map((x) => (
               <li key={x.id} className="hm-row">
@@ -221,7 +207,7 @@ function HomeSchedule({ data, now }: { data: ScheduleHome | null; now: number })
               </li>
             ))}
           </ul>
-        </section>
+        </Fold>
       )}
     </>
   );
@@ -233,10 +219,7 @@ function HomeEffects({ refreshKey, now }: { refreshKey: string; now: number }) {
   const rows = (view?.verdicts ?? []).filter((v) => effectBad(v) && !v.wrong);
   if (rows.length === 0) return null;
   return (
-    <section className="hm-sec" aria-label="EFFECT CHECK">
-      <h2 className="label">
-        EFFECT <em>{rows.length} · 평결 {view?.misfire.verdicts ?? 0}건 중 틀림 {view?.misfire.wrong ?? 0}</em>
-      </h2>
+    <Fold title="EFFECT" label="EFFECT CHECK" summary={`${rows.length} · 평결 ${view?.misfire.verdicts ?? 0}건 중 틀림 ${view?.misfire.wrong ?? 0}`}>
       <ul className="hm-list">
         {rows.map((v) => (
           <li key={v.flight} className="hm-row">
@@ -248,7 +231,7 @@ function HomeEffects({ refreshKey, now }: { refreshKey: string; now: number }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
