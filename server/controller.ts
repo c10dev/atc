@@ -7,7 +7,7 @@ import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueCle
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
-import { looksLikeTitle, standHolderOf } from "./address.ts";
+import { looksLikeTitle, resolveRecipient, standHolderOf } from "./address.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allRelays } from "./relay-run.ts";
 import { config } from "./config.ts";
@@ -269,6 +269,21 @@ export function resolveSession(s: Snapshot, to: string): Session | string {
   return byName.length ? `"${to}" 이름의 세션이 ${byName.length}개라 ID로 지정해야 함` : `"${to}" 세션을 찾을 수 없음`;
 }
 
+// CLEARANCE의 받는 이(ATC-353). 이름·콜사인·id로 먼저 찾고, 못 찾으면 REGISTRATION(relay가 저장한 to)으로 지금 살아 있는 세션을 찾는다.
+// to가 없으면 그 STAND를 쥔 살아 있는 세션. 그래도 없고 제목 꼴이면 제목이라고 거절한다(이름·콜사인에 공백이 있어도 먼저 찾으므로 거절당하지 않는다)
+export function clearanceTargetOf(s: Pick<Snapshot, "sessions">, toRaw: string, stand: string | null, teamPattern?: string): Session | string {
+  const to = toRaw.trim();
+  if (!to) {
+    const holder = stand ? standHolderOf(s.sessions, stand) : null;
+    return holder ? s.sessions.find((x) => x.id === holder.id)! : "받는 이(to)가 필요함 — 세션 id나 REGISTRATION, 또는 STAND를 쥔 세션이 있는 stand";
+  }
+  const exact = resolveSession(s as Snapshot, to);
+  if (typeof exact !== "string") return exact;
+  const byReg = resolveRecipient(s.sessions, { registration: to }, teamPattern);
+  if (byReg.ok) return s.sessions.find((x) => x.id === byReg.session.id) ?? exact;
+  return looksLikeTitle(to) ? `"${to.slice(0, 60)}"는 제목이지 세션이 아님 — 세션 id나 REGISTRATION으로 보낸다` : exact;
+}
+
 function resolveStand(s: Snapshot, stand: string | undefined): string | null | { error: string } {
   if (!stand) return null;
   const ws = s.workspaces.find((w) => w.path === stand || w.name === stand);
@@ -324,12 +339,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     if (typeof body.text !== "string" || !body.text.trim()) return c.json({ error: "text가 필요함" }, 400);
     const stand = resolveStand(s, body.stand);
     if (stand && typeof stand === "object") return c.json(stand, 400);
-    // 받는 이는 세션 id나 세션 이름, 없으면 그 STAND를 쥔 살아 있는 세션. PR·FLIGHT 제목은 주소가 아니다(ATC-353)
-    const to = String(body.to ?? "").trim();
-    const holder = !to && stand ? standHolderOf(s.sessions, stand) : null;
-    if (!to && stand && !holder) return c.json({ error: "그 STAND를 쥔 살아 있는 세션이 없음 — to를 준다" }, 400);
-    if (to && !s.sessions.some((x) => x.id === to) && looksLikeTitle(to)) return c.json({ error: `"${to.slice(0, 60)}"는 제목이지 세션이 아님 — 세션 id나 REGISTRATION으로 보낸다` }, 400);
-    const target = holder ? s.sessions.find((x) => x.id === holder.id)! : resolveSession(s, to);
+    const target = clearanceTargetOf(s, String(body.to ?? ""), stand, loadDispatchConfig().teamPattern);
     if (typeof target === "string") return c.json({ error: target }, 400);
     const clearance = issueClearance({
       to: target.id,

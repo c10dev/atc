@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
-import { causeOf } from "./address.ts";
 import { dirname, join } from "node:path";
+import { causeOf } from "./address.ts";
 import { config } from "./config.ts";
 import type { Clearance, ClearanceType } from "./model.ts";
 import { type Answer, answerError, overdueBase, responseOf } from "./response.ts";
