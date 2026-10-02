@@ -60,8 +60,7 @@
     "spacing-literal": 5
   },
   "web/src/views/MetricsFuel.css": {
-    "radius-literal": 3,
-    "spacing-literal": 1
+    "radius-literal": 3
   },
   "web/src/views/MetricsLeaks.css": {
     "radius-literal": 1
