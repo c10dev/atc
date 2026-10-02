@@ -133,6 +133,24 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 게이트가 아니라서 뺀 것: 세션 사이의 clearance, MCC INSPECTION `findings`(작성자가 고치고 클릭 없음), MCC 착륙 조건 L1–L8과 리뷰 레인 자체(기계), HOLD(brake).
 
+### Leak counter 구현 (ATC-363)
+
+세기만 하고 게이트는 바꾸지 않는다. `server/leaks.ts`(순수)가 SUPERVISOR QUEUE 항목마다 leak(원칙 1)인지 exempt인지, 4절의 어느 행인지 정하고, `server/leaks-run.ts`가 60초마다 `leaks.jsonl`에 더한다. leak이 생기면 `open` 한 줄, 두 주기 연달아 사라지면 `close` 한 줄(`heldMin` 포함)이다(스냅샷이 잠깐 깜빡여도 두 번 세지 않는다). 주기마다 쓰지 않는다. `GET /api/leaks?days=7`과 METRICS → LEAKS가 지난 7일을 종류별로 "통제 있음"과 "통제 없음"으로 나눠 보인다.
+
+| 큐 kind | 행 | 통제 | 세는 방식 |
+|---|---|---|---|
+| PROPOSAL (ASSIGN·RELEASE·CLASSIFY / LAUNCH) | P1 / P2 | C14 / C11 | leak |
+| SCHEDULE, FLEET PLAN | P5, P3 | C14 | leak |
+| HUMAN CHECK | L10 | C10 | leak |
+| LANDING: MCC ESCALATE / 그 밖의 이유로 SUPERVISOR가 머지 | L11 / L14 | C13 / C9 | leak |
+| LANDING: `user` 등급(K3) / SUPERVISOR HOLD | L14 / L20 | — | exempt (K3, brake) |
+| UPDATE | D1 | RTS(있음) | leak, 통제 있음 |
+| NEEDS YOU: 도구 승인 프롬프트 / 그 밖의 막힘 | P7 | — / C9 | exempt (K3) / leak |
+| RELAY, UNDELIVERED | L18, P6 | C15, C14 | leak |
+| GO | P8 | — | exempt (K3) |
+
+기록은 `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since`와, ATC-362 릴리스 기록이 생기기 전까지 `null`인 `release` 칸을 담는다. 어느 통제가 섰는지는 `leaks.ts`의 `CONTROLS` 표가 정한다. 통제가 서면 거기 플래그만 고치고, 그 뒤의 새 leak은 "통제 있음"으로 간다.
+
 ## 5. 보완 통제
 
 통제마다 무엇을 알아채는지, 얼마나 빠른지, 스스로 무엇을 하는지, 무엇을 보고하는지 적는다. 사람의 결정을 대신하는 통제는 C1, C2, C4, C6, C10, C14, C15, C16이고 나머지는 이들을 받친다.

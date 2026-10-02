@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
-import { landByOf } from "./land-by.ts";
+import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
@@ -33,7 +33,10 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     proposals: allProposals(),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     fleetPlan: openFleetPlanNow(now),
-    pulls: (s.pulls ?? []).map((p) => ({ ...p, landBy: landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false) })),
+    pulls: (s.pulls ?? []).map((p) => {
+      const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
+      return { ...p, landBy: d.by, landWhy: d.why };
+    }),
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,

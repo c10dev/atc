@@ -133,6 +133,24 @@ Every place where atc requires or offers a human decision, grouped by area (a su
 
 Not gates, left out: clearances between sessions, MCC INSPECTION `findings` (the author fixes, no click), MCC landing conditions L1–L8 and the review lanes themselves (machines), HOLD (brake).
 
+### Leak counter as built (ATC-363)
+
+Counting only; no gate changes. `server/leaks.ts` (pure) decides for each SUPERVISOR QUEUE item whether it is a leak (principle 1) or exempt, and which row of section 4 it belongs to; `server/leaks-run.ts` ticks every 60 s and appends to `leaks.jsonl`, one `open` line when a leak appears and one `close` line (with `heldMin`) when it has been gone for two ticks (a blink in the snapshot is not counted twice). Nothing is written per cycle. `GET /api/leaks?days=7` and METRICS → LEAKS show the last 7 days by kind, split into "its control exists" and "its control is missing".
+
+| Queue kind | Row | Control | Counted |
+|---|---|---|---|
+| PROPOSAL (ASSIGN, RELEASE, CLASSIFY / LAUNCH) | P1 / P2 | C14 / C11 | leak |
+| SCHEDULE, FLEET PLAN | P5, P3 | C14 | leak |
+| HUMAN CHECK | L10 | C10 | leak |
+| LANDING: MCC escalate / SUPERVISOR merges for another reason | L11 / L14 | C13 / C9 | leak |
+| LANDING: `user` tier (K3) / SUPERVISOR HOLD | L14 / L20 | — | exempt (K3, brake) |
+| UPDATE | D1 | RTS (built) | leak, control exists |
+| NEEDS YOU: tool approval prompt / any other block | P7 | — / C9 | exempt (K3) / leak |
+| RELAY, UNDELIVERED | L18, P6 | C15, C14 | leak |
+| GO | P8 | — | exempt (K3) |
+
+A record carries `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since` and a `release` field that stays `null` until the ATC-362 release record exists. The `CONTROLS` table in `leaks.ts` says which controls are built; flip a flag there when a control lands and new leaks move to "its control exists".
+
 ## 5. Compensating controls
 
 Each control says what it detects, how fast, what it does by itself and what it reports. The controls that replace a human decision are C1, C2, C4, C6, C10, C14, C15 and C16; the others support them.
