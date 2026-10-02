@@ -77,7 +77,7 @@ export function menuLines({ alerts, summary, base = DEFAULT_BASE }) {
     for (const i of group.slice(0, MAX_PER_LEVEL)) {
       out.push(line(`${i.text}${i.next ? ` — ${i.next}` : ""}`, { href: hrefOf(base, i.link) }));
     }
-    if (group.length > MAX_PER_LEVEL) out.push(line(`외 ${group.length - MAX_PER_LEVEL}개 — atc에서 보기`, { href: hrefOf(base, "#radar") }));
+    if (group.length > MAX_PER_LEVEL) out.push(line(`외 ${group.length - MAX_PER_LEVEL}개 — atc에서 보기`, { href: hrefOf(base, "#home") }));
   }
   // 등급이 없는 옛 항목은 맨 끝에
   const rest = items.filter((i) => !LEVEL_ORDER.includes(i.level));
@@ -88,7 +88,7 @@ export function menuLines({ alerts, summary, base = DEFAULT_BASE }) {
   out.push("---");
   out.push(line(`DISPATCH 승인 대기 ${summary?.pending?.dispatch ?? 0}`, { href: hrefOf(base, "#dispatch") }));
   const rts = rtsLine(summary);
-  if (rts) out.push(line(rts, { href: hrefOf(base, "#radar") })); // UPDATE 바가 있는 탭(RTS 알림 항목의 link와 같다)
+  if (rts) out.push(line(rts, { href: hrefOf(base, "#home") })); // UPDATE 바가 있는 탭(RTS 알림 항목의 link와 같다)
   const w = summary?.working;
   const parts = [typeof w?.aircraft === "number" && `AIRCRAFT ${w.aircraft}`, typeof w?.control === "number" && `관제 세션 ${w.control}`].filter(Boolean);
   if (parts.length) out.push(line(`일하는 중: ${parts.join(" · ")}`, { href: hrefOf(base, "#fleet") }));

@@ -21,12 +21,12 @@ test("인라인 버튼은 FLEET PLAN·UPDATE·PROPOSAL(승인·거절, ATC-377)�
 test("링크 주소: SCHEDULE·HUMAN CHECK는 탭, LANDING은 PR 서랍(AIRPORT 코드), NEEDS YOU는 FLEET", () => {
   const hash = (kind: QueueItem["kind"], key: string) => (actionsOf({ kind, key }, AIRPORTS)[0] as { hash: string }).hash;
   assert.equal(hash("SCHEDULE", "S-1"), "#schedule");
-  assert.equal(hash("HUMAN CHECK", "atc#7@abc"), "#strips");
+  assert.equal(hash("HUMAN CHECK", "atc#7@abc"), "#home");
   assert.equal(hash("LANDING", "atc#7@abc"), "#pr/ATCC/7");
   assert.equal(hash("NEEDS YOU", "sess"), "#fleet");
-  // 저장소를 모르면 STRIPS로
-  assert.equal(hash("LANDING", "other#9@abc"), "#strips");
-  assert.equal(hash("LANDING", "garbage"), "#strips");
+  // 저장소를 모르면 FLIGHTS로
+  assert.equal(hash("LANDING", "other#9@abc"), "#flights");
+  assert.equal(hash("LANDING", "garbage"), "#flights");
 });
 
 test("prOfKey", () => {

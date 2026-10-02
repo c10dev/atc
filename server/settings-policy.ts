@@ -2,7 +2,7 @@ import type { ServerSettings } from "./settings.ts";
 
 // 설정 창의 계산(ATC-131). SUPERVISOR 정책 스위치(AUTOMATION: LANDING·OPERATIONS)의 "지금 모드 한 줄", ⚠ 모드로 올릴 때 확인이 필요한지, 마지막 분류 기억, 설정 찾기.
 // 저장 값과 PUT /api/settings는 그대로다. 여기는 화면에 보이는 이름과 판단만 다룬다.
-export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto";
+export type PolicyKey = "autoland" | "autolandReview" | "mcc" | "jev" | "fuelHold" | "review" | "reposition" | "recycle" | "duty" | "dutyCharter" | "dutyReview" | "autoApprove" | "autoApproveLaunch" | "autoDispatch" | "scheduleAuto" | "fleetPlanAuto" | "autoRevert";
 
 // ⚠ 모드(올리면 atc가 더 많이 쓰거나 밖으로 내보낸다). 화면의 경고 문구가 ⚠로 시작하는 모드와 같다
 export const RISKY: Record<PolicyKey, readonly string[]> = {
@@ -21,6 +21,7 @@ export const RISKY: Record<PolicyKey, readonly string[]> = {
   scheduleAuto: ["on"], // 서버가 SCHEDULE 초안(CLASSIFY·TAIL·CLOSE·WAYPOINT·NEW)을 사람 판정 없이 승인한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   fleetPlanAuto: ["on"], // 서버가 FLEET PLAN 제안(LAUNCH·STOP·RESTART·REFRESH·AOG)을 사람 승인 없이 실행한다(ATC-370). 기본 on, off는 SUPERVISOR 몫
   autoDispatch: ["on"], // 서버가 필터·상한을 통과한 ASSIGN·launch를 CROSSCHECK·사람 없이 승인한다(ATC-367, K3). 기본 on이라 ⚠로 보이고, 껐다 다시 켤 때 확인한다
+  autoRevert: ["on"], // atc가 lander 머지가 깬 main의 revert PR을 스스로 열고, 두 번째 빨간 head에는 lane을 한 단계 낮춘다(되돌리기 전에 실패한 체크를 한 번 다시 돌린다. 기본 on, off는 SUPERVISOR 몫)
   autoApproveLaunch: ["on"], // 서버가 launch 카드를 스스로 승인하고 세션을 띄운다(상한·FUEL hold·막힘·실패 뒤 대기·하루 상한을 지킬 때만)
 };
 
@@ -47,7 +48,7 @@ export interface ModeSegment {
   warn: boolean;
 }
 // 탭 맨 위 한 줄: `AUTOLAND off · MCC land · JEV off · FUEL HOLD off · REVIEW exclude`. ⚠ 모드는 warn
-export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto">>): ModeSegment[] {
+export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "review"> & Partial<Pick<ServerSettings, "judges" | "fuel" | "controlRecycle" | "fleetPlan" | "duty" | "dispatchAuto" | "autonomyAuto" | "autoRevert">>): ModeSegment[] {
   const seg = (key: PolicyKey, label: string, mode: string, value = mode): ModeSegment => ({ key, label, value, warn: isRisky(key, mode) });
   return [
     seg("autoland", "AUTOLAND", s.autoland.mode),
@@ -61,6 +62,7 @@ export function modeSegments(s: Pick<ServerSettings, "autoland" | "mcc" | "revie
     ...(s.duty ? [seg("duty", "DUTY", s.duty.enabled ? "on" : "off")] : []),
     ...(s.duty?.charter ? [seg("dutyCharter", "DUTY CHARTER", s.duty.charter)] : []),
     ...(s.duty && typeof s.duty.review === "boolean" ? [seg("dutyReview", "DUTY REVIEW", s.duty.review ? "on" : "off")] : []),
+    ...(s.autoRevert ? [seg("autoRevert", "AUTO REVERT", s.autoRevert.mode)] : []),
     ...(s.autonomyAuto ? [seg("scheduleAuto", "SCHEDULE AUTO", s.autonomyAuto.schedule), seg("fleetPlanAuto", "FLEET PLAN AUTO", s.autonomyAuto.fleetPlan)] : []),
     ...(s.dispatchAuto ? [seg("autoApprove", "AUTO APPROVE", s.dispatchAuto.approve), seg("autoApproveLaunch", "AUTO LAUNCH", s.dispatchAuto.launch), seg("autoDispatch", "AUTO DISPATCH", s.dispatchAuto.auto)] : []),
   ];
@@ -105,6 +107,7 @@ export const SETTINGS_INDEX: readonly SettingsEntry[] = [
   { tab: "landing", code: "MCC", label: "atc 착륙·RETURN TO SERVICE", words: "shadow land rts land+rts rollback 배포 shadow gate mcc.mode" },
   { tab: "landing", code: "REVIEW", label: "Codex 한도 때 착륙 리뷰", words: "보안 pr sonnet deepseek exclude externalReview.security" },
   { tab: "operations", code: "FUEL", label: "사용 한도 HOLD", words: "dispatch hold 사용량 한도 fuel.hold" },
+  { tab: "landing", code: "AUTO REVERT", label: "main이 빨개지면 lander 머지 자동 되돌림", words: "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop" },
   { tab: "operations", code: "AUTO APPROVE", label: "일치 기반 자동 승인", words: "dispatch schedule crosscheck agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto" },
   { tab: "operations", code: "SCHEDULE·FLEET PLAN AUTO", label: "SCHEDULE·FLEET PLAN 자동 적용", words: "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog" },
   { tab: "operations", code: "REPOSITION", label: "소속 AIRPORT 옮기기", words: "base fleet plan approval auto fleet-plan.reposition" },

@@ -8,6 +8,7 @@ import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
 import { looksLikeTitle, resolveRecipient, standHolderOf } from "./address.ts";
+import { elsewhereOf } from "./elsewhere.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allRelays } from "./relay-run.ts";
 import { config } from "./config.ts";
@@ -349,6 +350,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
       stand,
       flight: normalizeFlight(body.flight),
       text: body.text.trim(),
+      ...(body.type === "FIX" || body.type === "GO AROUND" ? { elsewhere: elsewhereOf(target.id, stand, normalizeFlight(body.flight), s) } : {}),
     });
     return c.json({ clearance, sendTo: target.name, sendToId: target.id, ...(target.jobId ? { sendToJobId: target.jobId } : {}), ...(target.account ? { sendToAccount: target.account } : {}), message: formatClearance(clearance, s) });
   });

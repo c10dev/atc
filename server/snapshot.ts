@@ -44,6 +44,21 @@ let heldStops: GroundStop[] | null = null;
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
 
+// 열린 PR이 있는 STAND를 쥔 살아 있는 세션의 점유는 claimTtlMs가 지나도 이어 둔다(ATC-387): 그 AIRCRAFT가 다음 FLIGHT를 새 STAND에서 하는 동안에도
+// 앞 PR의 FIX·GO AROUND가 STAND를 쥔 그 세션에게 가고, 그 FLIGHT가 슬롯 계산에 든다. 충돌·알림·건강 계산은 이미 끝났으므로 영향이 없다(그 뒤에 더한다)
+export function keptStandClaims(hookClaims: readonly Claim[], claims: readonly Claim[], pulls: readonly { standPath?: string | null }[], statusOf: (id: string) => string | undefined): Claim[] {
+  const standsWithPr = new Set(pulls.map((p) => p.standPath).filter((x): x is string => Boolean(x)));
+  const held = new Set(claims.filter((c) => c.state === "active").map((c) => c.workspacePath)); // 다른 세션이 지금 쥐고 있는 STAND는 그 세션이 홀더다
+  const kept = new Set<string>();
+  return [...hookClaims].sort((a, b) => b.lastAt.localeCompare(a.lastAt)).filter((c) => {
+    if (fresh(c) || c.state !== "active" || held.has(c.workspacePath) || kept.has(c.workspacePath)) return false;
+    const st = statusOf(c.sessionId);
+    const keep = st !== undefined && st !== "dead" && standsWithPr.has(c.workspacePath);
+    if (keep) kept.add(c.workspacePath); // STAND마다 하나(가장 최근에 건드린 세션)
+    return keep;
+  });
+}
+
 export async function buildSnapshot(): Promise<Snapshot> {
   const airports = await resolveAirports();
   const workspaces = await readWorkspaces(airports.open.map((a) => a.repo));
@@ -262,6 +277,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     const r = reports.get(x.id);
     if (r && x.status === "idle") x.report = r;
   }
+  claims.push(...keptStandClaims(hookClaims, claims, pulls, (id) => sessionById.get(id)?.status));
   applyFlightHealth({ sessions, teamPattern: dispatchCfg.teamPattern, freshClaims: claims, staleClaims: hookClaims.filter((c) => !fresh(c)), workspaces, tickets, pulls, now: healthAt, cfg: config.health });
 
   // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.
