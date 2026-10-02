@@ -10,7 +10,7 @@ import { NEXT_LAUNCH_TITLE } from "../../../../server/launch-note.ts";
 import { type LaunchModelSetting, NEXT_MODEL_TITLE, nextModelNote } from "../../../../server/launch-model.ts";
 import { usd } from "../../../../server/fuel-view.ts";
 import { ACCOUNT_HOLD_NEXT, accountHoldDetail, accountHoldLabel } from "../../../../server/health.ts";
-import { conflictHintOf, IDEA_SUPERSEDED } from "../../../../server/registration.ts";
+import { conflictHintOf, IDEA_SUPERSEDED, renameHintOf } from "../../../../server/registration.ts";
 import type { RulesView } from "../../../../server/rules-state.ts";
 import { isBackground, manualStepsOf, originBadgeOf } from "../../../../server/session-origin.ts";
 import { flightNumber } from "../../aviation.ts";
@@ -315,8 +315,8 @@ export function Card({
     );
   }
   // health(ATC-45): 행은 짧은 상태 글만 보인다. 오류 한 줄과 다음 한 걸음은 여기(펼친 곳)에서 보인다
-  if (a.health) {
-    if (a.health.level === "alert") raise("alert");
+  // 승인 대기(PENDING)는 위 NEEDS YOU 줄이 이미 보인다. 같은 말을 두 번 하지 않는다
+  if (a.health && !(a.health.code === "PENDING" && a.job?.state === "blocked")) {
     alerts.push(
       <li key="health" className="fl-health">
         {a.health.detail} <span className="faint">— {a.health.next}</span>
@@ -351,7 +351,7 @@ export function Card({
   if (a.sessionConflict?.length) {
     raise("alert");
     alerts.push(
-      <li key="conflict" className="fl-name-conflict">
+      <li key="conflict" className="fl-name-conflict" title={conflictHintOf(a.sessionConflict, a.registration)}>
         세션 {a.sessionConflict.length}개가 {a.registration}로 읽힘:{" "}
         {a.sessionConflict.map((n, i) => (
           <span key={i}>
@@ -369,7 +369,7 @@ export function Card({
   if (a.sessionName) {
     raise("amber");
     alerts.push(
-      <li key="rename" className="fl-rename">
+      <li key="rename" className="fl-rename" title={renameHintOf(a.sessionName, a.registration)}>
         세션 이름 <code>{a.sessionName}</code> → <code>{a.registration}</code>로 바꾸면 좋다
       </li>,
     );
@@ -480,9 +480,7 @@ export function Card({
             </span>
           )}
           {stale.length > 0 && (
-      <span className="fl-stale-mark mono">
-        STALE {stale.length} — pid 없이 남은 멈춘 job
-      </span>
+            <span className="fl-stale-mark mono">STALE {stale.length} — pid 없이 남은 멈춘 job</span>
           )}
         </div>
         <div className="fl-actions fl-head-actions">

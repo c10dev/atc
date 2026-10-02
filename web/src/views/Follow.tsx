@@ -5,7 +5,7 @@ import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { timeAgo } from "../derive.ts";
-import { LandingBadge } from "./Teams.tsx";
+import { BlockList, LandingBadge } from "./Teams.tsx";
 import "./Follow.css";
 import { apiGet, apiSend } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
@@ -145,6 +145,7 @@ function Row({ row, stages, busy, error, moved, onRelease, onChanged, mode, pull
           </details>
         ))}
         {pull && <LandingBadge pr={pull} />}
+        {pull && <BlockList pr={pull} />}
         {row.next && <NextChip row={row} next={row.next} busy={busy} moved={moved} onRelease={onRelease} />}
         {row.proposalInfo && <FlightBrakes p={{ ...row.proposalInfo, flight: row.key }} mode={mode} onDone={onChanged} />}
       </div>

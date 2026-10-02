@@ -529,7 +529,7 @@ const blockShort: Record<LandingBlockCode, string> = {
 };
 
 // 막는 조건: 짧은 이름 한 줄, 펼치면(키보드로도) 전체 문장
-function BlockList({ pr }: { pr: PullRequest }) {
+export function BlockList({ pr }: { pr: PullRequest }) {
   if (pr.landing === "CLEARED" || !pr.blocks.length) return null;
   return (
     <details className="pr-more">

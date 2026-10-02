@@ -22,12 +22,10 @@ function ContextShort({ short }: { short: string }) {
   );
 }
 
-// 카드 줄: 창 크기·모델·창을 어떻게 알았나는 title(FOB·context·시각은 보이는 글에 있다)
 export function ContextLine({ c }: { c: ContextBadge | null }) {
   if (!c) return null;
-  const why = c.title.split("창: ")[1];
   return (
-    <p className={`fl-ctx lv-${c.level}`} title={why ? `창: ${why}` : undefined}>
+    <p className={`fl-ctx lv-${c.level}`} title={c.title}>
       {c.label}
     </p>
   );
