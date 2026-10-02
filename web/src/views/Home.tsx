@@ -1,19 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { actionsOf } from "../../../server/duty-card.ts";
 import { modeLine, modeSegments } from "../../../server/settings-policy.ts";
 import { openAlert, useAlerts } from "../alerts-runtime.ts";
 import { apiSend } from "../api.ts";
 import { alertLevelLabel, flightNumber } from "../aviation.ts";
-import { timeAgo } from "../derive.ts";
+import { buildIndex, timeAgo } from "../derive.ts";
 import { Actions, useQueue } from "../DutyCards.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
 import { homeAlertsOf, stuckRowsOf } from "../home-rows.ts";
 import { atfmAlertOf } from "../readiness-line.ts";
 import { useServerSettings } from "../SettingsServer.tsx";
-import type { Snapshot } from "../../../server/model.ts";
+import type { PullRequest, Snapshot } from "../../../server/model.ts";
+import { callsign } from "../aviation.ts";
 import { AtfmAlert, AtfmPanel, useAtfm } from "./Atfm.tsx";
 import { BulkPanel } from "./fleet/ControlBulk.tsx";
+import { HumanRow } from "./HumanCheck.tsx";
 import { useFollowBoard } from "./Follow.tsx";
 import "../Drawer.css";
 import "../DutyDrawer.css";
@@ -41,8 +43,18 @@ export function Home({ refreshKey, now, snapshot, onOpenSettings }: { refreshKey
 // SUPERVISOR QUEUE: 줄마다 같은 버튼(DUTY 서랍의 QUEUE와 같은 Actions). 비면 아무것도 그리지 않는다
 function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
   const { queue, reload } = useQueue(refreshKey, true);
+  const idx = useMemo(() => buildIndex(snapshot), [snapshot]);
   if (!queue || queue.items.length === 0) return null;
   const airports = snapshot.airports.map((a) => ({ name: a.name, code: a.code, repo: a.repo }));
+  const nameOf = (id: string) => {
+    const s = idx.sessionById.get(id);
+    return s ? callsign(s) : id.slice(0, 8);
+  };
+  // HUMAN CHECK 줄(ATC-379): 큐 줄이 PR의 증거와 PASS·FAIL을 바로 보인다(STRIPS에 있던 것). 큐의 key는 `<저장소>#<번호>@<head>`
+  const humanPull = (key: string): PullRequest | undefined => {
+    const [id] = key.split("@");
+    return (snapshot.pulls ?? []).find((p) => `${p.repo.replace(/\/+$/, "").split("/").pop()}#${p.number}` === id && p.uiChange && p.humanCheck);
+  };
   return (
     <section className="hm-sec" aria-label="SUPERVISOR QUEUE">
       <h2 className="label">
@@ -56,7 +68,13 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
               <span className="hm-since faint">{i.since ? timeAgo(i.since, now) : "—"}</span>
             </div>
             <p className="hm-title mono">{i.title}</p>
-            <Actions item={i} actions={actionsOf(i, airports)} onDone={reload} />
+            {i.kind === "HUMAN CHECK" && humanPull(i.key) ? (
+              <ul className="hc-list">
+                <HumanRow pr={humanPull(i.key)!} idx={idx} nameOf={nameOf} />
+              </ul>
+            ) : (
+              <Actions item={i} actions={actionsOf(i, airports)} onDone={reload} />
+            )}
           </li>
         ))}
       </ul>

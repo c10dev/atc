@@ -42,12 +42,12 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     case "SCHEDULE":
       return [{ type: "link", label: "SCHEDULE에서 판정", hash: "#schedule" }];
     case "HUMAN CHECK":
-      return [{ type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
+      return [{ type: "link", label: "HOME에서 확인", hash: "#home" }];
     case "RELAY": // key가 LANDING과 같은 `<저장소>#<번호>@…`
     case "LANDING": {
       const pr = prOfKey(item.key);
       const ap = pr && airports.find((a) => repoName(a.repo) === pr.repo || a.name === pr.repo);
-      return [pr && ap ? { type: "link", label: `PR #${pr.number} 열기`, hash: `#pr/${ap.code}/${pr.number}` } : { type: "link", label: "STRIPS에서 보기", hash: "#strips" }];
+      return [pr && ap ? { type: "link", label: `PR #${pr.number} 열기`, hash: `#pr/${ap.code}/${pr.number}` } : { type: "link", label: "FLIGHTS에서 보기", hash: "#flights" }];
     }
     case "UNDELIVERED":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];

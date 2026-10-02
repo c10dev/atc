@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Transmission } from "./radio.ts";
-import { ageText, ALL_FILTER, asOf, filterTx, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, splitHead, threadsOf, WINDOW_MS } from "../web/src/radio-log.ts";
+import { ageText, ALL_FILTER, asOf, filterTx, flightTx, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, splitHead, threadsOf, WINDOW_MS } from "../web/src/radio-log.ts";
 
 const T0 = Date.parse("2026-09-30T10:00:00.000Z");
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString();
@@ -58,7 +58,7 @@ test("asOf: 그 시각 뒤의 교신은 빼고, 그때 답이 없던 호출은 �
 });
 
 test("linksOf: PR · DISPATCH · STRIPS · FLEET", () => {
-  assert.deepEqual(linksOf(tx("C-0181#readback", 0, { replyTo: "C-0181" })).map((l) => l.href), ["#strips", "#fleet/TEAM_G"]);
+  assert.deepEqual(linksOf(tx("C-0181#readback", 0, { replyTo: "C-0181" })).map((l) => l.href), ["#flights", "#fleet/TEAM_G"]);
   assert.deepEqual(linksOf(tx("D-0012", 0, { freq: "DELIVERY" })).map((l) => l.label), ["D-0012", "TEAM_G"]);
   assert.deepEqual(linksOf(tx("CC-0003", 0, { freq: "COMPANY" })).map((l) => l.href), ["#fleet/TEAM_G"]);
   assert.deepEqual(linksOf(tx("mcc:x", 0, { freq: "GROUND", aircraft: undefined, pr: 254 })).map((l) => l.href), ["https://github.com/chaehy5665/atc/pull/254"]);
@@ -87,4 +87,10 @@ test("localStorage: 저장·복원, 못 읽으면 전부 보기", () => {
   mem.set("atc.radio.freqs", JSON.stringify(["DELIVERY", "TOWER", "GROUND", "COMPANY"])); // 다섯째 주파수 전에 저장된 전부 보기
   assert.equal(loadFilter(st).freqs.size, 5);
   assert.doesNotThrow(() => saveFilter({ setItem: () => { throw new Error("full"); }, removeItem: () => {} }, ALL_FILTER));
+});
+
+test("flightTx: 그 FLIGHT의 호출과 그 호출의 답(답에 flight가 없어도)", () => {
+  const list = [tx("C-1", 0, { flight: "ATC-1" }), reply("C-1#readback", "C-1", 1), tx("C-2", 2, { flight: "ATC-2" }), reply("C-2#readback", "C-2", 3), tx("G-1", 4, { freq: "GROUND", flight: undefined })];
+  assert.deepEqual(flightTx(list, "ATC-1").map((t) => t.id), ["C-1", "C-1#readback"]);
+  assert.deepEqual(flightTx(list, "ATC-9"), []);
 });
