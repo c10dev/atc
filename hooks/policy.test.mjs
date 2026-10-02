@@ -215,3 +215,40 @@ test("git stash only lists and shows (one stash is shared by every worktree); a 
   no(bash("git push origin --delete other-branch"), /force-push/);
   ok(bash("git push -u origin worktree-atc-9-demo"));
 });
+
+// ATC-369 검토 3: gh pr checkout, cp 원본, gh api PATCH 필드, AskUserQuestion, source의 저장소 경로
+test("gh pr checkout switches the working directory's branch: STAND only", () => {
+  const MAIN = "/home/c10/projects/atc";
+  no(bash("gh pr checkout 12", MAIN), /pr-checkout:outside-stand/);
+  no(bash(`cd ${MAIN} && gh pr checkout 12`), /pr-checkout:outside-stand/);
+  ok(bash("gh pr checkout 12"));
+  ok(bash("gh pr view 12", MAIN));
+});
+
+test("cp classifies its sources: secrets and the Claude config dir cannot be copied into the STAND", () => {
+  no(bash("cp /home/c10/projects/atc/.env.local x"), /cp-src:secret/);
+  no(bash("cp ~/.claude-acct-1/.credentials.json x"), /cp-src:claude-config/);
+  no(bash("cp -t . /home/c10/.claude/settings.json"), /cp-src:claude-config/);
+  no(bash("cp --target-directory=. /home/c10/projects/atc/.env.local"), /cp-src:secret/);
+  no(bash("cp a /home/c10/.claude/b"), /cp:claude-config/);
+  ok(bash("cp server/a.ts server/b.ts"));
+  ok(bash("cp -al /home/c10/projects/atc/node_modules node_modules"));
+  ok(bash("cp -t out server/a.ts server/b.ts"));
+});
+
+test("gh api PATCH on a PR may only set body", () => {
+  ok(bash("gh api -X PATCH repos/o/r/pulls/12 -F body=@x.md"));
+  ok(bash("gh api repos/o/r/pulls/12 --method PATCH --raw-field body=x"));
+  no(bash("gh api -X PATCH repos/o/r/pulls/12 -f state=closed"), /gh-api-write/);
+  no(bash("gh api -X PATCH repos/o/r/pulls/12 -f body=x -f base=main"), /gh-api-write/);
+  no(bash("gh api -X PATCH repos/o/r/pulls/12 --input x.json"), /gh-api-write/);
+  no(bash("gh api -X PATCH repos/o/r/pulls/12"), /gh-api-write/);
+});
+
+test("AskUserQuestion waits on a person and is denied; source of the STAND's own repository .env.local is allowed", () => {
+  no(decide({ tool_name: "AskUserQuestion", cwd: STAND, tool_input: {} }), /tool:AskUserQuestion/);
+  ok(bash("(set -a; . /home/c10/projects/atc/.env.local; set +a; true)"));
+  const OTHER = "/home/c10/projects/other/.claude/worktrees/o-1";
+  ok(bash(". /home/c10/projects/other/.env.local", OTHER));
+  no(bash(". /home/c10/projects/other/.env.local", STAND), /source/);
+});

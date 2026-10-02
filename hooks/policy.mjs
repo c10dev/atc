@@ -176,8 +176,10 @@ function gitVerdict(args, ctx) {
   return allow("git");
 }
 
-function ghVerdict(args) {
+function ghVerdict(args, ctx) {
   const sub = `${args[0] ?? ""} ${args[1] ?? ""}`.trim();
+  // `gh pr checkout`은 작업 폴더의 브랜치를 바꾼다: git switch처럼 STAND 안에서만(ATC-369 검토, CLAUDE.md: 운영 폴더에서 브랜치를 바꾸지 않는다)
+  if (sub === "pr checkout" && !(ctx.stand && within(real(resolve(ctx.cwd)), real(ctx.stand)))) return deny("gh:pr-checkout:outside-stand");
   if (GH_OK.has(sub)) return allow("gh");
   if (args[0] === "api") {
     const rest = args.slice(1);
@@ -186,7 +188,9 @@ function ghVerdict(args) {
     const endpoint = rest.find((a) => !a.startsWith("-") && a !== rest[x + 1]) ?? "";
     const hasBody = rest.some((a) => /^(-f|-F|--field|--raw-field|--input)$/.test(a));
     if (method === "GET" && !hasBody) return allow("gh-api-get");
-    if (method === "PATCH" && /^repos\/[^/]+\/[^/]+\/pulls\/\d+$/.test(endpoint.replace(/^\//, ""))) return allow("gh-api-pr-edit"); // gh pr edit 대신(PR 본문)
+    // PR 본문만 바꾼다(gh pr edit 대신): 필드는 body 하나. state·base·title 같은 다른 필드와 --input은 거절(ATC-369 검토)
+    const fields = rest.flatMap((a, k) => (/^(-f|-F|--field|--raw-field)$/.test(a) ? [rest[k + 1] ?? ""] : /^--(field|raw-field)=/.test(a) ? [a.replace(/^--[a-z-]+=/, "")] : []));
+    if (method === "PATCH" && /^repos\/[^/]+\/[^/]+\/pulls\/\d+$/.test(endpoint.replace(/^\//, "")) && fields.length > 0 && fields.every((f) => /^body=/.test(f)) && !rest.includes("--input")) return allow("gh-api-pr-edit");
     return deny("gh-api-write");
   }
   return deny(`gh:${sub || "?"}`);
@@ -288,7 +292,7 @@ function commandVerdict(words, ctx) {
     case "git":
       return gitVerdict(args, ctx);
     case "gh":
-      return ghVerdict(args);
+      return ghVerdict(args, ctx);
     case "curl":
       return curlVerdict(args, ctx);
     case "npm": {
@@ -314,10 +318,24 @@ function commandVerdict(words, ctx) {
       return allow("sed-i");
     }
     case "cp": {
+      // 원본도 분류한다: 비밀(.env*·키)과 Claude 설정은 STAND 안으로 복사해도 읽을 수 있게 되므로 못 읽는 것은 못 복사한다(ATC-369 검토)
+      const t = args.findIndex((a) => a === "-t" || a === "--target-directory" || /^--target-directory=/.test(a));
       const ops = operands(args);
-      const dest = ops[ops.length - 1];
+      let dest;
+      let sources;
+      if (t >= 0) {
+        dest = /^--target-directory=/.test(args[t]) ? args[t].replace(/^[^=]+=/, "") : args[t + 1];
+        sources = ops.filter((a) => a !== dest);
+      } else {
+        dest = ops[ops.length - 1];
+        sources = ops.slice(0, -1);
+      }
       const c = writeClass(dest, ctx.cwd, ctx.stand);
       if (!c.ok) return deny(`cp:${c.cls}`);
+      for (const src of sources) {
+        const r = readClass(src, ctx.cwd, ctx.stand);
+        if (!r.ok && !writeClass(src, ctx.cwd, ctx.stand).ok) return deny(`cp-src:${r.cls}`);
+      }
       return allow("cp");
     }
     case "mv":
@@ -339,7 +357,9 @@ function commandVerdict(words, ctx) {
     case ".": {
       // 일부러 허용(ATC-369 검토): `source <atc>/.env.local`은 test-server 처방(.env.local을 자식 프로세스 환경에만 싣는다)이라 허용한다. 읽기(cat 등)는 비밀이라 거절하므로 둘이 달라 보이지만 뜻은 같다: 값을 출력하지 않고 환경에만 싣는 것만 열어 둔다
       const f = operands(args)[0] ?? "";
-      return /^\/home\/[^/]+\/projects\/atc\/\.env\.local$/.test(f) ? allow("source-env") : deny("source");
+      // 그 STAND가 속한 저장소의 .env.local(`<저장소>/.claude/worktrees/<이름>`의 저장소)이나 atc의 기본 자리. 저장소 경로가 옮겨져도 STAND에서 구한다
+      const repo = ctx.stand ? (ctx.stand.match(/^(.*)\/\.claude\/worktrees\/[^/]+$/)?.[1] ?? null) : null;
+      return (repo && f === `${repo}/.env.local`) || /^\/home\/[^/]+\/projects\/atc\/\.env\.local$/.test(f) ? allow("source-env") : deny("source");
     }
     case "kill":
       // 일부러 허용(ATC-369 검토): `kill <pid>`는 test-server가 저장한 PID를 끄는 길이라 늘 허용한다. 이름·패턴 kill과 systemctl atc는 hooks/kill-guard.mjs가 막는다.
@@ -366,7 +386,7 @@ export function bashVerdict(command, ctx, depth = 0) {
 // ── 도구 ──
 const FILE_WRITE = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FILE_READ = new Set(["Read", "Glob", "Grep", "LS"]);
-const FREE_TOOLS = new Set(["EnterWorktree", "ExitWorktree", "Skill", "Agent", "Task", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TodoWrite", "ToolSearch", "WebSearch", "ScheduleWakeup", "Monitor", "ExitPlanMode", "EnterPlanMode", "ReportFindings", "SendFeedback", "AskUserQuestion"]);
+const FREE_TOOLS = new Set(["EnterWorktree", "ExitWorktree", "Skill", "Agent", "Task", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskStop", "TodoWrite", "ToolSearch", "WebSearch", "ScheduleWakeup", "Monitor", "ExitPlanMode", "EnterPlanMode", "ReportFindings", "SendFeedback"]);
 const SEND_OK = new Set(["OCC", "TOWER", "ENGINEERING"]);
 const PLAYWRIGHT = /^mcp__(?:plugin_[a-z0-9-]+_)?playwright__/i;
 
