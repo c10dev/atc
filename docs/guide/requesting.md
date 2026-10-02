@@ -5,7 +5,7 @@
 | 상황 | 방법 | 화면 |
 |---|---|---|
 | 작은 수정 (5줄 이하, 문서, 의존성) | 팀 세션에 직접 맡긴다. 티켓 없이 PR 본문의 "Explicit user task"에 요청을 적는다 | STRIPS에 **AD HOC** |
-| 티켓이 필요한 일 (기능, 컴포넌트, 화면 수정 …) | OCC 세션에 말한다(**CHARTER REQUEST**) | SCHEDULE 탭에 **AD HOC FLIGHT** 초안 |
+| 티켓이 필요한 일 (기능, 컴포넌트, 화면 수정 …) | OCC 세션에 말한다(**CHARTER REQUEST**) | HOME의 QUEUE(S2일 때)나 RELEASE에 **AD HOC FLIGHT** 초안 |
 
 ## CHARTER DESK: OCC에 요청하기
 
@@ -13,12 +13,12 @@ OCC 세션이 요청 창구(CHARTER DESK)다. 운항표(Linear)에 없는 일을
 
 ```
 CHARTER REQUEST ─▶ AD HOC FLIGHT 초안 ─▶ FILED ─▶ ASSIGN ─▶ ENROUTE ─▶ ARRIVED
- (OCC에 말하기)     (SCHEDULE 탭 판정)    (Linear Todo)  (DISPATCH)  (팀 작업)   (머지)
+ (OCC에 말하기)     (HOME QUEUE 판정)    (Linear Todo)  (DISPATCH)  (팀 작업)   (머지)
 ```
 
 1. OCC 세션에 무엇을 원하는지 말한다. 예: "홈 화면에 추천 곡 카드 컴포넌트 만들어 줘. Song Experience 쪽."
 2. OCC가 SCHEDULE `NEW` 초안을 쓴다. 제목, 프로젝트, DIRECT 형식 본문(목표·완료 기준과 이 작업만의 제약. 보안 작업이면 Hard constraints 줄. 늘 지키는 규칙은 되풀이하지 않는다), type·wake·rating, 맞는 팀이 분명하면 `tail:`, 그리고 비슷한 티켓 목록.
-3. SCHEDULE 탭에서 판정한다([판정하기](reviewing.md)).
+3. HOME의 QUEUE에서 판정한다(S2일 때)([판정하기](reviewing.md)).
 4. **지금은 S1(그림자 운용)이라 Linear에 실제로 만들지 않는다.** 필요하면 카드의 제목·본문·라벨로 Linear에 직접 만든다. S2부터는 승인한 초안을 OCC가 Linear에 쓴다.
 
 OCC는 사용자가 요청했을 때만 새 티켓 초안을 쓴다. 스스로 티켓을 지어내지 않는다.
@@ -65,7 +65,7 @@ UI report ─▶ 판정 ─▶ Linear ATC ─▶ 팀 작업 ─▶ 써 보고 �
 
 라벨은 손으로 붙여도 되고, OCC에 맡겨도 된다.
 
-- OCC 세션에 "VOC-196은 TEAM_E가 맡는다"처럼 말하면 OCC가 SCHEDULE `TAIL` 초안을 쓴다. SCHEDULE 탭에서 판정한다.
+- OCC 세션에 "VOC-196은 TEAM_E가 맡는다"처럼 말하면 OCC가 SCHEDULE `TAIL` 초안을 쓴다. HOME의 QUEUE에서 판정한다(S2일 때).
 - DISPATCH 밖에서 팀에 직접 맡긴 FLIGHT(STAND를 잡았거나, DEPARTURE LOG에 있거나, READBACK을 받음)에 `tail:`이 없으면 OCC가 SCHEDULE 후보(TAIL)에서 보고 초안을 쓸 수 있다.
 - 승인하면(S2) OCC가 `tail:`을 그 팀으로 바꾼다. 다른 `tail:`은 떼고 나머지 라벨은 그대로 둔다. 상태·담당은 바꾸지 않는다.
 - `tail:TEAM_X` 라벨이 Linear에 없으면 초안이 거절된다. ENGINEERING이나 사용자가 라벨을 만든다.

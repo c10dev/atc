@@ -38,7 +38,7 @@ journalctl --user -u atc -f      # 로그
 ## 5. 화면 한 바퀴
 
 - **RADAR**: 지금 누가 어디서 무엇을 하는지.
-- **DISPATCH**·**SCHEDULE**: 판정할 것이 있는지([판정하기](reviewing.md)).
+- **HOME**: 판정할 것이 있는지([판정하기](reviewing.md)).
 - **FLEET**: 팀 구성과 상태.
 
 탭마다 무엇을 보여 주는지는 [화면 안내](screens.md)에 있다.

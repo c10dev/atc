@@ -67,6 +67,7 @@ export class DutyRuntime {
   private listeners = new Set<Feed>();
   private last: { model: string | null; context: number | null; costUsd: number | null; rates: DutyRate[] } = { model: null, context: null, costUsd: null, rates: [] };
   private badBase = 0;
+  private reviewing = false; // 서버가 시작한 REVIEW 턴이 도는 중(ATC-396): 이 동안 Linear 제안은 Backlog에만
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
 
@@ -157,6 +158,24 @@ export class DutyRuntime {
     const r = this.apply({ kind: "message", msg });
     if (r.verdict === "refused") return { verdict: "refused", reason: this.s.error ? `DUTY가 내려가 있습니다: ${this.s.error}` : "DUTY가 내려가 있습니다. NEW SHIFT로 다시 시작합니다" };
     return { verdict: r.verdict ?? "sent" };
+  }
+
+  // REVIEW 턴이 도는 중인가(duty-l1-run.ts가 Todo를 막는 데 쓴다)
+  reviewTurn(): boolean {
+    return this.reviewing && this.s.phase === "thinking";
+  }
+
+  // REVIEW(ATC-396): 서버가 스스로 턴을 시작한다. 돌고 있거나 줄 선 글이 있으면 시작하지 않는다(SUPERVISOR의 글이 먼저다).
+  // line은 대화 기록에 남는 한 줄, text는 DUTY에게 가는 지시문
+  async sendReview(text: string, line: string): Promise<{ verdict: "sent" | "refused"; reason?: string }> {
+    const cfg = this.o.loadConfig();
+    if (!cfg.enabled) return { verdict: "refused", reason: "off" };
+    if (this.s.phase === "thinking" || this.s.queue.length || this.s.closing) return { verdict: "refused", reason: "busy" };
+    if (this.s.phase === "down" && this.s.blocked) return { verdict: "refused", reason: "down" };
+    if (!this.s.alive && this.o.accountDir(cfg.account) === null) return { verdict: "refused", reason: "account" };
+    const r = this.apply({ kind: "message", msg: { text, review: line } });
+    if (r.verdict === "refused") return { verdict: "refused", reason: "down" };
+    return { verdict: "sent" };
   }
 
   // D3: 받아들여진 초안을 대화의 이 자리에 적는다(카드는 큐 줄을 가리킬 뿐이다). 글 이벤트와 같은 길이라 순서가 섞이지 않는다
@@ -258,6 +277,7 @@ export class DutyRuntime {
       const finish = (error?: string) => {
         if (done) return;
         done = true;
+        this.reviewing = false;
         if (this.proc === p) this.proc = null;
         resolve();
         this.apply({ kind: "exit", ...(error ? { error } : {}) });
@@ -287,6 +307,13 @@ export class DutyRuntime {
     p.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`);
     // 사용자 글은 서버가 적는다(스트림이 되울리는 줄(--replay-user-messages)은 파서가 이벤트로 내지 않는다)
     const t = new Date(this.now()).toISOString();
+    if (m.review) {
+      // REVIEW 턴(ATC-396): SUPERVISOR가 쓴 글이 아니다. 긴 지시문은 기록하지 않고 한 줄만 남긴다
+      this.reviewing = true;
+      this.append({ t, kind: "notice", text: m.review });
+      this.emit({ type: "notice", text: m.review });
+      return;
+    }
     this.append({ t, kind: "user", text: m.text, ...(m.image ? { image: m.image.file } : {}) });
     this.emit({ type: "user", text: m.text, ...(m.image ? { image: m.image.file } : {}) });
   }
@@ -298,6 +325,7 @@ export class DutyRuntime {
         continue;
       }
       if (e.type === "state") {
+        this.reviewing = false; // 턴이 끝났다: 줄 선 글이 이어 써져도 그것은 SUPERVISOR의 글이다
         this.apply({ kind: "result" }); // 큐에 남은 글이 있으면 여기서 이어 쓴다
         continue;
       }
@@ -349,7 +377,7 @@ export function duty(): DutyRuntime {
 }
 
 // 설정 창의 DUTY 스위치: duty.json에 쓰고 실행 중인 프로세스에 반영한다
-export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter">>): Promise<DutyConfig> {
+export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review">>): Promise<DutyConfig> {
   const prev = loadDutyConfig();
   const next = saveDutyConfig(patch);
   await duty().configChanged(prev, next);

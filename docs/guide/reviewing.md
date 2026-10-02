@@ -17,9 +17,9 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 
 사라진 것: 카드를 하나씩 판정하는 화면, CROSSCHECK 동의 묶음과 BLIND 표본, HELD(PREFLIGHT) 목록, 2b 진입 점검(READINESS)과 DISPATCH 쪽 FLIGHT FOLLOWING 블록. 모두 자동 운항이 대신하거나 FOLLOW·METRICS가 이미 보여 주는 것입니다.
 
-## SCHEDULE 탭: 티켓 초안
+## SCHEDULE 초안: HOME의 QUEUE
 
-OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear에 쓰지 않는다.
+OCC가 Linear에 쓸 변경을 초안으로 남긴다. SCHEDULE 탭은 2026-10-02에 없어졌다(`#schedule`은 HOME을 연다). 남은 것은 이렇게 나뉘었다: **S2(승인 운용)에서 판정을 기다리는 초안은 HOME의 QUEUE 줄**이고(줄마다 **승인**·**거절**, 한 번 확인. TARGET·ROUTE는 적용하는 길이 없어 **동의**·**거절**로 기록만 한다), 지연 WAYPOINT는 HOME의 **LATE WAYPOINTS**, 승인한 CLOSE는 HOME의 **LINEAR에서 직접 DONE**, SCHEDULE S1↔S2 스위치는 HOME의 BRAKES 줄, 새 이슈 제안(NEW)은 RELEASE의 후보다. 사라진 것: S1에서 초안을 "승인했을 것 / 거절했을 것"으로 판정하는 화면, CROSSCHECK 칩, 판정 계열 칩, 후보·RECENT·IN PROGRESS 표, 맨 아래 READINESS 줄(S2 진입 점검, ROUTES WITHOUT WAYPOINTS). S1에서는 초안이 QUEUE에 오지 않고, 서버의 SCHEDULE AUTO가 켜져 있으면 서버가 승인한다.
 
 | 초안 | 내용 |
 |---|---|
@@ -31,15 +31,15 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. 지금은 S1이라 Linear
 | TARGET · ROUTE | AIRCRAFT 하나의 FLEET 목표(`flightsPerWeek`, `onTime`)나 ROUTE(맡는 프로젝트)를 바꾸자는 초안. 카드에 지금 값, 바뀔 것, OCC 근거, atc가 붙인 숫자(14일 ARRIVED, 주별 ARRIVED, ROUTE 대기)가 있다. S2에서도 "승인했을 것 / 거절했을 것"만 받고 FLEET에 쓰지 않는다 — 바꾸려면 FLEET 탭에서 직접. 이 판정은 S2 진입 점검에 세지 않는다 |
 | CLOSE | PR이 머지됐는데(LOGBOOK ARRIVED) Linear에서 아직 열린 FLIGHT를 Done으로. 카드에 PR 링크, 머지 시각, 본문이 `Fixes`인지가 있다. `Part of`(일부만)면 노란색으로 표시된다 |
 
-- 카드에 "바뀔 것"과 OCC 근거가 있다. 맞으면 승인했을 것, 아니면 거절했을 것(사유 선택).
-- 라벨이 당장 필요하면 카드 안내대로 Linear에서 직접 붙인다. 그러면 초안은 "Linear에 이미 반영됨"으로 스스로 닫힌다.
+- QUEUE 줄에 초안의 종류와 대상, OCC 근거 한 줄이 있다. 맞으면 승인, 아니면 거절(사유 선택).
+- 라벨이 당장 필요하면 Linear에서 직접 붙인다. 그러면 초안은 "Linear에 이미 반영됨"으로 스스로 닫힌다.
 - 열린 초안은 5건까지. 3일 동안 판정이 없으면 EXPIRED.
-- **CLOSE는 Linear에서 직접 닫는다.** vocado 규칙상 OCC는 이슈 상태를 바꾸지 않으므로 S2에서도 CLOSE는 발부되지 않는다. 승인한 CLOSE(그림자 운용이면 "승인했을 것")는 SCHEDULE 탭의 **LINEAR에서 직접 DONE** 목록에 이슈·PR 링크와 함께 뜬다. Linear에서 Done으로 바꾸면 다음 새로 고침에 목록과 초안이 함께 닫힌다. PR이 되돌려지면 초안은 스스로 SUPERSEDED된다.
+- **CLOSE는 Linear에서 직접 닫는다.** vocado 규칙상 OCC는 이슈 상태를 바꾸지 않으므로 S2에서도 CLOSE는 발부되지 않는다. 승인한 CLOSE(그림자 운용이면 "승인했을 것")는 HOME의 **LINEAR에서 직접 DONE** 목록에 이슈·PR 링크와 함께 뜬다. Linear에서 Done으로 바꾸면 다음 새로 고침에 목록과 초안이 함께 닫힌다. PR이 되돌려지면 초안은 스스로 SUPERSEDED된다.
 - CLOSE 판정 기준: PR 본문이 `Fixes VOC-n`이고 완료 기준이 그 PR로 채워졌으면 승인, `Part of`이거나 남은 일·되돌림이 있으면 거절(사유 칩 "Part of — 일부만 끝남", "남은 작업이 있음" …).
-- **LATE WAYPOINTS**: ETA가 WAYPOINT(Linear 마일스톤)의 목표일을 넘거나 목표일이 지났으면 S2 점검 아래에 뜬다. 판정할 것은 아니다. OCC는 새 경고를 세션에서 한 번 보고하고, 목록에는 풀릴 때까지 남는다("OCC 보고 …"). 목표일을 옮길지, 일을 줄일지, FLIGHT를 더 배정할지는 SUPERVISOR가 정한다. ETA 계산은 NETWORK 탭 ROUTE MAP과 같다.
-- **ROUTES WITHOUT WAYPOINTS**: 열린 FLIGHT가 있는데 WAYPOINT(마일스톤)가 하나도 없는 ROUTE와 그 열린 FLIGHT 수가 LATE WAYPOINTS 아래에 뜬다. 판정할 것은 아니다. 그 ROUTE는 ETA를 셀 수 없고 WAYPOINT 초안도 쓸 곳이 없다. OCC는 새 ROUTE를 세션에서 한 번 알린다. WAYPOINT가 필요하면 Linear에서 그 프로젝트에 마일스톤을 만든다(OCC는 만들지 않는다). 만들면 다음 새로 고침에 목록에서 빠진다.
-- **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로).
-- **S2(승인 운용)**: SCHEDULE 탭의 "S2 승인 운용 켜기"로 켠다(만들어 두었고 기본은 꺼짐). 켜면 버튼이 "승인 / 거절"이 되고, 승인한 작업은 IN PROGRESS에 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 보인다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
+- **LATE WAYPOINTS**: ETA가 WAYPOINT(Linear 마일스톤)의 목표일을 넘거나 목표일이 지났으면 HOME에 예외로 뜬다(있을 때만). 판정할 것은 아니다. OCC는 새 경고를 세션에서 한 번 보고하고, 목록에는 풀릴 때까지 남는다("OCC 보고 …"). 목표일을 옮길지, 일을 줄일지, FLIGHT를 더 배정할지는 SUPERVISOR가 정한다. ETA 계산은 NETWORK 탭 ROUTE MAP과 같다.
+- **WAYPOINT 없는 ROUTE**: 열린 FLIGHT가 있는데 WAYPOINT(마일스톤)가 하나도 없는 ROUTE는 ETA를 셀 수 없고 WAYPOINT 초안도 쓸 곳이 없다. 이 목록은 화면에서 없어졌다(OCC는 새 ROUTE를 세션에서 한 번 알린다). WAYPOINT가 필요하면 Linear에서 그 프로젝트에 마일스톤을 만든다(OCC는 만들지 않는다).
+- **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로). 점검 숫자를 보이던 SCHEDULE 화면의 READINESS 줄은 없어졌다.
+- **S2(승인 운용)**: HOME의 BRAKES 줄 `SCHEDULE SHADOW — S2로`로 켠다(만들어 두었고 기본은 꺼짐). 켜면 초안이 QUEUE 줄에 "승인 / 거절"로 오고, 승인한 작업은 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 진행한다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
 
 ## RECALL: 보낸 FLIGHT PLAN 거둬들이기
 
@@ -100,7 +100,7 @@ atc가 띄운 백그라운드 AIRCRAFT는 마지막 턴 뒤 60분쯤 쉬면 Clau
 CROSSCHECK 세션은 더 띄우지 않고, 서버의 어떤 규칙(자동 승인, ATFM 자동 대상, PREFLIGHT HOLD)도 CROSSCHECK mark를 기다리지 않는다. 새 mark는 받지 않는다(`POST …/crosscheck`는 410). 은퇴 전에 남은 mark는 기록으로 읽힌다: 옛 카드와 초안의 점선 칩, NETWORK의 GATES 줄(은퇴 — 옛 기록). 칩이 있는 옛 열린 SCHEDULE 초안에는 "CROSSCHECK에 동의" 단추가 남아 있다.
 ## JEV 판정 줄
 
-- **JEV 일치** 줄(SCHEDULE 점검 패널, 판정 계열이 켜져 있거나 mark가 있을 때): 판정 계열 Jev가 CLASSIFY 초안에 낸 분류가 사람 판정과 맞은 비율. 지난 판정을 다시 돌린 `replay` mark도 센다. Jev의 mark는 판정한 초안에만 RECENT의 칩(`JEV agree`)으로 보인다. 판정 전에는 보이지 않아서 판단이 쏠리지 않는다. 켜고 끄는 것은 설정 창 AGENTS 탭의 JUDGES다(설계: `docs/fleet.ko.md` 6.1).
+- **JEV 일치**: 판정 계열 Jev가 CLASSIFY 초안에 낸 분류가 사람 판정과 맞은 비율. SCHEDULE 점검 패널은 2026-10-02에 없어져 화면에는 보이지 않고, 서버 기록(`GET /api/schedule/brief`의 `judges`)에만 남는다. 켜고 끄는 것은 설정 창 AGENTS 탭의 JUDGES다(설계: `docs/fleet.ko.md` 6.1).
 - **JEV** 줄 셋(DISPATCH 점검 패널, 판정 계열이 켜져 있거나 mark가 있을 때): Jev가 열린 ASSIGN 제안마다 세 가지를 묻는다. 본문이 시작하기에 충분한가(Ready), 다른 일을 기다린다고 적혀 있나(Prerequisite), AIRCRAFT의 최근 atc FLIGHT와 얼마나 가까운가(Same area). 줄은 `Ready = no → 거절`, `Prerequisite = yes → 선행 대기`(`waiting-on-prior` 칩이나 OCC HOLD), `Same area 가까움 → 승인`이 사람 결과와 맞은 건수다. 참고용이고 점수·HOLD·상태에는 영향이 없다. mark는 RECENT의 `JEV` 칩(툴팁에 세 답)으로 닫힌 제안에만 보이고, 열린 카드에는 보이지 않는다. 쓸지는 판정한 제안이 20건 넘은 뒤 SUPERVISOR가 정한다(설계: `docs/fleet.ko.md` 6.1).
 - **JEV REPORT**(FLEET 줄의 칩, AIRCRAFT 카드의 줄, FLEET PLAN 패널 위쪽 줄): AIRCRAFT의 턴이 끝날 때 Jev가 CAPTAIN의 마지막 메시지를 `reported done`·`asks for a decision`·`stopped mid-work`·`idle and ready`·`can't tell`로 분류한다(atc 저장소 AIRCRAFT만, 경로·URL을 가려서 최대 1,500자). 카드의 **맞음 / 틀림**으로 분류가 맞았는지 표시하면 패널에 `JEV REPORT 맞음 m/n`이 센다. 결정이 필요하다는 확률이 70% 이상이면 FLIGHT FOLLOWING에 항목이 하나 붙는다. 참고용이고 health 코드·DISPATCH·FLEET PLAN에는 영향이 없다(설계: `docs/fleet.ko.md` 8.8).
 

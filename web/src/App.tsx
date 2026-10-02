@@ -31,7 +31,6 @@ const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import
 const Network = lazyTab<{ refreshKey: string }>(() => import("./views/Network.tsx"), "Network");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
-const Schedule = lazyTab<{ refreshKey: string; now: number }>(() => import("./views/Schedule.tsx"), "Schedule");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
@@ -47,7 +46,6 @@ const TABS = [
   { id: "metrics", code: "METRICS" },
   { id: "network", code: "NETWORK" },
   { id: "release", code: "RELEASE" },
-  { id: "schedule", code: "SCHEDULE" },
   { id: "docs", code: "DOCS" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -314,8 +312,6 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
       return <Release refreshKey={refreshKey} />;
     case "home":
       return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
-    case "schedule":
-      return <Schedule refreshKey={refreshKey} now={now} />;
     case "docs":
       return <Docs />;
     default:

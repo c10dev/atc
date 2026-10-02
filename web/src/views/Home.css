@@ -108,3 +108,8 @@
   color: var(--alert);
   font-size: var(--text-sm);
 }
+.hm-detail {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}

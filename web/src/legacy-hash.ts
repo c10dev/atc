@@ -1,10 +1,11 @@
 // 이전 주소 북마크도 열린다. FOLLOW·STRIPS·FIDS·RADAR·RADIO는 FLIGHTS의 보기가 됐다(ATC-379): #follow·#strips는 목록, #board는 보드, #radar는 레이더, #radio는 RADIO 기록.
-// #dispatch는 HOME이 이어받았다(ATC-377): 큐와 메뉴 막대의 옛 링크도 HOME을 연다
+// #dispatch는 HOME이 이어받았다(ATC-377), #schedule도 그렇다(ATC-378): 큐와 메뉴 막대의 옛 링크도 HOME을 연다
 const LEGACY_HASH: Record<string, string> = {
   map: "flights/radar",
   teams: "flights",
   tickets: "flights/board",
   dispatch: "home",
+  schedule: "home", // SCHEDULE은 HOME이 이어받았다(ATC-378)
   follow: "flights",
   strips: "flights",
   board: "flights/board",
