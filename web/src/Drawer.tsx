@@ -1,7 +1,7 @@
 import { ExternalLink, X } from "lucide-react";
 import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useDialog } from "./kit/useDialog.ts";
+import { useDialog, useDocked } from "./kit/useDialog.ts";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
 import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
@@ -460,14 +460,12 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
 export default function Drawer({ target, onClose, now }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "flight" ? target.key : `${target.airport}/${target.number}`;
-  useDialog(ref, onClose, id);
+  const docked = useDocked();
+  useDialog(ref, onClose, id, { trap: !docked, restore: false });
   return (
-    <>
-      <div className="dr-backdrop" onClick={onClose} />
-      <aside className="dr" role="dialog" aria-modal="true" aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
-        <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
-        {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
-      </aside>
-    </>
+    <aside className="dr" role="dialog" aria-modal={!docked} aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
+      <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
+      {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
+    </aside>
   );
 }
