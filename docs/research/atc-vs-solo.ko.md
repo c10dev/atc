@@ -89,6 +89,16 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 
 실행 전에 밝히는 알려진 데이터 구멍: solo 팔에는 LOGBOOK, leak 기록, CLEARANCE 기록이 없다(git, `gh`, transcript로 다시 만든다). 머지한 사람이 저장되지 않는다(`mergedBy`). LOGBOOK `blockMin`은 첫 출발 기록부터 시작하므로 대기 시간이 아니다.
 
+### 이슈별 기록 (ATC-465)
+
+`node server/arm-metrics-run.ts --spec <spec.json> [--state <상태 폴더>] [--gh-dir <폴더>] [--json]`(순수 함수는 `server/arm-metrics.ts`)이 **두 팔에서 같은 칸**을 가진 기록을 이슈마다 하나 낸다: 이슈 키, 팔, 시작, merge-ready 시각, 걸린 분, 고쳐 하기 횟수, 끼어듦(종류별), 종류별 Claude 토큰(CAPTAIN과 CREW·subagent), OCC·MCC 몫, Codex 리뷰 횟수, 본 모델과 CLI 버전. 읽기만 한다: 상태 폴더는 인자이고 쓰지 않으며(운영 폴더가 기본값인 적이 없다), GitHub를 부르지 않고(solo PR 자료는 읽기 전용 `gh`로 미리 받아 둔다, 아래), 출력은 표준출력이다. spec은 `{ arm, window: {start, end}, issues: [{ key, start?, transcript?, reviewPassedAt?, mergeReadyAt? }], control?: [{ role, file }] }`이고, `--gh-dir`에는 solo 이슈마다 `<ATC-n>.json` 하나를 둔다. 모양은 `{number, createdAt, isDraft, commits: [{authoredDate, messageHeadline}], reviews: [{author, state}], checks: [{name, conclusion, completedAt}]}`: 앞의 네 칸은 `gh pr view <n> --json number,createdAt,isDraft,commits,reviews`(`author`는 `reviews[].author.login`)에서, `checks`는 `gh api repos/<owner>/<repo>/commits/<head sha>/check-runs`(`completed_at`이 `completedAt`)에서 가져온다. 둘 다 읽기 호출이다.
+
+- **시작**은 그 이슈의 실험 창 시작(`start`, 없으면 창 시작)이고 LOGBOOK `blockMin`이 아니다.
+- **Solo**: 토큰은 내보낸 transcript에서 기존 FUEL 함수(`parseFuelLines`, `dedupeFuel`)로 세고 CAPTAIN과 sidechain(subagent)을 가른다. 끼어듦 = 첫 메시지(작업 지시서) 뒤 SUPERVISOR 메시지 + 거절된 도구 호출. 권한 승인은 transcript에 표지가 남지 않아 재지 못한 것으로 적는다. merge-ready = CI `check` 초록(마지막 `check` run이 성공이어야 한다), `reviewPassedAt`이 더 늦으면 블라인드 리뷰 통과 시각. 고쳐 하기 = PR을 연 뒤 커밋(병합 커밋 제외, `reworkOf`).
+- **atc**: 토큰은 LOGBOOK 줄의 FUEL(CAPTAIN과 CREW). 끼어듦 = 창 안에서 그 이슈의 `leaks.jsonl` 열린 줄 + RELAY 생성 + SUPERVISOR 승인(`via: "auto"` 제외). 낸 CLEARANCE 수는 적되 합에 넣지 않는다(TOWER에서 팀으로 가는 것이라 SUPERVISOR가 아니다). OCC·MCC 요청은 `control`에 준 control transcript에서 창 안 것만 읽어 묶음의 이슈에 똑같이 나눈다. merge-ready = 머지 시각(PR을 연 시각 + 착륙 대기), autoland의 끝점.
+- **재지 못한 것은 실패가 아니라 모름**: solo transcript에 `message.usage`가 없으면 `tokens.measured: false`와 이유를 내고, Codex 토큰은 늘 `unmeasured`다.
+- **클라우드 transcript**(2026-10-03에 공개 보고와 문서로 확인했고 실제 세션으로 확인하지 않았다): 웹의 Claude Code에는 웹 세션용 `/export`가 없다. `claude --teleport <세션>`이 로컬 세션으로 가져오며, 그 transcript는 새 UUID의 로컬 파일이고 마지막 압축 이후 기록만 있다. 그 줄에 `message.usage`가 있는지는 **확인하지 못했다**. 파일럿이 추출기(`tokens.measured`)로 확인한다. false면 프로토콜대로 solo 팔은 로컬 세션으로 돌린다.
+
 ## 5. 끝점과 품질
 
 - **끝점: merge-ready** = CI `check` 초록 + 블라인드 리뷰 통과. 머지 행동: solo = SUPERVISOR의 리뷰와 머지 시간, atc = 0(autoland), 상향(escalation) 시간은 센다.
