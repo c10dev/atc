@@ -8,7 +8,7 @@ import type { Snapshot } from "../../../../server/model.ts";
 import { DEFAULT_TEAM_PATTERN } from "../../../../server/registration.ts";
 import { isBackground, manualStepsOf } from "../../../../server/session-origin.ts";
 // CSS 순서: 한 파일이던 때처럼 FleetCrew·Checkride·FleetPlan → FLEET 공통(Fleet.css) → 부분별 CSS.
-// 같은 세기의 규칙(.fc-error/.fl-error, .fp-switch/.fl-btn, .fl-input/.fl-reg·.fl-num)이 이 순서에 기댄다
+// 같은 세기의 규칙(.fc-error/.fl-error, .fp-switch/.btn, .fl-input/.fl-reg·.fl-num)이 이 순서에 기댄다
 import "../FleetCrew.css";
 import { Checkride } from "../Checkride.tsx";
 import { FleetPlan } from "../FleetPlan.tsx";
@@ -323,7 +323,7 @@ export function Fleet({ refreshKey, snapshot }: { refreshKey: string; snapshot: 
                   · {a.retired!.at.slice(0, 10)}
                   {a.retired!.reason ? ` · ${a.retired!.reason}` : ""}
                 </span>
-                <button className="fl-btn" onClick={() => retire(a)}>
+                <button className="btn" onClick={() => retire(a)}>
                   복귀
                 </button>
               </li>

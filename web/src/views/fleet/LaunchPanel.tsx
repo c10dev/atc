@@ -112,7 +112,7 @@ export function LaunchOptions({
       </label>
       {d.cap && <p className="fl-launch-note faint">{d.cap}</p>}
       <div className="fl-actions">
-        <button type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused) || !flightOk}>
+        <button type="submit" className="btn is-primary" disabled={busy || Boolean(chosenRefused) || !flightOk}>
           {busy ? (
             <>
               <Lights />

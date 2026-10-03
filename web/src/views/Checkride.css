@@ -54,7 +54,7 @@
 .st-BLOCKED .cr-status {
   color: var(--amber);
 }
-.cr-head .fl-btn {
+.cr-head .btn {
   margin-left: auto;
 }
 .cr-reason {

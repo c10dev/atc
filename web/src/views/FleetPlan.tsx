@@ -187,12 +187,12 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
         {" · "}예비 {brief.config.reserve} · 대기 {brief.config.waitMin}분 · 유휴 {brief.config.idleHours}h · RESTART {brief.config.restartDays}일
         {brief.config.refreshTokens != null && <> · REFRESH {kTokens(brief.config.refreshTokens)} 또는 창의 {Math.round((brief.config.refreshPct ?? 0) * 100)}%</>} · 퇴역 {brief.config.retireDays}일
         {approval ? (
-          <button className="fl-btn fp-switch" disabled={busy === "mode"} onClick={() => switchMode("shadow")}>
+          <button className="btn fp-switch" disabled={busy === "mode"} onClick={() => switchMode("shadow")}>
             그림자로 돌리기
           </button>
         ) : (
           <button
-            className="fl-btn fp-switch"
+            className="btn fp-switch"
             disabled={!g.ready || busy === "mode"}
             title={g.ready ? "승인 운용을 켠다" : `그림자 게이트를 넘어야 켤 수 있다(판정 ${g.target.decided}건, 합의 ${pct(g.target.agreement)})`}
             onClick={() => switchMode("approval")}
@@ -256,24 +256,24 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
                     </p>
                   )}
                   <div className="fl-actions">
-                    <button className="fl-btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
+                    <button className="btn" disabled={busy === p.id} onClick={() => judge(p, "disagree")}>
                       {ap ? "거절" : "반대"}
                     </button>
                     {isManual(p) && (
-                      <button className="fl-btn" disabled={busy === p.id} onClick={() => copyBriefing(p)}>
+                      <button className="btn" disabled={busy === p.id} onClick={() => copyBriefing(p)}>
                         {copied === p.id ? "복사함" : "CREW BRIEFING 복사"}
                       </button>
                     )}
                     {ap && isManual(p) ? (
-                      <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
+                      <button className="btn is-primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
                         했음
                       </button>
                     ) : ap ? (
-                      <button className="fl-btn primary" disabled={busy === p.id || p.stale} onClick={() => (setError(null), setApproving(p.id))}>
+                      <button className="btn is-primary" disabled={busy === p.id || p.stale} onClick={() => (setError(null), setApproving(p.id))}>
                         승인(실행)
                       </button>
                     ) : (
-                      <button className="fl-btn primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
+                      <button className="btn is-primary" disabled={busy === p.id} onClick={() => judge(p, "agree")}>
                         동의
                       </button>
                     )}
@@ -392,10 +392,10 @@ function ApproveForm({
         </label>
       )}
       <div className="fl-actions">
-        <button type="button" className="fl-btn" onClick={onCancel}>
+        <button type="button" className="btn" onClick={onCancel}>
           취소
         </button>
-        <button type="submit" className="fl-btn primary" disabled={busy}>
+        <button type="submit" className="btn is-primary" disabled={busy}>
           {busy ? "실행하는 중…" : "승인(실행)"}
         </button>
       </div>
