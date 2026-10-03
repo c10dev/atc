@@ -409,3 +409,24 @@ test("발권 fire 뒤: 캐시가 Todo로 바뀌어 releaseView의 ready·filed�
   assert.deepEqual(after.ready.map((r) => r.key), []);
   assert.deepEqual(after.filed.map((f) => f.key), []);
 });
+
+test("GET /api/releases: tree는 상위 이슈 그룹·막는 이슈 밑 중첩·다음 발권을 싣고, 기존 목록(ready·unreleased)은 그대로다 (ATC-456)", () => {
+  const s = snap([
+    tk("ATC-90", { children: ["ATC-1", "ATC-2", "ATC-3", "ATC-4"], stateType: "backlog", state: "Backlog" }),
+    tk("ATC-1", { parent: "ATC-90", blocks: ["ATC-2"] }),
+    tk("ATC-2", { parent: "ATC-90", stateType: "backlog", state: "Backlog", blockedBy: ["ATC-1"], blocks: ["ATC-3"] }),
+    tk("ATC-3", { parent: "ATC-90", stateType: "backlog", state: "Backlog", blockedBy: ["ATC-2"] }),
+    tk("ATC-4", { parent: "ATC-90", stateType: "completed", state: "Done" }),
+  ]);
+  const h = harness([]);
+  const v = releaseView(s, { ...h.deps, files: () => null });
+  assert.deepEqual(v.tree.map((g) => [g.key, g.done, g.total, g.next]), [["ATC-90", 1, 4, "ATC-1"]]);
+  const top = v.tree[0]!.rows[0]!;
+  assert.equal(top.key, "ATC-1");
+  assert.equal(top.fire, "release");
+  assert.equal(top.hash, "hash-ATC-1");
+  assert.deepEqual(top.children.map((c) => c.key), ["ATC-2"]);
+  assert.deepEqual(top.children[0]!.children.map((c) => c.key), ["ATC-3"]);
+  assert.deepEqual(v.unreleased.map((r) => r.key), ["ATC-1"]); // 기존 목록은 그대로
+  assert.deepEqual(v.ready.map((r) => r.key), []);
+});

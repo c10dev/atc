@@ -3,7 +3,9 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { apiGet, apiSend } from "../api.ts";
 import { PriorityMark } from "../badges.tsx";
 import "./Release.css";
+import "./ReleaseTree.css";
 import { Empty } from "../kit/Empty.tsx";
+import { Fold } from "../kit/Fold.tsx";
 import { Loading } from "../kit/Loading.tsx";
 
 // RELEASE 화면(ATC-376, docs/layout.md Y1): SUPERVISOR가 화살을 쏘는 한 곳(`#release`).
@@ -69,7 +71,36 @@ interface Filed {
   by: string;
   at: string;
 }
+// 발권 순서의 나무(ATC-456, server/release-tree.ts): 상위 이슈마다 그룹, 막는 이슈 밑에 막힌 이슈
+type StateWord = { kind: "ready" } | { kind: "todo" } | { kind: "waiting"; on: string[] } | { kind: "stage"; word: string };
+interface TreeRow {
+  key: string;
+  title: string;
+  priority: number;
+  state: StateWord;
+  fire: "fire" | "release" | null;
+  released: boolean;
+  after: { key: string; reason: string; known: boolean } | null;
+  sequenceProblem: string | null;
+  sameFiles: string[];
+  children: TreeRow[];
+  hash: string | null;
+  kEffects: string | null;
+  k3: K3Status | null;
+  filed: { by: string; at: string } | null;
+  why: string | null;
+  stale: boolean;
+}
+interface TreeGroup {
+  key: string | null;
+  title: string;
+  done: number;
+  total: number;
+  next: string | null;
+  rows: TreeRow[];
+}
 interface ReleaseData {
+  tree?: TreeGroup[];
   k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] };
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
@@ -162,15 +193,14 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       setBusy(null);
     }
   };
-  const fireFiled = (f: Filed) => run(f.key, () => send("/api/releases/fire", { flight: f.key, hash: f.hash }));
-  const discard = (f: Filed) =>
-    run(f.key, async () => {
-      await send("/api/releases/discard", { flight: f.key, hash: f.hash, reason });
+  // 나무 줄의 단추: READY Backlog와 제안은 Todo로 옮기며 발권(fire), 이미 Todo인 줄은 발권(release). 길은 이전과 같다
+  const fireRow = (r: TreeRow) => run(r.key, () => send(r.fire === "release" ? "/api/releases" : "/api/releases/fire", { flight: r.key, hash: r.hash }));
+  const discardRow = (r: TreeRow) =>
+    run(r.key, async () => {
+      await send("/api/releases/discard", { flight: r.key, hash: r.hash, reason });
       setDiscarding(null);
       setReason("");
     });
-  const fireReady = (r: Row) => run(r.key, () => send("/api/releases/fire", { flight: r.key, hash: r.hash }));
-  const releaseTodo = (r: Row) => run(r.key, () => send("/api/releases", { flight: r.key, hash: r.hash }));
   const confirmK = (r: KPending) => run(`k-${r.key}`, () => send("/api/releases/k-confirm", { flight: r.key, hash: r.hash }));
   const releaseAll = () => run("all", () => send("/api/releases/bulk", { flights: data.unreleased.map((r) => ({ key: r.key, hash: r.hash })) }));
 
@@ -182,7 +212,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
   const k3Hold = data.k3Hold;
   const attested = Object.entries(data.attested);
-  const candidates = data.filed.length + data.ready.length + data.proposals.length;
+  const candidates = data.filed.length + data.ready.length + data.proposals.length + data.unreleased.length;
 
   return (
     <div className="rl-screen">
@@ -197,83 +227,30 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
 
-      <section className="rl" aria-label="후보">
+      <section className="rl" aria-label="발권 순서">
         <h3 className="label">
-          후보 <em>{candidates ? `${candidates}건` : "없음"}</em>
+          발권 순서 <em>{candidates ? `발권할 수 있는 ${candidates}건` : "발권할 것 없음"}</em>
         </h3>
-        {candidates === 0 && <p className="faint rl-none">발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안과 막는 FLIGHT가 모두 끝난 Backlog 이슈가 여기 옵니다</p>}
-        {data.filed.length > 0 && (
-          <ul className="rl-list" aria-label="제안">
-            {data.filed.map((f) => (
-              <li key={f.key}>
-                <b>
-                  <OpenFlight k={f.key} />
-                </b>
-                <PriorityMark priority={f.priority} />
-                <span className="rl-title">{f.title}</span>
-                <span className="faint rl-kind">제안</span>
-                <span className="rl-sub">
-                  <span className="rl-who" title="누가 언제 제안했나">
-                    {f.by} · <span className="mono">{clock(f.at)}</span>
-                  </span>
-                  <KEffects text={f.kEffects} k3={f.k3} />
-                  {f.priority <= 0 && <span className="rl-warn">우선순위가 없어 Todo로 옮기지 않습니다(DISPATCH가 건너뜁니다). 먼저 정합니다</span>}
-                </span>
-                <span className="rl-acts">
-                  {discarding === f.key ? (
-                    <>
-                      <input className="rl-reason" aria-label={`${f.key}를 버리는 사유`} placeholder="버리는 사유(선택)" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy !== null} />
-                      <button type="button" className="btn" disabled={busy !== null} onClick={() => discard(f)}>
-                        버리기
-                      </button>
-                      <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(null); setReason(""); }}>
-                        취소
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {f.priority > 0 ? (
-                        <button type="button" className="btn" disabled={busy !== null} onClick={() => fireFiled(f)} aria-label={`${f.key} 발권: Todo로 옮기고 발권`}>
-                          발권
-                        </button>
-                      ) : (
-                        <a className="btn is-link" href={`#flight/${f.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
-                          우선순위 먼저
-                        </a>
-                      )}
-                      <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(f.key); setReason(""); }} aria-label={`${f.key} 버리기`} title="Canceled로 옮기고 사유를 이슈에 남깁니다">
-                        버림…
-                      </button>
-                    </>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {data.ready.length > 0 && (
-          <ul className="rl-list" aria-label="READY Backlog">
-            {data.ready.map((r) => (
-              <li key={r.key}>
-                <b>
-                  <OpenFlight k={r.key} />
-                </b>
-                <PriorityMark priority={r.priority} />
-                <span className="rl-title">{r.title}</span>
-                <span className="faint rl-kind">READY</span>
-                <KEffects text={r.kEffects} k3={r.k3} />
-                {r.priority > 0 ? (
-                  <button type="button" className="btn" disabled={busy !== null} onClick={() => fireReady(r)} aria-label={`${r.key} 발권: Todo로 옮기고 발권`}>
-                    발권
-                  </button>
-                ) : (
-                  <a className="btn is-link" href={`#flight/${r.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
-                    우선순위 먼저
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
+        {candidates === 0 && <p className="faint rl-none">발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안, 막는 FLIGHT가 모두 끝난 Backlog 이슈, 발권 전 Todo가 여기 옵니다</p>}
+        {data.unreleased.length > 0 && (
+          <div className="rl-bar">
+            <span className="faint">Todo {data.unreleased.length}건은 발권해야 DISPATCH가 배정합니다</span>
+            {confirm ? (
+              <span className="rl-confirm">
+                <span>Todo {data.unreleased.length}개의 목표·완료 기준·K 효과를 승인하고 DISPATCH가 배정하게 합니다. 이 승인은 한 번이고 이후 사람 단계는 없습니다.</span>
+                <button type="button" className="btn" disabled={busy !== null} onClick={releaseAll}>
+                  {data.gate.on ? `${data.unreleased.length}개 발권` : `${data.unreleased.length}개 발권하고 gate 켜기`}
+                </button>
+                <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => setConfirm(false)}>
+                  취소
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => setConfirm(true)}>
+                모두 발권…
+              </button>
+            )}
+          </div>
         )}
         {data.proposals.length > 0 && (
           <ul className="rl-list" aria-label="에이전트 제안">
@@ -293,51 +270,15 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         )}
       </section>
 
-      <section className="rl" aria-label="발권 없는 Todo">
-        <h3 className="label">
-          Todo, 발권 전 <em>{data.unreleased.length ? `${data.unreleased.length}건` : "없음"}</em>
-        </h3>
-        {data.unreleased.length === 0 ? (
-          <p className="faint rl-none">발권을 기다리는 Todo FLIGHT 없음</p>
-        ) : (
-          <>
-            <div className="rl-bar">
-              <span className="faint">발권해야 DISPATCH가 배정합니다</span>
-              {confirm ? (
-                <span className="rl-confirm">
-                  <span>위 {data.unreleased.length}개의 목표·완료 기준·K 효과를 승인하고 DISPATCH가 배정하게 합니다. 이 승인은 한 번이고 이후 사람 단계는 없습니다.</span>
-                  <button type="button" className="btn" disabled={busy !== null} onClick={releaseAll}>
-                    {data.gate.on ? `${data.unreleased.length}개 발권` : `${data.unreleased.length}개 발권하고 gate 켜기`}
-                  </button>
-                  <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => setConfirm(false)}>
-                    취소
-                  </button>
-                </span>
-              ) : (
-                <button type="button" className="btn" disabled={busy !== null} onClick={() => setConfirm(true)}>
-                  모두 발권…
-                </button>
-              )}
-            </div>
-            <ul className="rl-list">
-              {data.unreleased.map((r) => (
-                <li key={r.key}>
-                  <b>
-                    <OpenFlight k={r.key} />
-                  </b>
-                  <PriorityMark priority={r.priority} />
-                  <span className="rl-title">{r.title}</span>
-                  <span className="faint rl-kind">{r.why ? `발권 거둠 — ${r.why}` : r.state === "stale" ? "발권 뒤 내용이 바뀜" : "Todo"}</span>
-                  <KEffects text={r.kEffects} k3={r.k3} />
-                  <button type="button" className="btn" disabled={busy !== null} onClick={() => releaseTodo(r)} aria-label={`${r.key} 발권`}>
-                    발권
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
+      {(data.tree ?? []).map((g) => (
+        <Fold key={g.key ?? "other"} title={g.key ? `${g.key} ${g.title}` : g.title} label={g.key ? `${g.key} 그룹` : "상위 이슈 없는 이슈"} summary={`끝남 ${g.done}/${g.total}${g.next ? ` · 다음 발권: ${g.next}` : ""}`}>
+          <ul className="rl-tree" aria-label={g.key ? `${g.key} 아래 이슈` : "상위 이슈 없는 이슈"}>
+            {g.rows.map((r) => (
+              <TreeNode key={r.key} row={r} busy={busy} discarding={discarding} reason={reason} setReason={setReason} setDiscarding={setDiscarding} fire={fireRow} discard={discardRow} />
+            ))}
+          </ul>
+        </Fold>
+      ))}
 
       {(data.kPending ?? []).length > 0 && (
         <section className="rl" aria-label="K 효과 확인">
@@ -399,5 +340,97 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         )}
       </section>
     </div>
+  );
+}
+
+// 상태 낱말: READY · Todo · 대기: ATC-n(흐리게) · FLIGHT 단계
+function stateText(r: TreeRow): string {
+  switch (r.state.kind) {
+    case "ready":
+      return "READY";
+    case "todo":
+      return r.released ? "Todo · 발권됨" : r.stale ? "Todo · 발권 뒤 내용이 바뀜" : r.why ? `Todo · 발권 거둠 — ${r.why}` : "Todo";
+    case "waiting":
+      return `대기: ${r.state.on.join(", ")}`;
+    case "stage":
+      return r.state.word;
+  }
+}
+
+// 나무의 줄 하나와 그 밑의 막힌 이슈들(진짜 중첩 목록). 단추는 발권할 수 있는 줄에만
+function TreeNode({ row: r, busy, discarding, reason, setReason, setDiscarding, fire, discard }: { row: TreeRow; busy: string | null; discarding: string | null; reason: string; setReason: (v: string) => void; setDiscarding: (k: string | null) => void; fire: (r: TreeRow) => void; discard: (r: TreeRow) => void }) {
+  const faint = r.state.kind === "waiting" || r.state.kind === "stage";
+  const noPriority = r.fire === "fire" && r.priority <= 0;
+  return (
+    <li className="rl-node">
+      <div className={faint ? "rl-row is-faint" : "rl-row"}>
+        <b>
+          <OpenFlight k={r.key} />
+        </b>
+        <PriorityMark priority={r.priority} />
+        <span className="rl-title">{r.title}</span>
+        <span className={faint ? "faint rl-kind" : "rl-kind rl-state"}>{stateText(r)}</span>
+        <span className="rl-sub">
+          {r.filed && (
+            <span className="rl-who" title="누가 언제 제안했나">
+              제안 · {r.filed.by} · <span className="mono">{clock(r.filed.at)}</span>
+            </span>
+          )}
+          {r.after && (
+            <span className="rl-after" title="작업 지시서 `Sequence:` 줄: 순서의 선호이고 막지 않습니다. 발권할 수 있습니다">
+              after <b className="mono">{r.after.key}</b>: {r.after.reason}
+              {!r.after.known && " (알 수 없는 이슈, 순서에 쓰지 않음)"}
+            </span>
+          )}
+          {r.sequenceProblem && !r.after && <span className="rl-warn">{r.sequenceProblem}</span>}
+          {r.sameFiles.length > 0 && (
+            <span className="rl-files" title="DISPATCH의 파일 겹침 자료: 날고 있거나 앞에 놓인 이슈가 같은 파일을 고칩니다">
+              같은 파일: {r.sameFiles.join(", ")}
+            </span>
+          )}
+          {r.fire && <KEffects text={r.kEffects} k3={r.k3} />}
+          {noPriority && <span className="rl-warn">우선순위가 없어 Todo로 옮기지 않습니다(DISPATCH가 건너뜁니다). 먼저 정합니다</span>}
+        </span>
+        <span className="rl-acts">
+          {r.fire && discarding === r.key ? (
+            <>
+              <input className="rl-reason" aria-label={`${r.key}를 버리는 사유`} placeholder="버리는 사유(선택)" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy !== null} />
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => discard(r)}>
+                버리기
+              </button>
+              <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(null); setReason(""); }}>
+                취소
+              </button>
+            </>
+          ) : (
+            r.fire && (
+              <>
+                {noPriority ? (
+                  <a className="btn is-link" href={`#flight/${r.key}`} title="우선순위가 없으면 DISPATCH가 배정하지 않습니다. FLIGHT 서랍에서 먼저 정합니다">
+                    우선순위 먼저
+                  </a>
+                ) : (
+                  <button type="button" className="btn" disabled={busy !== null} onClick={() => fire(r)} aria-label={`${r.key} 발권${r.fire === "fire" ? ": Todo로 옮기고 발권" : ""}`}>
+                    발권
+                  </button>
+                )}
+                {r.filed && (
+                  <button type="button" className="btn is-quiet" disabled={busy !== null} onClick={() => { setDiscarding(r.key); setReason(""); }} aria-label={`${r.key} 버리기`} title="Canceled로 옮기고 사유를 이슈에 남깁니다">
+                    버림…
+                  </button>
+                )}
+              </>
+            )
+          )}
+        </span>
+      </div>
+      {r.children.length > 0 && (
+        <ul className="rl-tree" aria-label={`${r.key}가 막고 있는 이슈`}>
+          {r.children.map((c) => (
+            <TreeNode key={c.key} row={c} busy={busy} discarding={discarding} reason={reason} setReason={setReason} setDiscarding={setDiscarding} fire={fire} discard={discard} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
