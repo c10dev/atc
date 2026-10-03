@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Transmission } from "./radio.ts";
-import { ageText, ALL_FILTER, asOf, filterTx, flightTx, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, splitHead, threadsOf, WINDOW_MS } from "../web/src/radio-log.ts";
+import { ageText, filterByStation, stationOf, stationOfHash, stationPasses, stationsOf, ALL_FILTER, asOf, filterTx, flightTx, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, splitHead, threadsOf, WINDOW_MS } from "../web/src/radio-log.ts";
 
 const T0 = Date.parse("2026-09-30T10:00:00.000Z");
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString();
@@ -93,4 +93,47 @@ test("flightTx: 그 FLIGHT의 호출과 그 호출의 답(답에 flight가 없�
   const list = [tx("C-1", 0, { flight: "ATC-1" }), reply("C-1#readback", "C-1", 1), tx("C-2", 2, { flight: "ATC-2" }), reply("C-2#readback", "C-2", 3), tx("G-1", 4, { freq: "GROUND", flight: undefined })];
   assert.deepEqual(flightTx(list, "ATC-1").map((t) => t.id), ["C-1", "C-1#readback"]);
   assert.deepEqual(flightTx(list, "ATC-9"), []);
+});
+
+// RADIO 사이드바의 스테이션 필터(ATC-446)
+test("stationOf: 관제는 이름 그대로, AIRCRAFT는 REGISTRATION, ALL·빈 값은 스테이션이 아님", () => {
+  assert.deepEqual(stationOf("TOWER"), { id: "TOWER", label: "TOWER", kind: "control" });
+  assert.deepEqual(stationOf("GOLF (TEAM_G)"), { id: "TEAM_G", label: "GOLF", kind: "aircraft" });
+  assert.equal(stationOf("ALL"), null);
+  assert.equal(stationOf(" "), null);
+});
+
+test("stationPasses·filterByStation: 보낸 쪽이거나 받는 쪽이면 통과, null은 전부", () => {
+  const call = tx("C-1", 0);
+  const ack = reply("C-1#r", "C-1", 1);
+  const other = tx("D-1", 2, { freq: "DELIVERY", from: "OCC", to: "HOTEL (TEAM_H)", aircraft: "TEAM_H" });
+  const all = [call, ack, other];
+  assert.deepEqual(filterByStation(all, "TEAM_G").map((t) => t.id), ["C-1", "C-1#r"]);
+  assert.deepEqual(filterByStation(all, "OCC").map((t) => t.id), ["D-1"]);
+  assert.deepEqual(filterByStation(all, "TOWER").map((t) => t.id), ["C-1", "C-1#r"]);
+  assert.equal(filterByStation(all, null).length, 3);
+  assert.equal(stationPasses(call, "TEAM_H"), false);
+});
+
+test("stationsOf: 관제와 AIRCRAFT로 나누어 세고, 같은 교신의 양쪽은 한 번, 관제는 정해진 순서", () => {
+  const txs = [
+    tx("C-1", 0),
+    reply("C-1#r", "C-1", 1),
+    tx("D-1", 2, { freq: "DELIVERY", from: "OCC", to: "HOTEL (TEAM_H)", aircraft: "TEAM_H" }),
+    tx("g", 3, { freq: "GROUND", from: "MCC", to: "ALL", aircraft: undefined }),
+    tx("r", 4, { from: "REVIEW", to: "AARDVARK" }),
+    tx("self", 5, { from: "OCC", to: "OCC" }),
+  ];
+  const s = stationsOf(txs);
+  assert.deepEqual(s.control.map((c) => [c.id, c.count]), [["TOWER", 2], ["OCC", 2], ["MCC", 1], ["REVIEW", 1], ["AARDVARK", 1]]);
+  assert.deepEqual(s.aircraft.map((c) => [c.id, c.count]), [["TEAM_G", 2], ["TEAM_H", 1]]);
+  assert.deepEqual(stationsOf([]), { control: [], aircraft: [] });
+});
+
+test("stationOfHash: #radio/<스테이션>만 필터, 나머지는 전부", () => {
+  assert.equal(stationOfHash("#radio/TEAM_E"), "TEAM_E");
+  assert.equal(stationOfHash("#radio/GOLF%20X"), "GOLF X");
+  assert.equal(stationOfHash("#radio"), null);
+  assert.equal(stationOfHash("#flights/TEAM_E"), null);
+  assert.equal(stationOfHash("#radio/%E0%A4%A"), "%E0%A4%A");
 });

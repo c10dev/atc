@@ -147,3 +147,62 @@ export function saveFilter(storage: Pick<Storage, "setItem" | "removeItem"> | nu
     for (const k of ["airport", "aircraft"] as const) f[k] ? storage.setItem(KEY[k], f[k]!) : storage.removeItem(KEY[k]);
   } catch {}
 }
+
+// ── 스테이션 필터(ATC-446): RADIO 사이드바. 관제 세션(TOWER·OCC·MCC·REVIEW·DUTY …)과 AIRCRAFT를 나누어 센다 ──
+export interface Station {
+  id: string; // 관제는 이름 그대로(TOWER), AIRCRAFT는 REGISTRATION(TEAM_G)
+  label: string; // AIRCRAFT는 콜사인(GOLF), 관제는 id
+  kind: "control" | "aircraft";
+}
+export interface StationCount extends Station {
+  count: number;
+}
+const CONTROL_ORDER = ["TOWER", "OCC", "MCC", "REVIEW", "DUTY"];
+
+// 교신의 "TOWER" · "GOLF (TEAM_G)" → 스테이션. 모두에게 하는 방송("ALL")과 빈 값은 스테이션이 아니다
+export function stationOf(name: string): Station | null {
+  const n = name.trim();
+  if (!n || n === "ALL") return null;
+  const m = /^(.*?)\s*\(([^()]+)\)$/.exec(n);
+  return m ? { id: m[2], label: m[1] || m[2], kind: "aircraft" } : { id: n, label: n, kind: "control" };
+}
+
+// 이 교신이 그 스테이션의 것인가(보낸 쪽이거나 받는 쪽). id가 null이면 전부
+export function stationPasses(t: Transmission, id: string | null): boolean {
+  if (!id) return true;
+  return [t.from, t.to].some((s) => stationOf(s)?.id === id);
+}
+export const filterByStation = (txs: readonly Transmission[], id: string | null) => (id ? txs.filter((t) => stationPasses(t, id)) : [...txs]);
+
+// 사이드바 목록: 스테이션마다 교신 수(보낸 쪽과 받는 쪽이 같은 교신은 한 번). 관제는 TOWER·OCC·MCC·REVIEW·DUTY 순 뒤에 이름순, AIRCRAFT는 REGISTRATION순
+export function stationsOf(txs: readonly Transmission[]): { control: StationCount[]; aircraft: StationCount[] } {
+  const by = new Map<string, StationCount>();
+  for (const t of txs) {
+    const seen = new Set<string>();
+    for (const s of [t.from, t.to]) {
+      const st = stationOf(s);
+      if (!st || seen.has(st.id)) continue;
+      seen.add(st.id);
+      const cur = by.get(st.id);
+      if (cur) cur.count += 1;
+      else by.set(st.id, { ...st, count: 1 });
+    }
+  }
+  const rank = (id: string) => (CONTROL_ORDER.includes(id) ? CONTROL_ORDER.indexOf(id) : CONTROL_ORDER.length);
+  const all = [...by.values()];
+  return {
+    control: all.filter((s) => s.kind === "control").sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id)),
+    aircraft: all.filter((s) => s.kind === "aircraft").sort((a, b) => compareRegistration(a.id, b.id)),
+  };
+}
+
+// 주소 #radio/<스테이션>에서 필터 값. #radio만이면 null(전부)
+export function stationOfHash(hash: string): string | null {
+  const [head, sub] = hash.replace(/^#/, "").split("/");
+  if (head !== "radio" || !sub) return null;
+  try {
+    return decodeURIComponent(sub);
+  } catch {
+    return sub;
+  }
+}
