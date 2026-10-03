@@ -13,7 +13,7 @@ export const DEFAULT_LAUNCH_CARD_TIMEOUT_MIN = 30;
 export interface EndedSession {
   sessionId: string;
   name: string; // 대화 기록의 마지막 custom-title
-  endedAt: number; // 대화 기록을 마지막으로 쓴 시각
+  endedAt: number; // 대화의 마지막 timestamp 줄의 시각(ATC-511, 파일 mtime이 아니다)
   normalEnd: boolean; // 마지막 사실이 도구 호출 없는 답(오류·승인 대기·지시 뒤 무응답이 아니다)
 }
 
