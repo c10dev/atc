@@ -721,12 +721,12 @@ export function syncOps(
     !stateOf.get(p.flight)?.takenBy &&
     !worked(p.flight) &&
     Boolean(acOf(p) && canTakeNow(acOf(p)!, stateOf.get(p.flight)));
-  // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안은 AIRCRAFT 사정만으로는 닫지 않는다(ATC-91). 유예(restartGraceMin)가 지나면 RESTARTING이 사라져 예전처럼 닫힌다.
-  // LAUNCH한 launch 카드(ATC-129)도 같은 유예 동안 기다린다: 새 세션은 CREW BRIEFING을 읽느라 잠깐 AIRBORNE이다
+  // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안은 AIRCRAFT 사정만으로는 닫지 않는다(ATC-91). 유예(restartGraceMin, 0이면 RESTARTING 없음)가 지나면 RESTARTING이 사라져 예전처럼 닫힌다.
+  // LAUNCH한 launch 카드(ATC-129)는 launchCardTimeoutMin 동안 기다린다(RESTARTING 유예와 따로, 끌 수 없다): 새 세션은 CREW BRIEFING을 읽느라 잠깐 AIRBORNE이다
   // ACCOUNT 불일치(ATC-458): 스위치(crossAccountRelease)가 꺼져 있으면 카드를 닫지 않고 ATC-251 사유로 기다린다
   const waits = (p: Proposal, reason: string) =>
     p.kind === "ASSIGN" &&
-    (acOf(p)?.restarting === true || launchWaiting(p, now, cfg.restartGraceMin) || (acOf(p)?.crossAccount === true && cfg.crossAccountRelease === "off")) &&
+    (acOf(p)?.restarting === true || launchWaiting(p, now, cfg.launchCardTimeoutMin) || (acOf(p)?.crossAccount === true && cfg.crossAccountRelease === "off")) &&
     reason.startsWith(`${AIRCRAFT_WHY}:`);
   // RESUME 카드(ATC-129): FLIGHT가 아직 In Progress이고 LOGBOOK에 없어야 한다. 아니면 닫을 사유
   const resumeWhy = (p: Proposal): string | null => {
@@ -802,8 +802,8 @@ export function syncOps(
     } else if (p.kind === "ASSIGN" && p.status === "approved") {
       if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "승인 뒤 24시간 동안 전달되지 않음" });
       // LAUNCH했는데 유예가 지나도 세션이 없다(계획에 아직 absent)
-      else if (acOf(p)?.launch && launchTimedOut(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchTimeoutWhy(cfg.restartGraceMin) });
-      else if (acOf(p)?.launch && launchMissing(p, now, cfg.restartGraceMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.restartGraceMin) });
+      else if (acOf(p)?.launch && launchTimedOut(p, now, cfg.launchCardTimeoutMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchTimeoutWhy(cfg.launchCardTimeoutMin) });
+      else if (acOf(p)?.launch && launchMissing(p, now, cfg.launchCardTimeoutMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.launchCardTimeoutMin) });
       else if (p.prHolder) {
         const reason = holderWhy(p);
         if (reason && !waits(p, reason)) ops.push({ op: "supersede", id: p.id, at, reason });

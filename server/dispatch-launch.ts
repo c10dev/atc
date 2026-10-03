@@ -220,16 +220,16 @@ export function launchReleaseWhyOf(p: Pick<Proposal, "launch" | "launched" | "re
 }
 
 // launch 카드가 LAUNCH 뒤 새 세션을 기다리는 중(유예 안)
-export const launchWaiting = (p: Pick<Proposal, "launch" | "launched">, now: number, graceMin: number) =>
-  Boolean(p.launch && p.launched?.ok && now - Date.parse(p.launched.at) < graceMin * 60_000);
+export const launchWaiting = (p: Pick<Proposal, "launch" | "launched">, now: number, timeoutMin: number) =>
+  Boolean(p.launch && p.launched?.ok && now - Date.parse(p.launched.at) < timeoutMin * 60_000);
 // 유예가 지나도 새 세션이 없음
-export const launchTimedOut = (p: Pick<Proposal, "launch" | "launched">, now: number, graceMin: number) =>
-  Boolean(p.launch && p.launched?.ok && now - Date.parse(p.launched.at) >= graceMin * 60_000);
-export const launchTimeoutWhy = (graceMin: number) => `${LAUNCH_FAILED_WHY} — LAUNCH 뒤 ${graceMin}분 동안 새 세션이 뜨지 않음`;
+export const launchTimedOut = (p: Pick<Proposal, "launch" | "launched">, now: number, timeoutMin: number) =>
+  Boolean(p.launch && p.launched?.ok && now - Date.parse(p.launched.at) >= timeoutMin * 60_000);
+export const launchTimeoutWhy = (timeoutMin: number) => `${LAUNCH_FAILED_WHY} — LAUNCH 뒤 ${timeoutMin}분 동안 새 세션이 뜨지 않음`;
 // 승인은 적혔는데 LAUNCH 결과가 없다(승인과 LAUNCH 사이에 서버가 멈춤). 유예가 지나면 닫는다 — 스스로 다시 띄우지 않는다
-export const launchMissing = (p: Pick<Proposal, "launch" | "launched" | "timeline">, now: number, graceMin: number) =>
-  Boolean(p.launch && !p.launched && p.timeline.approved && now - Date.parse(p.timeline.approved) >= graceMin * 60_000);
-export const launchMissingWhy = (graceMin: number) => `${LAUNCH_FAILED_WHY} — 승인 뒤 ${graceMin}분 동안 LAUNCH 기록이 없음(승인 중 서버가 멈췄을 수 있음). 스스로 다시 띄우지 않는다 — 다시 승인한다`;
+export const launchMissing = (p: Pick<Proposal, "launch" | "launched" | "timeline">, now: number, timeoutMin: number) =>
+  Boolean(p.launch && !p.launched && p.timeline.approved && now - Date.parse(p.timeline.approved) >= timeoutMin * 60_000);
+export const launchMissingWhy = (timeoutMin: number) => `${LAUNCH_FAILED_WHY} — 승인 뒤 ${timeoutMin}분 동안 LAUNCH 기록이 없음(승인 중 서버가 멈췄을 수 있음). 스스로 다시 띄우지 않는다 — 다시 승인한다`;
 
 // ── 승인 + LAUNCH(순서만, 입출력은 주입). 상한이 찼으면 아무것도 적지 않는다. 승인을 먼저 적고 띄운다.
 // 실패하면 LAUNCH 결과와 SUPERSEDED를 적어 OCC가 보내지 않는다. 이미 세션이 떠 있으면 띄우지 않고 승인만 ──

@@ -7,6 +7,8 @@ import { compareRegistration, registrationOf } from "./registration.ts";
 // 마지막 기록 뒤 restartGraceMin 동안 RESTARTING이다. 지나면 예전처럼 세션 없음(absent)이다. 순수 함수. 읽기는 sources/claude.ts(readEndedSessions)
 
 export const DEFAULT_RESTART_GRACE_MIN = 30;
+// launch 카드가 새 세션·LAUNCH 기록을 기다리는 분(ATC-507). RESTARTING 유예(restartGraceMin)와 따로 둔다: 그쪽은 0으로 끌 수 있고 이쪽은 끄지 못한다
+export const DEFAULT_LAUNCH_CARD_TIMEOUT_MIN = 30;
 
 export interface EndedSession {
   sessionId: string;
@@ -37,6 +39,7 @@ export function restartingOf(
   graceMin: number,
   teamPattern?: string,
 ): Restarting[] {
+  if (!(graceMin > 0)) return []; // 0은 RESTARTING을 끈다(ATC-507)
   const liveRegs = new Set(live.filter((x) => x.status !== "dead").map((x) => registrationOf(x.name, teamPattern)).filter((r): r is string => Boolean(r)));
   const out = new Map<string, Restarting>();
   for (const e of ended) {

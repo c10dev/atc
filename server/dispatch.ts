@@ -1,5 +1,5 @@
 import { DEFAULT_NOTES, type NotesConfig } from "./issue-notes.ts";
-import { DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
+import { DEFAULT_LAUNCH_CARD_TIMEOUT_MIN, DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { crossAccountAircraftWhy } from "./account-reach.ts";
@@ -62,7 +62,9 @@ export interface DispatchConfig {
   // FUEL REMAINING(ATC-55): INFO·HOLD 임계값(쓴 몫 %)과 DISPATCH HOLD 스위치(D3, 기본 꺼짐). SUPERVISOR만 설정 창에서 켠다
   fuel: FuelConfig;
   // /clear 뒤 첫 메시지를 기다려 주는 분(ATC-91, docs/fleet.md 8.5). 그 안에는 AIRCRAFT가 RESTARTING이고 승인된 제안이 기다린다
-  restartGraceMin: number;
+  restartGraceMin: number; // 0이면 RESTARTING을 끈다(ATC-507)
+  // launch 카드가 새 세션·LAUNCH 기록을 기다리는 분(ATC-507, 기본 30). 양수만, 끄지 못한다
+  launchCardTimeoutMin: number;
   // SETTLED(ATC-117): 열린 제안이 이만큼(분) 지내야 OCC 메모·BRIEFING과 CROSSCHECK mark를 받는다. 승인된 제안은 곧장. 0이면 예전처럼 곧장
   settleMin: number;
   // 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14). 스위치는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). 기본 off
@@ -125,6 +127,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   externalReview: { security: "exclude" },
   fuel: DEFAULT_FUEL,
   restartGraceMin: DEFAULT_RESTART_GRACE_MIN,
+  launchCardTimeoutMin: DEFAULT_LAUNCH_CARD_TIMEOUT_MIN,
   settleMin: DEFAULT_SETTLE_MIN,
   autoApprove: "off",
   autoApproveLaunch: "off",
@@ -284,8 +287,10 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       externalReview: { security: user.externalReview?.security === "deepseek" ? "deepseek" : "exclude" },
       // 모르는 값은 기본으로 — HOLD는 true일 때만 켠다
       fuel: fuelConfigOf(user.fuel),
-      // 양수가 아니면 기본으로 — 0이나 음수는 기다림을 없애는 것이 아니라 잘못된 값이다
-      restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin > 0 ? user.restartGraceMin : d.restartGraceMin,
+      // 0은 RESTARTING을 끈다는 뜻이라 받는다(ATC-507). 음수·숫자가 아닌 값은 기본으로
+      restartGraceMin: typeof user.restartGraceMin === "number" && Number.isFinite(user.restartGraceMin) && user.restartGraceMin >= 0 ? user.restartGraceMin : d.restartGraceMin,
+      // 양수만: launch 카드의 기다림은 끌 수 없다. 아니면 기본으로
+      launchCardTimeoutMin: typeof user.launchCardTimeoutMin === "number" && Number.isFinite(user.launchCardTimeoutMin) && user.launchCardTimeoutMin > 0 ? user.launchCardTimeoutMin : d.launchCardTimeoutMin,
       // 0은 켜지 않는다는 뜻이라 받는다. 음수·숫자가 아닌 값은 기본으로
       settleMin: typeof user.settleMin === "number" && Number.isFinite(user.settleMin) && user.settleMin >= 0 ? user.settleMin : d.settleMin,
       // 자동 승인(ATC-334): 모르는 값은 off, 상한은 0 이상 정수(0이면 자동으로는 아무것도 승인하지 않는다), 아니면 기본으로

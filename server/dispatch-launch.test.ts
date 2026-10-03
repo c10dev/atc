@@ -173,19 +173,24 @@ test("이미 세션이 떠 있으면 띄우지 않고 승인만 한다", async (
 test("LAUNCH 뒤 새 세션이 CREW BRIEFING으로 AIRBORNE이어도 유예 동안 닫지 않고, 카드에 LAUNCHING. 유예가 지나도 세션이 없으면 LAUNCH 실패로 닫는다", () => {
   const log: Op[] = [...d0010(), { op: "approve", id: "D-0010", at: iso("06:02:00") }, { op: "launch", id: "D-0010", at: iso("06:02:05"), ok: true, by: "SUPERVISOR", jobId: "b943177e" }];
   const existing = fold(log);
-  const opsAt = (hms: string, sessions: Session[], absent: AbsentAircraft[]) => {
+  // RESTARTING 유예를 꺼도(restartGraceMin 0) launch 카드는 launchCardTimeoutMin(기본 30분) 동안 기다린다(ATC-507)
+  const opsAtWith = (c: typeof cfg, hms: string, sessions: Session[], absent: AbsentAircraft[]) => {
     const s = snap({ sessions, absent });
-    const plan = planDispatch(s, new Map(), cfg, at(hms), reservedOf(existing, at(hms)), fleet);
-    return { plan, ops: syncOps(existing, plan, s, cfg, at(hms), 10) };
+    const plan = planDispatch(s, new Map(), c, at(hms), reservedOf(existing, at(hms)), fleet);
+    return { plan, ops: syncOps(existing, plan, s, c, at(hms), 10) };
   };
+  const opsAt = (hms: string, sessions: Session[], absent: AbsentAircraft[]) => opsAtWith({ ...cfg, restartGraceMin: 0 }, hms, sessions, absent);
   // 아직 세션 없음(absent)
   const wait = opsAt("06:03:00", [], [absentG()]);
   assert.deepEqual(brief(wait.ops), []);
   assert.deepEqual(waitingOf(existing, wait.plan), { "D-0010": LAUNCHING_TEXT });
   // 새 세션이 CREW BRIEFING을 읽는 중(busy = AIRBORNE)
   assert.deepEqual(brief(opsAt("06:04:00", [session("new", "TEAM_G", "busy")], []).ops), []);
-  // 유예(restartGraceMin 30분)가 지나도 세션이 없다
+  // 30분(launchCardTimeoutMin)이 지나도 세션이 없다. restartGraceMin이 0이어도 같다
   assert.deepEqual(brief(opsAt("06:33:00", [], [absentG()]).ops), [`supersede:D-0010:${LAUNCH_FAILED_WHY} — LAUNCH 뒤 30분 동안 새 세션이 뜨지 않음`]);
+  // restartGraceMin은 launch 카드의 시간을 옮기지 않는다: 45여도 30분, launchCardTimeoutMin이 옮긴다
+  assert.deepEqual(brief(opsAtWith({ ...cfg, restartGraceMin: 45 }, "06:33:00", [], [absentG()]).ops), [`supersede:D-0010:${LAUNCH_FAILED_WHY} — LAUNCH 뒤 30분 동안 새 세션이 뜨지 않음`]);
+  assert.deepEqual(brief(opsAtWith({ ...cfg, restartGraceMin: 0, launchCardTimeoutMin: 10 }, "06:13:00", [], [absentG()]).ops), [`supersede:D-0010:${LAUNCH_FAILED_WHY} — LAUNCH 뒤 10분 동안 새 세션이 뜨지 않음`]);
 });
 
 test("LAUNCH 실패: 카드는 사유와 함께 닫히고 보내지 않는다. FOLLOWING에 하루 뜨고, 짝 규칙은 시작하지 않아 다음 계획에 다시 나온다", async () => {
