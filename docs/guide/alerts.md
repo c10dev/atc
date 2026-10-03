@@ -21,6 +21,19 @@ atc가 이미 찾아내는 것을 알릴 뿐, 새로 찾아내지는 않습니�
 | FOLLOW | [따라가는 번들](follow.md)의 줄: **풀 수 있음(READY)**, 줄의 제안이 **승인 대기**(그 제안은 "SUPERVISOR 대기"로 한 번 더 알리지 않고 이 종류로만), **막힘**(FOLLOW 탭이 줄에 붙인 `막힘` 표시 전부: 제안 없이 Todo 30분, 승인했는데 발송 없음 10분, 착륙했는데 배포 없음 15분, READBACK 없음, 그리고 FLIGHT FOLLOWING의 지연·불일치), **GO AROUND·ROLLBACK·되돌려진 PR**(실패), 착륙(ON)과 배포(IN)의 기록, 그리고 **발권한 FLIGHT**(FOLLOW의 ARROWS 묶음, 따라가기를 누르지 않아도)의 막힘과 끝(IN·ARRIVED, 한 번씩 조용히) | 풀 수 있음·승인 대기는 CALL, 막힘은 CAUTION, 실패는 WARNING, 착륙·배포는 조용함(LOG) |
 | CONTROL RECYCLE 결과 | atc가 관제 세션을 재시작함(`on`일 때만. shadow의 기록은 알리지 않음) | 성공은 ADVISORY, 실패는 CAUTION(LAUNCH만 실패했으면 세션이 멈춘 채. STOP을 확인하지 못했을 때도 LAUNCH를 시도하고, 거절되면 세션이 내려갔을 수 있다고 알린다) |
 
+## 알림이 끝나는 때
+
+알림은 원인이 참인 동안만 화면에 있습니다. 그래서 CAUTION은 지금 SUPERVISOR가 할 수 있는 일을 뜻합니다. 원인이 끝나면 하루를 채우지 않아도 알림이 사라집니다.
+
+| 알림 | 언제 끝나나 |
+|---|---|
+| FLIGHT FOLLOWING의 모든 문제 | 그 FLIGHT의 이슈가 **Done이나 Canceled**가 되면 FLIGHT를 더는 따라가지 않고, 그 FLIGHT의 문제가 모두 함께 빠집니다. 단 **STRANDED**는 남습니다. 그때는 변경이 정말 main에 없습니다 |
+| UNABLE | ① UNABLE이 가리킨 **PR이 머지되거나 닫힘**(CLEARANCE 본문의 `PR #n`. GitHub를 아직 읽지 못했을 때는 쓰지 않습니다) ② 그 **FLIGHT가 닫힘** ③ 같은 주제에 **나중에 READBACK**이 옴(같은 FLIGHT·같은 종류의 CLEARANCE가 READBACK됐거나, 같은 FLIGHT의 FLIGHT PLAN이 READBACK됨) |
+| 도착 보고의 BLOCKED | 그 **FLIGHT가 닫힘**, 또는 그 FLIGHT의 **더 나중 보고에 BLOCKED가 없음**(FLIGHT마다 마지막 보고만 봅니다) |
+| 주인 없는 변경, 종료된 세션의 점유 | 주인(세션)이 없는 채로 **6시간**이 지나면 CAUTION 수에서 빠지고 **`정리 대기 n건`** 한 줄(ADVISORY)로 접힙니다. 주인이 생기거나 정리하면 줄에서도 빠집니다. **STAND의 변경은 atc가 지우지 않습니다.** 정리는 직접 합니다 |
+
+끝 규칙이 틀렸는지 알 수 있게, 규칙이 뺀 알림이 **24시간 안에 다시 나타나면** 세어 둡니다. `GET /api/supervisor-alerts/ends`가 규칙별로 뺀 수와 돌아온 수, 그리고 같은 상태에서 끝 규칙 없이 센 CAUTION 수(`before`)와 지금 CAUTION 수(`after`)를 읽기 전용으로 보여 줍니다. 돌아온 수가 0이 아니면 그 규칙을 의심합니다.
+
 알림에는 AIRCRAFT, FLIGHT, 한 줄 문구와 **다음 한 걸음**이 들어 있습니다. 알림을 누르면 atc 탭이 앞으로 오고 그 항목이 있는 탭이 열립니다.
 
 ## 브라우저 알림 켜기
@@ -32,7 +45,7 @@ atc를 처음 연 브라우저는 지금 있는 항목을 기준선으로만 삼
 
 탭을 여러 개 열어 두어도 알림은 한 번만 뜹니다.
 
-권한이 거부됐거나 알림을 껐을 때는 **탭 제목의 숫자**와 헤더의 **BELL** 목록이 대신합니다. BELL 숫자는 조치가 필요한 것(WARNING, CAUTION, SUPERVISOR 대기) 가운데 아직 확인하지 않은 수이고, BELL을 누르면 목록이 열려 항목을 눌러 그 탭으로 가거나 **ACK**로 확인할 수 있습니다.
+권한이 거부됐거나 알림을 껐을 때는 **탭 제목의 숫자**와 상단 바의 **BELL** 목록이 대신합니다. BELL 숫자는 조치가 필요한 것(WARNING, CAUTION, SUPERVISOR 대기) 가운데 아직 확인하지 않은 수이고, BELL을 누르면 목록이 열려 항목을 눌러 그 탭으로 가거나 **ACK**로 확인할 수 있습니다.
 
 ## ANNUNCIATOR 창에서는
 

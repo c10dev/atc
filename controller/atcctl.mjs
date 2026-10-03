@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // TOWER·OCC 세션이 쓰는 atc CLI. atc 서버(기본 http://127.0.0.1:7700)에만 말한다. 의존성 없음.
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atcBase, ROLES as SQUELCH_ROLES, squelchLine } from "./squelch.mjs";
 
@@ -240,9 +240,11 @@ DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 S
                                             CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)
   node atcctl.mjs duty stand <이름>         서버가 .claude/worktrees/duty-<이름>을 origin/main에서 claude/duty-<이름> 브랜치로 만든다(D7a). 문서는 여기에만 쓴다
   node atcctl.mjs duty stand-done <이름>    그 STAND를 치운다(duty-*만, 고치던 것이 없거나 이미 머지됐을 때만. 브랜치는 남는다)
-  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--label '<이름>']… -- '<Markdown 본문>'
-  node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [-- '<본문>']
-  node atcctl.mjs duty linear comment ATC-n -- '<본문>'
+  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… (--body-file <STAND 안의 .md> | -- '<Markdown 본문>')
+  node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [--body-file <.md> | -- '<본문>']
+  node atcctl.mjs duty linear comment ATC-n (--body-file <.md> | -- '<본문>')
+                                            ## 제목이 있는 여러 줄 본문은 명령줄에 싣지 않는다(Claude Code의 Bash 검사가 막는다): 자기 STAND(.claude/worktrees/duty-*/)의 .md에 Write로 쓰고 --body-file로 준다.
+                                            STAND 밖 파일·심볼릭 링크로 나간 파일·.md 아님은 거절한다. .issue-bodies/ 아래 파일은 성공하면 지워 STAND가 깨끗하게 남는다
                                             서버가 자기 키로 Linear ATC 팀에 쓴다(D7a). 상태는 Backlog·Todo까지, 라벨은 있는 것만 더한다. 한 번마다 FLIGHT RECORDER 한 줄`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
@@ -716,16 +718,17 @@ export function parseDutyStand(args) {
 }
 
 // duty linear create|update|comment (D7a). 본문(Markdown)은 -- 뒤 낱말 전부. 옵션은 -- 앞에 쓴다
-//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--label <이름>]… -- <본문>
+//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--blocked-by ATC-n]… [--label <이름>]… -- <본문>
 //   update  ATC-n [--title <글>] [--priority <1-4>] [--state Backlog|Todo] [--label <이름>]… [-- <본문>]   (라벨은 더하기만)
 //   comment ATC-n -- <본문>
 export function parseDutyLinear(args) {
   const [action, ...rest] = args;
   if (!["create", "update", "comment"].includes(action)) throw new Error("duty linear create | update | comment …");
-  const sep = rest.indexOf("--");
-  const head = sep < 0 ? rest : rest.slice(0, sep);
-  const text = sep < 0 ? "" : rest.slice(sep + 1).join(" ");
+  const dash = rest.indexOf("--");
+  const head = dash < 0 ? rest : rest.slice(0, dash);
+  const text = dash < 0 ? "" : rest.slice(dash + 1).join(" ");
   const body = { action };
+  let bodyFile = null;
   if (action !== "create") {
     if (!head[0] || head[0].startsWith("-")) throw new Error(`duty linear ${action} ATC-n …`);
     body.key = head.shift();
@@ -735,17 +738,50 @@ export function parseDutyLinear(args) {
     const flag = head[i];
     const v = head[i + 1];
     if (v === undefined) throw new Error(`${flag} 뒤에 값이 필요함`);
-    if (flag === "--title") body.title = v;
+    if (flag === "--body-file") bodyFile = v;
+    else if (flag === "--title") body.title = v;
     else if (flag === "--priority") body.priority = /^[1-4]$/.test(v) ? Number(v) : v;
     else if (flag === "--state") body.state = v;
     else if (flag === "--parent" && action === "create") body.parent = v;
     else if (flag === "--project" && action === "create") body.project = v;
+    else if (flag === "--blocked-by" && action === "create") (body.blockedBy ??= []).push(v);
     else if (flag === "--label") labels.push(v);
     else throw new Error(`알 수 없는 옵션 ${flag}`);
   }
   if (labels.length) body.labels = labels;
+  if (text && bodyFile) throw new Error("본문은 `-- <본문>`이나 --body-file 중 하나만");
   if (text) body.body = text;
+  // 본문 파일(ATC-400): Markdown 본문(## 제목이 있는 여러 줄)은 명령줄에 싣지 않고 자기 STAND 안의 .md 파일로 준다. 읽기는 호출하는 쪽(dutyBodyFromFile)이 한다
+  if (bodyFile) body.bodyFile = bodyFile;
   return body;
+}
+
+// duty linear --body-file <경로>의 본문 읽기(ATC-400). 파일은 이 저장소의 DUTY STAND(.claude/worktrees/duty-<이름>/) 안의 .md 일반 파일이어야 한다.
+// 심볼릭 링크를 푼 실제 경로로 본다(STAND 밖을 가리키는 링크는 거절). 권한을 넓히지 않는다: DUTY가 이미 쓸 수 있는 자리의 글을 읽을 뿐이다.
+// .issue-bodies/ 아래 파일은 성공한 뒤 지워 STAND가 지저분하게 남지 않게 한다(remove true)
+export const DUTY_BODY_DIR = ".issue-bodies";
+const DUTY_BODY_MAX_BYTES = 256 * 1024;
+export function dutyBodyFromFile(path, { repo = resolve(dirname(fileURLToPath(import.meta.url)), ".."), cwd = process.cwd() } = {}) {
+  if (!path || typeof path !== "string") throw new Error("--body-file 뒤에 경로가 필요함");
+  const abs = resolve(cwd, path);
+  let real;
+  try {
+    real = realpathSync(abs);
+  } catch {
+    throw new Error(`본문 파일을 찾을 수 없음: ${path}`);
+  }
+  const root = join(realpathSync(repo), ".claude", "worktrees") + sep;
+  const rel = real.startsWith(root) ? real.slice(root.length) : null;
+  const m = rel ? /^(duty-[a-z0-9]+(?:-[a-z0-9]+)*)\/(.+)$/.exec(rel) : null;
+  if (!m) throw new Error(`본문 파일은 DUTY STAND(.claude/worktrees/duty-<이름>/) 안에 있어야 함: ${path}`);
+  if (!/\.md$/i.test(real)) throw new Error("본문 파일은 .md만");
+  const st = statSync(real);
+  if (!st.isFile()) throw new Error("본문 파일은 일반 파일이어야 함");
+  if (st.size > DUTY_BODY_MAX_BYTES) throw new Error(`본문 파일이 너무 큼(${DUTY_BODY_MAX_BYTES}바이트까지)`);
+  const text = readFileSync(real, "utf8");
+  if (!text.trim()) throw new Error("본문 파일이 비었음");
+  const remove = m[2].startsWith(`${DUTY_BODY_DIR}/`);
+  return { text, path: real, remove };
 }
 
 export function dutyStandText(r, done) {
@@ -1050,7 +1086,18 @@ if (isMain) {
       } else if (sub === "stand-done") {
         console.log(dutyStandText(await call("POST", "/api/duty/stand-done", parseDutyStand(rest)), true));
       } else if (sub === "linear") {
-        console.log(dutyLinearText(await call("POST", "/api/duty/linear", parseDutyLinear(rest))));
+        const req = parseDutyLinear(rest);
+        const file = req.bodyFile ? dutyBodyFromFile(req.bodyFile) : null;
+        if (file) {
+          req.body = file.text;
+          delete req.bodyFile;
+        }
+        console.log(dutyLinearText(await call("POST", "/api/duty/linear", req)));
+        if (file?.remove) {
+          try {
+            unlinkSync(file.path); // 성공한 .issue-bodies/ 글은 지운다(STAND에 안 남게). 실패하면 그대로 둔다
+          } catch {}
+        }
       } else {
         throw new Error("duty brief | flight <KEY> | pr <AIRPORT> <번호> | idea <번호> | card <kind> <key> | note -- '<규칙>' [--until <iso>] | charter -- '<영어 요청>' | stand <이름> | stand-done <이름> | linear create|update|comment …");
       }

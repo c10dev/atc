@@ -589,9 +589,6 @@ export function landOf(p: PullRequest, clearances: Clearance[]): string | null {
 
 // ── 자동 배정 대상 판정 (그림자, docs/atfm.md 3장 A1~A10) ──
 
-// CROSSCHECK agree로 인정하는 모델: 지금 CROSSCHECK(Claude Opus, controller/guard.mjs CROSSCHECK_MODELS)와
-// 2026-09-29 전 ocx 시절의 Muse·GPT-5.6 Terra 기록(열린 제안에 남은 mark가 계속 통하게)
-export const CROSSCHECK_MODELS = /^claude-opus-|muse-spark|gpt-5\.6-terra/i;
 export const AUTO_TYPES = new Set(["BUILD", "MAINT", "FERRY"]); // 결정 1: SURVEY 제외
 export const AUTO_CAP = { assignPerDay: 3, s3PerDay: 5, inFlightPerAircraft: 1 }; // 결정 3
 
@@ -632,8 +629,7 @@ export function autoEligibility(p: Proposal, ctx: AutoContext): Eligibility {
   const tails = t ? tailsOf(t, ctx.now) : new Set<string>();
   const routeOk = tails.size ? tails.has(name) : Boolean(t?.project && ctx.aircraft?.routes.includes(t.project));
   add("A6", routeOk, tails.size ? `tail:${[...tails].join(",")}이 이 AIRCRAFT여야 함` : `프로젝트(${t?.project ?? "없음"})가 이 AIRCRAFT의 ROUTE에 있어야 함`);
-  const mark = p.crosscheck;
-  add("A7", Boolean(mark && mark.verdict === "agree" && CROSSCHECK_MODELS.test(mark.model)), "허용 모델의 CROSSCHECK agree가 있어야 함");
+  // A7(CROSSCHECK agree)은 CROSSCHECK 은퇴로 없앴다(ATC-371). 번호는 docs/atfm.md와 기록(옛 checked 목록)을 위해 비워 둔다
   const ratingsOk = cls.ratings.every((r) => ctx.aircraft?.ratings.includes(r));
   const mine = ctx.history.filter((x) => regKey(x.aircraftName) === name);
   const noReadback = mine.some((x) => x.status === "sent" && ctx.now - Date.parse(x.statusAt) > 10 * MIN);
@@ -676,9 +672,8 @@ export function s3Eligibility(op: ScheduleOp, ticket: Ticket | undefined, ctx: S
     Boolean(ticket) && !(p.ratings ?? []).includes("SEC") && !cls.ratings.includes("SEC") && !(op.flight && ctx.cautions.has(op.flight)),
     "rating:SEC를 더하지 않고, FLIGHT에 rating:SEC·Risk 라벨(Risk:Security 등)과 OCC CAUTION이 없어야 함",
   );
-  const mark = op.crosscheck;
   const cited = (!p.type || cites(op.reason, "4.1")) && (!p.wake || cites(op.reason, "4.2")) && (!(p.ratings ?? []).length || cites(op.reason, "4.3"));
-  add("S3", Boolean(mark && mark.verdict === "agree" && CROSSCHECK_MODELS.test(mark.model)) && cited, "허용 모델의 CROSSCHECK agree, 근거에 정한 축마다 fleet.md 절(4.1·4.2·4.3) 인용");
+  add("S3", cited, "근거에 정한 축마다 fleet.md 절(4.1·4.2·4.3) 인용(CROSSCHECK agree는 은퇴로 보지 않는다, ATC-371)");
   add(
     "S4",
     Boolean(ticket && (ticket.stateType === "unstarted" || ticket.stateType === "backlog") && !ctx.standTickets.has(ticket.key) && !ctx.inFlight.has(ticket.key)),

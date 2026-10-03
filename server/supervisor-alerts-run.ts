@@ -1,6 +1,9 @@
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
-import { followingNow } from "./following.ts";
+import { k3HoldOf } from "./k3-allow.ts";
+import { type EndedKey, followingNow } from "./following.ts";
+import { endsTrackable, endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
+import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-ends-run.ts";
 import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
 import { landByOf, type LandBy } from "./land-by.ts";
@@ -13,12 +16,14 @@ import { readReleaseView } from "./release-store.ts";
 import { config } from "./config.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
+import { waitingOnPersonOf } from "./waiting-person.ts";
 import { readRadio, setRadioPendingSource } from "./radio-run.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
-import { type AlertEvent, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { stoppedAirports } from "./auto-revert-run.ts";
+import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { sinceLookNow } from "./since-look-run.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
@@ -65,7 +70,57 @@ function landByMap(s: Snapshot): Map<string, LandBy> {
   return new Map((s.pulls ?? []).map((p) => [`${p.repo}#${p.number}`, landByOf(p, info, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false)] as const));
 }
 
+// 끝 규칙의 상태(ATC-385): 처음 본 시각과 끝 규칙이 뺀 알림. 처음 쓸 때 파일에서 읽는다
+let ends: ReturnType<typeof loadEnds> | null = null;
+
+// 알림 목록과 끝 규칙이 뺀 알림. endRules를 끄면 규칙 없이 센 옛 목록(전후 비교용)이다
+function collectWith(s: Snapshot, now: number, endRules: boolean): { items: SupervisorAlert[]; ended: EndedKey[] } {
+  ends ??= loadEnds();
+  const ended: EndedKey[] = [];
+  const following = followingNow(s, now, endRules ? ended : undefined, endRules);
+  const ownerless = s.alerts.filter((a) => UNOWNED_KINDS.has(a.kind)).map(alertKeyOf);
+  const items = collectItems(s, now, following, endRules ? { now, since: new Map(Object.entries(firstSeenOf(ends.firstSeen, ownerless, now))), ended } : undefined);
+  // following 문제의 key는 알림 key로 바꾼다(supervisorAlertsOf가 `following|`을 붙인다)
+  // 알림이 아니었던 문제(다른 경로가 알리는 health·stranded·landing-wait)는 뺀 것으로 세지 않는다
+  return { items, ended: ended.filter((e) => e.key.startsWith("alert|") || !DUPLICATED.has(e.key.split("|")[1] ?? "")).map((e) => (e.key.startsWith("alert|") ? e : { ...e, key: `following|${e.key}` })) };
+}
+
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
+  const { items, ended } = collectWith(s, now, true);
+  if (!endsTrackable(s)) return items; // Linear를 아직 못 읽은 주기는 기록하지 않는다(ATC-385)
+  try {
+    const prev = ends!;
+    const t = trackEnds(prev, ended, new Set(items.map((a) => a.key)), now);
+    const next = { firstSeen: firstSeenOf(prev.firstSeen, s.alerts.filter((a) => UNOWNED_KINDS.has(a.kind)).map(alertKeyOf), now), cleared: t.state.cleared };
+    appendReappeared(t.reappeared);
+    if (JSON.stringify(next) !== JSON.stringify(prev)) saveEnds(next);
+    ends = next;
+  } catch (e) {
+    console.warn(`[atc] alert-ends: ${e instanceof Error ? e.message : e}`); // 기록을 못 써도 알림은 그대로
+  }
+  return items;
+}
+
+// 끝 규칙 24시간 요약과, 같은 상태에서 규칙 없이/있이 센 CAUTION 수(ATC-385)
+export function endsNow(s: Snapshot, now = Date.now()): EndsView {
+  const cautions = (r: { items: SupervisorAlert[] }) => r.items.filter((a) => a.level === "caution").length;
+  ends ??= loadEnds();
+  return { ...endsView(ends, readReappeared(), now), caution: { before: cautions(collectWith(s, now, false)), after: cautions(collectWith(s, now, true)) } };
+}
+
+// DISPATCH가 K3 hold로 보내지 않는 Todo FLIGHT(ATC-398). 스위치가 꺼져 있으면 없다.
+// 발권 전의 FLIGHT는 RELEASE 화면이 K3 상태를 보이므로(발권하면 allow를 준다) 읽히지 않는 줄과, 이미 allow를 못 주는 채널로 발권된 FLIGHT만 알린다
+function k3HoldsOf(s: Snapshot): { flight: string; text: string; fix: string }[] {
+  if (loadDispatchConfig().k3Hold === "off") return [];
+  return s.tickets.flatMap((t) => {
+    if (!t.k3Check || t.stateType !== "unstarted") return [];
+    const h = k3HoldOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: s.releases });
+    if (!h || (h.code === "release-on-screen" && !s.releases?.records[t.key])) return [];
+    return [{ flight: t.key, text: h.why, fix: h.fix }];
+  });
+}
+
+function collectItems(s: Snapshot, now: number, following: ReturnType<typeof followingNow>, unowned: Parameters<typeof supervisorAlertsOf>[0]["unowned"]): SupervisorAlert[] {
   const proposals = allProposals();
   const teamPattern = loadDispatchConfig().teamPattern;
   const rs = readRecords(now - CONDITION_WINDOW_MS);
@@ -78,13 +133,16 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     alerts: s.alerts,
     workspaces: s.workspaces,
     tickets: s.tickets,
-    following: followingNow(s, now),
+    following,
+    ...(unowned ? { unowned } : {}),
     proposals,
     autoDispatch: loadDispatchConfig().autoDispatch === "on",
     capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsNow.last,
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
+    revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
+    k3Holds: k3HoldsOf(s),
     controlDown: controlDownOf(recyclesAll, running.control),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     landBy: landByMap(s),
@@ -143,6 +201,7 @@ export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
   const items = currentAlerts();
   const base = summaryOf({
     items,
+    waiting: waitingOnPersonOf({ sessions: s.sessions.filter((x) => x.status !== "dead"), proposals: allProposals(), now, blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!, teamPattern }),
     fuelAccounts: s.fuelAccounts ?? [],
     rts: rtsState(readMccRecords()).last,
     working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),

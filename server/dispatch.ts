@@ -13,6 +13,7 @@ import type { LogEntry } from "./logbook.ts";
 import { type Claim, type PullRequest, type Session, type Snapshot, type Ticket, type Workspace, parentKeysOf } from "./model.ts";
 import { REASON_CODES } from "./reasons.ts";
 import { ABSENT_REASON, cutHoldWhy, LANE_CUTOFF, type ResumeInfo, stuckHintOf, tailsOf } from "./dispatch-launch.ts";
+import { k3HoldOf, k3LaunchOf } from "./k3-allow.ts";
 import { DEFAULT_TEAM_PATTERN, fleetKeyOf, regKey } from "./registration.ts";
 import { DEFAULT_MCC, loadMcc } from "./mcc.ts";
 import { supervisorConfirmOf } from "./supervisor-confirm.ts";
@@ -41,6 +42,8 @@ export interface DispatchConfig {
     defaultAirborne: number;
     openProposals: number; // 결정 안 된 ASSIGN 제안 최대 수
     openReleases: number;
+    // 착륙만 기다리는 FLIGHT(PR이 열렸고 AIRCRAFT가 할 일이 없음, ATC-387)는 이 AIRCRAFT의 슬롯을 쓰지 않는다. 한 AIRCRAFT가 이만큼 쥐면 새 FLIGHT는 받지 않는다
+    waitingPr: number;
   };
   weights: { priority: number; wait: number; unblock: number; affinity: number; conflict: number; route: number; waypoint: number; overlap: number; sameTeam: number };
   // 파일 겹침(ATC-71, docs/dispatch.md): 곧 배정할 FLIGHT가 고칠 파일과 날고 있는 FLIGHT가 고치는 파일. hold가 켜지면 무겁게 겹치는 FLIGHT는 머지될 때까지 HOLD
@@ -70,15 +73,24 @@ export interface DispatchConfig {
   autoDispatch: AutoDispatch;
   // 자동 운항에서 승인되지 못한 열린 카드가 이만큼(분) 지나면 만료되고 planner가 다시 제안한다(SUPERVISOR에게 가지 않는다)
   autoCardTtlMin: number;
+  // 승인된 ASSIGN 카드의 AIRCRAFT에 살아 있는 세션이 없으면 서버가 LAUNCH한다(ATC-388). 이만큼(분) 지나도 세션이 없으면 카드를 닫고 FLIGHT는 planner로 돌아간다
+  approvedWaitMin: number;
   // 발권 gate(ATC-362): 발권 기록이 없는 Todo FLIGHT는 제안일 뿐이라 배정하지 않는다. "auto"(기본)는 일괄 확인(arm) 뒤부터, "on"은 항상, "off"는 끔
   releaseGate: ReleaseGateMode;
+  // STALE STOP(ATC-369): FLIGHT가 끝났는데(머지·ARRIVED) PENDING·HUNG으로 30분 남은 AIRCRAFT를 서버가 멈춘다. 기본 on(live first). 끄는 것은 SUPERVISOR만(설정 창, fromThisApp)
+  staleStop: "on" | "off";
+  // K3 hold(ATC-398): "on"(기본)이면 `## K effects`에 K3 줄이 있는데 allow 없이 떠날 FLIGHT를 보내지 않는다(읽히지 않는 줄, 화면·DUTY 채팅이 아닌 발권).
+  // 스위치는 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령이 없다(K3). 깨진 파일은 on으로 읽는다(닫는 쪽)
+  k3Hold: K3HoldMode;
 }
+export type K3HoldMode = "on" | "off";
 export type AutoMode = "off" | "shadow" | "on";
 export const AUTO_MODES: readonly AutoMode[] = ["off", "shadow", "on"];
 // 모르는 값은 off — 깨진 파일이 자동 승인을 켜지 않게
 export const autoModeOf = (v: unknown): AutoMode => (AUTO_MODES.includes(v as AutoMode) ? (v as AutoMode) : "off");
 export type AutoDispatch = "off" | "on";
 export const DEFAULT_AUTO_CARD_TTL_MIN = 60;
+export const DEFAULT_APPROVED_WAIT_MIN = 15;
 export const DEFAULT_AUTO_APPROVE_MAX = 40;
 export const DEFAULT_AUTO_LAUNCH_MAX = 6;
 export const DEFAULT_AUTO_LAUNCH_BACKOFF_MIN = 30;
@@ -96,7 +108,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   teamAirports: { ATC: "ATCC" },
   candidateTeams: [],
   issueNotes: DEFAULT_NOTES,
-  slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5 },
+  slots: { perTeam: 1, airborne: { VCDO: 4 }, defaultAirborne: 2, openProposals: 5, openReleases: 5, waitingPr: 2 },
   weights: { priority: 3, wait: 0.5, unblock: 2, affinity: 1, conflict: -2, route: 1, waypoint: 1, overlap: -1, sameTeam: 1 },
   overlap: DEFAULT_OVERLAP,
   releaseDays: 3,
@@ -114,7 +126,10 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   autoLaunchBackoffMin: DEFAULT_AUTO_LAUNCH_BACKOFF_MIN,
   autoDispatch: "on",
   autoCardTtlMin: DEFAULT_AUTO_CARD_TTL_MIN,
+  approvedWaitMin: DEFAULT_APPROVED_WAIT_MIN,
   releaseGate: "auto",
+  staleStop: "on",
+  k3Hold: "on",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -157,6 +172,18 @@ export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: 
   renameSync(tmp, file);
 }
 
+// k3Hold만 바꿔 저장한다(설정 창, ATC-398). 다른 설정은 그대로 둔다
+export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, k3Hold: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 // autoDispatch만 바꿔 저장한다(설정 창, ATC-367). 다른 설정은 그대로 둔다
 export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
   let user: Record<string, unknown> = {};
@@ -166,6 +193,18 @@ export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, autoDispatch: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// staleStop만 바꿔 저장한다(설정 창, ATC-369). 다른 설정은 그대로 둔다
+export function saveStaleStop(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, staleStop: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -224,9 +263,14 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       autoLaunchBackoffMin: nonNegInt(user.autoLaunchBackoffMin, d.autoLaunchBackoffMin),
       // 자동 운항(ATC-367): 파일에 "off"라고 적었을 때만 끈다(적지 않았으면 기본 on)
       autoDispatch: user.autoDispatch === "off" ? "off" : "on",
+      approvedWaitMin: typeof user.approvedWaitMin === "number" && Number.isFinite(user.approvedWaitMin) && user.approvedWaitMin > 0 ? user.approvedWaitMin : d.approvedWaitMin,
       autoCardTtlMin: typeof user.autoCardTtlMin === "number" && Number.isFinite(user.autoCardTtlMin) && user.autoCardTtlMin > 0 ? user.autoCardTtlMin : d.autoCardTtlMin,
       // 모르는 값은 기본("auto")으로
       releaseGate: user.releaseGate === "on" || user.releaseGate === "off" ? user.releaseGate : "auto",
+      // STALE STOP(ATC-369): off만 끈다. 모르는 값은 on
+      staleStop: user.staleStop === "off" ? "off" : "on",
+      // K3 hold(ATC-398): 파일에 "off"라고 적었을 때만 끈다
+      k3Hold: user.k3Hold === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
@@ -280,6 +324,7 @@ export interface AssignPlan {
   resume?: ResumeInfo; // RESUME 카드(ATC-129): 사용 한도로 끊긴 FLIGHT를 이어서
   supervisorConfirm?: string[]; // 예측 경로 중 사용자 등급 파일(ATC-120). 있을 때만
   prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다
+  waiting?: string[]; // 이 AIRCRAFT가 착륙만 기다리는 FLIGHT(ATC-387): FLIGHT PLAN이 "새 STAND에서 시작" 줄을 싣는다
 }
 
 export interface ReleasePlan {
@@ -307,6 +352,7 @@ export interface AircraftState {
   room?: number; // 끝나지 않은 FLIGHT를 쥐고도 슬롯(perTeam)이 남은 양(WAKE로 셈). STAND가 필요한 새 FLIGHT는 WAKE가 이 안에 들어야 한다
   restarting?: true; // /clear 뒤 첫 메시지를 기다리는 자리(ATC-91). 세션은 없고 배정은 받지 않지만 승인된 제안은 닫지 않는다
   launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129, 스냅샷 absent). 이 AIRCRAFT의 카드는 승인하면 LAUNCH한다
+  waiting?: string[]; // 착륙만 기다리며 슬롯을 쓰지 않는 FLIGHT(ATC-387). 새 FLIGHT는 새 STAND에서 시작하고 이 FLIGHT의 STAND는 FIX·GO AROUND를 위해 남긴다
 }
 
 // 진행 중인 제안이 잡고 있는 AIRCRAFT·FLIGHT → 제안 id. 새 계획에서 뺀다.
@@ -344,6 +390,14 @@ export function stoppedHealthWhy(h: Pick<Health, "code" | "detail" | "resetsAt">
   if (h.code === "RESUME") return `RESUME 필요${h.resetsAt ? `(한도 풀림 ${hhmm(Date.parse(h.resetsAt), now)})` : ""}`;
   return `${healthLabel(h, now)} — ${h.detail}`;
 }
+// 착륙만 기다리는 PR(ATC-387): 열려 있고 초안이 아니며, AIRCRAFT가 할 일이 없다 — 고칠 체크 실패·리뷰 지적·바뀐 요청·충돌(GO AROUND)이 없고, 열린 FIX·GO AROUND도 없다.
+// 막힘이 없거나(CLEARED) 기다리는 것뿐(CI 진행 중, 리뷰 대기, 리뷰가 옛 head, 스택, 머지 상태 미정)일 때만 참이다. 처음 보는 막힘 코드는 AIRCRAFT가 할 일이 있다고 본다(슬롯을 계속 쓴다)
+export const WAITING_BLOCKS: ReadonlySet<string> = new Set(["checks-pending", "no-review", "review-stale", "stacked", "merge-unknown"]);
+export function waitsToLandOf(prs: readonly Pick<PullRequest, "draft" | "blocks">[], openClearance: boolean): boolean {
+  if (!prs.length || openClearance) return false;
+  return prs.every((p) => !p.draft && p.blocks.every((b) => WAITING_BLOCKS.has(b.code)));
+}
+
 // 끝나지 않은 In Progress FLIGHT 하나의 사유. PR이 열려 있어도 머지 전이면 아직 진행 중이다
 export const unfinishedWhy = (key: string, hasPr: boolean) => `${key} 아직 진행 중(${hasPr ? "PR 머지 전" : "PR 없음"})`;
 
@@ -634,6 +688,10 @@ export function planDispatch(
   // 배정 가능: TEAM 세션, 대기(idle), 끝나지 않은 FLIGHT의 STAND를 쥐고 있지 않음(TEAM당 1)
   // resting: STAND 없는 FLIGHT는 받을 수 있는 상태(HOLDING이나 PARKED). AIRBORNE·AOG·RETIRED는 아니다.
   // ACCOUNT HOLD(ATC-51): 한 AIRCRAFT의 LIMIT이 같은 ACCOUNT의 AIRCRAFT 모두를 reset까지 붙든다
+  // 착륙만 기다리는 FLIGHT(ATC-387): PR이 열렸고 AIRCRAFT가 할 일이 없다. 슬롯(perTeam)을 쓰지 않아 그 AIRCRAFT는 다음 FLIGHT를 새 STAND에서 받을 수 있다
+  const openClearanceOf = (k: string) => (s.clearances ?? []).some((c) => (c.type === "FIX" || c.type === "GO AROUND") && c.flight === k && !c.cancelledAt && !c.readbackAt && !c.unableAt);
+  const waitsOf = (k: string) => waitsToLandOf((s.pulls ?? []).filter((p) => p.ticketKey === k), openClearanceOf(k));
+  const waitingCap = cfg.slots.waitingPr;
   const teamSessions = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
   const holds = accountHolds(teamSessions.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
   const aircraft: AircraftState[] = teamSessions
@@ -654,28 +712,36 @@ export function planDispatch(
       if (fuel && fuelHolds(fuel, cfg.fuel ?? DEFAULT_FUEL)) return { ...base, available: false, reason: fuelHoldReason(fuel, now) };
       if (x.status === "busy") return { ...base, available: false, reason: "AIRBORNE" };
       const held = active.filter((c) => c.sessionId === x.id).map((c) => wsTicket.get(c.workspacePath));
-      const open = held.filter((k) => !k || inFlight(k));
+      // 착륙만 기다리는 FLIGHT는 열린 FLIGHT로도 세지 않는다(ATC-387)
+      const open = held.filter((k) => !k || (inFlight(k) && !waitsOf(k)));
       // 끝나지 않은 In Progress FLIGHT(ATC-90): STAND를 쥐었든 tail: 라벨이든, 머지된 PR이 없고 STAND 없이 나간 FLIGHT가 아닌 것.
       // 그 WAKE만큼 이 AIRCRAFT의 슬롯(perTeam)을 쓴다. 다 찼으면 멈춘 팀(STAND 없는 FLIGHT는 받는다), 남았으면 그 안에 드는 FLIGHT만 받는다
       const reg = regOf(x.name);
       const unfinished = new Set<string>();
       for (const k of held) if (k) unfinished.add(k);
       for (const t of s.tickets) if (t.stateType === "started" && tailsOf(t, now).has(reg)) unfinished.add(t.key);
-      const holding = [...unfinished].filter((k) => {
+      const started = [...unfinished].filter((k) => {
         const t = byKey.get(k);
         return t && t.stateType === "started" && !landed.has(k) && needsStand(classOf(t.labels).type);
       });
+      // 착륙만 기다리는 FLIGHT(ATC-387): 슬롯을 쓰지 않고, 한 AIRCRAFT가 쥘 수 있는 수에 상한이 있다(waitingPr)
+      const waiting = started.filter(waitsOf);
+      const holding = started.filter((k) => !waiting.includes(k));
+      const waitNote = waiting.length ? { waiting } : {};
+      if (waiting.length && waiting.length >= waitingCap) {
+        return { ...base, ...waitNote, resting: true, available: false, reason: `착륙 대기 PR ${waiting.length}건(${waiting.join(", ")}) — 상한 ${waitingCap}, 머지돼야 다음 FLIGHT를 받는다` };
+      }
       if (holding.length) {
         const load = holding.reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
         const why = holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ");
-        if (load >= cfg.slots.perTeam - 1e-9) return { ...base, resting: true, available: false, stopped: true as const, reason: why };
-        if (base.airport) return { ...base, resting: true, available: true, room: cfg.slots.perTeam - load, reason: `${why} — 남은 슬롯 ${cfg.slots.perTeam - load}` };
+        if (load >= cfg.slots.perTeam - 1e-9) return { ...base, ...waitNote, resting: true, available: false, stopped: true as const, reason: why };
+        if (base.airport) return { ...base, ...waitNote, resting: true, available: true, room: cfg.slots.perTeam - load, reason: `${why} — 남은 슬롯 ${cfg.slots.perTeam - load}` };
       }
       if (open.length >= cfg.slots.perTeam) {
-        return { ...base, resting: true, available: false, reason: `HOLDING — ${open.map((k) => k ?? "AD HOC STAND").join(", ")} 진행 중` };
+        return { ...base, ...waitNote, resting: true, available: false, reason: `HOLDING — ${open.map((k) => k ?? "AD HOC STAND").join(", ")} 진행 중` };
       }
       if (!base.airport) return { ...base, available: false, reason: "소속 AIRPORT 없음" };
-      return { ...base, resting: true, available: true, reason: held.length ? "HOLDING, 남은 FLIGHT 없음" : "PARKED" };
+      return { ...base, ...waitNote, resting: true, available: true, reason: waiting.length ? `착륙 대기 PR ${waiting.length}건(${waiting.join(", ")}) — 다음 FLIGHT는 새 STAND` : held.length ? "HOLDING, 남은 FLIGHT 없음" : "PARKED" };
     });
   // RESTARTING(ATC-91): 세션은 없지만 /clear 뒤 첫 메시지를 기다리는 AIRCRAFT. 배정은 받지 않고(available false), 그 REGISTRATION의 승인된 제안은 닫지 않는다
   for (const r of s.restarting ?? []) {
@@ -721,7 +787,14 @@ export function planDispatch(
       continue;
     }
     // 끝나지 않은 In Progress FLIGHT(tail: 라벨, ATC-90). 세션이 없어 점유는 없다
-    const holding = s.tickets.filter((t) => t.stateType === "started" && tailsOf(t, now).has(reg) && !landed.has(t.key) && needsStand(classOf(t.labels).type)).map((t) => t.key);
+    const startedTail = s.tickets.filter((t) => t.stateType === "started" && tailsOf(t, now).has(reg) && !landed.has(t.key) && needsStand(classOf(t.labels).type)).map((t) => t.key);
+    // 착륙만 기다리는 FLIGHT는 슬롯을 쓰지 않는다(ATC-387). 상한을 넘으면 새 FLIGHT를 받지 않는다
+    const waitingTail = startedTail.filter(waitsOf);
+    const holding = startedTail.filter((k) => !waitingTail.includes(k));
+    if (!holding.length && waitingTail.length >= waitingCap) {
+      aircraft.push({ ...base, waiting: waitingTail, available: false, reason: `착륙 대기 PR ${waitingTail.length}건(${waitingTail.join(", ")}) — 상한 ${waitingCap}` });
+      continue;
+    }
     if (holding.length) {
       aircraft.push({ ...base, available: false, stopped: true, reason: holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ") });
       continue;
@@ -730,7 +803,7 @@ export function planDispatch(
       aircraft.push({ ...base, available: false, reason: "소속 AIRPORT 없음" });
       continue;
     }
-    aircraft.push({ ...base, resting: true, available: true, reason: ABSENT_REASON });
+    aircraft.push({ ...base, ...(waitingTail.length ? { waiting: waitingTail } : {}), resting: true, available: true, reason: ABSENT_REASON });
   }
 
   // ── FLIGHT ──
@@ -834,6 +907,14 @@ export function planDispatch(
       const rs = releaseStateOf(t.key, t.releaseHash, s.releases);
       if (rs !== "released") {
         excluded.push({ flight: t.key, reason: rs === "stale" ? STALE_RELEASE_WHY : NOT_RELEASED_WHY });
+        continue;
+      }
+    }
+    // K3 hold(ATC-398): K3 줄이 있는데 allow 없이 떠날 FLIGHT는 보내지 않는다. 이유와 고치는 길은 제외 사유에 그대로 보인다
+    if ((cfg.k3Hold ?? "on") === "on") {
+      const hold = k3HoldOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: s.releases });
+      if (hold) {
+        excluded.push({ flight: t.key, reason: `${hold.why} — ${hold.fix}` });
         continue;
       }
     }
@@ -983,7 +1064,8 @@ export function planDispatch(
       .flatMap((t) => {
         const tails = tailsOf(t, now);
         return aircraft
-          .filter((ac) => ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && (!sameTeamOnly.has(t.key) || regOf(ac.name) === sameTeamOnly.get(t.key)) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
+          // K3 발권(ATC-372): 선언한 K3 효과가 있는 FLIGHT는 새로 띄우는 AIRCRAFT(launch 카드)만 받는다. 돌고 있는 세션은 새 `--settings`를 받지 못한다
+          .filter((ac) => (ac.launch || !k3LaunchOf({ flight: t.key, declared: t.k3, hash: t.releaseHash, releases: s.releases, repo: "" })) && ok(ac, t) && fitsRoom(ac, t) && (!tails.size || tails.has(regOf(ac.name))) && (!sameTeamOnly.has(t.key) || regOf(ac.name) === sameTeamOnly.get(t.key)) && qualifies(ac, t.cls) && independent(ac, t.ind) && notBlocked(ac, t))
           .map((ac) => {
             hadPair.add(t.key);
             const sc = score(t, ac);
@@ -1008,7 +1090,7 @@ export function planDispatch(
       // 다른 AIRPORT는 그 규칙을 쓰지 않으니 줄을 내지 않는다(ATC-159)
       const confirm = p.t.airport === confirmAirport ? supervisorConfirmOf(predictedFor(p.t).map((x) => x.pattern)) : [];
       planned.set(p.t.airport, (planned.get(p.t.airport) ?? 0) + size);
-      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(p.ac.launch ? { launch: true as const } : {}), ...(confirm.length ? { supervisorConfirm: confirm } : {}) });
+      assign.push({ kind: "ASSIGN", flight: p.t.key, aircraft: p.ac.id, aircraftName: p.ac.name, registration: regOfAircraft(p.ac, cfg.teamPattern), airport: p.t.airport, score: p.score, factors: p.factors, ...(p.ac.launch ? { launch: true as const } : {}), ...(confirm.length ? { supervisorConfirm: confirm } : {}), ...(p.ac.waiting?.length ? { waiting: p.ac.waiting } : {}) });
     }
   };
   // 1) STAND 규칙: 배정 가능(available)하고 예약 없는 AIRCRAFT에 TEAM당 1건. STAND 없는 FLIGHT도 여기서 먼저 받을 수 있다

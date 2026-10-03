@@ -38,6 +38,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
 - **승인 프롬프트에 서 있는 세션**은 Claude Code가 `working`으로 적고 `needs`에 `approve Write: …`를 함께 적는다(`blocked`가 아니다). 이때는 `NEEDS YOU`가 아니라 `PENDING · approve Write: …`(파란색)가 줄·카드(경보 띠)에 붙고, 10분이 지나면 SUPERVISOR 알림이 CAUTION으로 오른다. 그 세션에게 가는 호출이 답을 못 받고 있으면 바로 오르고 글에 `1 call waiting (FLIGHT PLAN D-0336)`처럼 적힌다. 승인은 늘 SUPERVISOR가 그 세션에서 한다. atc는 아무것도 보내지 않는다.
+- **AIRCRAFT는 사람에게 도구 승인을 묻지 않는다**(ATC-369). atc가 띄우는 AIRCRAFT에는 policy hook이 실려, 프롬프트가 뜰 호출을 hook이 정한다: STAND 안의 알려진 안전한 동작은 허용, 나머지(Claude 설정 폴더 쓰기, STAND 밖 쓰기, 운영 상태 …)는 거절하고 class별로 센다. FLEET 머리에 `PENDING 0 · DENIED 24h n · STALE STOP on`이 보이고, PENDING이 0이 아니면 파랗게 바뀐다. 또 FLIGHT가 머지·ARRIVED인데 PENDING·HUNG으로 30분 남은 AIRCRAFT는 서버가 멈춘다(기본 on, 끄는 곳은 설정 → OPERATIONS → STALE STOP, 당신만). 카드의 job 한 줄은 `… · last known, 17 h ago`처럼 나이와 함께 보인다.
 
 ## 세션이 멈췄을 때: AIRCRAFT health
 
@@ -104,9 +105,9 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **FUEL 블록과 카드**: `사용 82% · resets 21:00Z`(카드에서는 얇은 회색 막대와 `82%`, `resets 21:00Z`). 가장 많이 쓴 창(5시간·주간)에서 **쓴** 몫과 그 창이 풀리는 시각이다. 남은 몫이 아니다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강(카드의 막대도 같다). 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
 - **FLEET 줄**에는 이 숫자를 싣지 않는다(위 FOB가 줄의 연료다). 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT에만 FLYING 칸에 `HOLD · FUEL (account pro-2) until 21:00Z` 표시가 붙는다. 배정이 막힌다는 표시다.
 - 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
-- **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. FLEET 탭 CONTROL SESSIONS 구역에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
-- FLEET 탭의 **CONTROL** 그룹(AIRCRAFT 목록 아래 같은 표에 이어지는 둘째 그룹, 주소 `#fleet/control`)은 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)을 AIRCRAFT와 같은 줄로 보인다: STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`), FLYING(job이 적은 한 줄이나 NEEDS YOU), 경과(loop 주기), 마지막 활동, FOB, FUEL 14일. 모든 세션이 같은 사실(띄운 방식 `claude --bg`, permission mode, ACCOUNT, 모델)은 그룹 머리에 한 번만 적히고, 다른 세션 줄에만 칩이 붙는다. 줄을 누르면(키보드로도) LAUNCH·STOP, 폴더와 첫 메시지, `STALE n`, ACCOUNT 편집이 펼쳐지고, NEEDS YOU인 줄은 펼친 채 시작한다. FLEET가 보이는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다.
-- CONTROL 그룹 아래 **OTHER BACKGROUND SESSIONS** 그룹은 AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: `ENGINEERING-NIGHT`)을 보인다. 이 세션들도 백그라운드 세션 상한(`ATC_MAX_LAUNCHED`)의 자리를 쥐고, 세션마다 이름·폴더·상태·논 시간·job 한 줄과 **STOP**이 있다. 비어 있으면 그룹이 없다. STOP은 누를 때만 하고 atc가 스스로 멈추지 않는다. 상한 때문에 LAUNCH가 막히면 거절 글이 `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`처럼 누가 자리를 쥐었는지 적고, 그 밖의 세션이 120분 넘게 놀고 있으면 ADVISORY 알림 하나가 뜬다.
+- **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. 화면 아래 CONTROL 패널의 표에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
+- 화면 아래 **CONTROL 패널**(접힌 한 줄 머리, 열면 표. 주소 `#fleet/control`이나 `#control`로도 열린다. FLEET에는 더 이상 없다)의 표는 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)을 AIRCRAFT와 같은 줄로 보인다: STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`), FLYING(job이 적은 한 줄이나 NEEDS YOU), 경과(loop 주기), 마지막 활동, FOB, FUEL 14일. 모든 세션이 같은 사실(띄운 방식 `claude --bg`, permission mode, ACCOUNT, 모델)은 그룹 머리에 한 번만 적히고, 다른 세션 줄에만 칩이 붙는다. 줄을 누르면(키보드로도) LAUNCH·STOP, 폴더와 첫 메시지, `STALE n`, ACCOUNT 편집이 펼쳐지고, NEEDS YOU인 줄은 펼친 채 시작한다. 패널이 열려 있는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다. 고른 세션의 최근 교신은 표 오른쪽(좁은 화면은 아래)에 보인다.
+- CONTROL 패널 표 아래 **OTHER BACKGROUND SESSIONS** 그룹은 AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: `ENGINEERING-NIGHT`)을 보인다. 이 세션들도 백그라운드 세션 상한(`ATC_MAX_LAUNCHED`)의 자리를 쥐고, 세션마다 이름·폴더·상태·논 시간·job 한 줄과 **STOP**이 있다. 비어 있으면 그룹이 없다. STOP은 누를 때만 하고 atc가 스스로 멈추지 않는다. 상한 때문에 LAUNCH가 막히면 거절 글이 `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`처럼 누가 자리를 쥐었는지 적고, 그 밖의 세션이 120분 넘게 놀고 있으면 ADVISORY 알림 하나가 뜬다.
 - FLEET의 ACCOUNT 보기는 이 **FUEL** 블록 하나다(FLEET PLAN에는 같은 줄이 없다). hold 수준이 되면 그 옆에 `LAUNCH·ENTRY 제안 안 함`이 붙는다.
 - FLEET 탭의 **FUEL** 블록(AIRCRAFT 목록 아래)은 ACCOUNT마다 한 줄로 쓴 몫, AIRCRAFT, 그리고 따로 관제 세션을 보인다. 누가 그 계정을 쓰고 있는지 여기서 본다.
 - 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
@@ -148,11 +149,11 @@ LOGBOOK은 AIRCRAFT가 끝낸(ARRIVED) FLIGHT의 기록이다. atc가 10분마�
 
 | 줄 | 뜻 |
 |---|---|
-| 이번 주 `3` 목표 5 | 이번 주(월요일 0시부터) ARRIVED 수, 목표는 옆에. 목표보다 적으면 노란색 |
+| 이번 주 `3` 목표 5 · 14일 12 · 착륙 대기 중앙값 2h | 이번 주(월요일 0시부터) ARRIVED 수, 옆에 목표·최근 14일 ARRIVED 합·착륙 대기 중앙값(PR을 연 뒤 머지될 때까지, 정시율에는 넣지 않음). 목표보다 적으면 노란색 |
 | 정시 `67%` 목표 80% | 최근 14일 FLIGHT 중 팀 소요 시간이 기대치 안인 비율. 목표보다 낮으면 노란색 |
 | 되돌림 · LOS | 0보다 클 때만 줄로 나오고 빨간색이다 |
-| (마우스를 올리면) | 최근 14일 ARRIVED 수, 되돌림, LOS, 착륙 대기 중앙값 |
-| LOGBOOK | 접힌 줄에는 최근 14 FLIGHT의 띠. 펼치면 작은 표, 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 소요(모르면 `—`, 늦으면 노란색이고 마우스를 올리면 DELAYED, `+`착륙 대기), NET, 날짜. 숫자 칸은 오른쪽 맞춤. REVERTED·LOS는 빨간색. ON TIME 글자는 없다(툴팁에만). FLIGHT를 누르면 PR이 열린다 |
+| 이번 주·정시·되돌림·LOS 줄 | 세 줄이 같은 14일 글(`14일 12`, 되돌림, LOS)을 한 곳에 나눠 쓴다. FLIGHT 하나의 착륙 대기는 LOGBOOK 줄의 `+2h 대기`로 보인다 |
+| LOGBOOK | 접힌 줄에는 최근 14 FLIGHT의 띠. 펼치면 작은 표, 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 소요(모르면 `—`, 늦으면 노란색이고 `지연`이 붙고, 착륙 대기는 `+2h 대기`), NET, 날짜. 숫자 칸은 오른쪽 맞춤. REVERTED·LOS는 빨간색. ON TIME 글자는 없다(툴팁에만). FLIGHT를 누르면 PR이 열린다 |
 
 기대 block time은 `wake` 라벨이 있으면 L 60분 · M 4시간 · H 2일이다. 라벨이 없거나 J거나 AD HOC이면 같은 FLIGHT TYPE·WAKE로 끝난 다른 FLIGHT(3건 이상)의 중앙값과 비교하고, 모자라면 정시율에서 뺀다. 실적은 보여 주기만 하고 배정 점수에는 쓰지 않는다.
 
@@ -194,7 +195,7 @@ CREW 표의 두 표시:
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
 - CAPTAIN이 SUPERVISOR가 읽는 글에 일본어를 쓰면 카드에 `LANGUAGE`가 뜨고 FLIGHT FOLLOWING에도 참고로 나온다(ATC-150). 새 CREW BRIEFING에는 "SUPERVISOR가 읽는 글은 한국어" 줄이 들어 있으니 그 세션에 다시 보내면 된다. atc가 대신 보내지는 않는다.
 
-기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 CREW CHANGE가 발부되는지와, 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 
 ## 새 팀 들이기
 

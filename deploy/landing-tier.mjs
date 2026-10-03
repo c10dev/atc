@@ -18,15 +18,22 @@ const USER = [
   [/^package(-lock)?\.json$/, "의존성"],
   [/^hooks\//, "팀 세션 hook"],
   [/^deploy\/(?!README)/, "배포·등급 규칙"],
+  [/^server\/switches\//, "SUPERVISOR 스위치 선언(기본값·⚠ 모드·저장 방식: 바꾸면 사용자가 머지)"], // ATC-393 검토: 기본값이나 ⚠ 모드 목록을 바꾸는 PR이 SUPERVISOR 없이 착륙하지 않게
   [/^duty\/settings\.json$/, "DUTY 설정"], // duty/*guard*.mjs는 위의 guard 규칙이 잡는다
 ];
 // 강조 등급: 관제 세션의 매뉴얼과 CLI(guard 제외)
-const FLAGGED = [[/^(controller|occ|crosscheck|review|mcc|dispatch|duty)\//, "관제 세션"]];
+const FLAGGED = [
+  [/^(controller|occ|crosscheck|review|mcc|dispatch|duty)\//, "관제 세션"],
+  // 주기로 도는 서버 일(ATC-393): 자동 RTS·자동 승인·LAUNCH·재시작 타이머가 파일 하나로 더해지거나 바뀐다. 서비스 이름(provideService)으로 부르는 부작용은 import 스캔이 못 보므로 폴더째 강조한다
+  [/^server\/jobs\//, "주기 서버 일(배포·LAUNCH·머지 타이머)"],
+];
 
 // 외부 부작용이 있는 서버 코드(SHOW): 머지, PR 코멘트·본문, 세션·유닛 시작·정지처럼 밖에 흔적을 남긴다.
 // 명령을 돌리거나 GET 아닌 fetch를 하는 server 파일은 여기나 READ_ONLY에 반드시 올라야 한다(landing-tier.test.mjs).
 export const SIDE_EFFECT = [
   ["server/autoland-run.ts", "PR 머지·브랜치 갱신·코멘트(gh api)"],
+  ["server/sources/supabase-sql.ts", "Supabase Management API POST: 시험·실전 호스티드 DB에 SQL 실행(마이그레이션 리허설, ATC-368, K1·K2)"],
+  ["server/migrate-run.ts", "마이그레이션 리허설 실행: gh로 PR 파일을 읽고 supabase-sql로 시험·실전 DB에 적용(ATC-368, K1·K2)"],
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 상태 옮기기(DUTY G3), 이슈 만들기·고치기·댓글(DUTY D7a). 서버가 Linear에 쓰는 유일한 파일"],
@@ -47,15 +54,22 @@ export const SIDE_EFFECT = [
   ["server/account-login.ts", "claude auth login 실행(코드를 stdin으로), 로그인 뒤 .claude.json 온보딩 칸 셋 쓰기(ATC-187). .credentials.json은 열지 않음"],
   ["server/flight-state-run.ts", "FLIGHT 상태 버튼(POST /api/flight/:key/state): SUPERVISOR 클릭만 Linear 상태를 옮김(DUTY G3)"],
   ["server/accounts-run.ts", "ADD ACCOUNT·LOGIN·REFRESH 시점(POST /api/accounts/add, /api/accounts/:label/login, /api/accounts/:label/usage, SUPERVISOR만)"],
-  ["server/index.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점)"],
+  ["server/stale-stop-run.ts", "STALE STOP(ATC-369): FLIGHT가 끝났는데 PENDING·HUNG으로 30분 남은 AIRCRAFT 세션 정지 시점(스위치 기본 on, 끄는 것은 SUPERVISOR만)"],
+  ["server/auto-revert-run.ts", "자동 되돌림(ATC-351): lander 머지가 깬 main의 revert PR 열기(gh api graphql revertPullRequest), breaker가 AUTOLAND·MCC 모드를 낮춤, FIX relay 쓰기 — 스위치 기본 on(처음부터 켜짐, shadow 없음), 되돌리기 전에 실패한 체크를 한 번 다시 돌림(workflow rerun)"],
+  ["server/jobs/auto-revert.ts", "자동 되돌림 한 주기 실행 배선(revert PR 열기·lane 낮추기 시점, ATC-351)"],
+  ["server/jobs/autoland.ts", "AUTOLAND 한 주기 실행 배선(머지·브랜치 갱신 시점, ATC-393에서 index.ts에서 옮김)"],
+  ["server/jobs/auto-approve.ts", "launch 카드 자동 승인과 세션 LAUNCH 시점(launchForCard, ATC-393에서 index.ts에서 옮김)"],
+  ["server/index.ts", "서버 진입: 라우트와 주기 일 실행기(jobs/)를 연결하고 서비스 시작 커밋을 읽는다. 일 하나하나의 부작용은 jobs/의 파일마다(AUTOLAND는 위)"],
 ];
 // 부작용을 일으키는 export(이름, 정의한 파일, 하는 일). 이것을 import하는 server 파일은 SIDE_EFFECT나 READ_ONLY에 올라야 한다(landing-tier.test.mjs)
 export const SIDE_EFFECT_HELPERS = [
   ["startRtsUnit", "server/mcc-run.ts", "atc-rts 유닛 시작(운영 7700 배포)"],
   ["runAutoland", "server/autoland-run.ts", "AUTOLAND 한 주기: PR 머지·브랜치 갱신·코멘트"],
+  ["runAutoRevert", "server/auto-revert-run.ts", "자동 되돌림 한 주기: revert PR 열기·lane 낮추기"],
   ["recordHumanCheck", "server/human-check-run.ts", "PR 본문 수정·코멘트"],
   ["renderPhrase", "server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro) 실행"],
   ["launchAircraft", "server/session-control.ts", "AIRCRAFT 세션 시작"],
+  ["launchForCard", "server/session-control.ts", "launch 카드의 AIRCRAFT 세션 시작(launchAircraft를 부른다)"],
   ["stopAircraft", "server/session-control.ts", "AIRCRAFT 세션 정지"],
   ["launchControl", "server/session-control.ts", "관제 세션 시작"],
   ["stopControl", "server/session-control.ts", "관제 세션 정지·pane 닫기"],
@@ -88,13 +102,8 @@ export function tierOf(files) {
   for (const f of files.map((s) => s.trim()).filter(Boolean)) {
     // guard 테스트는 guard를 바꾸지 않으므로 강조만
     const user = !/\.test\.mjs$/.test(f) || !/guard/.test(f) ? USER.find(([re]) => re.test(f)) : null;
-    const hit = user
-      ? ["user", user[1]]
-      : FLAGGED.find(([re]) => re.test(f))
-        ? ["flagged", "관제 세션"]
-        : SIDE_EFFECT.some(([path]) => path === f)
-          ? ["flagged", "외부 부작용"]
-          : null;
+    const flagged = FLAGGED.find(([re]) => re.test(f));
+    const hit = user ? ["user", user[1]] : SIDE_EFFECT.some(([path]) => path === f) ? ["flagged", "외부 부작용"] : flagged ? ["flagged", flagged[1]] : null;
     if (!hit) continue;
     reasons.push({ file: f, tier: hit[0], why: hit[1] });
     if (RANK[hit[0]] > RANK[tier]) tier = hit[0];

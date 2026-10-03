@@ -9,7 +9,7 @@
 ## 하지 않는 것
 
 - 코드를 고치지 않는다. Edit·Write, SendMessage, Artifact는 막혀 있다. 하위 에이전트(Agent)는 `inspector` 하나만 부른다(`agent-guard.mjs`가 다른 것을 막는다). 팀 세션에 메시지를 보내지 않는다. findings는 서버가 PR 댓글로 남기고 TOWER가 전한다. 팀과 TOWER가 읽는 findings와 PR 댓글은 영어로 쓴다(ATC-126). MCC LOG처럼 SUPERVISOR에게 하는 보고는 한국어다.
-- `user` 등급 PR과 ESCALATE한 PR은 착륙시키지 않는다(사용자가 머지). 등급을 내릴 수 없다.
+- ESCALATE한 PR과, 발권 때 승인한 K 효과 안이 아닌 `user` 등급 PR은 착륙시키지 않는다(사용자가 머지). 등급을 내릴 수 없다. 서버가 `mcc queue`의 `blocks`로 정한다: `user` 등급이어도 FLIGHT 발권에 선언한 K 효과 안에서 만든 PR이면(`kApproval.ok`) `blocks`에 L3가 없고 다른 PR처럼 INSPECTION `pass` 뒤 착륙시킨다(ATC-391). **등급(`user`)만 이유로 ESCALATE하지 않는다** — ESCALATE는 의심이 남을 때(상태 형식, 되돌리기 어려움, 선언을 넘는 듯함)만이고, ESCALATE하면 K 승인이 있어도 사용자 몫이다.
 - `git`, `systemctl`, `gh pr merge`, `gh api`, 다른 atcctl 명령은 쓰지 않는다(`../controller/guard.mjs --mcc --gh-read`가 막는다). gh는 `gh pr view|diff|checks|list` 읽기만.
 - Linear에 쓰지 않는다. MCP는 읽기만 통과한다(띄울 때 `--strict-mcp-config`라 보통 없다).
 - 파일은 atc 저장소만 읽는다. `.env*`, `~/.local/state/atc`, 다른 저장소는 막혀 있다(`read-guard.mjs`). 저장소 맨 위에서 Grep하지 않고 `server/`처럼 폴더를 지정한다.
@@ -60,6 +60,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 ## 착륙과 RTS
 
 - `mcc queue`에서 `blocks`가 빈 PR만 `mcc land <PR> --head <queue의 head>`. 서버가 조건을 다시 보고 막으면 그 조건을 LOG에 적고 넘어간다. 같은 바퀴에 다시 시도하지 않는다.
+- `user` 등급 PR이 `kApproval.ok`라 착륙했으면 LOG에 `LANDED · user · K 승인 <release id>`(큐의 `kApproval.release`)와 선언한 K 효과를 한 줄로 적는다. `kApproval.ok`가 아닌 `user` PR은 LOG에 `kApproval.why`를 적고 넘어간다(INSPECTION은 그대로 한다).
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - `rts.due`가 true면 착륙보다 먼저 `mcc rts`를 친다(ATC-121). 한 바퀴에 한 번. 착륙시킨 바로 뒤에는 같은 바퀴에서 `mcc rts`를 치지 않는다 — 방금 착륙한 커밋의 CI는 아직 없고, 서버도 마지막 착륙이 main CI를 읽은 때보다 늦으면 "할 때가 아님"으로 답한다. 착륙한 커밋은 다음 바퀴에서 `rts.due`가 되면 배포한다.
 - ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 SUPERVISOR에게 보고한다. 풀기는 SUPERVISOR가 설정 창에서 한다.

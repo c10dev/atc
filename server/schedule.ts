@@ -986,7 +986,26 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     // mark는 화면에 보이는 판정된 초안(recent·inProgress)만 싣는다(브리핑이 replay 기록만큼 커지지 않게)
     const shown = new Set([...recent, ...inProgress].map((x) => x.id));
     const judges = judgesViewOf(ops.map((x) => ({ id: x.id, kind: x.kind, human: humanOf(x) })), marksOf(readJudgeLines()), loadJudges(), shown);
-    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf(ops, changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now), ...dutyPart() });
+    return c.json({ mode, open, inProgress, recent, changes, gate: gateOf(ops), limit: SCHEDULE_OPEN_LIMIT, candidates, close: closeInfoOut, closeManual, flights, examples: occExamplesOf(ops), crosscheck: crosscheckBriefOf([], changes), waypointGaps, waypointEtas, slips, routesWithoutWaypoints, judges, wip: wipView(readWips(), now), ...dutyPart() });
+  });
+
+  // HOME(ATC-378, docs/layout.md Y3)이 읽는 가벼운 보기: SCHEDULE 탭이 없어졌으니 남은 것만 — 모드, 지연 WAYPOINT(예외), Linear에서 직접 Done으로 바꿀 CLOSE. 읽기만 한다
+  app.get("/api/schedule/home", async (c) => {
+    const s = await getSnapshot();
+    const ops = await current(s);
+    const now = Date.now();
+    const lp = await loadLinearProjects();
+    const routes = lp.milestones ? await loadRoutes(s, loadLogbook(), now) : null;
+    const slipList = routes ? slipsOf(waypointEtasOf(routes), now) : null;
+    const reported = loadSlipsReported();
+    const slips = slipList ? slipList.map((x) => ({ ...x, reportedAt: reported.reported[x.key] ?? null })) : null;
+    const byKey = new Map(s.tickets.map((t) => [t.key, t]));
+    const closeManual = ops
+      .filter((x) => x.kind === "CLOSE" && (x.status === "approved" || (x.status === "agreed" && now - Date.parse(x.statusAt) < 7 * 86_400_000)))
+      .filter((x) => !DONE_STATES.has(byKey.get(x.flight ?? "")?.stateType ?? "completed"))
+      .sort((a, b) => a.statusAt.localeCompare(b.statusAt))
+      .map((x) => ({ id: x.id, flight: x.flight, status: x.status, statusAt: x.statusAt, title: byKey.get(x.flight ?? "")?.title ?? null, url: byKey.get(x.flight ?? "")?.url ?? null, pr: (x.payload as ClosePayload).pr }));
+    return c.json({ mode: loadScheduleMode(), slips, closeManual });
   });
 
   // 진행 중인 CHARTER REQUEST(ATC-169): 다듬는 동안 서버에 한 줄로 둔다. 초안이 아니다(5건 한도·판정·발부와 무관). 새 OCC가 schedule brief의 wip로 이어받는다
@@ -1133,21 +1152,8 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     return c.json({ op: fold(readLines()).find((x) => x.id === id) });
   });
 
-  // CROSSCHECK 예비 판정. 판정 권한이 아니라 참고 표시라 mode와 상관없이 받는다
-  app.post("/api/schedule/ops/:id/crosscheck", async (c: Context) => {
-    const id = (c.req.param("id") ?? "").toUpperCase();
-    const body = await c.req.json().catch(() => ({}));
-    const op = fold(readLines()).find((x) => x.id === id);
-    if (!op) return c.json({ error: "그런 SCHEDULE 작업이 없음" }, 404);
-    if (op.status !== "draft") return c.json({ error: `지금 상태(${op.status})에서는 CROSSCHECK를 달 수 없음 — 열린 초안만` }, 409);
-    try {
-      append([{ op: "crosscheck", id, ...parseCrosscheck(body, new Date().toISOString()) }]);
-    } catch (e) {
-      if (e instanceof CrosscheckError) return c.json({ error: e.message }, 400);
-      throw e;
-    }
-    return c.json({ op: fold(readLines()).find((x) => x.id === id) });
-  });
+  // CROSSCHECK는 은퇴했다(ATC-371): 새 mark를 받지 않는다. 옛 mark는 기록으로 읽힌다
+  app.post("/api/schedule/ops/:id/crosscheck", (c: Context) => c.json({ error: "CROSSCHECK는 은퇴했다(ATC-371) — 새 mark를 받지 않는다" }, 410));
 
   // S2: 승인·거절(SUPERVISOR). approval 모드에서만
   for (const name of ["approve", "reject"] as const) {

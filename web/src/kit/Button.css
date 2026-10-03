@@ -1,0 +1,38 @@
+/* 버튼 하나(ATC-411, docs/design-system.md L1): .btn 기본, .is-primary(강조), .is-danger(되돌리기 어려운 동작). React 컴포넌트가 아니라 CSS 클래스(Q8).
+   의미 토큰과 --layer·--layer-hover만 쓴다: 도메인 토큰·리터럴·화면 클래스는 없다. 상태(hover·disabled·focus)는 여기서 한 번만 정한다.
+   바탕은 놓인 면(--layer)보다 한 단계 위인 --layer-hover, hover는 그 위 단계(--panel-3). 다른 면 위에서는 담는 쪽이 --layer를 정한다(S2). 높이는 지역 속성 --btn-h 하나 */
+.btn {
+  --btn-h: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-h);
+  padding: var(--space-1) var(--space-3);
+  background: var(--layer-hover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: 600 var(--text-sm) var(--sans);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.btn:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--panel-3);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn.is-primary {
+  border-color: var(--radar);
+  color: var(--radar);
+}
+.btn.is-danger {
+  border-color: var(--alert);
+  color: var(--alert);
+}

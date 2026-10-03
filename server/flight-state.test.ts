@@ -128,6 +128,17 @@ test("길: 옮긴다. Linear에는 상태 하나만 쓰고, 캐시를 버리고,
   assert.deepEqual(h.lines, [{ t: "2026-09-30T12:00:00.000Z", kind: "flight", op: "state", flight: "ATC-207", by: "SUPERVISOR", ok: true, from: "Backlog", to: "Todo" }]);
 });
 
+test("길: 쓰기가 성공한 뒤에만 서버 캐시에 새 상태를 싣는다(실패하면 싣지 않는다, ATC-448)", async () => {
+  const seen: [string, string][] = [];
+  const localState = (k: string, n: { name: string }) => void seen.push([k, n.name]);
+  await harness({ localState }).post("ATC-207", { from: "Backlog", to: "Todo" });
+  assert.deepEqual(seen, [["ATC-207", "Todo"]]);
+  seen.length = 0;
+  await harness({ localState, apply: async () => { throw new Error("HTTP 500"); } }).post("ATC-207", { from: "Backlog", to: "Todo" });
+  await harness({ localState, fetchIssue: async () => issue({ state: { name: "Todo", type: "unstarted" } }) }).post("ATC-207", { from: "Backlog", to: "Canceled" });
+  assert.deepEqual(seen, []);
+});
+
 test("길: 상태가 이미 바뀌었으면 409, 쓰지 않고 실패를 적는다", async () => {
   const h = harness({ fetchIssue: async () => issue({ state: { name: "Todo", type: "unstarted" } }) });
   const res = await h.post("ATC-207", { from: "Backlog", to: "Canceled" });

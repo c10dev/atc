@@ -17,7 +17,7 @@ import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { loadMcc, readMccRecords, reviewOfHead } from "./mcc.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { airportOfTicket, loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
 import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
@@ -43,6 +43,21 @@ const readySince = new Map<string, string>();
 let heldStops: GroundStop[] | null = null;
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
+
+// 열린 PR이 있는 STAND를 쥔 살아 있는 세션의 점유는 claimTtlMs가 지나도 이어 둔다(ATC-387): 그 AIRCRAFT가 다음 FLIGHT를 새 STAND에서 하는 동안에도
+// 앞 PR의 FIX·GO AROUND가 STAND를 쥔 그 세션에게 가고, 그 FLIGHT가 슬롯 계산에 든다. 충돌·알림·건강 계산은 이미 끝났으므로 영향이 없다(그 뒤에 더한다)
+export function keptStandClaims(hookClaims: readonly Claim[], claims: readonly Claim[], pulls: readonly { standPath?: string | null }[], statusOf: (id: string) => string | undefined): Claim[] {
+  const standsWithPr = new Set(pulls.map((p) => p.standPath).filter((x): x is string => Boolean(x)));
+  const held = new Set(claims.filter((c) => c.state === "active").map((c) => c.workspacePath)); // 다른 세션이 지금 쥐고 있는 STAND는 그 세션이 홀더다
+  const kept = new Set<string>();
+  return [...hookClaims].sort((a, b) => b.lastAt.localeCompare(a.lastAt)).filter((c) => {
+    if (fresh(c) || c.state !== "active" || held.has(c.workspacePath) || kept.has(c.workspacePath)) return false;
+    const st = statusOf(c.sessionId);
+    const keep = st !== undefined && st !== "dead" && standsWithPr.has(c.workspacePath);
+    if (keep) kept.add(c.workspacePath); // STAND마다 하나(가장 최근에 건드린 세션)
+    return keep;
+  });
+}
 
 export async function buildSnapshot(): Promise<Snapshot> {
   const airports = await resolveAirports();
@@ -157,6 +172,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
+  // 화면 사이드바가 AIRPORT별로 묶는다(ATC-443). DISPATCH가 쓰는 같은 규칙이라 화면에 따로 규칙을 두지 않는다(원칙 4)
+  for (const t of tickets) t.airport = airportOfTicket(t, dispatchCfg);
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);
@@ -221,8 +238,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     return alCfg.mode !== "off" && Boolean(code) && alCfg.airports.includes(code!) && !alSt.groundStops.some((g) => g.airport === code);
   };
   const fastTrack = fastTrackOf(alSt.reviewRequests);
-  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소만, 전이는 codex-lane.jsonl에 한 줄씩
-  const laneSilent = laneStates(github.byRepo, Date.now());
+  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소 가운데 Codex를 쓰는 저장소만(MCC AIRPORT는 INSPECTION이 리뷰), 전이는 codex-lane.jsonl에 한 줄씩. 스위치 codex-lane.json이 off면 쉰다(ATC-393)
+  const laneSilent = laneStates(github.byRepo, Date.now(), undefined, (repo) => repo !== mccAirport?.repo);
   const pulls = buildPulls(
     repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,
@@ -262,6 +279,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     const r = reports.get(x.id);
     if (r && x.status === "idle") x.report = r;
   }
+  claims.push(...keptStandClaims(hookClaims, claims, pulls, (id) => sessionById.get(id)?.status));
   applyFlightHealth({ sessions, teamPattern: dispatchCfg.teamPattern, freshClaims: claims, staleClaims: hookClaims.filter((c) => !fresh(c)), workspaces, tickets, pulls, now: healthAt, cfg: config.health });
 
   // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.

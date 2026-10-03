@@ -138,18 +138,38 @@ test("singleLaneCauseOf: cleared on the REVIEW lane only, with the reason Codex 
 test("laneDaysOf: per UTC day, how many landed and how many of them landed on one lane, by cause", () => {
   const now = Date.parse("2026-10-02T12:00:00Z");
   const landed = [
-    { t: "2026-10-02T01:00:00Z", number: 1, head: "aaaaaaa1" },
-    { t: "2026-10-02T02:00:00Z", number: 2, head: "bbbbbbb2" },
-    { t: "2026-10-02T02:30:00Z", number: 2, head: "bbbbbbb2" }, // 같은 PR·head의 두 번째 기록은 세지 않는다
-    { t: "2026-10-01T09:00:00Z", number: 3, head: "ccccccc3" },
+    { t: "2026-10-02T01:00:00Z", airport: "VCDO", number: 1, head: "aaaaaaa1" },
+    { t: "2026-10-02T02:00:00Z", airport: "VCDO", number: 2, head: "bbbbbbb2" },
+    { t: "2026-10-02T02:30:00Z", airport: "VCDO", number: 2, head: "bbbbbbb2" }, // 같은 PR·head의 두 번째 기록은 세지 않는다
+    { t: "2026-10-01T09:00:00Z", airport: "VCDO", number: 3, head: "ccccccc3" },
   ];
   const lines = [
     { t: "2026-10-02T00:50:00Z", repo: REPO, number: 1, head: "aaaaaaa1", cause: "lane" as const },
     { t: "2026-09-30T00:50:00Z", repo: REPO, number: 9, head: "ddddddd9", cause: "limit" as const }, // 착륙 기록이 없다: 세지 않는다
   ];
-  const days = laneDaysOf(landed, lines, 3, now);
+  const days = laneDaysOf(landed, lines, 3, now, (repo) => (repo === REPO ? "VCDO" : repo));
   assert.deepEqual(days.map((d) => d.day), ["2026-09-30", "2026-10-01", "2026-10-02"]);
   assert.deepEqual(days[2], { day: "2026-10-02", landed: 2, single: 1, causes: { lane: 1 } });
   assert.deepEqual(days[1], { day: "2026-10-01", landed: 1, single: 0, causes: {} });
   assert.equal(days[0]!.landed, 0);
+});
+
+// PR 번호는 저장소마다 따로 센다: 다른 저장소의 같은 번호·head 앞 7자리가 단일 레인으로 세어지지 않는다(PR 429 P2)
+test("laneDaysOf: the same PR number and head in another repository is not counted as a single-lane landing", () => {
+  const now = Date.parse("2026-10-02T12:00:00Z");
+  const landed = [{ t: "2026-10-02T01:00:00Z", airport: "ATCC", number: 7, head: "aaaaaaa1" }];
+  const lines = [{ t: "2026-10-02T00:50:00Z", repo: REPO, number: 7, head: "aaaaaaa1", cause: "lane" as const }];
+  const airportOf = (repo: string) => (repo === REPO ? "VCDO" : repo);
+  assert.deepEqual(laneDaysOf(landed, lines, 1, now, airportOf)[0], { day: "2026-10-02", landed: 1, single: 0, causes: {} });
+  assert.deepEqual(laneDaysOf([{ ...landed[0]!, airport: "VCDO" }], lines, 1, now, airportOf)[0], { day: "2026-10-02", landed: 1, single: 1, causes: { lane: 1 } });
+});
+
+// 옛 AUTOLAND merge 기록에는 airport가 없다: 저장소를 모르니 번호·head만으로 짝을 짓는다(옛 방식). airport가 있으면 저장소까지 맞아야 한다
+test("laneDaysOf: a landing line without an airport (older AUTOLAND records) still matches the single-lane line by number and head", () => {
+  const now = Date.parse("2026-10-02T12:00:00Z");
+  const lines = [{ t: "2026-10-02T00:50:00Z", repo: REPO, number: 7, head: "aaaaaaa1", cause: "lane" as const }];
+  const airportOf = (repo: string) => (repo === REPO ? "VCDO" : repo);
+  const old = [{ t: "2026-10-02T01:00:00Z", airport: "", number: 7, head: "aaaaaaa1" }];
+  assert.deepEqual(laneDaysOf(old, lines, 1, now, airportOf)[0], { day: "2026-10-02", landed: 1, single: 1, causes: { lane: 1 } });
+  assert.equal(laneDaysOf([{ ...old[0]!, airport: "ATCC" }], lines, 1, now, airportOf)[0]!.single, 0); // 다른 저장소는 여전히 아니다
 });

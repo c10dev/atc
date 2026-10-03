@@ -1,7 +1,7 @@
 import { type ControlList, controlPollDue } from "../../server/control-view.ts";
 import { apiGet } from "./api.ts";
 
-// /api/control/sessions를 읽는 값의 모듈 공유(ATC-127). 헤더 CONTROL 띠(ControlStrip)와 FLEET의 CONTROL SESSIONS(ControlSessions)가 같은 값과 같은 "마지막으로 읽은 시각"을 쓴다.
+// /api/control/sessions를 읽는 값의 모듈 공유(ATC-127). 아래 CONTROL 패널의 머리(ControlPanel)와 그 표(ControlSessions)가 같은 값과 같은 "마지막으로 읽은 시각"을 쓴다.
 // 값(list)만 나눈다. 띠의 "마지막으로 읽은 시각"(at)은 띠만 쓰고, FLEET 구역은 자기 시각으로 60초마다 읽는다(ACCOUNT도 읽어야 하므로).
 // 둘이 읽는 것은 서버가 `claude agents`를 30초 캐시해 명령은 한 번이다(server/agents-cache.ts).
 export type ControlAccounts = { labeled: boolean; rows: { name: string; label: string | null; account: string | null }[] };

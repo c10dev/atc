@@ -41,13 +41,13 @@ const NOW = Date.parse("2026-09-28T09:00:00Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
 
 test("설정: 모르는 값은 기본값(shadow, ATCC, check), 사용자가 적은 다른 키는 저장해도 남는다", () => {
-  assert.deepEqual(parseMcc(null), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [] });
-  assert.deepEqual(parseMcc({ mode: "merge", airport: "atcc", holds: [106, 106, -1, "x", 1.5] }), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [106] });
+  assert.deepEqual(parseMcc(null), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
+  assert.deepEqual(parseMcc({ mode: "merge", airport: "atcc", holds: [106, 106, -1, "x", 1.5] }), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [106], kApproval: "on" });
   assert.equal(parseMcc({ mode: "land+rts" }).mode, "land+rts");
   const file = join(mkdtempSync(join(tmpdir(), "mcc-")), "mcc.json");
   writeFileSync(file, JSON.stringify({ note: "keep" }));
   saveMcc({ ...loadMcc(file), mode: "land" }, file);
-  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { note: "keep", mode: "land", airport: "ATCC", ciCheck: "check", holds: [] });
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { note: "keep", mode: "land", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
 });
 
 test("INSPECTION 입력: 지금 head만(짧은 SHA 가능), pass에 P0·P1 없음, findings에 등급, 모델은 Claude만", () => {

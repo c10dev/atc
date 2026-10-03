@@ -5,6 +5,7 @@ import { atfmAlertOf } from "../readiness-line.ts";
 import { StateMark } from "./Mark.tsx";
 import "./Atfm.css";
 import { apiGet, apiSend } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // ATFM 3단계(docs/atfm.md). 대부분 그림자 운용: 계산해서 보여 주기만 한다.
 // 켤 수 있는 것은 GROUND STOP 두 가지(main 깨짐, 수동)와 머지 슬롯(7단계: 켜면 TOWER가 in-slot PR에만 LAND)이다.
@@ -282,13 +283,13 @@ export function AtfmPanel({ atfm, now, alertShown }: { atfm: AtfmState; now: num
                 </a>
                 <span className="atfm-slot">{s.slot === "in-slot" ? "in-slot" : "waiting-slot"}</span>
                 {config.slots === "on" && s.slot === "waiting-slot" && <span className="atfm-tag t-on">LAND 보류</span>}
-                <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수">
+                <span className="mono faint" title="저장소 안 슬롯 순서 / 동시 LAND 수(∞는 제한 없음)">
                   {s.lanePos}/{s.limit ?? "∞"}
                 </span>
                 {s.urgent && <span className="atfm-tag t-warn">URGENT</span>}
                 {s.landTimedOut && (
-                  <span className="atfm-tag t-on" title={s.landAt ? `LAND ${s.landAt}` : undefined}>
-                    LAND 30분 초과
+                  <span className="atfm-tag t-on" title="LAND가 나간 뒤 30분이 지나도 머지되지 않음">
+                    LAND 30분 초과{s.landAt && ` · ${s.landAt.slice(11, 16)}Z`}
                   </span>
                 )}
                 <span className="atfm-text faint">{s.title}</span>
@@ -296,7 +297,7 @@ export function AtfmPanel({ atfm, now, alertShown }: { atfm: AtfmState; now: num
             ))}
           </ul>
         ) : (
-          <p className="empty">CLEARED PR 없음</p>
+          <Empty>CLEARED PR 없음</Empty>
         )}
       </details>
 
@@ -394,7 +395,7 @@ function GroundStopSection({ atfm, now }: { atfm: AtfmState; now: number }) {
           })}
         </ul>
       ) : (
-        <p className="empty">출발 중지 없음</p>
+        <Empty>출발 중지 없음</Empty>
       )}
 
       <div className="atfm-switches">
@@ -483,7 +484,7 @@ function SlotFigures({ lands, behind }: { lands: AtfmBrief["data"]["lands"]; beh
           })}
         </ul>
       ) : (
-        <p className="empty">7일 동안 LAND·머지 없음</p>
+        <Empty>7일 동안 LAND·머지 없음</Empty>
       )}
     </div>
   );

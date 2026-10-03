@@ -110,7 +110,7 @@ BLOCKED none | <막힌 점 한 줄씩>
 - `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것을 글로), PR 링크.
 
-같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main` 위로 rebase하고 force-with-lease로 다시 올린 뒤 알린다. `GO AROUND`·`FIX`는 루트 `CLAUDE.md` "교신"의 행동 지시이고, 검증은 5절이다.
+같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main`을 병합하고(rebase 없이) 맨 `git push`로 다시 올린 뒤 알린다. `GO AROUND`·`FIX`는 루트 `CLAUDE.md` "교신"의 행동 지시이고, 검증은 5절이다.
 
 ## 9. Gotchas
 

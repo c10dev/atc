@@ -4,7 +4,7 @@ import type { QueueInput, QueueItem } from "./supervisor-queue.ts";
 // 큐 항목마다 leak인지 exempt인지, 어느 gate 행(autonomy.md 4절)인지 정한다. leak은 열릴 때와 닫힐 때만 한 줄씩 남긴다(주기마다 아님).
 // 순수 함수만. 자료 모으기와 파일은 leaks-run.ts.
 
-export type LeakWhy = "user" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
+export type LeakWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
 
 // 큐 항목 + 분류에 필요한 덤. 큐 자체(QueueItem)는 건드리지 않고 leaks-run이 덧붙인다
 export interface LeakItem extends QueueItem {
@@ -49,7 +49,8 @@ export function classify(i: LeakItem): Verdict {
       return leak("L10", "C10");
     case "LANDING":
       if (i.landWhy === "hold") return exempt("brake", "L20");
-      if (i.landWhy === "user") return exempt("K3", "L14"); // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다)
+      // user 등급: 보수적으로 K3 승인으로 본다(L13의 package*.json은 가르지 못한다). check: K 승인 검사 자체를 바꾸는 PR(ATC-391)도 K3다
+      if (i.landWhy === "user" || i.landWhy === "check") return exempt("K3", "L14");
       if (i.landWhy === "escalate") return leak("L11", "C13");
       return leak("L14", "C9"); // mode·tier-unknown·teams-merge-off: 사람이 머지 단추를 누른다
     case "UPDATE":
@@ -60,6 +61,8 @@ export function classify(i: LeakItem): Verdict {
       return leak("L18", "C15");
     case "UNDELIVERED":
       return leak("P6", "C14");
+    case "BACKLOG":
+      return leak("P16", "C14"); // 제안이 SUPERVISOR의 발권을 기다린다(ATC-401). 센다: 기다림이 보이게
     case "GO":
       return exempt("K3", "P8");
   }
@@ -77,7 +80,7 @@ export interface LeakOpen {
   controlBuilt: boolean;
   title: string;
   flight: string | null;
-  release: string | null; // ATC-362 릴리스 기록이 서면 그 id. 지금은 늘 null(추가 필드)
+  release: string | null; // 붙잡힌 FLIGHT의 발권 기록 id(release.ts releaseIdOf, ATC-402). 발권되지 않은 일이면 null
   since: string; // 사람이 기다리기 시작한 시각(큐의 since, 모르면 처음 본 시각)
 }
 export interface LeakClose {
@@ -102,8 +105,17 @@ export interface OpenLeak {
 // 스냅샷이 잠깐 비어도(GitHub 지연) 닫고 다시 열어 두 번 세지 않게, 연달아 두 번 안 보일 때만 닫는다
 export const CLOSE_AFTER_MISSES = 2;
 
-// 주기 하나: 지금의 큐와 열린 leak을 맞춘다. 바뀐 만큼만 줄을 돌려준다(없으면 빈 배열)
-export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[], now: number): LeakRecord[] {
+// 주기 하나: 지금의 큐와 열린 leak을 맞춘다. 바뀐 만큼만 줄을 돌려준다(없으면 빈 배열).
+// ready가 false면(입력이 아직 없다: RTS 재시작 직후 첫 스냅샷에 PR이 없음 등, ATC-385) 큐가 비어 보이는 것이 사실이 아니다:
+// 열린 leak은 계속 기다리는 중이라 지금 본 것으로 치고(분이 이어진다) 아무것도 열거나 닫지 않는다. 입력이 돌아오면 한 번의 기다림이 한 leak으로 이어진다
+export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[], now: number, ready = true, releaseOf: (flight: string | null) => string | null = () => null): LeakRecord[] {
+  if (!ready) {
+    for (const o of open.values()) {
+      o.lastSeen = now;
+      o.misses = 0;
+    }
+    return [];
+  }
   const out: LeakRecord[] = [];
   const seen = new Set<string>();
   for (const i of items) {
@@ -128,7 +140,7 @@ export function reconcile(open: Map<string, OpenLeak>, items: readonly LeakItem[
       controlBuilt: v.control.built,
       title: i.title,
       flight: i.flight ?? null,
-      release: null,
+      release: releaseOf(i.flight ?? null), // 붙잡힌 FLIGHT의 발권 id(ATC-402). 발권 기록이 없으면 null
       since: i.since ?? new Date(now).toISOString(),
     };
     open.set(id, { rec, lastSeen: now, misses: 0 });
@@ -176,12 +188,24 @@ const MAX_WORK = 5;
 
 export function leakView(recs: readonly LeakRecord[], now: number, days = 7): LeakView {
   const since = now - days * 86_400_000;
-  const closed = new Map<string, LeakClose>();
-  for (const r of recs) if (r.ev === "close") closed.set(`${r.id}|${r.since}`, r);
+  // 같은 기다림(id와 since가 같음)은 한 leak이다: 입력이 잠깐 끊겨 닫혔다 다시 열린 줄(옛 기록 포함)도 하나로 센다(ATC-385).
+  // 줄 순서대로 마지막 상태를 본다: 닫혔으면 그 heldMin, 다시 열렸으면 지금까지
+  const waits = new Map<string, { open: LeakOpen; heldMin: number | null }>();
+  for (const r of recs) {
+    if (r.ev === "open") {
+      const k = `${r.id}|${r.since}`;
+      const w = waits.get(k);
+      if (w) w.heldMin = null;
+      else waits.set(k, { open: r, heldMin: null });
+    } else {
+      const w = waits.get(`${r.id}|${r.since}`);
+      if (w) w.heldMin = r.heldMin;
+    }
+  }
   const rows = new Map<string, LeakKindRow>();
   const works = new Map<string, Set<string>>();
-  for (const r of recs) {
-    if (r.ev !== "open" || Date.parse(r.t) < since) continue;
+  for (const { open: r, heldMin } of waits.values()) {
+    if (Date.parse(r.t) < since) continue;
     const key = `${r.kind}|${r.gate}|${r.control}`;
     let row = rows.get(key);
     if (!row) {
@@ -190,8 +214,7 @@ export function leakView(recs: readonly LeakRecord[], now: number, days = 7): Le
       works.set(key, new Set());
     }
     row.count++;
-    const c = closed.get(`${r.id}|${r.since}`);
-    if (c) row.heldMin += c.heldMin;
+    if (heldMin !== null) row.heldMin += heldMin;
     else {
       row.openNow++;
       row.heldMin += Math.max(0, Math.round((now - Date.parse(r.since)) / MIN));
@@ -222,6 +245,8 @@ export function leakItemsOf(items: readonly QueueItem[], inp: QueueInput): LeakI
       case "PROPOSAL":
       case "GO":
         return { ...i, flight: prop.get(i.key)?.flight ?? null };
+      case "BACKLOG":
+        return { ...i, flight: i.key };
       case "UNDELIVERED":
         return { ...i, flight: i.hand?.source === "FLIGHT PLAN" ? (prop.get(i.hand.id)?.flight ?? null) : null };
       case "SCHEDULE":
@@ -235,7 +260,7 @@ export function leakItemsOf(items: readonly QueueItem[], inp: QueueInput): LeakI
       case "RELAY":
         return { ...i, flight: i.offer?.flight ?? null };
       case "NEEDS YOU":
-        return { ...i, prompt: /^approve\b/i.test(sess.get(i.key)?.job?.needs ?? "") };
+        return { ...i, prompt: /^approve\b/i.test(sess.get(i.key)?.job?.needs ?? sess.get(i.key)?.job?.pendingNeeds ?? "") };
       default:
         return { ...i };
     }

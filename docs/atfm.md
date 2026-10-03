@@ -30,7 +30,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 1. **Shadow before action.** Every rule first runs as "would have done X" next to the human decision, for at least two weeks and a minimum number of cases. The SUPERVISOR switches it on only after the shadow record meets its criteria.
 2. **Humans are measured, automation is not counted as a human.** Automatic decisions carry `via: "atfm"` and never count toward the 2a/S1 agreement gates or the CROSSCHECK match rate. Otherwise automation would grade itself.
-3. **Narrow and reversible.** Automation only covers cases that are low-risk by construction (no `SEC`, no CAUTION, explicit labels, a CROSSCHECK agree) and each has a switch, a daily cap and trip conditions that turn it off by themselves.
+3. **Narrow and reversible.** Automation only covers cases that are low-risk by construction (no `SEC`, no CAUTION, explicit labels) and each has a switch, a daily cap and trip conditions that turn it off by themselves.
 4. **Protective controls come first.** Ground stops and merge slots only slow things down; they can be turned on earlier than anything that approves work.
 5. **Same guards as today.** No new write path bypasses send-guard, linear-guard or the Bash guard. Automatic FLIGHT PLANs and Linear calls go through the existing release commands, so the guards still compare exact text and input.
 
@@ -48,7 +48,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 | A4 | No `rating:SEC` and no label from the Risk group | SEC is never automatic (fleet.md section 4.3, occ.md section 7) |
 | A5 | OCC has reviewed it (`note` present), no CAUTION, no HOLD | 2 of the 3 rejected ASSIGNs so far carried CAUTION |
 | A6 | If the FLIGHT has `tail:`, it names this AIRCRAFT; if not, the FLIGHT's project is on this AIRCRAFT's ROUTES | A pre-assignment or a usual area is the SUPERVISOR's own earlier decision |
-| A7 | A CROSSCHECK `agree` mark from an allowed model, recorded after OCC's note | Two independent reviewers agree before nobody looks |
+| A7 | **Dropped (ATC-371).** It required a CROSSCHECK `agree` mark; CROSSCHECK is retired, so the code is not checked and is skipped in the list of checked conditions | — |
 | A8 | The AIRCRAFT is PARKED, not AOG, holds every required rating, has no NO READBACK and no DECLINED in the last 7 days, and is not flying a STAND-free FLIGHT that has not ARRIVED ([fleet.md](fleet.md) 5.1.1) | A team that is not answering should not receive more work automatically; a team on a SURVEY or CHECK is busy even when its session is idle |
 | A9 | The FLIGHT has a priority, is not a parent issue, and was not declined or rejected before | These are the other real rejection reasons |
 | A10 | No enforced ground stop covers the AIRPORT (section 6), and the caps have room (section 7): 3 automatic ASSIGNs per day overall, and at most 1 automatically assigned FLIGHT per AIRCRAFT that has not ARRIVED yet, on top of the WAKE slots (decision 3) | Flow control wins over assignment |
@@ -57,7 +57,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 
 1. 2b has run for 2 weeks or more and `gate3` is ready. dispatch.md section 8 asks for 2+ weeks, READBACK 90%+, DEPARTED 80%+, almost no LOS on FLIGHTs DISPATCH sent, and less idle AIRCRAFT time. The code (`gate3Of`, `GATE3`) checks 10 or more human-approved FLIGHT PLANs sent, READBACK 90%+ and DEPARTED 80%+; the minimum of 10 is the code's own. LOS is condition 5 below. The 2-week duration is measured from the last DISPATCH `mode:` switch in the FLIGHT RECORDER (`approvalRunOf`): 14 days or more in `approval` passes. When the mode is `approval` but the last switch recorded is not (the file was edited by hand, or the switch is older than the recorder's 30 days), the row shows "확인 필요" (check) instead of a verdict. Less idle AIRCRAFT time is not measured: Not built yet. The DEPARTED rate counts STAND-needing FLIGHTs only: a STAND-free FLIGHT departs at READBACK, so it counts toward the READBACK rate and is shown apart as `gate3.standFree`.
 2. **Shadow precision of the auto-eligible set**: 20 or more auto-eligible ASSIGNs decided by the SUPERVISOR, of which 95% or more approved, and none rejected with `already-done`, `parent-issue`, `waiting-on-prior` or `needs-human`.
-3. **CROSSCHECK on DISPATCH, per model family**: 20 or more marked decisions for the model family currently in use (`byModel`, keyed by `modelFamily`), matching 90% or more. The overall rate is not enough, because the model changed once already. A family merges the names the same model gets on different paths: `claude-ocx-opencode-go--muse-spark-1.3-contributor`, `…[1m]` and `muse-spark-1.3-contributor` all count as `muse-spark-1.3`. Marks recorded before model names existed read as `unknown`: they stay visible as their own row, but they are never the "current family" and never count toward this condition.
+3. **CROSSCHECK on DISPATCH, per model family**: **dropped (ATC-371).** CROSSCHECK is retired, so no turn-on row waits on its match rate. Old marks and their match rate stay readable as history.
 4. **One-click share**: among auto-eligible ASSIGNs, the share the SUPERVISOR approved with "CROSSCHECK에 동의" (`oneClick`). This is supporting evidence, not a gate: a high share shows those decisions are already routine, but it measures convenience, not correctness.
 5. No LOS involving a FLIGHT that DISPATCH sent, in the last 2 weeks.
 
@@ -81,7 +81,7 @@ Read-only from the running atc (`/api/dispatch/brief`, `/api/schedule/brief`, `/
 |---|---|
 | S1 | Kind is `CLASSIFY` and it only **adds** labels on axes that have none (no `removeLabels` in its calls). Replacing an existing label is a human decision (decision 5: this is the whole stage S3 scope for now) |
 | S2 | It does not add `rating:SEC`, and the FLIGHT has no `rating:SEC`, no label from the Risk group (`Risk:Security`, or the old single `Risk: Security`; `classOf` reads every `Risk:` label as SEC) and no OCC CAUTION on any DISPATCH proposal for it. If atc cannot read the FLIGHT, S2 fails: SEC work is never automatic |
-| S3 | A CROSSCHECK `agree` mark from an allowed model on this draft, and OCC's reason cites fleet.md sections for every axis it sets (the #29 rule) |
+| S3 | OCC's reason cites fleet.md sections for every axis it sets (the #29 rule). The CROSSCHECK `agree` mark it also required is dropped (ATC-371) |
 | S4 | The FLIGHT is Todo or Backlog and no team is flying it: no STAND, and no DISPATCH proposal between approval and ARRIVED (`isInFlight`, which includes a STAND-free FLIGHT that departed at READBACK). A `tail:` label alone does not block it; it only pre-assigns |
 
 One more condition is not a per-draft check: stage S2 (approval operation) must be on, so the Linear call is the one atc releases and linear-guard compares. It holds for every draft or for none, so it is turn-on condition 1 below.
@@ -92,7 +92,7 @@ Later candidates, each only after its own stage S2 record (occ.md section 7). De
 
 1. Stage S2 has run for 2 weeks (occ.md section 11), measured from the last SCHEDULE `mode:` switch like condition 1 of section 3, with no APPLIED operation undone by a person. "Undone" is detected as a label that OCC added and that is gone within 7 days.
 2. Human agreement on CLASSIFY drafts written after #29: 20 or more decided, 85% or more agreed.
-3. CROSSCHECK on SCHEDULE CLASSIFY, per current model family (as in section 3; `unknown` is not counted): 20 or more marked, 90% or more matched (today: 7 of 7, 5 of them `unknown`).
+3. CROSSCHECK on SCHEDULE CLASSIFY: **dropped (ATC-371)**, same reason as in section 3.
 4. Shadow precision: 20 or more auto-eligible drafts decided, 95% or more approved.
 
 **Turn-off and rollback.** Switch `atfm.json` `s3` (today `off | shadow`, default `shadow`). Trips back to `shadow`: a human rejects a draft the rule marked eligible (in shadow) or removes an auto-applied label (in `on`), a linear-guard block, or the current model family's match falling below 85%. Rollback of one applied CLASSIFY: atc drafts the inverse operation (remove exactly the labels it added) as a normal stage S2 draft for the SUPERVISOR to approve; nothing is removed automatically.

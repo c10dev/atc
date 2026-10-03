@@ -15,6 +15,7 @@ atc 세션이 일하는 방법은 세 가지 파일에 나뉘어 있습니다: �
 | `atc-task` | ATC 이슈 하나를 구현해 PR로 올리고 보고하는 순서와 점검표 | 팀 세션이 "ATC-n 진행"처럼 이슈를 맡았을 때. 아래 셋을 부르는 길잡이이기도 합니다 |
 | `diagnosing-bugs` | 버그·실패하는 테스트·회귀를 재현하고 가설을 세워 고치는 방법(외부 skill을 가져옴, MIT) | `atc-task`가 버그 FLIGHT에서 코드를 바꾸기 전에 부릅니다 |
 | `ui-review` | 화면을 바꾼 PR을 디자인 언어(`docs/design-language.md` 5절)와 가져온 규칙(MIT)으로 검토해 결과 블록을 만듭니다 | `atc-task`가 `web/`이나 ANNUNCIATOR 화면을 바꾼 FLIGHT의 PR 전에 부릅니다 |
+| `status` | "현재 상태", "어디까지 진행됐어?", "ATC-n 진행 상황"에 읽기 전용 `GET /api/status` 하나만 읽고 한국어 8줄 안의 고정 모양으로 답합니다 | SUPERVISOR가 세션에게 상태를 물을 때. 더 조사하지 않고, 묻지 않으면 덧붙이지 않습니다 |
 | `codebase-locator`, `codebase-analyzer` | 코드가 어디 있는지 찾아 경로만 돌려주거나 `file:line`으로 설명하는 sub-agent(외부, Apache-2.0) | `atc-task`가 코드를 넓게 읽기 전에 맡깁니다 |
 | 관제 세션의 `/tick` | TOWER·OCC·CROSSCHECK·MCC·REVIEW가 한 바퀴마다 따르는 절차(OCC는 절차 파일 다섯 개가 더 있음) | `/loop`가 3~10분마다 부릅니다(TOWER 3분, MCC 5분, OCC·CROSSCHECK·REVIEW 10분) |
 | `inspector` | MCC INSPECTION을 새 맥락에서 하는 읽기 전용 sub-agent | MCC `/tick`이 PR마다 부릅니다 |

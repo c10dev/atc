@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useMemo, useState } from "react";
 import type { GlobeFlight, GlobeScene } from "../../../server/globe.ts";
 import {
@@ -28,6 +28,7 @@ import type { Transmission } from "../../../server/radio.ts";
 import { f1 } from "./globe-draw.ts";
 import { flightNumber, flightTip, splitMarks, toneOf, waitsOnSupervisor } from "./GlobeFlights.tsx";
 import "./GlobeRadio.css";
+import { Empty } from "../kit/Empty.tsx";
 
 // GLOBE G7(ATC-268, docs/globe.md 3.9): 한 AIRPORT를 가까이서 본 그림(#globe/<CODE>). STANDs는 게이트, 활주로 하나, 시설은 OCC·TOWER·MCC(와 PREFLIGHT 교신이 있으면 CROSSCHECK).
 // 비행기는 장면의 상태 그대로 놓고(서버가 정한 t만 쓴다), 최근 교신은 시설에서 비행기까지의 선과 head 한 줄로 그린다.
@@ -98,7 +99,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
         <a className="ga-back" href="#globe">
           <Icon icon={ArrowLeft} /> GLOBE
         </a>
-        <p className="empty">{code} AIRPORT를 찾지 못했다(닫혔거나 이름이 다르다).</p>
+        <Empty>{code} AIRPORT를 찾지 못했다(닫혔거나 이름이 다르다).</Empty>
       </section>
     );
   }
@@ -168,7 +169,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
           );
         })}
 
-        <g className="ga-lines" aria-hidden="true">
+        <g className="ga-lines">
           {lines.map(({ p, from, to }, i) => {
             // MCC의 방송 선은 한 점(활주로 가운데)으로 모여 글이 겹친다: 가장 새것에만 글을 달고 나머지는 선과 목록에
             const labelled = Boolean(p.plane) || !lines.slice(i + 1).some((o) => !o.p.plane);
@@ -176,7 +177,11 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
             const my = (from.y + to.y) / 2;
             const on = picked === p.tx.id;
             return (
-              <g key={p.tx.id} className={`ga-line is-${p.state}${on ? " is-on" : ""}${motion && p.state !== "answered" ? " is-moving" : ""}`} onClick={() => setPicked(on ? null : p.tx.id)}>
+              <g key={p.tx.id} className={`ga-line is-${p.state}${on ? " is-on" : ""}${motion && p.state !== "answered" ? " is-moving" : ""}`} role="button" tabIndex={0} aria-pressed={on} aria-label={p.tx.head} onClick={() => setPicked(on ? null : p.tx.id)} onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  setPicked(on ? null : p.tx.id);
+                }}>
                 <title>{p.tx.head}</title>
                 <line x1={f1(from.x)} y1={f1(from.y)} x2={f1(to.x)} y2={f1(to.y)} />
                 <line className="ga-line-hit" x1={f1(from.x)} y1={f1(from.y)} x2={f1(to.x)} y2={f1(to.y)} />
@@ -210,7 +215,7 @@ export function AirportView({ code, scene, txs, motion, now }: { code: string; s
           </button>
         </div>
         {list.length === 0 ? (
-          <p className="empty">이 AIRPORT의 최근 교신이 없다.</p>
+          <Empty>이 AIRPORT의 최근 교신이 없다.</Empty>
         ) : (
           <ul>
             {list.map((p) => (

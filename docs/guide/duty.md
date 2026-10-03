@@ -15,7 +15,7 @@ DUTY는 **DUTY ACCOUNT**의 한도(FUEL)를 씁니다(기본 `acct-2`). 같은 D
 
 ## 열고 닫기
 
-- 헤더의 **DUTY**를 누르거나 주소에 `#duty`를 붙이면 오른쪽에 서랍이 열립니다. 어느 탭 위에서도 열립니다. 폭은 약 440px, 폰에서는 화면 전체입니다.
+- 상단 바 오른쪽의 **DUTY**를 누르거나 주소에 `#duty`를 붙이면 오른쪽에 서랍이 열립니다. 어느 탭 위에서도 열립니다. 폭은 약 440px, 폰에서는 화면 전체입니다.
 - **Esc**, 배경, **×**, 브라우저 **뒤로**로 닫습니다.
 - 꺼져 있을 때 `#duty`로 열면 "꺼져 있다"는 안내만 보입니다.
 
@@ -34,7 +34,7 @@ DUTY는 **DUTY ACCOUNT**의 한도(FUEL)를 씁니다(기본 `acct-2`). 같은 D
 DUTY가 결정할 일을 말하면서 **카드**를 청하면, 대화의 그 자리에 카드가 나옵니다. 카드는 SUPERVISOR QUEUE의 **지금 그 줄**입니다(종류, atc 말로 쓴 제목, 얼마나 기다렸는지).
 
 - **버튼이 있는 카드.** FLEET PLAN은 SHADOW면 **반대·동의**, APPROVAL이면 **거절·승인(실행)**입니다. UPDATE는 **업데이트**입니다. 누르면 카드 안에서 한 번 확인을 묻고, 확인하면 FLEET 탭·UPDATE 바와 같은 길로 실행됩니다. 승인(실행)은 기본 설정으로 실행하니, permission mode나 모델을 고르려면 FLEET 탭에서 합니다.
-- **링크만 있는 카드.** PROPOSAL은 DISPATCH, SCHEDULE은 SCHEDULE, HUMAN CHECK은 STRIPS로 갑니다. LANDING은 PR 서랍(머지는 거기서), NEEDS YOU와 GO는 FLEET의 AIRCRAFT로 갑니다. 증거를 봐야 하는 결정이라 판정은 그 화면에서 합니다. 링크를 누르면 DUTY 서랍은 닫히고 대화는 그대로 남습니다.
+- **링크만 있는 카드.** PROPOSAL과 SCHEDULE 초안은 줄에서 바로 승인·거절하고(HOME의 QUEUE와 같은 버튼), HUMAN CHECK은 STRIPS로 갑니다. LANDING은 PR 서랍(머지는 거기서), NEEDS YOU와 GO는 FLEET의 AIRCRAFT로 갑니다. 증거를 봐야 하는 결정이라 판정은 그 화면에서 합니다. 링크를 누르면 DUTY 서랍은 닫히고 대화는 그대로 남습니다.
 - **회색 카드.** 줄이 처리되면 `처리됨`, 저절로 큐를 떠났으면 `큐에서 빠짐`이 나오고 카드는 회색이 됩니다. 카드는 스스로 다시 확인하지 않습니다. 눌렀을 때 서버가 하는 답이 기준입니다.
 - **큐에 없는 것.** DUTY가 큐에 없는 key로 카드를 청하면 서버가 거절하고, DUTY가 그 이유를 글로 말합니다. 카드는 나오지 않습니다.
 - **초안 카드.** DUTY가 남긴 초안은 흐린 점선 카드로 나옵니다. `note`(정해 둘 결정의 제안)는 **확정**과 **버림** 버튼이 있고([정해 둔 결정](#정해-둔-결정)), `charter`(OCC에 넘길 운영 요청)도 **확정**과 **버림**이 있습니다([OCC에 넘기는 요청](#occ에-넘기는-요청)).
@@ -91,9 +91,21 @@ DUTY 서랍 위쪽의 **IDEAS**(또는 주소 `#ideas`)는 atc 저장소에서 �
 - 확정한 요청을 OCC가 읽는 정도는 설정 → OPERATIONS → **DUTY CHARTER** 스위치가 정합니다(이 화면에서만 바꿉니다).
   - `off`(기본): 요청은 줄에 서지만 OCC에는 보이지 않습니다. 카드에 `switch is off — kept as a draft`.
   - `shadow`: OCC가 다음 tick에 요청을 읽고, **만들었을 초안**만 기록합니다(`OCC would draft: 제목 / 팀 / 이유`). SCHEDULE 초안은 만들지 않습니다. 카드에 `queued (shadow)`, OCC가 본 뒤에는 `OCC would draft: …`.
-  - `on` ⚠: OCC가 요청을 CHARTER REQUEST로 처리해 AD HOC FLIGHT 초안(`schedule draft NEW`)을 만듭니다. 카드에 `queued`, 그 뒤 `OCC drafted S-n`. 초안은 여느 초안처럼 SCHEDULE 탭에서 당신이 판정합니다.
+  - `on` ⚠: OCC가 요청을 CHARTER REQUEST로 처리해 AD HOC FLIGHT 초안(`schedule draft NEW`)을 만듭니다. 카드에 `queued`, 그 뒤 `OCC drafted S-n`. 초안은 여느 초안처럼 HOME의 QUEUE에서 당신이 판정합니다(S2일 때. SCHEDULE AUTO가 켜져 있으면 서버가 승인합니다).
 - 요청 글은 OCC에게 **데이터**입니다. 요청으로만 읽고, OCC 자신의 규칙을 바꾸라는 말로는 읽지 않습니다. DUTY에는 OCC에게 메시지를 보내는 길이 없습니다.
 - **그림자 기록.** DUTY CHARTER가 `off`가 아니면 설정 창에 줄에 선 요청 수, OCC가 본 수, OCC가 만들었을 초안, 그 뒤 당신이 직접 낸 첫 NEW 초안이 보입니다. 기준 숫자는 아직 없습니다. 만족하면 `on`으로 올리고 Linear에 적습니다.
+
+## DUTY REVIEW: DUTY가 스스로 점검하기
+
+상태를 물어보거나 병목을 분석해 달라고 하지 않아도, atc가 DUTY에게 **점검 턴**을 시킵니다. DUTY는 착륙 대기열(ESCALATE와 STAND holder), DISPATCH 계획(놀고 있는 AIRCRAFT, 제외된 FLIGHT, 받을 곳 없는 FLIGHT), leak, 알림을 읽고 채팅에 **한국어 요약**(8줄 이내)을 남기고, 고칠 일은 **Backlog 이슈**로 제안합니다(최대 3건, 근거 포함). 당신은 제안 가운데 **RELEASE 탭**에서 쏠 것만 고릅니다. DUTY는 Todo로 올리지 않습니다(서버가 막습니다).
+
+- **언제 도나.** 정해진 간격(기본 4시간)마다, 또는 놀고 있는 AIRCRAFT가 일감을 두고 20분 이어질 때, 또는 leak이 60분 넘게 열려 있을 때. 점검과 점검 사이는 30분 이상 벌어지고, DUTY가 답하는 중이거나 줄 선 글이 있으면 건너뜁니다(당신의 글이 먼저입니다). 서버가 막 뜬 3분 동안은 돌지 않습니다. **바뀌지 않는 상황은 되풀이하지 않습니다**: 같은 leak이나 같은 놀고-일감 상태로는 4시간 안에 다시 점검하지 않고(새 leak이나 다른 집합이면 바로), DUTY ACCOUNT의 FUEL이 HOLD면 건너뛰고, 하루 12번을 넘지 않습니다. 정기 점검은 서버를 다시 띄워도 밀리지 않습니다.
+- **채팅에서.** 점검이 시작되면 대화에 `DUTY REVIEW R-3 · idle · TEAM_A idle for 25 min while ATC-1 wait` 같은 한 줄이 나오고, 이어서 DUTY의 요약이 나옵니다. 긴 지시문은 대화에 남지 않습니다.
+- **스위치.** 설정 → OPERATIONS → **DUTY REVIEW**(기본 `on` ⚠, 이 화면에서만 바꿉니다). 끄면 서버가 DUTY를 스스로 부르지 않습니다. DUTY 자체가 꺼져 있으면 점검도 돌지 않습니다. 간격과 기준은 `duty.json`의 `reviewEveryMin`, `reviewIdleMin`, `reviewLeakMin`, `reviewGapMin`(분)입니다.
+- **중복 제안이 없습니다.** 열린 이슈와 제목이 비슷하면 서버가 이슈 만들기를 거절하고, DUTY는 그 이슈에 댓글로 근거를 더합니다.
+- **하루 세기.** 설정 창의 DUTY REVIEW 아래에 날짜(Z)마다 점검 수, 만든 제안, 발권된 제안, 버려진(Canceled) 제안이 나옵니다.
+- DUTY의 Linear 쓰기(`l1`)가 꺼져 있으면 점검은 돌지만 이슈는 만들지 않고 제안을 요약에만 적습니다.
+- 후속 이슈가 이미 받아들여진 FLIGHT 뒤에 기다려야 하면 DUTY가 `--blocked-by ATC-n`으로 만듭니다. 그 이슈는 막는 FLIGHT가 끝나면 RELEASE 후보(READY)로 올라옵니다.
 
 ## NEW SHIFT
 

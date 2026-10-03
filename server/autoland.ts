@@ -157,7 +157,7 @@ export function saveAutolandState(st: AutolandState, file = STATE_FILE()) {
 // 기록 한 줄(autoland.jsonl, 추가만). 갱신·머지·결과·GROUND STOP·스위치·HOLD를 모두 남긴다
 export interface AutolandRecord {
   at: string;
-  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request";
+  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request" | "migrate";
   mode: AutolandMode;
   airport?: string;
   slug?: string;
@@ -367,11 +367,12 @@ export interface PlanInput {
   st: AutolandState;
   exclusionOf: (p: PullRequest) => string | null; // merge 모드의 제외 사유(HOLD 포함)
   now?: number; // 유예 시간 계산용(ms). 없으면 지금
+  revert?: (p: PullRequest) => boolean; // 자동 되돌림이 연 revert PR(ATC-351): merge 모드에서 GROUND STOP이어도 CLEARED면 머지한다
 }
 
 // AIRPORT마다 이번에 할 일 하나와 PR마다 표시. 한 AIRPORT에서 한 번에 하나만:
 // GROUND STOP → 비행 중인 갱신 → (merge) 위임된 CLEARED 머지 → HOLD 안 한 CLEARED가 머지를 기다리면 대기(SUPERVISOR 몫은 유예 시간까지만) → behind만 남은 첫 PR 갱신
-export function planAutoland({ cfg, airports, pulls, st, exclusionOf, now = Date.now() }: PlanInput): AutolandView {
+export function planAutoland({ cfg, airports, pulls, st, exclusionOf, now = Date.now(), revert }: PlanInput): AutolandView {
   const view: AutolandView = { mode: cfg.mode, airports: [], pulls: {}, holds: cfg.holds.map((h) => pullKey(h)), exclusions: {} };
   if (cfg.mode === "off") return view;
   const skip = new Set([...st.skip, ...st.merged]);
@@ -408,6 +409,13 @@ export function planAutoland({ cfg, airports, pulls, st, exclusionOf, now = Date
     }
 
     const stop = st.groundStops.find((s) => s.airport === code);
+    // revert PR(ATC-351)은 GROUND STOP을 푸는 길이라 stop이어도 CLEARED면 머지 후보다(merge 모드, 건너뛴 head 제외)
+    const rv = stop && revert && cfg.mode === "merge" ? mine.find((p) => p.landing === "CLEARED" && revert(p) && !skip.has(headKey(p))) : undefined;
+    if (rv) {
+      tag(rv, "merge", "AUTOLAND: merging revert");
+      view.airports.push(plan("merge", `AUTOLAND: merging revert #${rv.number} (GROUND STOP 중)`, rv));
+      continue;
+    }
     if (stop) {
       view.airports.push(plan("groundstop", `AUTOLAND: GROUND STOP — main ${stop.failing.join(", ")} 실패(${sha7(stop.sha)}) · SUPERVISOR가 풀 때까지 멈춤`));
       continue;

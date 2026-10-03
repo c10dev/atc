@@ -2,6 +2,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { type LaunchModelSetting, launchModelOf } from "../../../../server/launch-model.ts";
 import type { SessionBrief } from "./shared.ts";
+import { Lights } from "../../kit/Loading.tsx";
 
 // LAUNCH(docs/fleet.md 8.5, ATC-310): 카드의 LAUNCH는 한 번 눌러 기본값으로 띄운다. 옵션은 카드 안의 ▾에서 열린다.
 // 기본값은 서버가 정하는 것과 같다: permission mode는 첫 번째(auto), 모델은 LAUNCH MODEL, ACCOUNT는 LAUNCH ACCOUNT(없으면 home)
@@ -105,13 +106,19 @@ export function LaunchOptions({
       )}
       <label>
         FLIGHT{" "}
-        <input className="fl-input mono" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="선택 — 예: ATC-73" aria-label="FLIGHT" aria-invalid={!flightOk} title="적으면 첫 프롬프트가 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서(/api/dispatch/flight/<FLIGHT>/brief)다" />
+        <input className="fl-input mono" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="선택 — 예: ATC-73" aria-label="FLIGHT" aria-invalid={!flightOk} />
+        <span className="faint fl-hint">적으면 첫 프롬프트가 CREW BRIEFING에 이어 그 FLIGHT의 DIRECT 지시서다</span>
         {!flightOk && <span className="fl-error"> 이슈 키(예: ATC-73)</span>}
       </label>
       {d.cap && <p className="fl-launch-note faint">{d.cap}</p>}
       <div className="fl-actions">
         <button type="submit" className="fl-btn primary" disabled={busy || Boolean(chosenRefused) || !flightOk}>
-          {busy ? "띄우는 중…" : "이 옵션으로 LAUNCH"}
+          {busy ? (
+            <>
+              <Lights />
+              띄우는 중…
+            </>
+          ) : "이 옵션으로 LAUNCH"}
         </button>
       </div>
     </form>

@@ -604,6 +604,24 @@ DISPATCH는 SUPERVISOR가 발권한("화살을 쏜", [autonomy.md](autonomy.md) 
 - **형식.** `releases.jsonl`, `Ticket.releaseHash`, `Snapshot.releases`, `releaseGate`는 모두 추가다. `atcctl release [brief]`가 읽는다. DUTY guard, 루트 규칙, 다른 guard는 바뀌지 않았다.
 - **여기서 정하지 않은 것.** CROSSCHECK가 승인한 SCHEDULE NEW 초안이 Backlog로 가는지, 발권 기록이 생긴 뒤에도 우선순위 규칙이 남는지([ATC-334](https://linear.app/vocado/issue/ATC-334)). ATC-363이 이 기록을 읽는다.
 
+## 마이그레이션 리허설 (ATC-368, as built)
+
+호스티드 DB가 있는 AIRPORT(`airports.json`의 `hostedDb`, ATC-329)에서 PR의 새 마이그레이션이 사람 단계 없이 실전 DB에 닿는다. AUTOLAND 주기(`server/autoland-run.ts`)가 머지 전에 한 주기에 PR 하나를 리허설한다: 스위치가 켜진 AIRPORT의 CLEARED PR 가운데 막힌 것이 "새 마이그레이션이 호스티드 DB에 아직 없음"뿐이고 이 head로 시도한 적이 없는 것. 그 사유는 AUTOLAND가 그 PR을 위임했을 때(`reviewedSecurity`가 `delegate`이고 머지 리뷰 통과)에만 나온다. 아니면 일반 보안 게이트가 막아 리허설은 돌지 않는다. "뿐"은 쓰기 전에 확인한다: PR을 다시 읽어 새 마이그레이션이 적용된 것으로 치고 제외 전체를 다시 계산하고, HUMAN CHECK, 다른 SQL 경로, HOLD 같은 제외가 하나라도 남으면 실전을 건드리지 않는다. 멈춘 실행은(실전이 이미 바뀌었어도) 그 head를 AUTOLAND의 머지 후보에서도 뺀다(버전 줄이 이미 있어 ATC-329 게이트가 통과할 수 있기 때문). 성공하면 실전에 적용하고, 다음 주기에 ATC-329 게이트가 통과해 AUTOLAND가 머지한다(적용이 머지보다 먼저). 모든 단계는 PR head와 마이그레이션 버전과 함께 `migrations.jsonl`(상태 폴더, 추가만)에, 요약 한 줄은 `autoland.jsonl`(`op: "migrate"`)에 남는다. `GET /api/migrate`가 스위치와 기록을 읽는다.
+
+순서는 정해져 있고 처음 실패에서 멈춘다:
+
+1. **선언 검사**(`server/migration-declare.ts`, 순수). 새 SQL을 발권 때 선언한 K1 효과와 견준다: 이슈의 `## K effects` 절이고, 발권 기록(ATC-362)의 해시가 지금 본문과 같을 때만 받는다. K1이 선언되지 않았거나, 파괴적 문장(DROP, TRUNCATE, REVOKE, 이름 바꿈, 열 타입 변경, DISABLE RLS, WHERE 없는 UPDATE·DELETE), 분류할 수 없는 문장, 선언이 그 표를 적지 않은 DML이 있으면 멈춘다. 추가형 DDL은 K1이 선언돼 있으면 통과한다. 접근을 넓히거나 기존 동작을 바꾸는 문장(정책, GRANT, 역할, 확장, SECURITY, OWNER TO, CREATE OR REPLACE)은 선언의 K1 부분(`K1`부터 다음 `K2`·`K3` 앞까지)이 해당하는 낱말(`policy`·`grant`·`role`·`extension`·`security`·`trigger`·`owner`·`replace`. `ALTER FUNCTION … SET`은 `replace`로 센다. "no grant changes"처럼 부정으로만 나온 낱말은 쓴 것이 아니다)을 모두 적었을 때만 통과한다: `CREATE OR REPLACE FUNCTION … SECURITY DEFINER`는 `replace`와 `security`가 둘 다 있어야 한다. DML의 표 이름도 K1 부분에서만 찾는다. 맨 앞 BEGIN과 맨 뒤 COMMIT이 아닌 트랜잭션 문장도 멈춘다: 적용기가 파일마다 자체 트랜잭션으로 감싸므로 파일 중간의 COMMIT은 그 일부를 감싼 트랜잭션 밖에서 확정해 버린다. 기계 검사는 이 종류에는 강하고 논리(틀린 WHERE, backfill)에는 약하다. 그것은 리허설과 복원점의 몫이다.
+2. **리허설.** 시험 DB가 실전과 같은 마이그레이션 버전이어야 하고, 아무것도 적용하기 전에 함수 본문 해시와 grant도 같아야 한다(실전에 손으로 고친 것 같은 어긋남은 적용 뒤 검사를 늘 실패시키므로, 실전이 그대로일 때 여기서 멈춘다)(실전에서 다시 가져오는 일은 atc 밖에서 하고, atc는 그것이 됐는지만 확인). 그다음 파일마다 버전 줄과 함께 한 트랜잭션으로 적용하고, AIRPORT의 `smoke` 질의를 돌린다.
+3. **복원점.** 만들지 않고 확인한다: 호스팅 제공자에서 읽는다: PITR이 켜져 있으면 그것, 아니면 `maxBackupAgeHours`(기본 24) 안의 가장 새 완료 백업. 없으면 멈춘다. atc가 백업을 만들지는 않는다.
+4. **실전 적용.** 파일마다 한 트랜잭션: 파일의 문장들(자체 BEGIN·COMMIT은 뗌)과 그 파일의 version·name 그대로의 버전 줄.
+5. **적용 뒤 검사.** 버전 줄이 있고, `public`의 함수 본문 해시와 grant가 시험 DB와 같고, `healthUrl`이 있으면 200.
+
+- **결과.** `stopped`: 실전 그대로(4단계 전의 실패, 4단계의 첫 파일 실패). `live-changed`: 4단계에서 일부 파일을 적용한 뒤 실패했거나, 실패가 서버에서 이미 커밋됐을 수 있거나(시간 초과·네트워크 오류: 실전 버전을 다시 읽고, 읽지 못하면 바뀐 것으로 본다) 5단계가 실패. 기록에 복원점이 있다. 자동 복원은 하지 않는다(아래 "Not built yet"). 같은 head는 다시 하지 않는다. `live-changed` 뒤에는 PR 전체가 어느 head에서든 사람이 풀 때까지(SUPERVISOR가 직접 머지) AUTOLAND에서 빠진다: 버전 줄이 이미 실전에 있어서, 같은 마이그레이션을 같은 버전으로 고친 새 head는 실전에서 돌아 본 적 없는 SQL로 ATC-329 게이트를 통과해 버리기 때문이다. 같은 이유로 실행마다 마이그레이션 파일별 내용 해시를 남기고, AUTOLAND가 머지 직전에 지금 파일을 적용한 것과 견주며, `applied` 뒤에 바뀐 파일은 보류한다. 4단계 전에 멈춘 실행은 실전이 그대로라 새 head가 새 시도다. 보류는 `migrations.jsonl`의 끝이 아니라 전체를 읽는다. 이유는 `migrations.jsonl`, AUTOLAND 기록, `GET /api/migrate`에 보이고, 멈추면 FLIGHT가 아직 Todo일 때 그 FLIGHT의 발권 기록도 거둔다(`releases.jsonl`의 `revoke` 줄, ATC-362. 이 파일은 SUPERVISOR의 발권을 적는데 이 op만 자동 과정이 쓴다. 추가이고 읽는 쪽은 모르는 op를 건너뛴다). CLEARED PR이 있는 FLIGHT의 보통 상태인 진행 중·검토 중 FLIGHT는 되돌릴 발권 효과가 없다: head만 머지에서 빠지고 이유는 기록에 남는다. Todo FLIGHT는 제안으로 돌아오고 이유가 RELEASE 패널에 보이며, SUPERVISOR가 다시 발권할 때까지 DISPATCH가 건너뛴다. 시험 DB는 되돌리지 않는다: 리허설 단계 뒤에서 멈추면 시험 DB가 실전보다 앞서 있고, 그 AIRPORT의 다음 리허설은 누군가 atc 밖에서 다시 가져올 때까지 "시험 DB가 실전과 같은 버전이 아님"에서 멈춘다.
+- **스위치.** AIRPORT마다 하나, `migrate.json`. `PUT /api/settings`의 `migrateRehearsal: {코드: bool}`로만 바꾼다(`fromThisApp`, `atcctl` 명령 없음, 설정 창에 MIGRATE 블록). `hostedDb.testProjectRef`와 `SUPABASE_MIGRATE_TOKEN`이 있는 AIRPORT만 켤 수 있다. 기본 꺼짐.
+- **자격 증명(K2).** `.env.local`의 `SUPABASE_MIGRATE_TOKEN`(읽기 전용 `SUPABASE_ACCESS_TOKEN`과 따로). SUPERVISOR가 둔다. 요청 머리에만 쓰고 오류·기록은 `redact`를 거친다. 출력·로그·복사·전송하지 않는다. 토큰의 범위는 SUPERVISOR가 고르고 기본으로는 넓다: 호스팅 제공자의 계정 토큰은 시험·실전 프로젝트와 그 계정의 다른 모든 프로젝트에 쓸 수 있으므로, 제공자가 주는 가장 좁은 토큰(또는 이 프로젝트만 가진 전용 계정)을 쓴다. 파일 하나는 요청 하나(`BEGIN`, 문장들, 버전 줄, `COMMIT`)로 보내고, 실패하면 atc가 최선으로 `ROLLBACK`을 보낸다. 제공자가 실패한 요청을 재사용 세션에서 어떻게 다루는지는 확인하지 못했다. 리허설은 AUTOLAND 모드 `merge`에서만 돈다. 단계는 끝나는 즉시 `migrations.jsonl`에 덧붙고, 실전에 쓰기 직전에도 한 줄이 남는다. 그래서 도중에 서버가 재시작돼도 흔적이 남는다(`live-apply` 시작 줄만 있고 끝이 없으면 실전이 바뀌었을 수 있다). 리허설은 AUTOLAND 주기 안에서 돌고 공급자 질의 하나가 최대 120초 걸릴 수 있어서, 리허설 하나가 모든 AIRPORT의 머지·갱신을 몇 분 늦출 수 있다. 한 주기에 PR 하나이고 드문 일(새 마이그레이션이 있는 PR)이며, 주기 밖으로 빼는 것은 후속이다. 시험 DB 확인은 버전과 카탈로그 일치뿐이다. 실전에서 최근 데이터 스냅샷으로 다시 가져오는 일과 그 나이는 atc 밖이다. PR은 제외 사유의 문구가 아니라 구조로 고른다: 바뀐 파일(알면)에 마이그레이션 폴더가 있고, 새로 읽은 게이트가 없는 버전을 말하고, 다시 계산한 제외에 다른 것이 남지 않을 때. 공급자 오류 본문은 행 값(`DETAIL` 줄, `Key (열)=(값)`, JSON의 `detail` 칸)을 걷어 낸 뒤에야 `migrations.jsonl`, `GET /api/migrate`, RELEASE 패널에 닿는다. 실전에 아직 없는 버전만 리허설하므로, 적용 뒤 같은 PR에 마이그레이션이 더해져도 다룬다. SUPERVISOR에게: 이슈는 시험 DB와 자격 증명이 준비되면 스위치가 켜진다고 하지만, 이 PR은 AIRPORT마다 SUPERVISOR가 켜기 전까지 꺼져 있는 스위치를 둔다(더 안전하고 이슈와 다르다). 멈춘 FLIGHT의 발권을 거두는 것은 FLIGHT가 아직 Todo일 때만이고, 이미 진행 중인 FLIGHT에는 영향이 없다(그 head는 그래도 머지에서 빠진다).
+- **형식.** 모두 추가: `hostedDb.testProjectRef`·`smoke`·`healthUrl`·`maxBackupAgeHours`, `migrate.json`, `migrations.jsonl`, `autoland.jsonl`의 op `migrate`.
+- **Not built yet.** 실전 적용 실패 뒤 자동 복원, 복원점을 그때 만들기, 시험 DB를 실전에서 다시 가져오기, 앱 점검 명령(SQL 질의만), 자체 호스팅 시험 DB(호스팅 제공자의 project ref만). 복원점에 쓰는 백업 목록 응답 모양은 실제 API로 확인하지 못했다.
+
 ## 살아 있는 세션으로 주소를 정하기와 전달 실패, 만든 것 (ATC-353)
 
 FLIGHT PLAN·CLEARANCE·RELAY는 만들 때 저장한 이름으로 주소를 정했기 때문에, 재시작·이름 바꾸기·ACCOUNT 이동 뒤에는 아무도 답하지 않는 이름으로 갔다. 메시지 문구와 guard가 읽는 머리는 그대로이고, 바뀐 것은 누구에게 가는가와 실패한 뒤의 길뿐이다. 기록은 모두 새 선택 필드만 더한다.
@@ -625,6 +643,64 @@ K3: DISPATCH가 사람이나 CROSSCHECK 없이 나는 것을 SUPERVISOR가 2026-
 - **MISFIRE.** `GET /api/dispatch/misfire?days=7`과 DISPATCH 탭 맨 위 MISFIRE 블록이, 서버가 승인한 ASSIGN 카드 가운데 나중에 틀렸다고 드러난 것(거절·UNABLE, RECALL, 보낸 뒤 SUPERSEDED, AIRCRAFT 불가로 SUPERSEDED)을 승인한 UTC 날짜별로 그날 승인 대비 몫으로 센다. 카드는 한 번만 센다.
 - **형식.** `dispatch.json`의 `autoDispatch`·`autoCardTtlMin`과 SUPERSEDE 사유 `AUTO_STALE_WHY`는 추가다. 기록 형식은 바뀌지 않는다.
 - **아직 아님.** SETTLED를 기다리는 동안 있는 DISPATCH 카드에는 agree 줄과 CROSSCHECK mark가 여전히 그려진다.
+
+## DISPATCH 화면은 없어졌다 (ATC-377)
+
+DISPATCH가 자기 카드를 스스로 승인하므로(ATC-367) 판정 화면이던 탭을 해체했다([layout.md](layout.md) Y2). planner, 제안 기록, 모든 길은 그대로이고 화면만 옮겼다:
+
+| DISPATCH 탭에 있던 것 | 지금 |
+|---|---|
+| 열린 ASSIGN·launch 카드의 승인·거절 | HOME(`#home`)의 SUPERVISOR QUEUE. 자동 운항 스위치가 꺼져 있을 때만, RELEASE 카드는 늘 |
+| CROSSCHECK 동의 묶음·칩, BLIND 표본, HELD(PREFLIGHT) 버튼 | 없앴다 |
+| IN FLIGHT: CANCEL, RECALL, FRESH START | FOLLOW 줄과 FLIGHT 서랍(`web/src/FlightBrakes.tsx`) |
+| FLIGHT의 배정 이력(RECENT) | FLIGHT 서랍의 `배정 기록`(`GET /api/dispatch/proposals?flight=KEY`) |
+| ATFM 블록(GROUND STOP, 수동 출발 중지, 슬롯)과 2a/2b 전환 | HOME의 BRAKES 줄 |
+| MISFIRE | METRICS → OPERATIONS |
+| 2b 점검·게이트·FLIGHT FOLLOWING 블록, 슬롯·제외 목록 | 없앴다(FOLLOW 줄이 왜 배정되지 않았는지 보인다) |
+
+`#dispatch`는 HOME을 연다.
+
+## K3 발권이 classifier에 닿는 길, 만든 것 (ATC-372)
+
+K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정하고, LAUNCH 플래그를 바꾼다([autonomy.md](autonomy.md) C9). 항목은 서버만, 발권 기록에서 만든다.
+
+- **선언.** 이슈 `## K effects` 절에 효과마다 한 줄: `K3[<라벨>]: <바꾸는 통제> | files: <경로>, <경로>`. 라벨은 `Security Weaken`, `Self-Approval`, `Permission Grant`, `Self-Modification`, `Merge Without Review`, `Security Test Removal`, `Instruction Poisoning`(classifier의 soft_deny 라벨, ATC-399가 뒤의 둘을 더했다). 나머지 soft_deny 라벨은 선언할 수 없고 이유는 [autonomy.ko.md](autonomy.ko.md) C9 표에 있다. 경로는 저장소 기준 상대 경로이고 글롭과 `..`은 없다. Linear가 저장한 줄(`K3\[Security Weaken\]: …`처럼 기호 앞에 역슬래시)은 이스케이프를 되돌려 읽는다. 맞지 않는 `K3` 줄은 무시한다(항목 없음): 그 FLIGHT는 classifier 아래에 남는다.
+- **항목을 만드는 때.** FLIGHT의 발권이 `screen`이나 `duty-chat` 채널이고 해시가 지금 이슈 본문과 같을 때. `attested` 발권은 항목을 만들지 않는다: agent가 증언을 쓸 수 있다(`server/k3-allow.ts`의 `k3LaunchOf`).
+- **LAUNCH가 넘기는 것.** `--settings '{"autoMode":{"allow":["$defaults", <항목>…]}}'`. 선언마다 항목 하나이고 라벨, 통제, 파일, STAND(`<repo>/.claude/worktrees/<flight>-*`), 발권 id(`<FLIGHT>@<해시>`)를 적고 "Code only; nothing is executed against production during the FLIGHT"를 말한다. `$defaults`는 항목이 아니다: 없으면 `allow`가 classifier의 기본 allow 목록을 통째로 대신한다. 그 밖에는 더하지 않는다: ACCOUNT settings의 정적 allow, `bypassPermissions`, 정책 훅 모두 없다.
+- **새 AIRCRAFT.** 돌고 있는 세션은 새 `--settings`를 받지 못하므로, 플래너는 이런 FLIGHT를 그 FLIGHT를 위해 띄우는 AIRCRAFT(launch 카드)에만 짝짓는다.
+- **서버만.** `launchAircraft`는 항목을 옵션이 아니라 서버가 만든 별도 인자로 받고, LAUNCH 라우트는 요청 본문의 `settings`·`k3`를 버린다. LAUNCH를 시작하는 라우트는 SUPERVISOR 라우트 인증(ATC-373)이 지킨다.
+- **기록.** FLIGHT RECORDER의 `launch` 줄에 `flight`와 `k3: { release, stand, entries }`가 남는다.
+- **K3 hold(ATC-398).** `## K effects`에 `K3` 줄이 있는데 항목 없이 떠날 FLIGHT는 보내지 않는다. planner가 이유와 고치는 길을 붙여 제외한다: 읽히지 않는 줄은 "not a declaration"(줄을 고친다), `screen`·`duty-chat`이 아닌 발권(또는 그 뒤 본문이 바뀜)은 "release on the screen". 같은 이유가 HOME 알림과, 쏘기 전 RELEASE 줄에 보인다. 스위치 `dispatch.json`의 `k3Hold`(기본 켜짐, 설정 창에서만), 오작동 카운터는 `GET /api/releases`의 `k3Hold.nuisance`·`k3Hold.miss`. [autonomy.ko.md](autonomy.ko.md) C9.
+
+## 착륙만 기다리는 PR은 AIRCRAFT의 슬롯을 쓰지 않는다 (ATC-387)
+
+FLIGHT가 착륙만 기다리는 동안 AIRCRAFT가 놀지 않는다. 전에는 PR이 열린 진행 중 FLIGHT가 머지될 때까지 그 AIRCRAFT를 "멈춘 팀"으로 붙들었다. 이제 슬롯을 쓰지 않는다.
+
+- **"착륙만 기다림"**(`server/dispatch.ts`의 `waitsToLandOf`): 그 FLIGHT의 열린 PR이 모두 Draft가 아니고, 그 FLIGHT로 열린 FIX·GO AROUND CLEARANCE가 없고, AIRCRAFT가 고칠 막힘이 없다. 허용하는 막힘은 없음(CLEARED), `checks-pending`, `no-review`, `review-stale`, `stacked`, `merge-unknown`(`WAITING_BLOCKS`)뿐이다. 그 밖의 막힘(`checks-failed`, `review-findings`, `changes-requested`, `dirty`, `behind`, `blocked`, `no-checks`, `los`, `draft`, 나중에 생기는 코드)은 할 일이 있다는 뜻이라 슬롯을 계속 쓴다. PR이 없는 FLIGHT도 슬롯을 쓴다.
+- **효과**: 기다리는 FLIGHT는 세션이 있는 AIRCRAFT와 ABSENT(`tail:`) AIRCRAFT 모두에서 `holding`(`perTeam` 부하), 열린 FLIGHT 수, "멈춘 팀" 사유에서 빠진다. `AircraftState.waiting`이 그 목록이고 `reason`은 `착륙 대기 PR n건 … 다음 FLIGHT는 새 STAND`로 읽힌다. 일하는 FLIGHT(PR 아직 없음, 실패한 체크, 리뷰 지적, FIX)는 그대로 슬롯을 써서 한 AIRCRAFT가 한 번에 한 FLIGHT를 하는 것은 같다.
+- **상한**: `dispatch.json`의 `slots.waitingPr`(기본 2). 기다리는 PR을 그만큼 쥔 AIRCRAFT는 하나가 착륙하기 전까지 STAND가 필요한 FLIGHT를 받지 않는다(STAND 없는 SURVEY·CHECK는 받는다).
+- **새 STAND**: AIRCRAFT는 다음 FLIGHT를 새 STAND에서 시작하고 앞 STAND를 남긴다. ASSIGN 카드에 `waitingFlights`가 들어가고, FLIGHT PLAN에 한 줄이 붙는다: 앞 FLIGHT는 자기 STAND에서 착륙만 기다린다, 이 FLIGHT는 새 STAND에서 시작해라, 앞 PR의 FIX·GO AROUND는 앞 STAND에서 처리해라.
+- **FIX·GO AROUND는 그대로 닿는다**: TOWER는 PR의 STAND를 점유(claim)한 세션에게 보낸다. 점유는 `ATC_CLAIM_TTL_MIN`(180분)이 지나면 낡는데, `keptStandClaims`(`server/snapshot.ts`)가 열린 PR이 있는 STAND에서 살아 있는 세션의 낡은 점유를 이어 둔다(STAND마다 가장 최근에 건드린 세션 하나, 지금 다른 세션이 쥔 STAND는 건드리지 않는다). 충돌·알림·건강 계산이 끝난 뒤에 더해서 홀더 조회만 본다. CLEARANCE에는 앞 STAND가 실려 AIRCRAFT가 거기서 처리한다.
+- **측정**: FIX·GO AROUND CLEARANCE는 낼 때 `elsewhere`를 남긴다: 그 세션이 다른 STAND에서 쥔 진행 중 FLIGHT, 없으면 `null`. METRICS → OPERATIONS의 `FIX·GO AROUND READBACK` 타일이 다른 FLIGHT를 하던 AIRCRAFT와 아닌 AIRCRAFT의 READBACK 중앙값을 나눠 보인다(`clearances.fixReadback`). 필드가 없는 옛 CLEARANCE는 어느 쪽에도 넣지 않는다.
+- **형식**(추가만): `slots.waitingPr`, `Proposal.waitingFlights`, `Clearance.elsewhere`, `clearances.fixReadback`.
+
+## CROSSCHECK 은퇴, 만든 것 (ATC-371)
+
+K3: 관제 세션 목록을 바꾸고 mark를 기다리던 승인 규칙을 푼다([autonomy.md](autonomy.md) D23, C14). ATC-367과 ATC-370 뒤에 들어가므로 자동 승인이 멈추지 않는다.
+
+- **세션 없음.** `CONTROL_SESSIONS`가 CROSSCHECK를 `retired`로 둔다: 띄우지 않고, 살려 두지(CONTROL BULK) 않고, 재시작하지(기본 CAP·auto 항목 없음) 않고, FLEET의 관제 목록에도 줄이 없다. 아직 떠 있는 CROSSCHECK 세션은 다음 CONTROL RECYCLE 주기에 서버가 한 번 멈춘다(`retired-stop`, 모드와 상관없이, SUPERVISOR 단계 없음). STOP은 그 세션에 여전히 된다.
+- **mark를 기다리는 규칙 없음.** `auto-approve.ts`에서 `no-crosscheck`·`disagree` 건너뛰기를 뺐다(DISPATCH ASSIGN·launch·SCHEDULE. blind, 주의, HELD, FUEL hold, 상한은 그대로). ATFM A7은 없애고 S3는 절 인용 검사만 남긴다(`server/atfm.ts`). ATFM 켜기 점검의 "CROSSCHECK 일치" 두 줄도 뺐다. 서버는 disagree mark로 PREFLIGHT HOLD를 걸지 않고, `POST /api/dispatch/proposals/:id/crosscheck`와 `POST /api/schedule/ops/:id/crosscheck`는 410으로 답한다. brief의 `crosscheck` 블록은 늘 비어 있다.
+- **기록은 남는다.** 옛 mark, `preflight` op, 옛 카드의 칩, NETWORK GATES(은퇴로 표시), `gate.crosscheck`는 그대로 읽힌다. `crosscheck/` 폴더와 `controller/guard.mjs`는 건드리지 않았다.
+
+## 세션 없는 AIRCRAFT에 승인된 카드, 만든 것 (ATC-388)
+
+D-0441 사례: TEAM_K에게 낸 ASSIGN 카드를 TEAM_K가 ABSENT(살아 있는 세션 없음)일 때 승인했다. launch 카드가 아니라 아무도 TEAM_K를 띄우지 않았고, `POST …/release`는 없는 곳으로 보내지 않아 카드가 `approved`로 남았다. 이제 승인된 ASSIGN은 늘 출발, LAUNCH, 닫힌 카드 가운데 하나로 끝난다.
+
+- **LAUNCH.** 1분마다 AUTO APPROVE 주기와 별도로, 서버가 승인된 ASSIGN 카드(launch 카드 아님) 가운데 AIRCRAFT에 살아 있는 세션이 없고 RESTARTING도 아닌 것을 본다(`runApprovedRelaunch`, `server/auto-approve-run.ts`). AIRCRAFT가 ABSENT이고 LAUNCH 상한이 모두 허락하면 `relaunch` op를 적고(카드가 launch 카드가 된다) launch 카드와 같은 길로 LAUNCH한 뒤(`by: "auto"`, `auto-approve.jsonl`의 `launch` 줄) 새 세션이 뜨면 FLIGHT PLAN이 간다(`LAUNCHING`). AUTO APPROVE·AUTO DISPATCH 스위치와 상관없이 돈다: SUPERVISOR의 승인이 이미 있다. DISPATCH가 approval 모드여야 한다.
+- **상한.** launch 카드의 규칙(`launchWhyNot`): `ATC_MAX_LAUNCHED`(`cap-full`), FUEL hold, LAUNCH 막힘, 실패 뒤 대기(`autoLaunchBackoffMin`), 하루 LAUNCH 상한(`autoLaunchMax`), reset 전인 LIMIT cut(`limit`). atc가 띄운 적 없는 AIRCRAFT(`no-absent`)는 띄울 수 없다.
+- **띄울 수 없으면.** 카드는 기다린다. `approvedWaitMin`(`dispatch.json`, 기본 승인 뒤 15분)이 지나면 `승인 뒤 세션 없음 — LAUNCH 못 함(<상한>)…` 사유로 SUPERSEDED로 닫는다. 판정이 아니라서 24시간 짝 규칙을 시작하지 않으므로 FLIGHT는 planner로 돌아가 다른 AIRCRAFT를 받을 수 있다. LAUNCH가 실패하면 다른 launch 카드처럼 `LAUNCH 실패 — …`로 닫는다.
+- **센다.** DISPATCH brief의 `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: 세션을 기다리는 승인 카드 수, 그중 `approvedWaitMin`을 넘긴 수(이 주기가 돌면 0으로 남아야 한다), 지난 24시간에 이 사유로 닫은 수.
+- **형식.** `relaunch` op와 `approvedWaitMin`은 추가다. `proposals.jsonl`의 다른 것은 바뀌지 않는다.
 
 ## DIRECT briefs (ATC-32)
 

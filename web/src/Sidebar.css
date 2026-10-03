@@ -1,0 +1,236 @@
+/* 화면 사이드바(ATC-443, docs/layout.md 7.2). 자리는 Rail.css의 .shell 그리드(--sidebar-w)가 정하고, 이 파일은 안쪽 모양만 갖는다 */
+.shell.has-sidebar {
+  --sidebar-w: var(--sidebar-open-w);
+}
+@media (min-width: 861px) {
+  .shell > .sidebar:not([hidden]) {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    align-self: start;
+    height: 100dvh;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--chrome);
+    border-right: 1px solid var(--line);
+  }
+}
+.sb-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.sb-title-screen {
+  margin: 0;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+.sb-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* 알림(Z6)이 들어올 자리. 아직 비어 있어 너비가 없다 */
+.sb-notify {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+.sb-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  height: var(--space-8);
+  color: var(--faint);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.sb-search:focus-within {
+  border-color: var(--line-strong);
+}
+.sb-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  background: none;
+  border: 0;
+  font: var(--text-sm) var(--sans);
+}
+.sb-search input:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.sb-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) 0 var(--space-4);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.sb-group {
+  margin-top: var(--space-3);
+}
+.sb-group:first-child {
+  margin-top: 0;
+}
+.sb-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+.sb-code {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.sb-repo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-2xs) var(--sans);
+}
+.sb-count {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+.sb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--space-8);
+  padding: var(--space-1) var(--space-3);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.sb-item:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.sb-item:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.sb-item[aria-current="page"] {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.sb-key {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.sb-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-sm) var(--sans);
+}
+.sb-state {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+/* 살아 있는 세션: 채운 점. 쉬는 중: 속이 빈 점. 낱말이 따로 있어(AIRCRAFT) 색만으로 말하지 않는다 */
+.sb-dot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+.sb-dot.is-live {
+  background: var(--radar);
+  border-color: var(--radar);
+}
+.sb-dot.is-idle {
+  border-color: var(--radar);
+}
+.sb-done {
+  margin: var(--space-1) 0 0;
+}
+.sb-done summary {
+  padding: var(--space-1) var(--space-3);
+  font: var(--text-2xs) var(--sans);
+  color: var(--faint);
+  cursor: pointer;
+}
+.sb-done summary:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.sb-empty {
+  margin: 0;
+  padding: var(--space-3);
+  font: var(--text-xs) var(--sans);
+}
+
+/* ≤ 860px: 화면 위로 왼쪽에서 열린다. 항목을 고르면 닫힌다(App.tsx) */
+.sidebar-scrim {
+  display: none;
+}
+@media (max-width: 860px) {
+  .shell.sidebar-over > .sidebar:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--chrome);
+    border-right: 1px solid var(--line);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
+    z-index: var(--z-overlay);
+    width: min(320px, 86vw);
+    height: auto;
+    box-shadow: var(--shadow-3);
+  }
+  .shell.sidebar-over > .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-menu);
+    background: none;
+    border: 0;
+  }
+}
+
+/* 861–1279px: 서랍이 열려 있는 동안 사이드바는 접힌다(Z3, docs/layout.md 7.3). 기억한 선택은 건드리지 않는다.
+   Drawer.css와 같은 규칙인데, 어느 파일이 나중에 읽혀도 이기도록 선택자를 더 구체적으로 둔다 */
+@media (min-width: 861px) and (max-width: 1279px) {
+  .shell.has-sidebar[data-drawer] {
+    --sidebar-w: 0px;
+  }
+  .shell[data-drawer] > .sidebar:not([hidden]) {
+    display: none;
+  }
+}

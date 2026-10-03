@@ -1,10 +1,14 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import type { PullRequest } from "../../../server/model.ts";
 import type { FollowBundle, FollowNext, FollowRow, FollowStage } from "../../../server/follow.ts";
 import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
+import { FlightBrakes } from "../FlightBrakes.tsx";
 import { timeAgo } from "../derive.ts";
+import { BlockList, LandingBadge } from "./Teams.tsx";
 import "./Follow.css";
 import { apiGet, apiSend } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
 
 // FOLLOW(docs/follow.md 4장): 따라가는 상위 이슈마다 하위 이슈의 단계를 한 줄씩 보인다. 그리기만 한다 — 단계와 글은 서버가 센다.
 
@@ -15,6 +19,7 @@ export interface FollowData {
   stages: FollowStage[];
   parents: string[];
   bundles: FollowBundle[];
+  dispatchMode?: "shadow" | "approval"; // RECALL 안내 글이 가른다(ATC-377)
 }
 
 const SHORT: Record<FollowStage, string> = { todo: "TODO", proposed: "PROP", approved: "APPR", sent: "SENT", readback: "RB", pr: "PR", ci: "CLR", landed: "ON", deployed: "IN" };
@@ -109,7 +114,7 @@ function NextChip({ row, next, busy, moved, onRelease }: { row: FollowRow; next:
   );
 }
 
-function Row({ row, stages, busy, error, moved, onRelease }: { row: FollowRow; stages: FollowStage[]; busy: boolean; error: string | null; moved: boolean; onRelease: (row: FollowRow) => void }) {
+function Row({ row, stages, busy, error, moved, onRelease, onChanged, mode, pull }: { pull?: PullRequest; mode?: "shadow" | "approval"; row: FollowRow; stages: FollowStage[]; busy: boolean; error: string | null; moved: boolean; onRelease: (row: FollowRow) => void; onChanged: () => void }) {
   const applicable = stages.filter((s) => !row.stages[s].na);
   const at = row.current ? applicable.indexOf(row.current) + 1 : 0;
   return (
@@ -124,16 +129,25 @@ function Row({ row, stages, busy, error, moved, onRelease }: { row: FollowRow; s
         {at}/{applicable.length}
       </span>
       <div className="fw-now">
-        <span className={row.stuck ? "fw-stuck" : undefined} title={row.stuck?.text}>
+        <span className={row.stuck ? "fw-stuck" : undefined}>
           {row.now}
         </span>
-        {row.stuck && <span className="fw-issue is-warn">막힘</span>}
+        {row.stuck && (
+          <details className="fw-issue-det">
+            <summary className="fw-issue is-warn">막힘</summary>
+            <span className="fw-issue-text is-warn">{row.stuck.text}</span>
+          </details>
+        )}
         {row.issues.map((i) => (
-          <span key={i.code} className={`fw-issue is-${i.severity}`} title={i.text}>
-            {i.code}
-          </span>
+          <details key={i.code} className="fw-issue-det">
+            <summary className={`fw-issue is-${i.severity}`}>{i.code}</summary>
+            <span className={`fw-issue-text is-${i.severity}`}>{i.text}</span>
+          </details>
         ))}
+        {pull && <LandingBadge pr={pull} />}
+        {pull && <BlockList pr={pull} />}
         {row.next && <NextChip row={row} next={row.next} busy={busy} moved={moved} onRelease={onRelease} />}
+        {row.proposalInfo && <FlightBrakes p={{ ...row.proposalInfo, flight: row.key }} mode={mode} onDone={onChanged} />}
       </div>
       {error && (
         <p className="fw-error fw-row-error" role="alert">
@@ -156,7 +170,7 @@ function Row({ row, stages, busy, error, moved, onRelease }: { row: FollowRow; s
   );
 }
 
-function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, onRelease }: { b: FollowBundle; stages: FollowStage[]; now: number; onUnfollow: () => void; busy: boolean; rowBusy: string | null; rowError: Record<string, string>; moved: ReadonlySet<string>; onRelease: (row: FollowRow) => void }) {
+function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, onRelease, onChanged, mode, pullOf }: { pullOf: (key: string) => PullRequest | undefined; mode?: "shadow" | "approval"; b: FollowBundle; stages: FollowStage[]; now: number; onUnfollow: () => void; busy: boolean; rowBusy: string | null; rowError: Record<string, string>; moved: ReadonlySet<string>; onRelease: (row: FollowRow) => void; onChanged: () => void }) {
   return (
     <details className="fw-bundle" open={!b.folded}>
       <summary>
@@ -169,10 +183,10 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
         </span>
       </summary>
       <div className="fw-bbody">
-        {b.rows.length === 0 ? <p className="empty">{b.missing ? `${b.parent}을 스냅샷에서 찾지 못함(45일 안에 바뀐 이슈만 읽는다).` : "줄이 없음"}</p> : (
+        {b.rows.length === 0 ? <Empty>{b.missing ? `${b.parent}을 스냅샷에서 찾지 못함(45일 안에 바뀐 이슈만 읽는다).` : "줄이 없음"}</Empty> : (
           <ul className="fw-rows">
             {b.rows.map((r) => (
-              <Row key={r.key} row={r} stages={stages} busy={busy || rowBusy === r.key} error={rowError[r.key] ?? null} moved={moved.has(r.key)} onRelease={onRelease} />
+              <Row key={r.key} row={r} stages={stages} busy={busy || rowBusy === r.key} error={rowError[r.key] ?? null} moved={moved.has(r.key)} onRelease={onRelease} onChanged={onChanged} mode={mode} pull={pullOf(r.key)} />
             ))}
           </ul>
         )}
@@ -188,7 +202,9 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
   );
 }
 
-export function Follow({ refreshKey, now }: { refreshKey: string; now: number }) {
+export function Follow({ refreshKey, now, pulls = [] }: { refreshKey: string; now: number; pulls?: PullRequest[] }) {
+  // 이 FLIGHT의 PR(착륙 상태 칩, ATC-379): 스냅샷의 열린 PR을 FLIGHT key로 찾는다. 상태 글은 서버가 정한 PR의 landing·blocks 그대로다
+  const pullOf = (key: string) => pulls.find((p) => p.ticketKey === key && !p.draft);
   const { data, error, reload } = useFollowBoard(refreshKey);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -223,7 +239,7 @@ export function Follow({ refreshKey, now }: { refreshKey: string; now: number })
   return (
     <section className="follow" aria-label="FOLLOW">
       <header className="fw-head">
-        <h2 className="label">FOLLOW</h2>
+        <h2 className="label">따라가는 FLIGHT</h2>
         <form className="fw-form" onSubmit={submit}>
           <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="상위 이슈 key (예: ATC-253)" aria-label="따라갈 이슈 key" spellCheck={false} autoCapitalize="characters" />
           <button type="submit" className="fw-btn is-primary" disabled={busy || !key.trim()}>
@@ -234,9 +250,9 @@ export function Follow({ refreshKey, now }: { refreshKey: string; now: number })
       </header>
       {msg && <p className="fw-error" role="alert">{msg}</p>}
       {error && !data && <p className="fw-error" role="alert">불러오지 못함: {error}</p>}
-      {data && data.bundles.length === 0 && <p className="empty">따라가는 일이 없다. 발권(RELEASE)한 FLIGHT는 여기에 저절로 나타난다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누르면 번들도 따라간다.</p>}
+      {data && data.bundles.length === 0 && <Empty>따라가는 일이 없다. 발권(RELEASE)한 FLIGHT는 여기에 저절로 나타난다. 상위 이슈 key를 넣거나 FLIGHT 서랍의 FOLLOW 버튼을 누르면 번들도 따라간다.</Empty>}
       {data?.bundles.map((b) => (
-        <Bundle key={b.parent} b={b} stages={data.stages} now={now} busy={busy} rowBusy={rowBusy} rowError={rowError} moved={moved} onRelease={release} onUnfollow={() => void change(b.parent, false)} />
+        <Bundle key={b.parent} b={b} stages={data.stages} now={now} busy={busy} rowBusy={rowBusy} rowError={rowError} moved={moved} onRelease={release} onChanged={() => void reload()} mode={data.dispatchMode} pullOf={pullOf} onUnfollow={() => void change(b.parent, false)} />
       ))}
     </section>
   );

@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useState } from "react";
 import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
@@ -16,16 +16,43 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { attachCommandOf } from "../../../server/session-origin.ts";
-import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../ui.tsx";
+import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../badges.tsx";
 import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
-import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
+import { HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 import { apiSend } from "../api.ts";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
 
+// FLIGHTS의 목록 보기에 붙는 착륙 순서(ATC-379): STRIPS가 보이던 LANDING SEQUENCE와 GitHub 상태 안내. HUMAN CHECK는 HOME의 큐가 맡는다
+export function FlightsLanding({ snapshot, idx }: { snapshot: Snapshot; idx: Index }) {
+  const pulls = snapshot.pulls ?? [];
+  const github = snapshot.github ?? null;
+  const landing = landingIndex(pulls, snapshot.autoland);
+  const nameOf = (id: string) => {
+    const s = idx.sessionById.get(id);
+    return s ? callsign(s) : id.slice(0, 8);
+  };
+  return (
+    <>
+      {github && !github.enabled && github.reason && (
+        <p className="ls-stale" title={github.reason}>
+          GitHub off · PR 상태를 읽지 않음
+        </p>
+      )}
+      {github?.error && (
+        <p className="ls-stale" title={github.error}>
+          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
+        </p>
+      )}
+      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
+    </>
+  );
+}
+
+// 세션마다 스트립(AIRCRAFT bay). FLIGHTS의 목록 보기에서는 접힌 칸에 든다(ATC-379)
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
   const all = sortSessions(snapshot.sessions, idx);
@@ -41,9 +68,8 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   const cleanup = visible.filter((s) => isGateCleanup(s, idx));
   const cleanupIds = new Set(cleanup.map((s) => s.id));
   for (const s of visible) if (!cleanupIds.has(s.id)) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
-  // 옛 서버 스냅샷에는 pulls·github가 없다
+  // 옛 서버 스냅샷에는 pulls가 없다
   const pulls = snapshot.pulls ?? [];
-  const github = snapshot.github ?? null;
   const landing = landingIndex(pulls, snapshot.autoland);
   const ms = useMilestones(snapshot.at.slice(0, 16)); // 진행 막대(ATC-211): 스냅샷이 바뀌는 분마다 한 번
 
@@ -58,18 +84,6 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           PARKED AIRCRAFT 포함
         </label>
       </div>
-      {github && !github.enabled && github.reason && (
-        <p className="ls-stale" title={github.reason}>
-          GitHub off · PR 상태를 읽지 않음
-        </p>
-      )}
-      {github?.error && (
-        <p className="ls-stale" title={github.error}>
-          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
-        </p>
-      )}
-      <HumanCheckQueue pulls={pulls} idx={idx} nameOf={nameOf} />
-      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
       {BAYS.map((bay) => {
         const sessions = bays.get(bay)!;
         if (!sessions.length) return null;
@@ -302,13 +316,13 @@ function blocksTip(pr: PullRequest): string {
 }
 
 // CLEARED TO LAND(호박) 또는 APPROACH(시안) + 막는 조건 수
-function LandingBadge({ pr }: { pr: PullRequest }) {
+export function LandingBadge({ pr }: { pr: PullRequest }) {
   const cleared = pr.landing === "CLEARED";
   const n = pr.blocks.length;
   // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않는다. 사슬을 함께 보인다
   if (pr.blocks.some((b) => b.code === "stacked")) {
     return (
-      <span className="pr-badge is-approach" title={`STACKED: ${blocksTip(pr)}`}>
+      <span className="pr-badge is-approach" title="STACKED: base가 기본 브랜치가 아니라 이 PR은 CLEARED가 되지 않는다. 사슬을 함께 본다">
         STACKED{pr.stack ? ` ${pr.stack.chain.map((x) => `#${x}`).join(" → ")}` : ""}
       </span>
     );
@@ -316,7 +330,7 @@ function LandingBadge({ pr }: { pr: PullRequest }) {
   return (
     <span
       className={`pr-badge ${cleared ? "is-cleared" : "is-approach"}`}
-      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개\n${blocksTip(pr)}`}
+      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개 — 아래에 이름과 문장`}
     >
       {cleared ? "CLEARED TO LAND" : "APPROACH"}
       {!cleared && n > 0 && <b className="pr-count">{n}</b>}
@@ -436,15 +450,22 @@ function HoldButton({ pr, landing }: { pr: PullRequest; landing: LandingIndex })
     setBusy(false);
   };
   return (
-    <button
-      className={`pr-hold${held ? " is-held" : ""}`}
-      onClick={() => void toggle()}
-      disabled={busy}
-      aria-pressed={held}
-      title={error ?? (held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)")}
-    >
-      {held ? "HOLD ✓" : "HOLD"}
-    </button>
+    <>
+      <button
+        className={`pr-hold${held ? " is-held" : ""}`}
+        onClick={() => void toggle()}
+        disabled={busy}
+        aria-pressed={held}
+        title={held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)"}
+      >
+        {held ? "HOLD ✓" : "HOLD"}
+      </button>
+      {error && (
+        <span className="pr-hold-err" role="alert">
+          HOLD 실패 — {error}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -508,7 +529,7 @@ const blockShort: Record<LandingBlockCode, string> = {
 };
 
 // 막는 조건: 짧은 이름 한 줄, 펼치면(키보드로도) 전체 문장
-function BlockList({ pr }: { pr: PullRequest }) {
+export function BlockList({ pr }: { pr: PullRequest }) {
   if (pr.landing === "CLEARED" || !pr.blocks.length) return null;
   return (
     <details className="pr-more">
@@ -637,7 +658,6 @@ const RECENT_READBACK_MS = 30 * 60_000;
 // CLEARANCE: 답 대기(파랑), 10분 넘게 답 없음(주황), UNABLE(빨강), 최근 30분 안에 답 받음(점선).
 // 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER가 닫는다. 첫 STANDBY부터 10분을 한 번 다시 센다
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
-  const { clock } = useSettings();
   const answeredAt = (c: Clearance) => c.readbackAt ?? c.unableAt ?? null;
   const shown = clearances.filter((c) => {
     const at = answeredAt(c);
@@ -650,7 +670,7 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
         const base = c.standbyAt && c.standbyAt >= c.at ? c.standbyAt : c.at;
         const overdue = !answeredAt(c) && now - Date.parse(base) > OVERDUE_MS;
         const tone = c.unableAt ? "red" : c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
-        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 제목(title)에
+        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 옆에 함께 보인다(제목에만 두지 않는다)
         const state = c.unableAt
           ? "UNABLE"
           : c.readbackAt
@@ -661,8 +681,9 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
                 ? "STANDBY"
                 : "READBACK 대기";
         return (
-          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}${c.unableReason ? ` — ${c.unableReason}` : ""}`}>
+          <span key={c.id} className={`stamp ${tone}`} title={c.text}>
             {c.id} {c.type} · {state}
+            {c.unableReason && <span className="stamp-why"> — {c.unableReason}</span>}
           </span>
         );
       })}

@@ -30,7 +30,7 @@ test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);
   assert.deepEqual(v.items, []);
-  assert.equal(Object.keys(v.counts).length, 10);
+  assert.equal(Object.keys(v.counts).length, 11);
   assert.ok(Object.values(v.counts).every((n) => n === 0));
 });
 
@@ -48,7 +48,7 @@ test("PROPOSAL: only proposed and not held; judged, sent and held proposals stay
   assert.deepEqual(q.map((i) => i.key).sort(), ["D-1", "D-5"]);
   assert.equal(q.find((i) => i.key === "D-1")!.title, "ASSIGN ATC1 → TEAM_A");
   assert.equal(q.find((i) => i.key === "D-5")!.title, "RELEASE ATC1");
-  assert.ok(q.every((i) => i.hash === "#dispatch"));
+  assert.ok(q.every((i) => i.hash === "#home"));
 });
 
 test("SCHEDULE: draft ops in approval mode only", () => {
@@ -58,6 +58,20 @@ test("SCHEDULE: draft ops in approval mode only", () => {
   ] as QueueInput["schedule"]["ops"];
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops } }, NOW).map((i) => i.key), ["S-1"]);
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "shadow", ops } }, NOW), []);
+});
+
+test("SCHEDULE(ATC-378): 줄은 HOME을 가리키고, OCC의 근거 한 줄(240자까지)을 detail로 싣는다", () => {
+  const long = "근거 ".repeat(200);
+  const ops = [
+    { id: "S-1", kind: "NEW", flight: null, status: "draft", statusAt: ago(3), reason: "중복 아님: 요청이 새 화면" },
+    { id: "S-2", kind: "TAIL", flight: "ATC2", status: "draft", statusAt: ago(3), reason: long },
+    { id: "S-3", kind: "TAIL", flight: "ATC3", status: "draft", statusAt: ago(3) },
+  ] as QueueInput["schedule"]["ops"];
+  const out = supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops } }, NOW);
+  assert.deepEqual(out.map((i) => i.hash), ["#home", "#home", "#home"]);
+  assert.equal(out[0].detail, "중복 아님: 요청이 새 화면");
+  assert.equal(out[1].detail!.length, 240);
+  assert.equal(out[2].detail, undefined, "근거가 없으면 칸도 없다");
 });
 
 test("FLEET PLAN: open and not stale", () => {
@@ -148,4 +162,15 @@ test("auto dispatch (ATC-367): ASSIGN and launch cards stay off the queue, RELEA
   const inp = { ...empty(), proposals: [proposal({ id: "D-1" }), proposal({ id: "D-2", kind: "RELEASE", aircraftName: null })] };
   assert.deepEqual(supervisorQueueOf(inp, NOW).map((i) => i.key), ["D-1", "D-2"]);
   assert.deepEqual(supervisorQueueOf({ ...inp, autoDispatch: true }, NOW).map((i) => i.key), ["D-2"]);
+});
+
+test("BACKLOG(ATC-401): 쏘거나 버리지 않은 제안이 RELEASE 화면을 가리키는 줄로 선다. 오래 기다린 것이 먼저", () => {
+  const items = supervisorQueueOf({ ...empty(), backlog: [{ key: "ATC-9", by: "SCHEDULE S-0004", at: ago(5) }, { key: "ATC-3", by: "DUTY REVIEW R-0007", at: ago(50) }] }, NOW);
+  assert.deepEqual(
+    items.map((i) => [i.kind, i.key, i.title, i.hash]),
+    [["BACKLOG", "ATC-3", "ATC-3 ← DUTY REVIEW R-0007", "#release"], ["BACKLOG", "ATC-9", "ATC-9 ← SCHEDULE S-0004", "#release"]],
+  );
+  assert.equal(items[0]!.since, ago(50));
+  assert.equal(queueCountsOf(items).BACKLOG, 2);
+  assert.equal(supervisorQueueOf(empty(), NOW).filter((i) => i.kind === "BACKLOG").length, 0, "제안이 없으면 줄이 없다");
 });

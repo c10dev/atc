@@ -126,7 +126,7 @@
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: var(--space-0-5);
   min-width: 26px;
 }
 .fw-dot i {
@@ -142,7 +142,7 @@
   color: var(--faint);
 }
 .fw-dot small {
-  font-size: 8px;
+  font-size: var(--text-2xs);
   color: var(--faint);
   letter-spacing: 0.02em;
 }
@@ -222,6 +222,29 @@
 .fw-issue.is-warn {
   color: var(--amber);
   border-color: var(--amber);
+}
+/* title에만 있던 issue·막힘 설명을 한 번의 클릭으로 편다(ATC-418, 원칙 11) */
+.fw-issue-det {
+  flex: 0 0 auto;
+}
+.fw-issue-det[open] {
+  flex: 1 1 100%;
+}
+.fw-issue-det summary {
+  cursor: pointer;
+  list-style: none;
+}
+.fw-issue-det summary::-webkit-details-marker {
+  display: none;
+}
+.fw-issue-text {
+  display: block;
+  margin-top: var(--space-0-5);
+  font: var(--text-xs) var(--sans);
+  color: var(--muted);
+}
+.fw-issue-text.is-warn {
+  color: var(--amber);
 }
 .fw-hist {
   grid-column: 1 / -1;

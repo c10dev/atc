@@ -70,7 +70,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
     pulls: s.pulls,
     clearances: s.clearances ?? [],
     milestones,
-    following: followingNow(s, now),
+    following: followingNow(s, now, undefined, false), // FOLLOW 줄은 끝난 FLIGHT의 단계도 읽는다(ATC-385: 끝 규칙은 알림·FLIGHT FOLLOWING 쪽만)
     progress: progressNow(s, milestones, now),
     plan,
     noDeploy,
@@ -90,7 +90,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
   }
   const bundles = arrows ? [arrows, ...manual] : manual;
   const next = bundles.reduce((n, b) => n + b.next, 0); // 머리 NEXT n: 따라가는 모든 번들의 다음 할 일 수
-  return { at: new Date(now).toISOString(), linear: s.linear.fetchedAt, stages: [...FOLLOW_STAGES], parents, bundles, next };
+  return { at: new Date(now).toISOString(), dispatchMode: loadDispatchConfig().mode, linear: s.linear.fetchedAt, stages: [...FOLLOW_STAGES], parents, bundles, next };
 }
 
 export function mountFollow(app: Hono, getSnapshot: () => Promise<Snapshot>) {

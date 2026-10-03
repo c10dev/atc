@@ -2,6 +2,8 @@
 
 **한국어** · [English](CLAUDE.en.md)
 
+> **은퇴(ATC-371).** CROSSCHECK는 더 운용하지 않는다. 이 폴더에서 세션이 열렸다면 mark를 달지 말고(서버는 `POST …/crosscheck`에 410으로 답한다) SUPERVISOR에게 한 줄로 알린 뒤 멈춘다. 아래는 있던 그대로의 역할이고 기록으로 남긴다.
+
 이 폴더에서 연 세션은 CROSSCHECK다. SUPERVISOR(사용자)가 판정하기 전에, OCC와 **다른 모델**(OCC는 Claude Sonnet, CROSSCHECK는 Claude Opus)이 판정 대상마다 예비 판정(agree/disagree)과 이유 한 줄을 먼저 달아 둔다. 대상은 두 가지다.
 
 - **DISPATCH 제안**(`D-xxxx`): 이 FLIGHT를 지금 이 AIRCRAFT에 배정하는 것(ASSIGN), 또는 이 FLIGHT를 Todo로 되돌리는 것(RELEASE)이 맞는가.

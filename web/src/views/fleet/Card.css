@@ -10,7 +10,7 @@
   padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-md);
 }
 /* 안쪽 막대: AOG와 경보 띠에 CAUTION(amber)·WARNING(alert)이 있을 때만 */
@@ -204,11 +204,15 @@
 .fl-name-conflict,
 .fl-absent,
 .fl-origin-note,
+.fl-health,
 .fl-rules {
   margin: 0;
   letter-spacing: 0;
   font: var(--text-md) var(--sans);
   overflow-wrap: anywhere;
+}
+.fl-health {
+  color: var(--muted);
 }
 .fl-acct-hold,
 .fl-rename,
@@ -383,7 +387,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-strip {
   display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   height: 20px;
 }
 .fl-bar-o {
@@ -445,10 +449,10 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-card .activity-what {
   font-family: var(--mono);
 }
-.fl-card .activity .activity-dot,
-.fl-card .activity.is-tool .activity-dot,
-.fl-card .activity.is-model .activity-dot {
-  background: var(--faint);
+.fl-card .activity,
+.fl-card .activity.is-tool,
+.fl-card .activity.is-model {
+  --dot-ink: var(--faint);
 }
 .fl-kept {
   margin: 0;
@@ -720,7 +724,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 }
 .fl-launch-cap {
   min-width: 0;
-  max-width: 28ch;
+  max-width: 60ch;
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
@@ -765,4 +769,8 @@ button.fl-fold-head:focus-visible .fl-fold-k {
   border: 0;
   color: inherit;
   cursor: pointer;
+}
+/* STAND 없는 FLIGHT의 안내 글(ATC-324): 한글 문장이라 sans, 크기는 옆 칸의 .mono(--text-sm)와 맞춘다 */
+.fl-log .fl-log-note {
+  font-size: var(--text-sm);
 }

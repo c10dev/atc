@@ -1,0 +1,345 @@
+/* 셸(ATC-442, docs/layout.md 7절 Z1): 그리드 영역 = 레일 · 사이드바 · 가운데 열(상단 바·알림줄·화면·아래 패널) · 서랍 열.
+   사이드바(Z2)·서랍 열(Z3)·아래 패널(Z5)은 아직 비어 있고 접혀 있다: 그 단계는 영역을 채우고 배치는 바꾸지 않는다.
+   가운데 열은 flex 세로 줄이다: 상단 바가 스크롤 중에도 붙어 있으려면(position: sticky) 그리드 칸이 아니라 flex 줄 안에 있어야 한다. */
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-w) var(--sidebar-w) minmax(0, 1fr) var(--drawer-w);
+  grid-template-areas: "rail sidebar main drawer";
+  min-height: 100dvh;
+}
+.shell > .rail {
+  grid-area: rail;
+}
+.shell > .sidebar {
+  grid-area: sidebar;
+}
+.shell > .shell-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.shell > .drawer-col {
+  grid-area: drawer;
+}
+.shell-main > .main {
+  flex: 1;
+}
+
+/* ── 레일 ─────────────────────────── */
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: start;
+  gap: var(--space-2);
+  height: 100dvh;
+  padding: var(--space-2) 0;
+  background: var(--chrome);
+  border-right: 1px solid var(--line);
+}
+.rail-brand {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 100%;
+  height: var(--console-h);
+  margin: calc(-1 * var(--space-2)) 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.rail-screens {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+.rail-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  width: 100%;
+}
+.rail-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--space-12);
+  height: var(--space-12);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.rail-item:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.rail-item.is-on {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.rail-item[aria-current="page"] {
+  color: var(--tab-on);
+  background: var(--tab-on-bg);
+}
+/* 열린 화면 표시: 레일 왼쪽 끝의 막대 */
+.rail-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-1));
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: var(--space-0-5);
+  background: var(--tab-on);
+  box-shadow: 0 0 10px var(--tab-on);
+}
+.rail-label {
+  display: none;
+}
+/* 툴팁: 이름은 aria-label이 따로 가진다. 결정에 필요한 말은 여기에만 두지 않는다 */
+.rail-item::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + var(--space-2));
+  top: 50%;
+  z-index: var(--z-popover);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-3);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font: 400 var(--text-xs) var(--sans);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.rail-item:hover::after,
+.rail-item:focus-visible::after {
+  opacity: 1;
+}
+.rail-menu .rail-item::after {
+  /* HELP 메뉴가 열려 있을 때는 툴팁이 메뉴 위에 겹치지 않게 */
+  z-index: var(--z-raised);
+}
+.rail-menu[data-open] .rail-item::after {
+  display: none;
+}
+.rail-badge {
+  position: absolute;
+  top: var(--space-0-5);
+  right: var(--space-0-5);
+  min-width: var(--space-4);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--amber);
+  color: var(--bg);
+  font: 700 var(--text-2xs)/1.5 var(--mono);
+  text-align: center;
+}
+/* HELP 메뉴: 레일 옆으로 열린다 */
+.rail-menu {
+  position: relative;
+}
+.bell-list.rail-pop {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: calc(100% + var(--space-2));
+}
+
+/* ── 상단 바 ─────────────────────────── */
+.fold-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--space-12);
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.fold-btn:hover,
+.fold-btn[aria-expanded="true"] {
+  color: var(--text);
+}
+.fold-btn:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.top-brand {
+  display: none;
+}
+.console .readouts {
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+/* 테마 */
+:root[data-theme="cockpit"] .rail-item[aria-current="page"] {
+  box-shadow: inset 0 0 0 1.5px var(--cyan);
+}
+:root[data-theme="cockpit"] .rail-item[aria-current="page"]::before {
+  display: none;
+}
+:root[data-theme="night"] .rail {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+:root[data-theme="night"] .rail-item[aria-current="page"] {
+  color: var(--gold);
+  border-color: var(--line-strong);
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--blue) 18%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--blue) 8%, transparent);
+}
+:root[data-theme="night"] .rail-item[aria-current="page"]::before {
+  display: none;
+}
+:root[data-theme="night"] .rail-label {
+  font-family: var(--display);
+}
+
+/* ── ≤860px: 레일은 아래 탭 줄(글자 포함)이 된다. 설정·GLOBE·HELP도 그 줄에 있다 ─────────────────────────── */
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
+    padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
+  }
+  .shell > .sidebar {
+    display: none;
+  }
+  .rail {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: var(--z-sticky);
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    height: calc(var(--bar-h) + env(safe-area-inset-bottom));
+    padding: 0 0 env(safe-area-inset-bottom);
+    border-right: 0;
+    border-top: 1px solid var(--line);
+  }
+  .rail-brand {
+    display: none;
+  }
+  .rail-screens {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    min-width: 0;
+    padding-top: 0;
+    overflow-x: auto;
+  }
+  .rail-foot {
+    flex: none;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    width: auto;
+    padding-top: 0;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+  .rail-item {
+    flex: 1 0 0;
+    grid-auto-flow: row;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-0-5);
+    width: auto;
+    height: auto;
+    min-width: var(--space-8);
+    border-radius: 0;
+  }
+  .rail-screens .rail-item {
+    min-width: var(--space-12);
+  }
+  .rail-foot .rail-item,
+  .rail-foot .rail-menu {
+    flex: none;
+    width: var(--space-8);
+  }
+  .rail-foot .rail-menu .rail-item {
+    width: 100%;
+    height: 100%;
+  }
+  .rail-label {
+    display: block;
+    font: 700 var(--text-2xs) var(--mono);
+    letter-spacing: 0.04em;
+  }
+  .rail-item[aria-current="page"]::before {
+    left: var(--space-2);
+    right: var(--space-2);
+    top: calc(-1 * var(--space-0-5));
+    bottom: auto;
+    width: auto;
+    height: var(--space-0-5);
+  }
+  .rail-item::after {
+    display: none;
+  }
+  .rail-badge {
+    top: var(--space-1);
+    right: calc(50% - var(--space-6));
+  }
+  /* 아래 줄 위로 열린다 */
+  .bell-list.rail-pop {
+    position: fixed;
+    top: auto;
+    bottom: calc(var(--bar-h) + env(safe-area-inset-bottom) + var(--space-2));
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+  }
+  /* 상단 바: 첫 줄은 로고 글자와 DUTY, 둘째 줄부터 수치 */
+  .top-brand {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 0 var(--gutter);
+    font: 400 var(--text-2xs) var(--mono);
+    letter-spacing: 0.14em;
+    color: var(--cyan);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .top-brand svg {
+    width: var(--space-6);
+    height: var(--space-6);
+    flex: none;
+  }
+  .console .readouts {
+    flex: 1 0 100%;
+    order: 1;
+    justify-content: stretch;
+  }
+  .console .duty-readout {
+    box-shadow: none;
+    border-left: 1px solid var(--line);
+    align-items: center;
+    padding: 0 var(--space-4);
+  }
+}
+/* 초점 링은 단추 안쪽에: 아래 탭 줄의 가로 스크롤 영역이 바깥 링을 자른다 */
+.rail-item:focus-visible {
+  outline-offset: calc(-1 * var(--space-0-5));
+}

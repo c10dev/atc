@@ -1,6 +1,6 @@
-# RADIO 탭
+# RADIO (레일 화면, `#radio`)
 
-atc의 세션끼리 오간 교신(TOWER의 CLEARANCE와 팀의 READBACK, OCC의 FLIGHT PLAN과 CAPTAIN의 답, MCC의 착륙과 RTS)을 **글로 따라 읽는** 화면입니다. 공항 관제 주파수를 스캐너로 듣는 것과 같습니다. 보기만 하고, 보내기·ACK·승인 버튼은 없습니다. 원하면 새로 오는 교신을 무전 소리로 읽어 줄 수도 있습니다(아래 "듣기", 기본은 꺼짐).
+레일에서 FLIGHTS와 FLEET 사이의 **RADIO**가 이 화면입니다(ATC-446, 예전에는 FLIGHTS의 보기였고 옛 주소 `#flights/radio`도 그대로 열립니다). atc의 세션끼리 오간 교신(TOWER의 CLEARANCE와 팀의 READBACK, OCC의 FLIGHT PLAN과 CAPTAIN의 답, MCC의 착륙과 RTS)을 **글로 따라 읽는** 화면입니다. 공항 관제 주파수를 스캐너로 듣는 것과 같습니다. 보기만 하고, 보내기·ACK·승인 버튼은 없습니다. 원하면 새로 오는 교신을 무전 소리로 읽어 줄 수도 있습니다(아래 "듣기", 기본은 꺼짐).
 
 이미 atc가 기록해 둔 줄을 합쳐 보여 줄 뿐입니다. 대화 기록(transcript)은 읽지 않으므로, 기록에 남지 않은 자유 답장은 보이지 않습니다. 교신 규칙 자체는 [교신 규칙](radio.md)을 보세요.
 
@@ -14,7 +14,11 @@ atc의 세션끼리 오간 교신(TOWER의 CLEARANCE와 팀의 READBACK, OCC의 
 | **COMPANY** | CREW CHANGE와 그 READBACK, CAPTAIN의 ARRIVED 보고 |
 | **PREFLIGHT** | 출발 전 점검: CROSSCHECK의 agree·disagree 판정, PREFLIGHT HOLD, OCC의 HOLD. 호출이 아니라서 답을 기다리지 않고 overdue도 없습니다 |
 
-맨 위 칩으로 주파수를 고릅니다. 여러 개를 함께 켤 수 있고, `MONITOR ALL`은 넷 다 듣는 것입니다. 전부 끄면 다시 전부 봅니다. **AIRPORT**와 **AIRCRAFT**로도 거를 수 있습니다. 고른 값은 이 브라우저에 기억합니다(`atc.radio.*`, 저장소를 못 쓰면 전부 보기).
+맨 위 칩으로 주파수를 고릅니다. 여러 개를 함께 켤 수 있고, `MONITOR ALL`은 넷 다 듣는 것입니다. 전부 끄면 다시 전부 봅니다. **AIRPORT**로도 거를 수 있고, 고른 값은 이 브라우저에 기억합니다(`atc.radio.*`, 저장소를 못 쓰면 전부 보기).
+
+## 스테이션 거르기(사이드바)
+
+왼쪽 사이드바가 지난 6시간에 교신이 있었던 **스테이션**을 교신 수와 함께 나열합니다. 맨 위 `all`은 전부이고, 아래는 **CONTROL**(TOWER · OCC · MCC · REVIEW · DUTY …)과 **AIRCRAFT**(TEAM_G처럼 REGISTRATION순) 두 묶음입니다. 하나를 고르면 그 스테이션이 보내거나 받은 교신만 남고(호출과 답이 함께), 주소가 `#radio/TEAM_G`처럼 바뀌므로 주소를 복사해 같은 보기를 다시 열 수 있습니다. 주파수 칩·AIRPORT와는 함께 쓰입니다. 검색 칸은 스테이션 이름을 거릅니다. FLIGHT 서랍의 `전체 RADIO 기록` 링크는 그 FLIGHT의 AIRCRAFT로 거른 이 화면으로 옵니다.
 
 ## 로그 읽기
 

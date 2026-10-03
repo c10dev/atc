@@ -10,7 +10,7 @@ export function SoundLockChip() {
   const { prefs, audio, missed } = useAlerts();
   if (!alertSoundLocked(prefs, audio)) return null;
   return (
-    <button className="sound-lock" onClick={() => void resumeSound()} title="브라우저가 소리를 잠갔습니다. 아무 곳이나 누르거나 이 칩을 누르면 켜집니다">
+    <button className="sound-lock" onClick={() => void resumeSound()} title="아무 곳이나 누르거나 이 칩을 누르면 소리가 켜진다">
       🔇 소리 잠김 — 클릭하면 켜짐{missed.length > 0 && <em> · 놓침 {missed.length}</em>}
     </button>
   );
@@ -69,7 +69,7 @@ export function AlertBell({ onNavigate }: { onNavigate?: () => void }) {
               {items.map((a) => (
                 <li key={a.key} className={`bell-item lv-${a.level ?? "none"}${acked.includes(a.key) ? " is-acked" : ""}`}>
                   <button className="bell-open" onClick={() => go(a)}>
-                    <span className="code-chip">{a.level ? alertLevelLabel[a.level] : a.cue === "call" ? "CALL" : "INFO"}</span>
+                    <span className="tag code-chip" data-tone="inherit">{a.level ? alertLevelLabel[a.level] : a.cue === "call" ? "CALL" : "INFO"}</span>
                     <span className="mono">{[a.aircraft, a.flight].filter(Boolean).join(" · ") || a.group.toUpperCase()}</span>
                     <span className="bell-text">{a.text}</span>
                     {a.next && <span className="muted">→ {a.next}</span>}

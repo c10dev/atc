@@ -40,11 +40,9 @@ npm run typecheck
 | STRIPS | `#strips` | `views/Teams.tsx`, `views/Teams.css` | 맨 위 LANDING SEQUENCE(`snapshot.pulls`의 열린 PR: CLEARED TO LAND는 `readyAt` 순, APPROACH는 접어서, Draft는 흐리게 접어서. `github.error`가 있으면 안내), 그 아래 세션마다 운항 스트립 하나: 상태, 점유한 STAND와 STAND별 PR 배지(`CLEARED TO LAND` + `SEQ n`, 또는 `APPROACH` + 막는 조건 수와 펼치는 조건 목록, `#PR` 링크), 티켓, CLEARANCE(READBACK 대기 파랑, NO READBACK 주황, READBACK 점선) |
 | FIDS | `#board` | `views/Tickets.tsx` | DEPARTURES 안내판(TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) 또는 비행 단계별 보드 |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | 저장소 등록부: 개설·이름 변경·폐쇄·재개·삭제, 소속 AIRCRAFT와 TRANSIENT |
-| METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER 운용 지표와 2단계 진입 점검 |
-| NETWORK | `#network` | `views/Network.tsx` | 4단계 읽기 전용 현황(`GET /api/network`): ROUTE별 열린 FLIGHT(단계별)·14일 ARRIVED·AIRCRAFT·착륙 대기·Linear 프로젝트 목표, AIRCRAFT별 TARGETS 대 실적, 28일 추이(ARRIVED, 착륙 대기, 되돌림, DISPATCH·SCHEDULE 판정 수와 합의율, CROSSCHECK 일치). 차트는 키보드 커서와 일별 표를 갖는다 |
+| METRICS | `#metrics`, `#metrics/leaks`, `#metrics/misfire`, `#metrics/fuel`, `#metrics/network` | `views/Metrics.tsx` | 하위 화면 OPERATIONS, LEAKS, MISFIRE(사람 없이 도는 모든 레인: DISPATCH·SCHEDULE·FLEET PLAN, `views/MetricsMisfire.tsx`), FUEL, NETWORK(`views/Network.tsx`, `GET /api/network`의 4단계 읽기 전용 개요. 옛 `#network`도 여기) |
 | FLEET | `#fleet` | `views/fleet/Fleet.tsx`(부분마다 `views/fleet/`의 파일 하나) | AIRCRAFT마다 상태, 지금 FLIGHT, 프로필(CREW, TYPE RATING, ROUTE, TARGET). ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | 2단계 제안: 2a에서는 그림자 판정, 2b에서는 승인·거절, IN FLIGHT(SENT, READBACK, 늦음)와 3단계 점검. 확인 창을 거치는 모드 전환 |
-| SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 초안(그림자 운용): S2 진입 점검 패널, 열린 초안 카드(FLIGHT, 지금 분류, 바뀔 것, OCC 근거)와 "승인했을 것 / 거절했을 것"(거절은 사유 칩과 메모), Linear에서 손으로 바꿀 것 안내, 후보, RECENT(최근 7일 닫힌 초안) |
 
 머리글은 1760px 넘는 폭에서 로고·탭·수치를 한 줄에 둔다. 861~1760px에서는 탭이 머리글 둘째 줄로 내려가고, 860px 이하에서는 탭이 여러 줄로 감긴다.
 
@@ -87,6 +85,7 @@ ATC 로고를 누르면 설정 창이 열린다(`SettingsPanel.tsx`, Esc나 바�
 | `src/SplitFlap.tsx` | Solari 스플릿 플랩 글자. 칸이 드럼(공백, A–Z, 0–9, `: - . /`) 순으로 최대 6판, 왼쪽부터 넘어간다. 판(타일)은 실제 판처럼 떨어지고, 판 없는 글자는 한 글자씩 떨어져 앉는다. 화면에 보이는 판만 움직인다 |
 | `src/Ticker.tsx` | 흐르는 ALERT 티커 |
 | `src/Starfield.tsx` | Night Sky 배경(30fps 제한, 탭이 가려지면 멈춤)과 오늘의 달 모양 아이콘 |
-| `src/ui.tsx` | 작은 공용 조각: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |
-| `src/styles.css`, `src/ui.css`, `src/views/*.css` | 테마 토큰과 스타일 |
+| `src/badges.tsx`, `src/badges.css` | 작은 공용 도메인 배지: AIRPORT 코드, OUTSTATION 표시, 세션 위치, 상태 점, 우선순위 표시 |
+| `src/kit/` | 공용 구성 요소(L1 primitive): `Icon.tsx`(`Icon`, `IconButton`), `useDialog.ts`·`dialog-focus.ts`(다이얼로그 초점 규칙). primitive마다 `.css` 하나, 동작이 필요할 때만 `.tsx` ([design-system.md](../docs/design-system.md)) |
+| `src/styles.css`, `src/views/*.css` | 테마 토큰과 스타일 |
 | `src/views/*.tsx` | 탭마다 파일 하나. FLEET는 폴더 `src/views/fleet/`이고, 부분(쪽 틀, 운항 상태 목록, 카드, FUEL, ENTRY INTO SERVICE, LAUNCH·CREW BRIEFING 패널, 편집기)마다 파일 하나에 CSS가 옆에 있다 |

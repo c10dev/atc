@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
-import { type CardAction, actionsOf, cardKey, cardViewOf, queueHeadOf } from "../../server/duty-card.ts";
+import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, queueHeadOf, scheduleAskOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
@@ -169,7 +169,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
           {approval ? "거절" : "반대"}
         </button>
         {approval ? (
-          <button type="button" className="dr-btn is-primary" disabled={row.stale} title={row.stale ? "조건이 바뀜 — 다음 주기를 기다린다" : undefined} onClick={() => setAsk("approve")}>
+          <button type="button" className="dr-btn is-primary" disabled={row.stale} onClick={() => setAsk("approve")}>
             승인(실행)
           </button>
         ) : (
@@ -177,6 +177,126 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
             동의
           </button>
         )}
+        {/* 승인 모드에서 stale이면 왜 못 누르는지를 화면에 둔다(ATC-418). 그림자 모드의 동작은 그대로 */}
+        {approval && row.stale && <span className="du-hint">조건이 바뀜 — 다음 주기를 기다린다</span>}
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </>
+  );
+}
+
+// DISPATCH 카드(ATC-377): 자동 운항이 꺼져 있을 때의 ASSIGN·launch 카드와 RELEASE 카드의 승인·거절. DISPATCH 탭이 하던 같은 길(/approve·/reject, 2a면 /verdict)을 부른다.
+// 누르면 카드 안에서 한 번 확인한다. 모드는 누를 때 서버에서 읽는다
+function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: () => void }) {
+  const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    if (!ask) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const got = await apiGet(`/api/dispatch/proposals/${encodeURIComponent(id)}`);
+      const info = (await got.json().catch(() => ({}))) as { mode?: string; error?: string };
+      if (!got.ok) throw new Error(info.error ?? `HTTP ${got.status}`);
+      const payload = { via: "manual", reason: ask === "reject" ? reason.trim() || null : null };
+      const base = `/api/dispatch/proposals/${encodeURIComponent(id)}`;
+      const r = info.mode === "approval" ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
+      if (!r.ok) throw new Error(r.error ?? "실패");
+      setAsk(null);
+      onDone();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+    setBusy(false);
+  };
+  if (ask)
+    return (
+      <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
+        <p className="du-hint">
+          {proposalAskOf(id, ask, card)}
+        </p>
+        {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
+        <div className="du-actions">
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+            확인
+          </button>
+          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+            취소
+          </button>
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </div>
+    );
+  return (
+    <>
+      <div className="du-actions">
+        <button type="button" className="dr-btn" onClick={() => setAsk("reject")}>
+          거절
+        </button>
+        <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+          승인
+        </button>
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </>
+  );
+}
+
+// SCHEDULE 초안(ATC-378): 큐 줄에서 승인·거절. SCHEDULE 탭이 없으니 이 줄이 판정하는 유일한 곳이다.
+// 모드는 줄을 누를 때 읽는다: approval이고 TARGET·ROUTE가 아니면 승인·거절(approve·reject), 그 밖은 그림자 판정(verdict, 동의·거절)
+function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onDone: () => void }) {
+  const kind = title.split(" ")[0] ?? "";
+  const network = NETWORK_KINDS.has(kind);
+  const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    if (!ask) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const base = `/api/schedule/ops/${encodeURIComponent(id)}`;
+      const got = await apiGet(base);
+      const info = (await got.json().catch(() => ({}))) as { mode?: string; error?: string };
+      if (!got.ok) throw new Error(info.error ?? `HTTP ${got.status}`);
+      const payload = { via: "manual", reason: ask === "reject" ? reason.trim() || null : null };
+      const r = info.mode === "approval" && !network ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
+      if (!r.ok) throw new Error(r.error ?? "실패");
+      setAsk(null);
+      onDone();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+    setBusy(false);
+  };
+  if (ask)
+    return (
+      <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
+        <p className="du-hint">{scheduleAskOf(id, ask, kind)}</p>
+        {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
+        <div className="du-actions">
+          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+            확인
+          </button>
+          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+            취소
+          </button>
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </div>
+    );
+  return (
+    <>
+      <div className="du-actions">
+        <button type="button" className="dr-btn" onClick={() => setAsk("reject")}>
+          거절
+        </button>
+        <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+          {network ? "동의" : "승인"}
+        </button>
       </div>
       {err && <p className="du-err">{err}</p>}
     </>
@@ -311,7 +431,7 @@ function RelayOffer({ item }: { item: QueueItem }) {
 }
 
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
-function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
+export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
@@ -325,6 +445,10 @@ function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardActi
           </div>
         ) : a.op === "fleet-plan" ? (
           <FleetPlanButtons key={n} id={item.key} onDone={onDone} />
+        ) : a.op === "proposal" ? (
+          <ProposalButtons key={n} id={item.key} card={item.card} onDone={onDone} />
+        ) : a.op === "schedule" ? (
+          <ScheduleButtons key={n} id={item.key} title={item.title} onDone={onDone} />
         ) : (
           <UpdateButton key={n} onDone={onDone} />
         ),
@@ -366,7 +490,7 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
         <span className="du-kind">{v.item.kind}</span>
         <span className="du-since">{timeAgo(v.item.since, ctx.now)}</span>
       </div>
-      <p className="du-card-title mono">{v.item.title}</p>
+      <p className="du-card-title">{v.item.title}</p>
       <Actions item={v.item} actions={v.actions} onDone={() => ctx.markHandled(k)} />
     </div>
   );
@@ -482,7 +606,7 @@ export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: C
                 <span className="du-kind">{i.kind}</span>
                 <span className="du-since">{timeAgo(i.since, ctx.now)}</span>
               </div>
-              <p className="du-card-title mono">{i.title}</p>
+              <p className="du-card-title">{i.title}</p>
               <Actions item={i} actions={actionsOf(i, ctx.airports)} onDone={() => ctx.markHandled(cardKey({ queueKind: i.kind, key: i.key }))} />
             </li>
           ))}

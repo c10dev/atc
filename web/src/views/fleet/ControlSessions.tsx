@@ -15,7 +15,7 @@ import {
 import { idleText } from "../../../../server/other-background.ts";
 import type { Snapshot } from "../../../../server/model.ts";
 import { EditRow, type SaveResult } from "../../SettingsServer.tsx";
-import { JobDetail, NeedsYou } from "../../ui.tsx";
+import { JobDetail, NeedsYou } from "../../badges.tsx";
 import { timeAgo } from "../../derive.ts";
 import { type ControlAccounts, controlMemo } from "../../controlData.ts";
 import { allControlDown, type BulkOp } from "../../../../server/control-bulk.ts";
@@ -48,7 +48,7 @@ function fuelByName(r: FuelReply): Map<string, ControlFuelInfo> {
 
 const CONTROL_AIRPORT = "ATCC";
 
-export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; attached: boolean }) {
+export function ControlSessions({ snapshot, attached, selected = null, onSelect }: { snapshot: Snapshot; attached: boolean; selected?: string | null; onSelect?: (name: string) => void }) {
   const [list, setList] = useState<ControlList | null>(memo.list);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -84,19 +84,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     }
     inflight.current = false;
   }, []);
-  // #fleet/control로 오면(설정 창의 안내, 헤더 CONTROL 띠) 이 그룹으로 스크롤하고 초점을 둔다
-  const ready = list !== null || error !== null;
+  // 칩으로 고른 세션(ATC-445)의 줄은 펼쳐 둔다
   useEffect(() => {
-    const go = () => {
-      if (location.hash.slice(1) !== "fleet/control") return;
-      const el = document.getElementById("control");
-      el?.scrollIntoView({ block: "start" });
-      el?.focus({ preventScroll: true });
-    };
-    go();
-    addEventListener("hashchange", go);
-    return () => removeEventListener("hashchange", go);
-  }, [ready]);
+    if (selected) setOpen((prev) => (prev.has(selected) ? prev : new Set([...prev, selected])));
+  }, [selected]);
   // 처음과 60초마다. 숨겨진 탭(브라우저)은 건너뛴다
   useEffect(() => {
     void load();
@@ -182,12 +173,14 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     fresh.forEach((n) => autoOpened.current.add(n));
     setOpen((prev) => new Set([...prev, ...fresh]));
   }, [view]);
-  const toggle = (name: string) =>
+  const toggle = (name: string) => {
+    onSelect?.(name);
     setOpen((prev) => {
       const next = new Set(prev);
       if (!next.delete(name)) next.add(name);
       return next;
     });
+  };
 
   const accountEdit = (name: string) => {
     const a = accounts?.rows.find((r) => r.name === name);
@@ -222,12 +215,13 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
             STOP
           </button>
         ) : r.action?.kind === "launch" ? (
-          <button className="config-btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled} title={r.action.title ?? undefined}>
+          <button className="config-btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled}>
             LAUNCH
           </button>
         ) : (
           <span className="faint">이름으로 알아본다 — LAUNCH·STOP 없음</span>
         )}
+        {r.action?.kind === "launch" && r.action.title && <span className="faint"> LAUNCH 못 함: {r.action.title}</span>}
         {r.launchOff && <span className="is-error"> LAUNCH 꺼짐: {r.launchOff}</span>}
       </div>
       <p className="fl-c-line">
@@ -242,9 +236,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
       </p>
       {r.stale.length > 0 && (
         <p className="fl-c-line">
-          <span className="fl-stale" title={`${r.stale.join(", ")} — Claude Code가 멈춘 job을 목록에 남긴 것, 무시해도 됨`}>
+          <span className="fl-stale">
             STALE {r.stale.length}
-          </span>
+          </span>{" "}
+          <span className="faint">{r.stale.join(", ")} — Claude Code가 멈춘 job을 목록에 남긴 것</span>
         </p>
       )}
       {accountEdit(r.name)}
@@ -257,7 +252,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
         CONTROL <em>{count}</em>
       </h2>
       {facts && (
-        <span className="fl-group-facts mono" title="이 그룹의 모든 세션이 같은 사실. 다른 줄에만 따로 표시">
+        <span className="fl-group-facts mono">
           {facts.join(" · ")}
         </span>
       )}
@@ -301,7 +296,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
         {rows.map((r) => (
           <FleetRowShell
             key={r.name}
-            className={r.statusClass}
+            className={`${r.statusClass}${selected === r.name ? " is-selected" : ""}`}
             detailId={`fl-control-detail-${r.name}`}
             isOpen={open.has(r.name)}
             onToggle={() => toggle(r.name)}

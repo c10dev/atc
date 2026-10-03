@@ -186,6 +186,114 @@ test("화면(web/src)은 값 import로 Node 내장 모듈·@hono/*에 닿지 않
   assert.deepEqual(gone, [], `끊긴 사슬이 허용 목록에 남아 있다. 지운다:\n  ${gone.join("\n  ")}`);
 });
 
+// ── 층 지도(ATC-436, docs/design-system.md 원칙 1 "아래로만 쓴다") ─────────────────
+// L1 부품은 web/src/kit/**. L3 화면은 web/src/views/** 와 web/src 맨 위의 화면급 파일(서랍, 설정, 머리글 조각)이고, 아래 목록에 이름으로 적는다.
+// 그 밖의 맨 위 파일(api, aviation, badges, derive …)은 화면이 아니다. 검사 둘:
+//   1. kit의 파일은 화면 파일을 값으로 가져오지 않고, kit 밖의 스타일시트도 가져오지 않는다.
+//   2. 화면은 다른 화면에 속한 스타일시트를 가져오지 않는다(남의 클래스를 빌려 쓰지 않는다).
+// 오늘의 위반은 허용 목록에 단위(그것을 없앨 화면 FLIGHT)와 함께 적고, 목록은 줄기만 한다.
+const kitDir = join(webDir, "kit") + "/";
+const viewsDir = join(webDir, "views") + "/";
+export const TOP_SCREEN_FILES = [
+  // 서랍(S7)
+  "Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict", "SinceLook",
+  // 설정 창(S6)
+  "SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing",
+  // 머리글·알림·갱신(S8)
+  "App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow",
+  // GLOBE 보기 모드
+  "GlobeMode",
+];
+// 한 화면으로 치는 묶음: [화면 이름, 파일들]. web/src 기준 경로이고, 끝이 "/"면 폴더, 아니면 확장자 뺀 파일 이름이다.
+// 묶음에 없는 화면 파일은 제 이름이 곧 화면이다.
+const SCREEN_GROUPS: [string, string[]][] = [
+  ["HOME", ["views/Home", "views/Atfm", "views/HumanCheck", "SinceLook"]],
+  ["FLEET", ["views/fleet/", "views/FleetCrew", "views/FleetPlan", "views/Checkride"]],
+  ["METRICS", ["views/Metrics", "views/MetricsFuel", "views/MetricsFuelTrend", "views/MetricsLeaks", "views/MetricsMisfire", "views/Network"]],
+  ["GLOBE", ["views/Globe", "views/GlobeAirport", "views/GlobeFlights", "views/GlobeRadio", "views/GlobeSpace", "GlobeMode"]],
+  ["DRAWERS", ["Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
+  ["SETTINGS", ["SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing", "views/Airports"]],
+  ["HEADER", ["App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow"]],
+];
+// 같은 이름의 소스 파일이 없는 스타일시트의 주인 화면
+const STYLESHEET_OWNER: Record<string, string> = { "alerts.css": "HEADER" };
+
+// 오늘의 위반 "가져오는 파일 -> 스타일시트": 그것을 없앨 화면 단위. 새 항목을 더하지 않는다.
+export const ALLOWED_LAYER_VIOLATIONS: Record<string, string> = {
+  "web/src/views/Home.tsx -> web/src/Drawer.css": "S1 (ATC-422)",
+  "web/src/views/Home.tsx -> web/src/DutyDrawer.css": "S1 (ATC-422)",
+  "web/src/views/Home.tsx -> web/src/views/fleet/Fleet.css": "S1 (ATC-422)",
+  "web/src/SettingsAlerts.tsx -> web/src/alerts.css": "S6 (ATC-430): the alert-row classes move into the settings stylesheet or a kit part",
+};
+
+const rel = (f: string) => relative(root, f);
+const relWeb = (f: string) => relative(webDir, f);
+const stem = (f: string) => relWeb(f).replace(/\.[^./]+$/, "");
+
+export function isScreenFile(file: string): boolean {
+  if (file.startsWith(viewsDir)) return true;
+  if (!file.startsWith(webDir) || file.startsWith(kitDir)) return false;
+  const r = stem(file);
+  return !r.includes("/") && TOP_SCREEN_FILES.includes(r);
+}
+
+// 화면 이름: 묶음이 있으면 그 이름, 없으면 확장자 뺀 파일 이름. 화면이 아니면 null
+export function screenOf(file: string): string | null {
+  if (!file.startsWith(webDir)) return null;
+  const r = stem(file);
+  for (const [name, members] of SCREEN_GROUPS) if (members.some((m) => (m.endsWith("/") ? r.startsWith(m) : r === m))) return name;
+  return isScreenFile(file) ? r : null;
+}
+
+// 스타일시트의 주인 화면: 같은 폴더의 같은 이름 소스 파일의 화면, 없으면 STYLESHEET_OWNER, 그래도 없으면 null(공용)
+export function stylesheetOwner(css: string, sources: ReadonlySet<string>): string | null {
+  const base = css.replace(/\.css$/, "");
+  for (const ext of [".tsx", ".ts"]) if (sources.has(base + ext)) return screenOf(base + ext);
+  return STYLESHEET_OWNER[css.slice(css.lastIndexOf("/") + 1)] ?? null;
+}
+
+// `import "./x.css"` 지정자(side-effect import). 값 간선에는 들어가지 않아 따로 읽는다
+export function cssSpecifiers(src: string): string[] {
+  return [...stripComments(src).matchAll(/(?:^|[;\n}])\s*import\s+(['"])([^'"\n]+\.css)\1/g)].map((m) => m[2]);
+}
+
+export function layerViolations(files: Map<string, string>): string[] {
+  const sources = new Set(files.keys());
+  const g = buildGraph(files);
+  const out: string[] = [];
+  for (const [file, src] of files) {
+    const inKit = file.startsWith(kitDir);
+    const screen = screenOf(file);
+    if (inKit) {
+      for (const { to } of g.edges.get(file) ?? []) if (isScreenFile(to)) out.push(`${rel(file)} -> ${rel(to)} (kit이 화면 파일을 가져온다)`);
+    }
+    if (!inKit && screen === null) continue;
+    for (const spec of cssSpecifiers(src)) {
+      const css = resolve(dirname(file), spec);
+      if (inKit) {
+        if (!css.startsWith(kitDir)) out.push(`${rel(file)} -> ${rel(css)} (kit이 kit 밖 스타일시트를 가져온다)`);
+        continue;
+      }
+      const owner = stylesheetOwner(css, sources);
+      if (owner !== null && owner !== screen) out.push(`${rel(file)} -> ${rel(css)}`);
+    }
+  }
+  return out.sort();
+}
+
+test("층 지도: kit은 화면에 기대지 않고, 화면은 남의 스타일시트를 가져오지 않는다(허용 목록 밖)", () => {
+  const files = new Map<string, string>();
+  for (const f of trackedSources()) if (f.startsWith(webDir)) files.set(f, readFileSync(f, "utf8"));
+  const found = layerViolations(files);
+  const allowed = Object.keys(ALLOWED_LAYER_VIOLATIONS);
+  const fresh = found.filter((k) => !allowed.includes(k));
+  assert.deepEqual(fresh, [], `층 규칙을 어긴 새 import:\n  ${fresh.join("\n  ")}\n화면은 자기 스타일시트와 kit, 공용 토큰만 쓴다. 필요한 클래스는 kit 부품으로 올리거나 그 화면 안으로 옮긴다. 허용 목록에 더하지 않는다.`);
+  const gone = allowed.filter((k) => !found.includes(k));
+  assert.deepEqual(gone, [], `없어진 위반이 허용 목록에 남아 있다. 지운다(목록은 줄기만 한다):\n  ${gone.join("\n  ")}`);
+  const unitless = allowed.filter((k) => !ALLOWED_LAYER_VIOLATIONS[k].trim());
+  assert.deepEqual(unitless, [], "허용 항목마다 그것을 없앨 화면 단위를 적는다");
+});
+
 // 해석기 자체의 시험(합성 소스)
 const g = (o: Record<string, string>) => buildGraph(new Map(Object.entries(o).map(([k, v]) => [`/r/${k}`, v])));
 
@@ -229,4 +337,43 @@ test("해석기: web이 값 import로 @hono/*에 닿는 것도 잡는다", () =>
     "server/x.ts": `import { Hono } from "@hono/node-server";`,
   });
   assert.equal(webNodeChains(graph, (f) => f.startsWith("/r/web/")).length, 1);
+});
+
+const wf = (o: Record<string, string>) => new Map(Object.entries(o).map(([k, v]) => [join(root, "web/src", k), v]));
+
+test("층 지도 해석기: 남의 스타일시트와 kit→화면 import를 잡고, 제 것·kit·공용은 통과시킨다", () => {
+  const ok = layerViolations(
+    wf({
+      "views/Home.tsx": `import "./Home.css";\nimport "../kit/Fold.css";`,
+      "views/Home.css": ``,
+      "kit/Fold.tsx": `import "./Fold.css";\nimport { Icon } from "./Icon.tsx";`,
+      "kit/Icon.tsx": ``,
+      "badges.tsx": `import "./badges.css";`,
+    }),
+  );
+  assert.deepEqual(ok, []);
+  const bad = layerViolations(
+    wf({
+      "views/Release.tsx": `import "./Home.css";`,
+      "views/Home.tsx": ``,
+      "kit/Fold.tsx": `import "../views/Home.css";\nimport { Home } from "../views/Home.tsx";`,
+    }),
+  );
+  assert.deepEqual(bad, [
+    "web/src/kit/Fold.tsx -> web/src/views/Home.css (kit이 kit 밖 스타일시트를 가져온다)",
+    "web/src/kit/Fold.tsx -> web/src/views/Home.tsx (kit이 화면 파일을 가져온다)",
+    "web/src/views/Release.tsx -> web/src/views/Home.css",
+  ]);
+});
+
+test("층 지도 해석기: 한 화면 묶음 안의 공유(HOME의 Atfm, FLEET 폴더)는 위반이 아니다", () => {
+  const v = layerViolations(
+    wf({
+      "views/Home.tsx": `import "./Atfm.css";`,
+      "views/Atfm.tsx": ``,
+      "views/fleet/Fleet.tsx": `import "../FleetCrew.css";`,
+      "views/FleetCrew.tsx": ``,
+    }),
+  );
+  assert.deepEqual(v, []);
 });

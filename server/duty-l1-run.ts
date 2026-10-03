@@ -16,7 +16,7 @@ import { loadDutyConfig } from "./duty-config.ts";
 import { DUTY_TEAM, issueVerdict, type LinearOp, parseLinearBody, resolveLabels, stateVerdict } from "./duty-linear.ts";
 import { standBranch, standDoneVerdict, standNameOf, standPath, worktreePaths } from "./duty-stand.ts";
 import { record } from "./recorder.ts";
-import { createDutyComment, createDutyIssue, type CreateInput, type DutyIssueRead, type DutyTeam, fetchDutyIssue, fetchDutyTeam, fetchProjectId, updateDutyIssue, type UpdateInput } from "./sources/linear-write.ts";
+import { createDutyBlocks, createDutyComment, createDutyIssue, type CreateInput, type DutyIssueRead, type DutyTeam, fetchDutyIssue, fetchDutyTeam, fetchProjectId, updateDutyIssue, type UpdateInput } from "./sources/linear-write.ts";
 
 const run = promisify(execFile);
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,9 +32,14 @@ export interface L1Deps {
   create: (i: CreateInput) => Promise<{ key: string; url: string }>;
   update: (id: string, i: UpdateInput) => Promise<{ key: string; state: string }>;
   comment: (issueId: string, body: string) => Promise<{ id: string }>;
+  blocks: (blockerId: string, blockedId: string) => Promise<void>;
   forget: (key: string) => void;
   record: typeof record;
   now: () => Date;
+  // REVIEW 턴(ATC-396, 선택): 서버가 시작한 턴이 도는 동안 제안은 Backlog에만(원칙 10), 열린 이슈가 이미 다루는 것은 만들지 않는다
+  reviewTurn?: () => boolean;
+  openSimilar?: (title: string) => Promise<string | null>; // 비슷한 열린 이슈의 key
+  onProposal?: (key: string, title: string) => void;
 }
 
 const repoGit = (repo: string) => async (args: string[]) => (await run("git", ["-C", repo, ...args], { timeout: 60_000, maxBuffer: 4 << 20 })).stdout;
@@ -49,6 +54,7 @@ export const defaultL1Deps: L1Deps = {
   create: createDutyIssue,
   update: updateDutyIssue,
   comment: createDutyComment,
+  blocks: createDutyBlocks,
   forget: forgetIssue,
   record,
   now: () => new Date(),
@@ -135,7 +141,14 @@ function standDoneVerdictReply(registered: boolean, dirty: boolean, merged: bool
 // ── Linear ──
 export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
   try {
+    // REVIEW 턴(ATC-396): 스스로 낸 제안은 Backlog까지만. Todo는 SUPERVISOR가 RELEASE 화면에서 쏜다(원칙 10)
+    const reviewing = d.reviewTurn?.() === true;
+    if (reviewing && "state" in op && op.state === "Todo") return fail(403, "REVIEW 턴에는 Todo로 두지 않는다 — 제안은 Backlog에, 발권은 SUPERVISOR가 RELEASE 화면에서(원칙 10)");
     if (op.action === "create") {
+      if (reviewing) {
+        const same = await d.openSimilar?.(op.title);
+        if (same) return fail(409, `${same}가 비슷한 일을 이미 다룸 — 새로 만들지 않는다(필요하면 ${same}에 댓글로 근거를 더한다)`);
+      }
       const team = await d.team();
       if (!team) return fail(502, `Linear에 ${DUTY_TEAM} 팀이 없음`);
       const to = team.states.find((s) => s.name === op.state && (s.type === "backlog" || s.type === "unstarted"));
@@ -155,8 +168,31 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
         if (!id) return fail(400, `없는 프로젝트: ${op.project}`);
         input.projectId = id;
       }
+      // 막는 FLIGHT는 만들기 전에 읽어 둔다: 없는 key로 이슈만 남는 일이 없게
+      const blockers: { id: string; key: string }[] = [];
+      for (const k of op.blockedBy ?? []) {
+        const b = await d.issue(k);
+        if (!b) return fail(404, `blockedBy ${k}를 찾을 수 없음`);
+        const v = issueVerdict(b);
+        if (!v.ok) return fail(v.status, v.error);
+        blockers.push({ id: b.id, key: b.key });
+      }
       const r = await d.create(input);
-      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state } };
+      let blockedBy: string[] = [];
+      let blockNote: string | undefined;
+      if (blockers.length) {
+        // 이슈는 이미 만들어졌다. 관계가 실패해도 이슈를 지우지 않고(지우지 못한다) 알린다
+        const made = await d.issue(r.key);
+        try {
+          if (!made) throw new Error(`${r.key}를 다시 읽지 못함`);
+          for (const b of blockers) await d.blocks(b.id, made.id);
+          blockedBy = blockers.map((b) => b.key);
+        } catch (e) {
+          blockNote = `이슈 ${r.key}는 만들었지만 막는 관계를 걸지 못함: ${msgOf(e)}`;
+        }
+      }
+      if (reviewing) d.onProposal?.(r.key, op.title);
+      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(blockNote ? { warning: blockNote } : {}) } };
     }
     const issue = await d.issue(op.key);
     if (!issue) return fail(404, `${op.key}를 찾을 수 없음`);

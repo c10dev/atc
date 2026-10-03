@@ -11,11 +11,11 @@ import type { RestartBlocker } from "./occ-safe.ts";
 export type RecycleMode = "off" | "shadow" | "on";
 export const RECYCLE_MODES: readonly RecycleMode[] = ["off", "shadow", "on"];
 
-// ATC-165 권고(docs/control-recycle.md 2.1): TOWER·OCC·CROSSCHECK 250k, MCC 150k, REVIEW는 스스로 auto-compact(170k)해서 없음(null)
-export const DEFAULT_CAPS: Readonly<Record<string, number | null>> = { TOWER: 250_000, OCC: 250_000, MCC: 150_000, CROSSCHECK: 250_000, REVIEW: null };
+// ATC-165 권고(docs/control-recycle.md 2.1): TOWER·OCC 250k, MCC 150k(CROSSCHECK는 은퇴, ATC-371), REVIEW는 스스로 auto-compact(170k)해서 없음(null)
+export const DEFAULT_CAPS: Readonly<Record<string, number | null>> = { TOWER: 250_000, OCC: 250_000, MCC: 150_000, REVIEW: null };
 // SUPERVISOR 결정(2026-09-30): OCC는 미기록 CAPTAIN 보고 틈(2.3 항목 4)이 별도 이슈로 닫힐 때까지 어떤 모드에서도 atc가 재시작하지 않는다.
 // 컨텍스트는 재고 CAP을 넘으면 알림만 한다. 나중에 켜는 것은 설정 하나(`auto.OCC: true`)다
-export const DEFAULT_AUTO: Readonly<Record<string, boolean>> = { TOWER: true, OCC: false, MCC: true, CROSSCHECK: true, REVIEW: true };
+export const DEFAULT_AUTO: Readonly<Record<string, boolean>> = { TOWER: true, OCC: false, MCC: true, REVIEW: true };
 export const DEFAULT_COOLDOWN_HOURS = 3;
 export const DEFAULT_WAIT_ALERT_MIN = 60; // CAP을 넘고 wait인 채 이만큼 지나면 SUPERVISOR에게 CAUTION(ATC-175)
 export const WAIT_ALERT_MIN_RANGE = [5, 1440] as const;
@@ -130,7 +130,7 @@ export function safeBlocksOf(name: string, f: SafeFacts | null): string[] {
     if (!f.mcc) out.push("MCC queue를 읽지 못함");
     else if (f.mcc.blocked) out.push(f.mcc.blocked);
   }
-  return out; // CROSSCHECK·REVIEW: 공통 두 조건뿐
+  return out; // REVIEW: 공통 두 조건뿐
 }
 
 // job이 턴 사이에 있다(ATC-175): tempo가 idle이고 state가 blocked가 아니다. ATC-165 1.3은 done/idle을 재었고(간격 사이 job), working/idle(다음 바퀴를 기다리는 /loop)도 같은 쉬는 모양이다.

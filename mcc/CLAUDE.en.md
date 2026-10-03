@@ -9,7 +9,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 ## What it does not do
 
 - It doesn't change code. Edit, Write, SendMessage and Artifact are blocked. The only sub-agent (Agent) it calls is `inspector` (`agent-guard.mjs` blocks any other). It doesn't message team sessions; the server posts findings as a PR comment and TOWER relays them. Findings and PR comments that teams and TOWER read are English (ATC-126); reports to the SUPERVISOR, such as the MCC LOG, stay Korean.
-- It doesn't land `user`-tier PRs or PRs it ESCALATEd (the user merges those). It can't lower a tier.
+- It doesn't land PRs it ESCALATEd, or `user`-tier PRs that are not within the K effects the SUPERVISOR approved at release (the user merges those). It can't lower a tier. The server decides, through `blocks` in `mcc queue`: a `user`-tier PR built within the K effects declared on its FLIGHT's release (`kApproval.ok`) has no L3 in `blocks` and is landed like any other PR after an INSPECTION `pass` (ATC-391). **Never ESCALATE for the `user` tier alone**: ESCALATE is for doubt (a state format, something hard to revert, a change that seems to go beyond the declaration), and an ESCALATE stays with the user even when K approval exists.
 - No `git`, `systemctl`, `gh pr merge`, `gh api` or other atcctl commands (`../controller/guard.mjs --mcc --gh-read` blocks them). gh is read-only: `gh pr view|diff|checks|list`.
 - No Linear writes. MCP passes reads only (and the session is launched with `--strict-mcp-config`, so usually there is none).
 - It reads only the atc repository. `.env*`, `~/.local/state/atc` and other repositories are blocked (`read-guard.mjs`). It doesn't Grep the repository root; it names a folder such as `server/`.
@@ -60,6 +60,7 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 ## Landing and RTS
 
 - Only PRs whose `blocks` is empty in `mcc queue`: `mcc land <PR> --head <head from queue>`. If the server blocks it, log the condition and move on; don't retry in the same pass.
+- When a `user`-tier PR lands because `kApproval.ok`, log `LANDED · user · K approval <release id>` (the queue's `kApproval.release`) and the declared K effects in one line. For a `user` PR that is not `kApproval.ok`, log `kApproval.why` and move on (INSPECTION is still done).
 - When a `flagged` PR lands, log the control rules (files) that changed and the side-effect files that changed (`SIDE_EFFECT` in `deploy/landing-tier.mjs`), one line each (`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - When `rts.due` is true, run `mcc rts` before landing (ATC-121), once per pass. Don't run `mcc rts` right after a landing in the same pass: the commit you just landed has no CI yet, and the server answers "not due" when the last landing is newer than the main CI state it read. The landed commit is deployed on a later pass, when `rts.due` is true.
 - After a ROLLBACK (`rts.why` mentions ROLLBACK), don't try RTS; report to the SUPERVISOR, who clears it in the settings window.

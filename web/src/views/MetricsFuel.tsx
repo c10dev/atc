@@ -11,6 +11,8 @@ import { FuelAccounts } from "./fleet/Fuel.tsx";
 import { MetricsFuelTrend, SummaryChange, type TrendData, type TrendState, UsageToday, useUsageTrend } from "./MetricsFuelTrend.tsx";
 import "./MetricsFuel.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // FUEL 개요(ATC-137, docs/fuel.md "FUEL overview as built"): METRICS 탭 안 #metrics/fuel. 읽기만 한다.
 // /api/fuel과 /api/logbook은 열 때, 기간을 바꿀 때, 새로고침 버튼을 누를 때만 읽는다(스냅샷마다 읽지 않는다).
@@ -85,9 +87,9 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
         </p>
       )}
       {!fuel ? (
-        st.loading ? <p className="empty">불러오는 중…</p> : null
+        st.loading ? <Loading>불러오는 중…</Loading> : null
       ) : fuel.requests === 0 ? (
-        <p className="empty mf-empty">이 기간({fuel.days}일)에 읽은 요청이 없다 — ~/.claude/projects의 대화 기록에 그 기간 기록이 없다.</p>
+        <Empty className="mf-empty">이 기간({fuel.days}일)에 읽은 요청이 없다 — ~/.claude/projects의 대화 기록에 그 기간 기록이 없다.</Empty>
       ) : (
         <Body fuel={fuel} entries={st.entries} snapshot={snapshot} trend={trend} />
       )}
@@ -281,7 +283,7 @@ function Leaks({ fuel }: { fuel: FuelData }) {
           <tbody>
             {leaks.map((l) => (
               <tr key={l.key} className={l.outside ? "mf-outside" : undefined}>
-                <td className="mono">{l.label}{l.outside && <span className="faint"> (LEAK 밖)</span>}</td>
+                <td><span className="mono">{l.label}</span>{l.outside && <span className="faint"> (LEAK 밖)</span>}</td>
                 <td className="num">{l.count}</td>
                 <td className="num">{tokensText(l.tokens)}</td>
                 <td className="num">{l.cost ? money(l.cost) : l.unpricedTokens ? "no price" : "—"}</td>
@@ -420,7 +422,7 @@ function Top({ entries, since, tickets }: { entries: LogbookFuelEntry[]; since: 
         TOP FLIGHTS <em>ARRIVED, NET 큰 순서 · 최대 10</em>
       </h2>
       {top.length === 0 ? (
-        <p className="empty mf-empty">이 기간에 값이 매겨진 ARRIVED FLIGHT가 없다.</p>
+        <Empty className="mf-empty">이 기간에 값이 매겨진 ARRIVED FLIGHT가 없다.</Empty>
       ) : (
         <div className="mf-scroll">
           <table className="mf-table">
@@ -450,7 +452,7 @@ function Top({ entries, since, tickets }: { entries: LogbookFuelEntry[]; since: 
                     ) : f.verdict === "inside" ? (
                       <span className="mf-verdict" title="TRIP FUEL 안">inside</span>
                     ) : (
-                      <span className="faint" title="비교할 FLIGHT가 모자람">—</span>
+                      <span className="faint">비교 FLIGHT 부족</span>
                     )}
                   </td>
                 </tr>

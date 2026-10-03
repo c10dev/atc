@@ -1,7 +1,9 @@
 import { config } from "../config.ts";
 import { teamOfKey } from "../linear-keys.ts";
+import { k3CheckOf } from "../k3-allow.ts";
 import { kEffectsOf, releaseHashOf } from "../release.ts";
 import type { Ticket, TicketColumn, TicketStateType } from "../model.ts";
+import { applyWrite, reconcileFetch, type StateOverlay } from "../linear-overlay.ts";
 
 const POLL_MS = 60_000;
 const ENDPOINT = "https://api.linear.app/graphql";
@@ -73,6 +75,9 @@ let lastFetch = 0;
 let inflight: Promise<void> | null = null;
 let generation = 0; // resetLinear마다 올라간다. 이전 설정으로 가져온 결과는 버린다.
 let wantedKeys = new Set<string>();
+// atc가 Linear에 쓴 상태 변경(ATC-448): 쓴 직후 캐시에 보이고, 쓰기 뒤에 시작한 가져오기가 도착하면 Linear의 답이 이긴다(linear-overlay.ts)
+let overlays = new Map<string, StateOverlay>();
+let seq = 0;
 
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await fetch(ENDPOINT, {
@@ -125,6 +130,7 @@ export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
     parent: n.parent?.identifier ?? null,
     children: uniq((n.children?.nodes ?? []).map((c) => c.identifier)),
     kEffects: kEffectsOf(n.description),
+    ...(({ declared, check }) => ({ ...(declared.length ? { k3: declared } : {}), ...(check ? { k3Check: check } : {}) }))(k3CheckOf(n.description)),
     releaseHash: releaseHashOf(n.description),
   };
 }
@@ -160,6 +166,7 @@ export function mergeColumns(perTeam: WorkflowState[][]): TicketColumn[] {
 let lastByTeam = new Map<string, { tickets: Ticket[]; states: WorkflowState[] }>();
 async function fetchAll() {
   const gen = generation;
+  const fetchSeq = ++seq;
   const teams = config.linearTeamKeys;
   const results = await Promise.allSettled(teams.map((team) => fetchTeam(team, [...wantedKeys].filter((k) => teamOfKey(k) === team))));
   if (gen !== generation) return;
@@ -176,7 +183,9 @@ async function fetchAll() {
   if (merged.some((m) => !m)) throw new Error(errors.join(" · "));
   const got = merged as { tickets: Ticket[]; states: WorkflowState[] }[];
   state.columns = mergeColumns(got.map((r) => r.states));
-  state.tickets = got.flatMap((r) => r.tickets);
+  const rec = reconcileFetch(got.flatMap((r) => r.tickets), overlays, fetchSeq);
+  overlays = rec.overlays;
+  state.tickets = rec.tickets;
   state.fetchedAt = new Date().toISOString();
   state.error = errors.length ? `일부 팀을 읽지 못해 마지막 결과를 씀 — ${errors.join(" · ")}` : null;
 }
@@ -191,7 +200,21 @@ export function resetLinear() {
   state.tickets = [];
   state.columns = [];
   lastFetch = 0;
+  overlays = new Map();
 }
+
+// atc 자신의 Linear 쓰기가 성공한 뒤에만 부른다: 캐시의 티켓 상태를 바로 바꾼다(다음 스냅샷과 /api/releases가 Linear와 같아진다)
+export function noteLocalState(key: string, next: { name: string; type: string }) {
+  const color = state.columns.find((c) => c.name === next.name)?.color ?? null;
+  const r = applyWrite(state.tickets, overlays, key, { ...next, color }, ++seq);
+  overlays = r.overlays;
+  state.tickets = r.tickets;
+  for (const l of localStateListeners) l(key, { ...next, color });
+}
+// 이미 만들어 둔 스냅샷(2초 주기)에도 같은 변경을 싣는 곳(index.ts): 바로 다음 읽기가 옛 상태를 보지 않게
+type LocalStateListener = (key: string, next: { name: string; type: string; color: string | null }) => void;
+const localStateListeners: LocalStateListener[] = [];
+export const onLocalState = (l: LocalStateListener) => void localStateListeners.push(l);
 
 // 1분마다 백그라운드로 갱신하고, 호출 시점에는 마지막 결과를 바로 돌려준다.
 export function readLinear(branchKeys: Set<string>): LinearState {

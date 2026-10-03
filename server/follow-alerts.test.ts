@@ -34,7 +34,7 @@ test("follow|ready|<KEY>: queue, cue call. 풀 수 있게 되면 한 번, 풀리
   assert.equal(a.dest, "queue");
   assert.equal(a.cue, "call");
   assert.equal(a.group, "follow");
-  assert.equal(a.link, "#follow");
+  assert.equal(a.link, "#flights");
   assert.match(a.text, /ATC-5 제목 ATC-5 — 풀 수 있음/);
   // 풀었다: ready가 꺼진다 → 사라진다
   const d = diffAlerts(new Map(on.map((x) => [x.key, x])), run([row("ATC-5", { ready: false })]));
@@ -56,7 +56,7 @@ test("follow|approve|<D-id>: 따라가는 줄의 제안은 pending|proposal을 �
   const a = out.find((x) => x.key === "follow|approve|D-1")!;
   assert.equal(a.dest, "queue");
   assert.equal(a.cue, "call");
-  assert.equal(a.link, "#dispatch");
+  assert.equal(a.link, "#home");
   assert.equal(a.ask, "assign");
   assert.equal(a.aircraft, "TEAM_K");
   // follow가 없으면 전과 같다
@@ -73,7 +73,7 @@ test("follow가 만든 approve도 SUMMARY의 DISPATCH 승인 대기에 세고, D
       { id: "D-2", kind: "ASSIGN", status: "proposed", flight: "ATC-6", aircraftName: "TEAM_L", holdAt: null, statusAt: iso(5) },
     ],
   });
-  const s = summaryOf({ items, fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: iso(0) });
+  const s = summaryOf({ items, waiting: [], fuelAccounts: [], rts: null, working: { aircraft: 0, control: 0 }, at: iso(0) });
   assert.equal(s.pending.dispatch, 2);
   assert.equal(proposalAlertKey(items), "follow|approve|D-1,pending|proposal|D-2");
 });

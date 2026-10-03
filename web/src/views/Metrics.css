@@ -39,7 +39,7 @@
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .mx-ready .label {
   margin-top: 0;
@@ -104,7 +104,7 @@
   padding: var(--space-3) var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .mx-kpi-label {
   font-size: var(--text-sm);
@@ -131,7 +131,7 @@
   padding: var(--space-2) var(--space-3) var(--space-2);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .mx-trend figcaption {
   display: flex;
@@ -158,7 +158,7 @@
 .mx-plot {
   position: relative;
   height: 92px;
-  margin: 8px 0 4px 22px;
+  margin: var(--space-2) 0 var(--space-1) var(--space-6);
   cursor: crosshair;
 }
 .mx-plot:focus-visible {
@@ -174,8 +174,8 @@
 }
 .mx-ymax {
   position: absolute;
-  left: -22px;
-  top: -6px;
+  left: calc(var(--space-6) * -1);
+  top: calc(var(--space-1-5) * -1);
   width: 18px;
   text-align: right;
   font: var(--text-2xs) var(--mono);
@@ -211,7 +211,7 @@
   position: absolute;
   width: 9px;
   height: 9px;
-  margin: -4.5px 0 0 -4.5px;
+  margin: calc(var(--space-1) * -1) 0 0 calc(var(--space-1) * -1);
   border-radius: 50%;
   background: var(--cyan);
   box-shadow: 0 0 0 2px var(--panel);
@@ -220,43 +220,11 @@
 .mx-xaxis {
   display: flex;
   justify-content: space-between;
-  margin-left: 22px;
+  margin-left: var(--space-6);
   font: var(--text-2xs) var(--mono);
   color: var(--faint);
 }
 
-/* 일별 표 */
-.mx-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  font-size: var(--text-sm);
-}
-.mx-table th {
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.12em;
-  color: var(--faint);
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-.mx-table td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line);
-}
-.mx-table tr:last-child td {
-  border-bottom: 0;
-}
-.mx-table .num {
-  text-align: right;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-}
 .mx-on {
   color: var(--radar);
   font: 700 var(--text-xs) var(--mono);
@@ -275,6 +243,8 @@
 /* METRICS 하위 화면(ATC-137): OPERATIONS · FUEL */
 .mx-sub {
   display: inline-flex;
+  flex-wrap: wrap; /* 하위 화면이 다섯이라 좁은 폭(390px)에서 줄을 바꾼다(ATC-380) */
+  max-width: 100%;
   gap: var(--space-1);
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--line);

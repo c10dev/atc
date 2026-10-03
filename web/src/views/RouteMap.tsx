@@ -1,8 +1,10 @@
 import { X } from "lucide-react";
-import { IconButton } from "../Icon.tsx";
+import { IconButton } from "../kit/Icon.tsx";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import "./RouteMap.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // ROUTE MAP: ROUTE(Linear 프로젝트)마다 WAYPOINT(마일스톤)를 가로 경로로. 읽기만 한다.
 // 계산(상태·FLIGHT·ETA)은 서버(server/routes.ts)가 하고 여기서는 그리기만 한다. 설계: docs/routes.md
@@ -114,9 +116,9 @@ export function RouteMap({ refreshKey }: { refreshKey: string }) {
         </ul>
       )}
       {!data ? (
-        !error && <p className="empty">불러오는 중…</p>
+        !error && <Loading>불러오는 중…</Loading>
       ) : !data.routes.length ? (
-        <p className="empty nw-empty">보여 줄 ROUTE가 없음</p>
+        <Empty className="nw-empty">보여 줄 ROUTE가 없음</Empty>
       ) : (
         <div className="rm-list">
           {withWp.map((r) => (
@@ -151,7 +153,7 @@ function RouteCard({ route, windowDays }: { route: Route; windowDays: number }) 
       <header className="rm-head">
         <span className="rm-name">{route.project}</span>
         <span className="mono muted">{pct(route.progress)}</span>
-        {route.targetDate && <span className="mono muted">목표 {route.targetDate}</span>}
+        {route.targetDate && <span className="muted">목표 <span className="mono">{route.targetDate}</span></span>}
         <OpenCounts open={route.open} />
         {route.aircraft.length > 0 && <span className="mono rm-ac">✈ {route.aircraft.join(" · ")}</span>}
         <span className="muted rm-rate" title={`최근 ${windowDays}일에 끝난 FLIGHT(LOGBOOK ARRIVED·Linear 완료)`}>
@@ -160,7 +162,7 @@ function RouteCard({ route, windowDays }: { route: Route; windowDays: number }) 
       </header>
       {route.waypoints.length ? (
         <>
-          <div className="nw-scroll rm-scroll">
+          <div className="kit-scroll rm-scroll">
             <Line route={route} selected={open} onPick={(id) => setOpen((o) => (o === id ? null : id))} />
           </div>
           {sel && <Detail w={sel} route={route} windowDays={windowDays} onClose={() => setOpen(null)} />}

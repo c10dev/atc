@@ -31,7 +31,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING, 사용자와 직접 작�
 - PR은 Draft로 올리지 않는다(MCC는 Draft를 착륙시키지 않는다). 끝나지 않은 일은 보고만 한다.
 - 팀 세션, DUTY, ENGINEERING은 머지하지 않는다. 머지는 LANDING CLEARANCE 등급(`deploy/landing-tier.mjs`, 바뀐 파일 경로로 정함)을 따른다.
   - `auto`(읽기만 하는 서버·화면·문서·테스트)와 `flagged`(관제 세션 매뉴얼·CLI, 외부 부작용이 있는 서버 코드): CI(`check`)와 MCC INSPECTION `pass`면 MCC가 착륙시키고, 사용자가 먼저 머지해도 된다. `flagged`는 PR 본문과 보고에 바뀐 관제 규칙과 외부 부작용 파일을 따로 적는다. GitHub auto-merge는 쓰지 않는다.
-  - `user`(guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`, `rulebook/`)는 사용자가 머지한다. 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
+  - `user`(guard, `.claude/`, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`, `rulebook/`)는 사용자가 머지한다. 단 K 승인 PR은 MCC(`docs/mcc.md`). 운영 상태 형식을 바꾸거나 되돌리기 어려운 PR, 검토에서 의심이 남는 PR도 `user`로 올린다(본문의 등급에 적고, MCC INSPECTION은 ESCALATE한다).
   - `user`이거나 ESCALATE된 PR은 본문에 "Behavior change" 절(BEFORE/AFTER 글자 그림, 형식은 `atc-task` 7절)을 둔다. MCC INSPECTION이 없거나 diff와 어긋난 그림을 P1로 지적한다.
 
 ## 코드
@@ -59,6 +59,6 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING, 사용자와 직접 작�
 - 다른 팀 세션에 메시지를 보내지 않는다. 결과와 막힌 점은 일을 맡긴 세션(OCC, ENGINEERING, 사용자)에게만 보고한다.
 - atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다. `[DISPATCH D-xxxx] RECALL`을 받으면 작업을 멈추고 `READBACK D-xxxx RECALL`로 답한다. `[OCC CC-xxxx]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고 그대로 팀원을 바꾼다(못 하면 `UNABLE CC-xxxx — 사유`). `[ATC C-xxxx]` CLEARANCE는 끝줄이 청하는 답으로 답한다(지시는 `READBACK`·`UNABLE`·`STANDBY`, 알림은 `ROGER C-xxxx`). STAND(worktree) 없이 하는 SURVEY·CHECK FLIGHT를 마치면 OCC에 결과 링크나 한 줄로 알린다.
 - 직접 맡기는 지시(`BRIEF: DIRECT`)는 `READBACK ATC-n`으로 답한다. `GO AROUND`와 `FIX` CLEARANCE는 알림이 아니라 행동 지시다:
-  - `GO AROUND`(ATC-128): `READBACK C-xxxx` → `origin/main`을 병합하거나 rebase해 충돌을 풀고 충돌 조각을 대화에 보인다 → 검증 → `--force-with-lease`로만 push(맨 `--force` 금지) → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿔 한쪽을 골라야 하면 풀지 말고 `UNABLE C-xxxx — 사유`.
+  - `GO AROUND`(ATC-128): `READBACK C-xxxx` → `origin/main`을 병합해(rebase 없이) 충돌을 풀고 충돌 조각을 대화에 보인다 → 검증 → 맨 `git push`(force 금지) → PR 본문에 푼 내용. 두 PR이 같은 동작을 다르게 바꿔 한쪽을 골라야 하면 풀지 말고 `UNABLE C-xxxx — 사유`.
   - `FIX`(ATC-270, 현재 head에 리뷰 지적): `READBACK C-xxxx` → 같은 브랜치에서 고치거나 안 고칠 것은 PR 본문에 이유(PILOT'S DISCRETION) → 검증 → push → 맡긴 세션에 보고. 못 고치면 `UNABLE C-xxxx — 사유`.
 - 끝낸 일의 최종 보고는 고정 머리(`[TEAM_X → OCC] ARRIVED ATC-n · PR #n`와 `TIER`·`TESTS`·`DISCRETION`·`BLOCKED` 줄)로 시작한다. 형식은 `atc-task` 8절.

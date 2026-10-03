@@ -5,8 +5,14 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import { MetricsLeaks } from "./MetricsLeaks.tsx";
+import { MetricsMisfire } from "./MetricsMisfire.tsx";
+import { Network } from "./Network.tsx";
+import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
@@ -41,11 +47,19 @@ function stamp(iso: string, clock: "utc" | "local", withDate: boolean): string {
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
-// 하위 화면(ATC-137): #metrics는 운용 지표, #metrics/fuel은 FUEL 개요. 주소로 고른다
-type Sub = "ops" | "fuel" | "leaks";
+// 하위 화면(ATC-137, ATC-380): #metrics는 운용 지표, #metrics/leaks·misfire·fuel·network. 주소로 고른다.
+// 옛 #network는 #metrics/network로 열린다(legacy-hash.ts)
+type Sub = "ops" | "leaks" | "misfire" | "fuel" | "network";
+const SUBS: readonly (readonly [Sub, string])[] = [
+  ["ops", "OPERATIONS"],
+  ["leaks", "LEAKS"],
+  ["misfire", "MISFIRE"],
+  ["fuel", "FUEL"],
+  ["network", "NETWORK"],
+];
 const subOfHash = (): Sub => {
   const p = location.hash.slice(1).split("/")[1];
-  return p === "fuel" || p === "leaks" ? p : "ops";
+  return SUBS.find(([id]) => id === p)?.[0] ?? "ops";
 };
 function useSub(): [Sub, (s: Sub) => void] {
   const [sub, setSub] = useState<Sub>(subOfHash);
@@ -62,19 +76,23 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
   return (
     <section className="metrics">
       <div className="mx-sub" role="tablist" aria-label="METRICS">
-        {(
-          [
-            ["ops", "OPERATIONS"],
-            ["fuel", "FUEL"],
-            ["leaks", "LEAKS"],
-          ] as const
-        ).map(([id, label]) => (
+        {SUBS.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={sub === id} onClick={() => goSub(id)}>
             {label}
           </button>
         ))}
       </div>
-      {sub === "fuel" ? <MetricsFuel snapshot={snapshot ?? null} /> : sub === "leaks" ? <MetricsLeaks refreshKey={refreshKey} /> : <Operations refreshKey={refreshKey} />}
+      {sub === "fuel" ? (
+        <MetricsFuel snapshot={snapshot ?? null} />
+      ) : sub === "leaks" ? (
+        <MetricsLeaks refreshKey={refreshKey} />
+      ) : sub === "misfire" ? (
+        <MetricsMisfire refreshKey={refreshKey} />
+      ) : sub === "network" ? (
+        <Network refreshKey={refreshKey} />
+      ) : (
+        <Operations refreshKey={refreshKey} />
+      )}
     </section>
   );
 }
@@ -118,16 +136,17 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        <p className="empty">불러오는 중…</p>
+        <Loading>불러오는 중…</Loading>
       ) : (
         <>
           <Readiness data={data} />
           <KpiRow data={data} />
+          <SingleLane refreshKey={refreshKey} />
           <h2 className="label">
             TRENDS <em>5분 표본</em>
           </h2>
           {data.series.length < 2 ? (
-            <p className="empty mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</p>
+            <Empty className="mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</Empty>
           ) : (
             <div className="mx-trends">
               {TRENDS.map((t) => (
@@ -175,6 +194,15 @@ function KpiRow({ data }: { data: MetricsData }) {
   const tiles = [
     { label: "READBACK 비율", value: pct(c.readbackRate), sub: `READBACK ${c.readBack} / CLEARANCE ${c.issued - c.cancelled} · 중앙값 ${mins(c.readbackMedianMin)}` },
     { label: "CLEARANCE", value: String(c.issued), sub: types || "CLEARANCE 없음" },
+    ...(c.fixReadback && c.fixReadback.elsewhere.n + c.fixReadback.direct.n > 0
+      ? [
+          {
+            label: "FIX·GO AROUND READBACK(중앙값)",
+            value: mins(c.fixReadback.elsewhere.medianMin),
+            sub: `다른 FLIGHT 중 ${c.fixReadback.elsewhere.readBack}/${c.fixReadback.elsewhere.n}건 · 바로 ${mins(c.fixReadback.direct.medianMin)} (${c.fixReadback.direct.readBack}/${c.fixReadback.direct.n}건)`,
+          },
+        ]
+      : []),
     { label: "LOSS OF SEPARATION", value: String(data.conflicts.count), sub: `지속 중앙값 ${mins(data.conflicts.medianMin)} · 열린 ${data.conflicts.open}` },
     { label: "HANDOFF", value: String(data.handoffs), sub: `OUTSTATION 시작 ${data.away}` },
     {
@@ -270,7 +298,8 @@ function Daily({ data }: { data: MetricsData }) {
       <h2 className="label">
         DAILY <em>UTC 날짜</em>
       </h2>
-      <table className="mx-table">
+      <TableScroll label="일별 표">
+      <table className="kit-table">
         <thead>
           <tr>
             <th>날짜</th>
@@ -298,6 +327,7 @@ function Daily({ data }: { data: MetricsData }) {
           ))}
         </tbody>
       </table>
+      </TableScroll>
     </>
   );
 }

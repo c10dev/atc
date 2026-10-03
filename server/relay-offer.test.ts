@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Clearance, LandingBlockCode, PullRequest, Snapshot } from "./model.ts";
 import { offerKey, relayOffersOf, type OfferInput } from "./relay-offer.ts";
+import { liveHolderClaims } from "./occupancy.ts";
+import { goAroundOf } from "./go-around.ts";
 import { supervisorQueueOf, type QueueInput } from "./supervisor-queue.ts";
 import { clearanceTypeOf, lastAircraftOf, relayBriefOf, relayInputOf, type LastAircraftInput, type Relay } from "./relay.ts";
 
@@ -122,4 +124,33 @@ test("SUPERVISOR QUEUE: RELAY 카드 하나, offer가 없어지면 사라진다"
   assert.equal(items[0]!.hash, "#pr/ATCC/5");
   assert.equal(items[0]!.offer!.text, offers[0]!.text);
   assert.equal(supervisorQueueOf({ ...base, relayOffers: [] }, T0).length, 0);
+});
+
+// ATC-440: 끝난 세션의 STAND 점유는 홀더가 아니다
+const sessions = (...x: [string, string][]) => x.map(([id, status]) => ({ id, status }));
+const withSessions = (s: ReturnType<typeof snap>, ss: unknown[]) => ({ ...s, sessions: ss }) as unknown as ReturnType<typeof snap>;
+
+test("충돌 PR의 점유가 끝난 세션 것뿐이면 홀더 카드가 나간다, 살아 있는 점유면 안 나간다", () => {
+  const dead = withSessions(snap([pr(5, ["dirty"])], [holder(5)]), sessions(["s1", "dead"]));
+  const [o] = relayOffersOf(dead, input());
+  assert.equal(o!.type, "GO AROUND");
+  const live = withSessions(snap([pr(5, ["dirty"])], [holder(5)]), sessions(["s1", "idle"]));
+  assert.deepEqual(relayOffersOf(live, input()), []);
+  // 세션을 모르면(목록에 없음) 살아 있는 것으로 본다
+  assert.deepEqual(relayOffersOf(withSessions(snap([pr(5, ["dirty"])], [holder(5)]), []), input()), []);
+});
+
+test("끝난 세션과 살아 있는 세션이 함께 쥐면 살아 있는 쪽이 홀더다", () => {
+  const claims = [holder(5), { ...holder(5), sessionId: "s2" }];
+  const ss = sessions(["s1", "dead"], ["s2", "working"]);
+  assert.deepEqual(relayOffersOf(withSessions(snap([pr(5, ["dirty"])], claims), ss), input()), []);
+  assert.equal(liveHolderClaims(claims as never, `${WT}/atc-5`, ss as never).length, 1);
+});
+
+test("TOWER의 GO AROUND 결정: 홀더가 끝난 세션뿐이면 no-holder, 살아 있으면 send", () => {
+  const p = pr(5, ["dirty"]);
+  const ga = (ss: unknown[]) =>
+    goAroundOf(p, { clearances: [], events: [], pulls: [p], lastLand: undefined, holders: liveHolderClaims([holder(5)] as never, p.standPath, ss as never).length, now: T0 + 5 * 60_000 })!;
+  assert.deepEqual([ga(sessions(["s1", "dead"])).action, ga(sessions(["s1", "dead"])).why], ["supervisor", "no-holder"]);
+  assert.equal(ga(sessions(["s1", "idle"])).action, "send");
 });

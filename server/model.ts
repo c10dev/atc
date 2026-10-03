@@ -100,6 +100,7 @@ export interface Ticket {
   url: string | null;
   updatedAt: string | null;
   project: string | null;
+  airport?: string | null; // 이 FLIGHT의 AIRPORT 코드(DISPATCH와 같은 규칙, airportOfTicket). 어디에도 속하지 않으면 null (ATC-443)
   labels: string[];
   createdAt: string | null;
   startedAt: string | null; // started 상태(ENROUTE 등)에 들어간 시각
@@ -109,6 +110,8 @@ export interface Ticket {
   parent: string | null; // 상위 이슈 key (Linear parent)
   children: string[]; // 하위 이슈 key (Linear children)
   kEffects?: string | null; // 본문 `## K effects` 절의 글(앞 400자, 발권 화면이 클릭 전에 보인다, ATC-376). 절이 없으면 null
+  k3Check?: { lines: number; unparsed: number; none: number }; // 본문 `## K effects`의 `K3` 줄 수·읽히지 않은 수·효과 없음으로 적은 수(ATC-398). K3 줄이 없으면 빈 칸
+  k3?: { label: import("./k3-allow.ts").K3Label; control: string; files: string[] }[]; // 본문 `## K effects`의 읽힌 K3 선언(ATC-372, k3-allow.ts). 없으면 빈 칸
   releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 
@@ -195,6 +198,8 @@ export interface Clearance {
   undeliverableReason?: string | null;
   undeliverableCause?: string | null; // 닿지 못한 원인(ATC-353, address.ts CAUSES). 옛 기록에는 없다
   handAt?: string | null; // SUPERVISOR가 손으로 전했다고 표시한 시각(op hand): 카드를 닫는다
+  // FIX·GO AROUND를 보낼 때 그 AIRCRAFT가 이 STAND 말고 하고 있던 다른 FLIGHT(ATC-387). null이면 다른 FLIGHT 없음, 없으면(옛 기록·다른 종류) 모른다
+  elsewhere?: string | null;
 }
 
 export type TrafficEventKind =

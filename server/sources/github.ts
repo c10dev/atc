@@ -423,6 +423,9 @@ async function readMain(repo: string, slug: string, knownSha: string | null, exp
   return { repo, slug, branch, sha, ...mainStateOf(runs, combined.statuses, expectCheck), ...workflowNamesOf(runs, combined.statuses, suites), at: new Date().toISOString() };
 }
 
+// main의 이전 커밋 하나의 CI 상태(ATC-351, 읽기 전용): 자동 되돌림이 마지막 초록 head를 찾을 때 쓴다
+export const readCommitState = (repo: string, slug: string, sha: string, expectCheck: string | null = null) => readMain(repo, slug, sha, expectCheck);
+
 // check suite → 워크플로 이름(ATC-330, 읽기 전용 gh api). 저장소마다 최신 main head의 것만 둔다. 새 head면 Actions runs를 한 번 읽고,
 // 같은 head에 아직 모르는 suite가 나타났을 때(늦게 뜬 워크플로)만 다시 읽는다 — 매 폴링마다 부르지 않는다. 실패하면 5분 동안 다시 부르지 않고 null(모름)
 const WORKFLOW_RETRY_MS = 5 * 60_000;
@@ -513,20 +516,63 @@ export interface ReviewSource {
   title: string;
   body: string;
   headRefOid: string;
-  files: string[];
+  files: string[]; // 바뀐 파일 이름 전부(fallback에서는 files API의 이름과 옛 이름까지). 제외 게이트가 모두 읽는다
   labels: string[];
   diff: string;
+  diffSource: "pr-diff" | "files-api"; // diff를 어디서 읽었나(ATC-449): gh pr diff, 또는 GitHub가 diff를 거절해서 files API의 파일별 patch
+  removedFiles: string[]; // 지워진 파일(patch가 없어 이름만). files-api일 때만 채운다
 }
-export async function fetchReviewSource(slug: string, number: number): Promise<ReviewSource> {
-  const view = JSON.parse(await gh(["pr", "view", String(number), "--repo", slug, "--json", "title,body,headRefOid,files,labels"])) as {
+
+// GitHub가 너무 큰 diff(20,000줄 넘음 등)를 거절한 오류인가
+export const diffTooLarge = (e: unknown) => /diff[_ ]too[_ ]large|too large|exceeded the maximum number of (?:lines|files)|HTTP 406/i.test(`${(e as { stderr?: string }).stderr ?? ""}\n${(e as Error)?.message ?? e}`);
+
+// files API 한 줄: gh api --paginate --jq로 파일마다 한 줄 JSON
+interface PullFile {
+  filename: string;
+  status: string;
+  previous_filename?: string | null;
+  patch?: string | null;
+}
+// 파일별 patch를 diff 글로 이어 붙인다. 지워진 파일은 patch가 없어 이름만(removedFiles). patch가 없는 파일(이진·너무 큼)은 머리만 쓴다
+export function diffFromFiles(files: readonly PullFile[]): { diff: string; names: string[]; removed: string[] } {
+  const names: string[] = [];
+  const removed: string[] = [];
+  const parts: string[] = [];
+  for (const f of files) {
+    names.push(f.filename);
+    if (f.previous_filename) names.push(f.previous_filename);
+    if (f.status === "removed") {
+      removed.push(f.filename);
+      parts.push(`diff --git a/${f.filename} b/${f.filename}\n(removed — no patch)\n`);
+    } else {
+      const from = f.previous_filename || f.filename;
+      parts.push(`diff --git a/${from} b/${f.filename}\n${f.patch ? `--- a/${from}\n+++ b/${f.filename}\n${f.patch}\n` : "(no patch — binary or too large)\n"}`);
+    }
+  }
+  return { diff: parts.join(""), names, removed };
+}
+
+export async function fetchReviewSource(slug: string, number: number, exec: (args: string[]) => Promise<string> = gh): Promise<ReviewSource> {
+  const view = JSON.parse(await exec(["pr", "view", String(number), "--repo", slug, "--json", "title,body,headRefOid,files,labels"])) as {
     title: string;
     body: string;
     headRefOid: string;
     files: { path: string }[] | null;
     labels: { name: string }[] | null;
   };
-  const diff = await gh(["pr", "diff", String(number), "--repo", slug]);
-  return { title: view.title, body: view.body ?? "", headRefOid: view.headRefOid, files: (view.files ?? []).map((f) => f.path), labels: (view.labels ?? []).map((l) => l.name), diff };
+  const base = { title: view.title, body: view.body ?? "", headRefOid: view.headRefOid, labels: (view.labels ?? []).map((l) => l.name) };
+  const viewFiles = (view.files ?? []).map((f) => f.path);
+  try {
+    const diff = await exec(["pr", "diff", String(number), "--repo", slug]);
+    return { ...base, files: viewFiles, diff, diffSource: "pr-diff", removedFiles: [] };
+  } catch (e) {
+    if (!diffTooLarge(e)) throw e;
+    // GitHub가 diff를 거절했다(ATC-449): 파일별 patch를 files API에서 읽는다. 이름은 view의 목록과 합쳐 게이트가 빠짐없이 보게 한다
+    const out = await exec(["api", "--paginate", `repos/${slug}/pulls/${number}/files?per_page=100`, "--jq", ".[] | {filename, status, previous_filename, patch} | tojson"]);
+    const rows = out.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as PullFile);
+    const { diff, names, removed } = diffFromFiles(rows);
+    return { ...base, files: [...new Set([...viewFiles, ...names])], diff, diffSource: "files-api", removedFiles: removed };
+  }
 }
 
 // PR drawer(DUTY G1): 열 때 한 번 읽는 PR 한 건(읽기 전용 gh pr view, 호출은 detail-run.ts가 60초 캐시)

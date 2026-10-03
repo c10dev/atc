@@ -1,0 +1,7 @@
+/* DEPARTURES(ATC-418, Tickets.tsx): REMARKS에 더한 한 줄. 나머지 막대·표 스타일은 styles.css에 있다 */
+.remark-rev {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--amber);
+}

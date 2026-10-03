@@ -10,6 +10,7 @@ import { DEFAULT_DISPATCH_CONFIG, type DispatchConfig, loadDispatchConfig } from
 import type { Snapshot } from "./model.ts";
 import { type Op, type Proposal, fold, gateOf, humanOf } from "./proposals.ts";
 import { modeSegments, needsConfirm } from "./settings-policy.ts";
+import { swOf, switchViews } from "./test-switch-views.ts";
 import type { ScheduleOp } from "./schedule.ts";
 
 const NOW = Date.parse("2026-10-01T12:00:00.000Z");
@@ -45,8 +46,9 @@ test("ASSIGN: 막는 조건마다 까닭을 낸다", () => {
   assert.equal(assignWhyNot(card({ launch: true }), assignCtx()), "launch");
   assert.equal(assignWhyNot(card({ holdAt: iso(5) }), assignCtx()), "held");
   assert.equal(assignWhyNot(card({ at: iso(2) }), assignCtx()), "unsettled");
-  assert.equal(assignWhyNot(card({ crosscheck: null }), assignCtx()), "no-crosscheck");
-  assert.equal(assignWhyNot(card({ crosscheck: { ...agree, verdict: "disagree" } }), assignCtx()), "disagree");
+  // CROSSCHECK는 은퇴했다(ATC-371): mark가 없거나 disagree여도 막지 않는다
+  assert.equal(assignWhyNot(card({ crosscheck: null }), assignCtx()), null);
+  assert.equal(assignWhyNot(card({ crosscheck: { ...agree, verdict: "disagree" } }), assignCtx()), null);
   assert.equal(assignWhyNot(card({ id: BLIND }), assignCtx()), "blind");
   assert.equal(assignWhyNot(card({ caution: true }), assignCtx()), "caution");
   assert.equal(assignWhyNot(card(), assignCtx({ fuelHold: true })), "fuel-hold");
@@ -67,8 +69,10 @@ test("launch 카드: 조건을 모두 지킬 때만, 하나라도 어기면 막�
   assert.equal(launchWhyNot(c, launchCtx({ counts: { approved: 0, launched: 6 } })), "launch-daily-cap");
   assert.equal(launchWhyNot(c, launchCtx({ counts: { approved: 0, launched: 5 } })), null);
   assert.equal(launchWhyNot({ ...c, holdAt: iso(1) }, launchCtx()), "held");
-  assert.equal(launchWhyNot({ ...c, crosscheck: null }, launchCtx()), "no-crosscheck");
-  assert.equal(launchWhyNot({ ...c, crosscheck: { ...agree, verdict: "disagree" } }, launchCtx()), "disagree");
+  const noMark: Card = { ...c, crosscheck: null };
+  const disagreed: Card = { ...c, crosscheck: { ...agree, verdict: "disagree" } };
+  assert.equal(launchWhyNot(noMark, launchCtx()), null);
+  assert.equal(launchWhyNot(disagreed, launchCtx()), null);
   assert.equal(launchWhyNot(card(), launchCtx()), "not-launch");
   assert.equal(launchWhyNot(c, launchCtx({ dispatchMode: "shadow" })), "mode");
   // ASSIGN 상한(하루 40)은 launch에 상관없다: launch는 자기 상한만 본다
@@ -85,8 +89,8 @@ test("SCHEDULE 초안: agree, blind 아님, approval 모드, network 종류 아�
   assert.equal(scheduleWhyNot(ok, schedCtx({ scheduleMode: "shadow" })), "mode");
   assert.equal(scheduleWhyNot(sched({ status: "approved" }), schedCtx()), "not-draft");
   assert.equal(scheduleWhyNot(sched({ kind: "TARGET" }), schedCtx()), "network-kind");
-  assert.equal(scheduleWhyNot(sched({ crosscheck: null }), schedCtx()), "no-crosscheck");
-  assert.equal(scheduleWhyNot(sched({ crosscheck: { ...agree, verdict: "disagree" } }), schedCtx()), "disagree");
+  assert.equal(scheduleWhyNot(sched({ crosscheck: null }), schedCtx()), null);
+  assert.equal(scheduleWhyNot(sched({ crosscheck: { ...agree, verdict: "disagree" } }), schedCtx()), null);
   assert.equal(scheduleWhyNot(sched({ id: idWhere(true, "S-") }), schedCtx()), "blind");
   assert.equal(scheduleWhyNot(ok, schedCtx({ counts: { approved: 40, launched: 0 } })), "daily-cap");
 });
@@ -146,16 +150,11 @@ test("via auto는 사람 판정이 아니다: humanOf·게이트에서 빠진다
 });
 
 test("정책 줄: 두 스위치가 보이고 on만 확인이 필요하다", () => {
-  assert.equal(needsConfirm("autoApprove", "off", "on"), true);
-  assert.equal(needsConfirm("autoApprove", "off", "shadow"), false);
-  assert.equal(needsConfirm("autoApproveLaunch", "shadow", "on"), true);
-  assert.equal(needsConfirm("autoApproveLaunch", "on", "off"), false);
-  const segs = modeSegments({
-    autoland: { mode: "off", reviewedSecurity: "off", airports: [], applicationCheck: "", groundStops: [], applicationCheckWarnings: [] },
-    mcc: { mode: "shadow", airport: "ATCC" },
-    review: { security: "exclude" },
-    dispatchAuto: { auto: "on", approve: "on", launch: "shadow", approveMax: 40, launchMax: 6, backoffMin: 30 },
-  });
+  assert.equal(needsConfirm(swOf("autoApprove"), "off", "on"), true);
+  assert.equal(needsConfirm(swOf("autoApprove"), "off", "shadow"), false);
+  assert.equal(needsConfirm(swOf("autoApproveLaunch"), "shadow", "on"), true);
+  assert.equal(needsConfirm(swOf("autoApproveLaunch"), "on", "off"), false);
+  const segs = modeSegments(switchViews({ autoDispatch: "on", autoApprove: "on", autoApproveLaunch: "shadow" }));
   const auto = segs.filter((x) => x.key === "autoApprove" || x.key === "autoApproveLaunch");
   assert.deepEqual(auto.map((x) => [x.label, x.value, x.warn]), [["AUTO APPROVE", "on", true], ["AUTO LAUNCH", "shadow", false]]);
 });
@@ -213,8 +212,8 @@ test("runAutoApprove shadow: would-approve 줄만, 승인은 하나도 없고 �
   assert.deepEqual(f.schedule, []);
 });
 
-test("runAutoApprove on: via auto로 승인하고 blind·disagree·caution·HELD 카드는 건드리지 않는다", async () => {
-  const dis = idWhere(false, "D-9");
+test("runAutoApprove on: via auto로 승인하고 blind·caution·HELD 카드는 건드리지 않는다(mark는 보지 않는다, ATC-371)", async () => {
+  const dis = idWhere(false, "D-9"); // disagree mark가 달린 카드도 이제 승인 대상이다
   const caut = (() => {
     for (let i = 600; i < 900; i++) {
       const id = `D-${i}`;
@@ -224,13 +223,13 @@ test("runAutoApprove on: via auto로 승인하고 blind·disagree·caution·HELD
   })();
   const f = fake(cfgOf({ autoApprove: "on" }), [...cardOps(OPEN), ...cardOps(BLIND), ...cardOps(dis, { verdict: "disagree" }), ...cardOps(caut, { caution: true })]);
   const r = await runAutoApprove(snapshot(), noLaunch, NOW, f.io);
-  assert.deepEqual(r, { approved: 1, launched: 0, would: 0 });
+  assert.deepEqual(r, { approved: 2, launched: 0, would: 0 });
   const approves = f.ops.filter((o) => o.op === "approve");
-  assert.deepEqual(approves, [{ op: "approve", id: OPEN, at: iso(0), via: "auto" }]);
+  assert.deepEqual(approves.map((o) => (o as { id: string }).id).sort(), [OPEN, dis].sort());
   const ps = f.io.proposals();
-  assert.equal(ps.find((p) => p.id === OPEN)?.status, "approved");
-  for (const id of [BLIND, dis, caut]) assert.equal(ps.find((p) => p.id === id)?.status, "proposed", id);
-  assert.deepEqual(f.lines.map((l) => [l.mode, l.op, l.id]), [["on", "approve", OPEN]]);
+  for (const id of [OPEN, dis]) assert.equal(ps.find((p) => p.id === id)?.status, "approved", id);
+  for (const id of [BLIND, caut]) assert.equal(ps.find((p) => p.id === id)?.status, "proposed", id);
+  assert.deepEqual(f.lines.map((l) => l.id).sort(), [OPEN, dis].sort());
   // 두 번째 주기: 이미 승인했으니 더 하지 않는다
   assert.equal((await runAutoApprove(snapshot(), noLaunch, NOW, f.io)).approved, 0);
 });
