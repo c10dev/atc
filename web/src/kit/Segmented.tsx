@@ -5,7 +5,7 @@ import "./Segmented.css";
 // 고르기 하나(radio 그룹): role=radiogroup, 칸마다 role=radio와 aria-checked, 탭은 선택된 칸 하나에만 멈추고(roving tabindex)
 // 화살표·Home·End가 칸을 옮기며 고른다. 설정 창의 두 사본(SettingsPanel, SettingsAlerts)을 하나로 합쳤다(ATC-414).
 // 칸의 내용은 글이나 아이콘+글(ReactNode). className은 자리·크기 조정용(FLIGHTS의 보기 전환 등)
-export function Segmented<T extends string | boolean>({ label, value, options, onChange, className }: { label: string; value: T; options: readonly (readonly [T, ReactNode])[]; onChange: (value: T) => void; className?: string }) {
+export function Segmented<T extends string | number | boolean>({ label, value, options, onChange, className }: { label: string; value: T; options: readonly (readonly [T, ReactNode])[]; onChange: (value: T) => void; className?: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const selected = options.findIndex(([v]) => v === value);
   const stop = tabStop(options.length, selected);

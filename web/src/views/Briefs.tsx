@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { BriefKind, BriefRow, BriefStats, CrewMode, GridKey } from "../../../server/briefs.ts";
 import { flightNumber } from "../aviation.ts";
 import "./Briefs.css";
+import { Segmented } from "../kit/Segmented.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 import { apiGet } from "../api.ts";
 
 // VECTORS 대 DIRECT(ATC-32, docs/dispatch.md "DIRECT briefs"), SOLO 대 CREW(ATC-33). LOGBOOK의 measured 줄로
@@ -83,32 +85,21 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
         </h2>
         <div className="bf-tools">
           {hasCrew && (
-            <div className="bf-range" role="radiogroup" aria-label="묶기">
-              {GROUPS.map((x) => (
-                <button key={x.id} role="radio" aria-checked={g === x.id} onClick={() => setGroup(x.id)}>
-                  {x.label}
-                </button>
-              ))}
-            </div>
+            <Segmented label="묶기" value={g} options={GROUPS.map((x) => [x.id, x.label] as const)} onChange={setGroup} />
           )}
-          <div className="bf-range" role="radiogroup" aria-label="기간">
-            {RANGES.map((d) => (
-              <button key={d} role="radio" aria-checked={days === d} onClick={() => setDays(d)}>
-                {d}일
-              </button>
-            ))}
-          </div>
+          <Segmented label="기간" value={days} options={RANGES.map((d) => [d, `${d}일`] as const)} onChange={setDays} />
         </div>
       </header>
 
-      <table className={`bf-table${cols.length > 2 ? " is-grid" : ""}`}>
+      <TableScroll label="지시서 비교 표">
+      <table className={`kit-table bf-table${cols.length > 2 ? " is-grid" : ""}`}>
         <thead>
           <tr>
             <th scope="col">
               <span className="bf-sr">지표</span>
             </th>
             {cols.map((c) => (
-              <th key={c.key} scope="col" className={`bf-kind is-${c.tone}`} title={c.head}>
+              <th key={c.key} scope="col" className={`num bf-kind is-${c.tone}`} title={c.head}>
                 <span className="bf-wide">{c.head}</span>
                 <span className="bf-narrow">{c.short}</span>
               </th>
@@ -122,7 +113,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
                 {m.label}
               </th>
               {cols.map((c) => (
-                <td key={c.key} className="tn">
+                <td key={c.key} className="num">
                   {m.show(c.stats)}
                 </td>
               ))}
@@ -130,6 +121,7 @@ export function BriefsPanel({ refreshKey }: { refreshKey: string }) {
           ))}
         </tbody>
       </table>
+      </TableScroll>
 
       <p className="faint bf-note">
         {thin ? `표본 부족(칸마다 ${MIN_SAMPLE}건 미만) — 경향만 보세요. ` : ""}

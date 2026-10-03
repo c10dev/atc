@@ -1,5 +1,9 @@
+import "./App.css";
+import { AlertLive } from "./AlertLive.tsx";
+import { liveKey, type LiveAlert } from "./alert-live.ts";
 import { SoundLockChip } from "./AlertBell.tsx";
-import { NoticeTotal, useNotices } from "./Notices.tsx";
+import { NoticeTotal, noticeCounts, useNotices } from "./Notices.tsx";
+import { useAlerts } from "./alerts-runtime.ts";
 import { FollowNext } from "./FollowNext.tsx";
 import { canonicalHash } from "./legacy-hash.ts";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
@@ -182,6 +186,14 @@ export function App({ build }: { build: string }) {
   };
   const subjectOf = (a: (typeof alerts)[number]) =>
     a.ticketKey ? flightNumber(a.ticketKey) : (a.workspacePath?.split("/").pop() ?? a.sessionIds?.map(nameOf).join(", "));
+  // 화면 읽기 프로그램에 읽어 줄 새 경보(AlertLive): 종류·대상·메시지 한 줄
+  const liveAlerts: LiveAlert[] = alerts.map((a) => ({
+    key: liveKey(a),
+    level: levelOf(a),
+    text: `${alertLabel[a.kind]} ${subjectOf(a) ?? ""} ${alertMessage(a, nameOf)}`.replace(/\s+/g, " ").trim(),
+  }));
+  const { acked } = useAlerts();
+  const atcAction = noticeCounts(notices, acked).atc;
 
   // 열린 서랍 종류(ATC-444). 서랍 열의 너비와 사이드바 접기(7.3)가 이것을 읽는다
   const drawerKind = dutyOpen ? "duty" : drawer ? (drawer.kind === "ideas" || drawer.kind === "idea" ? "ideas" : "flight") : null;
@@ -232,6 +244,7 @@ export function App({ build }: { build: string }) {
       </aside>
       {narrow && sbOver && <button type="button" className="sidebar-scrim" aria-label="목록 닫기" tabIndex={-1} onClick={closeSidebarOver} />}
       <div className="shell-main">
+        <AlertLive alerts={liveAlerts} atcCount={atcAction} ready={Boolean(snapshot && idx)} />
         <header className="console">
           <button type="button" className="fold-btn" aria-label={sbShown ? "사이드바 접기" : "사이드바 펴기"} aria-expanded={sbShown} aria-controls="screen-sidebar" title={sbShown ? "사이드바 접기" : "사이드바 펴기"} onClick={toggleSidebar}>
             <Icon icon={PanelLeft} size={16} />
@@ -254,6 +267,7 @@ export function App({ build }: { build: string }) {
               className={`readout is-button readout-alerts${serious ? " tone-alert" : actionable.length ? " tone-amber" : ""}`}
               onClick={() => setAlertsOpen((v) => !v)}
               aria-expanded={alertsOpen}
+              aria-label={`경보 ${actionable.length}건${serious ? `, 그중 WARNING ${serious}건` : ""}${advisories > 0 ? `, 참고 ${advisories}건` : ""}`}
             >
               <b>{pad(actionable.length)}</b>
               <span>
@@ -264,7 +278,7 @@ export function App({ build }: { build: string }) {
             <div className="readout clock">
               <Clock clock={settings.clock} />
               <span className={`link link-${update.kind === "restarting" ? "restarting" : connection}`}>
-                <i />
+                <i className="link-dot" aria-hidden />
                 LINK <em>{update.kind === "restarting" ? "재시작" : connectionLabel[connection]}</em>
               </span>
             </div>
@@ -290,8 +304,8 @@ export function App({ build }: { build: string }) {
         <NewVersionBar own={build} server={serverBuild} />
 
         {actionable.length > 0 && !alertsOpen && (
-          <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label="경보 목록 펼치기">
-            <span className="ticker-head">ALERT</span>
+          <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label={`경보 ${actionable.length}건, 목록 펼치기`}>
+            <span className="ticker-tag">ALERT</span>
             <Ticker>
               {actionable.map((a, i) => (
                 <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
@@ -305,7 +319,7 @@ export function App({ build }: { build: string }) {
         )}
 
         {alertsOpen && alerts.length + handoffs.length > 0 && (
-          <ul className="alerts">
+          <ul className="alerts" aria-label="경보 목록">
             {groupAlerts(alerts, levelOf).map((g) => (
               <Fragment key={g.level}>
                 <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
@@ -330,7 +344,9 @@ export function App({ build }: { build: string }) {
               </li>
             ))}
             <li className="alerts-close">
-              <button onClick={() => setAlertsOpen(false)}>접기</button>
+              <button type="button" className="btn" onClick={() => setAlertsOpen(false)}>
+                접기
+              </button>
             </li>
           </ul>
         )}

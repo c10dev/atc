@@ -13,6 +13,8 @@ import "./MetricsFuel.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { Loading } from "../kit/Loading.tsx";
+import { Segmented } from "../kit/Segmented.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // FUEL 개요(ATC-137, docs/fuel.md "FUEL overview as built"): METRICS 탭 안 #metrics/fuel. 읽기만 한다.
 // /api/fuel과 /api/logbook은 열 때, 기간을 바꿀 때, 새로고침 버튼을 누를 때만 읽는다(스냅샷마다 읽지 않는다).
@@ -64,14 +66,8 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
             "FUEL 기록 없음"
           )}
         </span>
-        <div className="mx-range" role="radiogroup" aria-label="기간">
-          {FUEL_WINDOWS.map((d) => (
-            <button key={d} role="radio" aria-checked={days === d} onClick={() => setDays(clampWindow(d))}>
-              {d}일
-            </button>
-          ))}
-        </div>
-        <button type="button" className="mf-refresh" onClick={() => setTick((n) => n + 1)} disabled={st.loading} aria-label="FUEL 다시 읽기">
+        <Segmented label="기간" value={days} options={FUEL_WINDOWS.map((d) => [d, `${d}일`] as const)} onChange={(d) => setDays(clampWindow(d))} />
+        <button type="button" className="btn" onClick={() => setTick((n) => n + 1)} disabled={st.loading} aria-label="FUEL 다시 읽기">
           {st.loading ? "읽는 중…" : "새로고침"}
         </button>
       </div>
@@ -81,7 +77,7 @@ export function MetricsFuel({ snapshot }: { snapshot: Snapshot | null }) {
       {st.error && (
         <p className="mx-error" role="alert">
           FUEL을 불러오지 못함: {st.error}{" "}
-          <button type="button" className="mf-refresh" onClick={() => setTick((n) => n + 1)}>
+          <button type="button" className="btn" onClick={() => setTick((n) => n + 1)}>
             다시 시도
           </button>
         </p>
@@ -175,8 +171,8 @@ function Rows({ fuel }: { fuel: FuelData }) {
       <h2 className="label">
         BY AIRCRAFT <em>세션 {fuel.sessions.length}개 · 팀 AIRCRAFT 먼저, 관제 세션, 기타</em>
       </h2>
-      <div className="mf-scroll">
-        <table className="mf-table">
+      <TableScroll label="AIRCRAFT와 세션별 표">
+        <table className="kit-table mf-table">
           <thead>
             <tr>
               {COLS.map((c) => (
@@ -211,7 +207,7 @@ function Rows({ fuel }: { fuel: FuelData }) {
             </tbody>
           ))}
         </table>
-      </div>
+      </TableScroll>
     </section>
   );
 }
@@ -225,8 +221,8 @@ function Models({ byModel }: { byModel: FuelData["byModel"] }) {
       <h2 className="label">
         BY MODEL <em>{byModel.length}개</em>
       </h2>
-      <div className="mf-scroll">
-        <table className="mf-table">
+      <TableScroll label="모델별 표">
+        <table className="kit-table mf-table">
           <thead>
             <tr>
               <th>모델</th>
@@ -255,7 +251,7 @@ function Models({ byModel }: { byModel: FuelData["byModel"] }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </section>
   );
 }
@@ -269,8 +265,8 @@ function Leaks({ fuel }: { fuel: FuelData }) {
       <h2 className="label">
         LEAKS <em>합계 {fuel.totals.leak.total.count}건 · {money(fuel.totals.leak.total.cost)}</em>
       </h2>
-      <div className="mf-scroll">
-        <table className="mf-table">
+      <TableScroll label="LEAK 표">
+        <table className="kit-table mf-table">
           <thead>
             <tr>
               <th>종류</th>
@@ -292,7 +288,7 @@ function Leaks({ fuel }: { fuel: FuelData }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <h3 className="mf-sub">CREW 경고</h3>
       <ul className="mf-warns">
         {warns.map((w) => (
@@ -379,12 +375,12 @@ function Daily({ fuel }: { fuel: FuelData }) {
           </div>
         )}
       </div>
-      <button type="button" className="mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
+      <button type="button" className="btn mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
         {table ? "표 닫기" : "표로 보기"}
       </button>
       {table && (
-        <div className="mf-scroll">
-          <table className="mf-table">
+        <TableScroll label="일별 표">
+          <table className="kit-table mf-table">
             <thead>
               <tr>
                 <th>UTC 날짜</th>
@@ -406,7 +402,7 @@ function Daily({ fuel }: { fuel: FuelData }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </section>
   );
@@ -424,8 +420,8 @@ function Top({ entries, since, tickets }: { entries: LogbookFuelEntry[]; since: 
       {top.length === 0 ? (
         <Empty className="mf-empty">이 기간에 값이 매겨진 ARRIVED FLIGHT가 없다.</Empty>
       ) : (
-        <div className="mf-scroll">
-          <table className="mf-table">
+        <TableScroll label="TOP FLIGHTS 표">
+          <table className="kit-table mf-table">
             <thead>
               <tr>
                 <th>FLIGHT</th>
@@ -459,7 +455,7 @@ function Top({ entries, since, tickets }: { entries: LogbookFuelEntry[]; since: 
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </section>
   );

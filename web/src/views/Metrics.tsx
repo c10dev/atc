@@ -13,6 +13,7 @@ import "./Metrics.css";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { Loading } from "../kit/Loading.tsx";
+import { Segmented } from "../kit/Segmented.tsx";
 import { TableScroll } from "../kit/TableScroll.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
@@ -125,13 +126,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
           FLIGHT RECORDER 기록 기준
           {data?.recording.since ? ` · ${data.recording.since.slice(0, 10)}부터 기록됨` : " · 아직 기록 없음"}
         </span>
-        <div className="mx-range" role="radiogroup" aria-label="기간">
-          {RANGES.map((r) => (
-            <button key={r.days} role="radio" aria-checked={days === r.days} onClick={() => setDays(r.days)}>
-              {r.label}
-            </button>
-          ))}
-        </div>
+        <Segmented label="기간" value={days} options={RANGES.map((r) => [r.days, r.label] as const)} onChange={setDays} />
       </div>
 
       {error && (

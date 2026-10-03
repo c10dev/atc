@@ -10,10 +10,9 @@
     "color-literal": 2
   },
   "web/src/styles.css": {
-    "color-literal": 12,
-    "radius-literal": 1,
+    "color-literal": 8,
     "spacing-literal": 11,
-    "token-family": 22
+    "token-family": 14
   },
   "web/src/views/Docs.css": {
     "font-size-em": 4
