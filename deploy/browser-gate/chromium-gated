@@ -1,0 +1,3 @@
+#!/bin/sh
+# BROWSER GATE(ATC-520): Playwright MCP의 browser.launchOptions.executablePath. 진짜 Chrome을 문 뒤에 세운다(docs/browser-gate.md)
+exec "${ATC_NODE:-node}" "$(dirname "$(readlink -f "$0")")/../../server/browser-gate-cli.ts" "$@"

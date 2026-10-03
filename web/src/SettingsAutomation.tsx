@@ -522,6 +522,38 @@ function VerifyGateStats({ d }: { d: VerifyGateData }) {
     </ul>
   );
 }
+// BROWSER GATE 세기(ATC-520): 기다린 요청·가장 긴 기다림·busy 답·세션이 끝난 뒤 놓은 슬롯·바로 띄운 수. 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface BrowserCounts {
+  requests: number;
+  waited: number;
+  longestWaitMs: number;
+  busyAnswers: number;
+  releasedAfterEnd: number;
+  fallbacks: number;
+}
+interface BrowserGateData {
+  total: BrowserCounts;
+  last7d: BrowserCounts;
+  slots: number;
+  waitLimitSec: number;
+  where: string;
+}
+function BrowserGateStats({ d }: { d: BrowserGateData }) {
+  const row = (label: string, c: BrowserCounts) => (
+    <li>
+      {label} 요청 <b>{c.requests}</b> · 기다림 <b>{c.waited}</b> · 가장 긴 기다림 <b>{Math.round(c.longestWaitMs / 1000)}초</b> · busy 답 <b>{c.busyAnswers}</b> · 세션이 끝난 뒤 놓은 슬롯 <b>{c.releasedAfterEnd}</b> · 바로 실행(문 고장) <b>{c.fallbacks}</b>
+    </li>
+  );
+  return (
+    <ul className="dp-misfire">
+      {row("전체", d.total)}
+      {row("최근 7일", d.last7d)}
+      <li className="faint">
+        동시 {d.slots}개 · busy 답까지 {d.waitLimitSec}초 · 실행 위치 {d.where}
+      </li>
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -562,6 +594,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   verifyGate: (s) => {
     const d = switchOf(s, "verifyGate")?.data as VerifyGateData | undefined;
     return d ? <VerifyGateStats d={d} /> : null;
+  },
+  browserGate: (s) => {
+    const d = switchOf(s, "browserGate")?.data as BrowserGateData | undefined;
+    return d ? <BrowserGateStats d={d} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
