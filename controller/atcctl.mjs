@@ -790,7 +790,8 @@ export function dutyStandText(r, done) {
     : `STAND ${r.name} ready: ${r.path} on branch ${r.branch} from ${r.base}${r.nodeModules ? " (node_modules linked)" : ""}\nWrite docs there with Edit/Write and use git -C ${r.path} … for git.`;
 }
 export function dutyLinearText(r) {
-  return r.url ? `${r.key} created (${r.state}) ${r.url}` : `${r.key} ${r.state ? `updated (${r.state})` : "written"}`;
+  const head = r.url ? `${r.key} created (${r.state}) ${r.url}` : `${r.key} ${r.state ? `updated (${r.state})` : "written"}`;
+  return r.warning ? `${head}\nWARNING: ${r.warning}` : head;
 }
 
 export function parseDutyCharter(args) {

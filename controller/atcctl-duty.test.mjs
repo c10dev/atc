@@ -108,6 +108,7 @@ test("duty linear update·comment: 첫 인자가 key, update에는 --parent·--p
   assert.match(dutyLinearText({ key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Todo" }), /ATC-99 created \(Todo\) https:/);
   assert.match(dutyLinearText({ key: "ATC-5", state: "Backlog" }), /ATC-5 updated \(Backlog\)/);
   assert.match(dutyLinearText({ key: "ATC-5" }), /ATC-5 written/);
+  assert.match(dutyLinearText({ key: "ATC-5", state: "Backlog", warning: "no Measure" }), /updated \(Backlog\)\nWARNING: no Measure/);
 });
 
 test("duty linear create --blocked-by(ATC-396): 여러 번 쓸 수 있고 create에만 있다", () => {
