@@ -3,6 +3,7 @@ import { Icon } from "./kit/Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
 import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, scheduleAskOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
+import { chipText, type DecisionItem, keyOf, outcomeText, type StatusCtx, statusOf, waitingOf as waitingItems } from "../../server/duty-card-status.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
 import { timeAgo } from "./derive.ts";
@@ -103,7 +104,7 @@ interface PlanBrief {
 }
 
 // FLEET PLAN 줄의 버튼. FLEET 탭과 같은 길(/verdict, /approve)을 부르고, 누르면 카드 안에서 한 번 확인한다
-function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
+function FleetPlanButtons({ id, onDone }: { id: string; onDone: (outcome: string) => void }) {
   const [brief, setBrief] = useState<PlanBrief | null | "error">(null);
   const [ask, setAsk] = useState<"agree" | "disagree" | "approve" | null>(null);
   const [reason, setReason] = useState("");
@@ -138,7 +139,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "실패");
     setAsk(null);
-    onDone();
+    onDone(ask === "approve" ? "승인" : ask === "agree" ? "동의" : approval ? "거절" : "반대");
   };
 
   if (ask) {
@@ -189,7 +190,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
 
 // DISPATCH 카드(ATC-377): 자동 운항이 꺼져 있을 때의 ASSIGN·launch 카드와 RELEASE 카드의 승인·거절. DISPATCH 탭이 하던 같은 길(/approve·/reject, 2a면 /verdict)을 부른다.
 // 누르면 카드 안에서 한 번 확인한다. 모드는 누를 때 서버에서 읽는다
-function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: () => void }) {
+function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: (outcome: string) => void }) {
   const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -207,7 +208,7 @@ function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["ca
       const r = info.mode === "approval" ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
       if (!r.ok) throw new Error(r.error ?? "실패");
       setAsk(null);
-      onDone();
+      onDone(ask === "approve" ? "승인" : "거절");
     } catch (e) {
       setErr(String((e as Error).message ?? e));
     }
@@ -248,7 +249,7 @@ function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["ca
 
 // SCHEDULE 초안(ATC-378): 큐 줄에서 승인·거절. SCHEDULE 탭이 없으니 이 줄이 판정하는 유일한 곳이다.
 // 모드는 줄을 누를 때 읽는다: approval이고 TARGET·ROUTE가 아니면 승인·거절(approve·reject), 그 밖은 그림자 판정(verdict, 동의·거절)
-function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onDone: () => void }) {
+function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onDone: (outcome: string) => void }) {
   const kind = title.split(" ")[0] ?? "";
   const network = NETWORK_KINDS.has(kind);
   const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
@@ -268,7 +269,7 @@ function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onD
       const r = info.mode === "approval" && !network ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
       if (!r.ok) throw new Error(r.error ?? "실패");
       setAsk(null);
-      onDone();
+      onDone(ask === "approve" ? (network ? "동의" : "승인") : "거절");
     } catch (e) {
       setErr(String((e as Error).message ?? e));
     }
@@ -306,7 +307,7 @@ function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onD
 }
 
 // UPDATE: UPDATE 바와 같은 길(/api/update/start). 누르면 카드 안에서 한 번 확인한다
-function UpdateButton({ onDone }: { onDone: () => void }) {
+function UpdateButton({ onDone }: { onDone: (outcome: string) => void }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -317,7 +318,7 @@ function UpdateButton({ onDone }: { onDone: () => void }) {
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "시작하지 못함");
     setAsk(false);
-    onDone();
+    onDone("업데이트 시작");
   };
   return (
     <>
@@ -369,7 +370,7 @@ function CopyButton({ value, label, what }: { value: string; label: string; what
   );
 }
 
-function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void }) {
+function HandDelivery({ item, onDone }: { item: QueueItem; onDone: (outcome: string) => void }) {
   const h = item.hand;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -381,7 +382,7 @@ function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void })
     const r = await post(h.source === "RELAY" ? `/api/relay/${encodeURIComponent(h.id)}/hand` : `/api/clearances/${encodeURIComponent(h.id)}/hand`, {});
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "실패");
-    onDone();
+    onDone("손으로 전했음");
   };
   return (
     <div className="hd" role="group" aria-label={`${h.id} 손으로 전하기`}>
@@ -433,7 +434,7 @@ function RelayOffer({ item }: { item: QueueItem }) {
 }
 
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
-export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
+export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: (outcome: string) => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
@@ -462,8 +463,8 @@ export function Actions({ item, actions, onDone }: { item: QueueItem; actions: C
 export interface CardCtx {
   items: readonly QueueItem[] | null;
   airports: Airports;
-  handled: ReadonlySet<string>;
-  markHandled: (key: string) => void;
+  status: StatusCtx; // 기다림·처리됨 판정의 입력(server/duty-card-status.ts). 패널·chip·결정 기록·서랍 "결정 n"이 같이 쓴다
+  markHandled: (key: string, outcome: string) => void;
   now: number;
   decisions: DecisionsData | null;
   reloadDecisions: () => void;
@@ -471,18 +472,37 @@ export interface CardCtx {
   reloadCharters: () => void;
 }
 
+// 카드의 한 줄 chip(화면의 대화 속, ATC-478): 기다리면 오른쪽 패널을 가리키고(누르면 그 카드로 간다), 처리됐으면 결과와 시각. gone은 회색
+export function DecisionChip({ it, ctx, onGo }: { it: DecisionItem; ctx: CardCtx; onGo: (id: string) => void }) {
+  const s = statusOf(it, ctx.status);
+  const text = chipText(it, s);
+  const gone = s.state === "handled" && s.outcome === "gone";
+  return (
+    <div className={`du-chip${s.state === "handled" ? " is-handled" : ""}${gone ? " is-gone" : ""}`} id={`du-${it.id}`} aria-label={text}>
+      {s.state === "waiting" ? (
+        <button type="button" className="du-chip-go mono" onClick={() => onGo(it.id)}>
+          {text}
+        </button>
+      ) : (
+        <span className="du-chip-text mono">{text}</span>
+      )}
+    </div>
+  );
+}
+
 export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>; ctx: CardCtx }) {
   const k = cardKey(it);
-  const v = cardViewOf(it, ctx.items, ctx.handled.has(k), ctx.airports);
+  const v = cardViewOf(it, ctx.items, k in ctx.status.handled, ctx.airports);
   if (v.state === "unknown") return <div className="du-card is-loading">큐를 읽는 중…</div>;
   if (v.state === "gone") {
+    const mine = ctx.status.handled[k];
     return (
-      <div className="du-card is-gone" aria-label={`${it.queueKind} ${it.key} ${v.reason}`}>
+      <div className="du-card is-gone" aria-label={`${it.queueKind} ${it.key} ${mine?.outcome ?? "gone"}`}>
         <div className="du-card-head">
           <span className="du-kind">{it.queueKind}</span>
           <span className="du-key mono">{it.key}</span>
         </div>
-        <p className="du-gone">{v.reason}</p>
+        <p className="du-gone">{mine ? outcomeText(mine.outcome, mine.at) : "gone"}</p>
       </div>
     );
   }
@@ -493,36 +513,13 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
         <span className="du-since">{timeAgo(v.item.since, ctx.now)}</span>
       </div>
       <p className="du-card-title">{v.item.title}</p>
-      <Actions item={v.item} actions={v.actions} onDone={() => ctx.markHandled(k)} />
+      <Actions item={v.item} actions={v.actions} onDone={(o) => ctx.markHandled(k, o)} />
     </div>
   );
 }
 
-// 아직 SUPERVISOR의 결정을 기다리는 초안인가(확정·버림·until 경과 전). 카드와 오른쪽 패널이 같은 규칙을 쓴다
-export function draftPending(it: Extract<ChatItem, { kind: "draft" }>, ctx: CardCtx): boolean {
-  if (it.draftKind === "retire") return false;
-  const isCharter = it.draftKind === "charter";
-  const sd = isCharter ? ctx.charters?.charters.find((c) => c.from === it.draft)?.id : ctx.decisions?.confirmedDrafts[it.draft];
-  const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
-  const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
-  return (isCharter ? ctx.decisions !== null && ctx.charters !== null : ctx.decisions !== null) && !sd && !dismissed && !expired;
-}
-
-// 아직 기다리는 카드와 초안, 최신이 먼저(오른쪽 패널). 같은 큐 줄을 가리키는 카드는 가장 새 것 하나만 센다
-export function waitingOf(items: readonly ChatItem[], ctx: CardCtx): ChatItem[] {
-  const seen = new Set<string>();
-  const out: ChatItem[] = [];
-  for (let i = items.length - 1; i >= 0; i--) {
-    const it = items[i];
-    if (it.kind === "card") {
-      const k = cardKey(it);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      if (cardViewOf(it, ctx.items, ctx.handled.has(k), ctx.airports).state === "live") out.push(it);
-    } else if (it.kind === "draft" && draftPending(it, ctx)) out.push(it);
-  }
-  return out;
-}
+// 아직 기다리는 카드와 초안, 최신이 먼저(오른쪽 패널, 서랍의 "결정 n"). 규칙은 server/duty-card-status.ts 한 곳
+export const waitingOf = (items: readonly ChatItem[], ctx: CardCtx): DecisionItem[] => waitingItems(items, ctx.status);
 
 // note·charter 초안. charter는 읽기만 하는 흐린 카드(확정은 D5). note는 SUPERVISOR가 확정하거나 버린다(D4): 확정은 decisions.jsonl에 적고,
 // 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 apiGet(Origin 검사)이고 DUTY가 누를 수 없다
@@ -536,16 +533,17 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
   const sd = isCharter ? queued?.id : ctx.decisions?.confirmedDrafts[it.draft];
   const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
   const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
-  const act = async (path: string, body: unknown) => {
+  const act = async (path: string, body: unknown, outcome: string) => {
     setBusy(true);
     setErr(null);
     const r = await post(path, body);
     setBusy(false);
     if (!r.ok) setErr(r.error ?? "실패");
+    else ctx.markHandled(keyOf(it), outcome);
     ctx.reloadDecisions();
     ctx.reloadCharters();
   };
-  const pending = draftPending(it, ctx);
+  const pending = statusOf(it, ctx.status).state === "waiting";
   const confirmPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/confirm` : "/api/duty/decisions";
   const dismissPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/dismiss` : `/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`;
   return (
@@ -562,10 +560,10 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
       {!sd && !dismissed && expired && <p className="du-hint">until이 지났습니다</p>}
       {pending && (
         <div className="du-actions">
-          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft })}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft }, "확정")}>
             확정
           </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => void act(dismissPath, {})}>
+          <button type="button" className="btn" disabled={busy} onClick={() => void act(dismissPath, {}, "버림")}>
             버림
           </button>
         </div>
@@ -619,7 +617,7 @@ function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; 
 // 카드의 "처리됨"은 이 서랍에서 누른 결정만 센다(handled).
 export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: CardCtx }) {
   if (!queue) return <div className="du-queue"><p className="du-queue-head">할 일 …</p></div>;
-  const n = queue.items.filter((i) => !ctx.handled.has(cardKey({ queueKind: i.kind, key: i.key }))).length;
+  const n = queue.items.filter((i) => !(cardKey({ queueKind: i.kind, key: i.key }) in ctx.status.handled)).length;
   return (
     <div className="du-queue">
       <a className="du-queue-head" href="#home">

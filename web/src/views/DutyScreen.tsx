@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { type Chat, headLine } from "../../../server/duty-chat.ts";
+import { decisionLog, outcomeText } from "../../../server/duty-card-status.ts";
 import { shiftsOf } from "../../../server/duty-view.ts";
 import { type Airports, DraftCard, DutyCard, QueueRow, waitingOf } from "../DutyCards.tsx";
 import { DutyComposer, DutyGate, DutyLog, NewShift, useDutyChat } from "../DutyChat.tsx";
@@ -15,12 +16,25 @@ export default function DutyScreen({ chat, onClose, airports, refreshKey, now }:
   const shifts = shiftsOf(chat.items);
   const waiting = waitingOf(chat.items, d.ctx);
   const decisions = d.ctx.decisions?.active ?? [];
+  const log = decisionLog(chat.items, d.ctx.status);
 
   // SHIFT 구분선으로 간다: 검색을 풀어 구분선이 다시 그려진 뒤 그 자리로 스크롤한다
   const jump = (id: string) => {
     setQuery("");
     d.stick.current = false;
     requestAnimationFrame(() => document.getElementById(`du-${id}`)?.scrollIntoView({ block: "start" }));
+  };
+
+  // chip → 패널의 그 카드, 결정 기록 → 대화 속 그 chip
+  const goPanel = (id: string) => {
+    const el = document.getElementById(`ds-card-${id}`);
+    el?.scrollIntoView({ block: "nearest" });
+    el?.focus();
+  };
+  const goChat = (id: string) => {
+    setQuery("");
+    d.stick.current = false;
+    requestAnimationFrame(() => document.getElementById(`du-${id}`)?.scrollIntoView({ block: "center" }));
   };
 
   return (
@@ -37,6 +51,25 @@ export default function DutyScreen({ chat, onClose, airports, refreshKey, now }:
                 <li key={x.id}>
                   <span className="mono ds-id">{x.id}</span> {x.text}
                   {x.until && <span className="ds-until mono"> until {x.until}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="ds-sec" aria-label="결정 기록">
+          <h2 className="ds-h">결정 기록 {log.length > 0 && <em>{log.length}</em>}</h2>
+          {log.length === 0 ? (
+            <p className="ds-empty">처리한 카드가 아직 없습니다</p>
+          ) : (
+            <ul className="ds-list">
+              {log.map((e) => (
+                <li key={e.id}>
+                  <button type="button" className={`ds-shift${e.outcome === "gone" ? " is-gone" : ""}`} onClick={() => goChat(e.id)}>
+                    <span className="mono">
+                      {e.kind} {e.ref}
+                    </span>
+                    <span>{outcomeText(e.outcome, e.at)}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -76,7 +109,7 @@ export default function DutyScreen({ chat, onClose, airports, refreshKey, now }:
         <DutyGate d={d} />
         {enabled && (
           <>
-            <DutyLog d={d} filter={query} />
+            <DutyLog d={d} filter={query} cards="chips" onGo={goPanel} />
             <DutyComposer d={d} />
           </>
         )}
@@ -88,7 +121,11 @@ export default function DutyScreen({ chat, onClose, airports, refreshKey, now }:
           <p className="ds-empty">기다리는 카드가 없습니다</p>
         ) : (
           <div className="ds-cards">
-            {waiting.map((it) => (it.kind === "card" ? <DutyCard key={it.id} it={it} ctx={d.ctx} /> : it.kind === "draft" ? <DraftCard key={it.id} it={it} ctx={d.ctx} /> : null))}
+            {waiting.map((it) => (
+              <div key={it.id} id={`ds-card-${it.id}`} tabIndex={-1} className="ds-card">
+                {it.kind === "card" ? <DutyCard it={it} ctx={d.ctx} /> : <DraftCard it={it} ctx={d.ctx} />}
+              </div>
+            ))}
           </div>
         )}
         {enabled && <QueueRow queue={d.queue} ctx={d.ctx} />}
