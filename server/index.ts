@@ -185,7 +185,7 @@ mountRelay(app, getSnapshot); // SUPERVISOR RELAY(ATC-271): 화면에서 AIRCRAF
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
-mountMetrics(app);
+mountMetrics(app, getSnapshot);
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),

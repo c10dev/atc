@@ -1,14 +1,17 @@
+import { type FlowData, type FlowName, isFlowName, SAMPLE_MINUTES, stretchStat, type StretchName } from "./flow.ts";
 import type { LeakRecord } from "./leaks.ts";
 
 // EFFECT CHECK(ATC-402, docs/autonomy.md 원칙 7): 작업 지시서가 `## Measure`에 적은 것을 배포 앞뒤로 비교해 FLIGHT마다 평결 하나를 남긴다. 순수 함수만.
-// 읽고 쓰는 것은 effect-check-run.ts. 측정은 atc가 이미 기록하는 것만: leak(건수·붙잡은 분), misfire, 알림 종류별 발생 수, CLEARANCE 종류별 수.
+// 읽고 쓰는 것은 effect-check-run.ts. 측정은 atc가 이미 기록하는 것만: leak(건수·붙잡은 분), misfire, 알림 종류별 발생 수, CLEARANCE 종류별 수,
+// flow(ATC-468: 놀고-큐가 빈 분의 합, 이슈가 지나는 세 구간의 중앙값. flow.ts).
 
 // ── ## Measure ──
-export const MEASURE_SOURCES = ["leak", "leak-minutes", "misfire", "alert", "clearance"] as const;
+export const MEASURE_SOURCES = ["leak", "leak-minutes", "misfire", "alert", "clearance", "flow"] as const;
 export type MeasureSource = (typeof MEASURE_SOURCES)[number];
+export type CountSource = Exclude<MeasureSource, "flow">; // 세는 종류. flow는 분과 중앙값이라 따로 읽는다
 export interface Measure {
   source: MeasureSource;
-  name: string; // leak: 종류(PROPOSAL…), misfire: dispatch, alert: alertKind, clearance: 종류(FIX…)
+  name: string; // leak: 종류(PROPOSAL…), misfire: dispatch, alert: alertKind, clearance: 종류(FIX…), flow: idle-empty-min | created-todo | todo-release | release-launch
   direction: "down" | "up";
   windowDays: number;
 }
@@ -42,12 +45,14 @@ export function measureOf(description: string | null | undefined): MeasureParse 
   const name = nameParts.join(":").trim();
   if (!(MEASURE_SOURCES as readonly string[]).includes(src.toLowerCase())) return { kind: "invalid", reason: `모르는 측정 종류 ${src}(${MEASURE_SOURCES.join("·")})` };
   if (!name) return { kind: "invalid", reason: "metric에 이름이 없음(source:name)" };
+  if (src.toLowerCase() === "flow" && !isFlowName(name)) return { kind: "invalid", reason: `모르는 flow 이름 ${name}(idle-empty-min·created-todo·todo-release·release-launch)` };
   if (!NAME_RE.test(name)) return { kind: "invalid", reason: `metric 이름은 글자·숫자·-·_·:·공백 ${NAME_MAX}자까지` }; // 본문의 글이 DUTY REVIEW 프롬프트에 산문으로 들어가지 못하게
   if (dir !== "down" && dir !== "up") return { kind: "invalid", reason: "direction은 down 또는 up" };
   const w = /^(\d{1,2})\s*d(ays?)?$/i.exec(win ?? "");
   const windowDays = w ? Number(w[1]) : 0;
   if (windowDays < 1 || windowDays > WINDOW_MAX_DAYS) return { kind: "invalid", reason: `window는 1d~${WINDOW_MAX_DAYS}d` };
-  return { kind: "measure", measure: { source: src.toLowerCase() as MeasureSource, name, direction: dir, windowDays } };
+  const source = src.toLowerCase() as MeasureSource;
+  return { kind: "measure", measure: { source, name: source === "flow" ? name.toLowerCase() : name, direction: dir, windowDays } };
 }
 export const measureText = (m: Measure) => `${m.source}:${m.name} ${m.direction} ${m.windowDays}d`;
 
@@ -59,7 +64,8 @@ export interface EffectData {
   alerts: readonly { at: string; kind: string }[]; // FLIGHT RECORDER alert.raised
   clearances: readonly { at: string; type: string }[];
   // 그 종류의 기록이 시작된 가장 이른 시각(ms). 없으면 null. 그 앞은 "기록이 없었다"가 아니라 "몰랐다"라 평결이 too little data가 된다
-  coverageFrom: Readonly<Record<MeasureSource, number | null>>;
+  coverageFrom: Readonly<Record<CountSource, number | null>>;
+  flow?: FlowData; // flow 측정에 쓰는 것(없으면 flow는 too little data)
 }
 
 const inWin = (iso: string, from: number, to: number) => {
@@ -71,6 +77,8 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 // [from, to)의 값
 export function countOf(m: Pick<Measure, "source" | "name">, d: EffectData, from: number, to: number): number {
   switch (m.source) {
+    case "flow":
+      return flowValueOf(m.name, d, from, to).value ?? 0;
     case "leak":
       return d.leaks.filter((r) => r.ev === "open" && same(r.kind, m.name) && inWin(r.t, from, to)).length;
     case "leak-minutes": {
@@ -84,6 +92,19 @@ export function countOf(m: Pick<Measure, "source" | "name">, d: EffectData, from
     case "clearance":
       return d.clearances.filter((c) => same(c.type, m.name) && inWin(c.at, from, to)).length;
   }
+}
+
+// flow 값: idle-empty-min은 그 창의 분 합계(n은 표본 수), 세 구간은 끝난 이슈들의 중앙값(분, n은 이슈 수). 하나도 없으면 value null
+export function flowValueOf(name: string, d: Pick<EffectData, "flow">, from: number, to: number): { value: number | null; n: number } {
+  const f = d.flow;
+  if (!f || !isFlowName(name)) return { value: null, n: 0 };
+  const n0 = name.toLowerCase() as FlowName;
+  if (n0 === "idle-empty-min") {
+    const n = f.idleAt.filter((t) => t >= from && t < to).length;
+    return { value: n * SAMPLE_MINUTES, n };
+  }
+  const st = stretchStat(f.stretches, n0 as StretchName, from, to);
+  return { value: st.medianMin, n: st.n };
 }
 
 // ── 평결 ──
@@ -100,18 +121,27 @@ export interface Judged {
 }
 export function judge(m: Measure, deployedAt: number, d: EffectData): Judged {
   const w = m.windowDays * DAY;
-  const before = countOf(m, d, deployedAt - w, deployedAt);
-  const after = countOf(m, d, deployedAt, deployedAt + w);
-  const cov = d.coverageFrom[m.source];
+  let before = countOf(m, d, deployedAt - w, deployedAt);
+  let after = countOf(m, d, deployedAt, deployedAt + w);
+  const cov = m.source === "flow" ? (d.flow?.coverage[m.name.toLowerCase() as FlowName] ?? null) : d.coverageFrom[m.source];
   const j = (verdict: Verdict, reason: string): Judged => ({ verdict, before, after, reason });
   if (cov === null || cov > deployedAt - w) return j("too little data", "그 기록이 앞 구간 전체를 덮지 않는다");
+  // 구간 중앙값: 앞뒤 창 모두 이슈가 MIN_BASELINE 이상이어야 중앙값을 견줄 수 있다. 그 밖은 아래 20% 규칙을 그대로 쓴다
+  const isMedian = m.source === "flow" && m.name.toLowerCase() !== "idle-empty-min";
+  if (isMedian) {
+    const b = flowValueOf(m.name, d, deployedAt - w, deployedAt);
+    const a = flowValueOf(m.name, d, deployedAt, deployedAt + w);
+    before = b.value ?? 0;
+    after = a.value ?? 0;
+    if (b.n < MIN_BASELINE || a.n < MIN_BASELINE) return j("too little data", `중앙값에 쓸 이슈가 앞 ${b.n}건·뒤 ${a.n}건뿐(각각 ${MIN_BASELINE}건 이상이어야 한다)`);
+  }
   if (m.direction === "down") {
-    if (before < MIN_BASELINE) return j("too little data", `앞 구간에 ${before}건뿐(${MIN_BASELINE}건 이상이어야 줄었는지 알 수 있다)`);
+    if (!isMedian && before < MIN_BASELINE) return j("too little data", `앞 구간에 ${before}건뿐(${MIN_BASELINE}건 이상이어야 줄었는지 알 수 있다)`);
     if (after <= before * (1 - CHANGE_SHARE) && before - after >= 1) return j("improved", "줄었다");
     if (after >= before * (1 + CHANGE_SHARE) && after - before >= 1) return j("worse", "늘었다");
     return j("not improved", "20% 이상 줄지 않았다");
   }
-  if (before + after < MIN_BASELINE) return j("too little data", `앞뒤 합쳐 ${before + after}건뿐`);
+  if (!isMedian && before + after < MIN_BASELINE) return j("too little data", `앞뒤 합쳐 ${before + after}건뿐`);
   if (after >= before * (1 + CHANGE_SHARE) && after - before >= 1) return j("improved", "늘었다");
   if (after <= before * (1 - CHANGE_SHARE) && before - after >= 1) return j("worse", "줄었다");
   return j("not improved", "20% 이상 늘지 않았다");
