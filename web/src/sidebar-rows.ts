@@ -156,7 +156,6 @@ export const METRICS_ITEMS = [
 export const HOME_ANCHORS = [
   { id: "queue", label: "QUEUE", ariaLabel: "SUPERVISOR QUEUE" },
   { id: "alerts", label: "ALERTS", ariaLabel: "ALERTS" },
-  { id: "brakes", label: "BRAKES", ariaLabel: "BRAKES" },
 ] as const;
 
 export function filterLabeled<T extends { label: string }>(items: readonly T[], query: string): T[] {

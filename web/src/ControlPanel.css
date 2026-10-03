@@ -48,6 +48,35 @@
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
+/* 탭(ATC-455): CONTROL · BRAKES. 고른 탭은 밑줄과 밝은 글자(색만으로 알리지 않는다: aria-selected도 선다) */
+.cp-tabs {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cp-tab:hover {
+  color: var(--text);
+}
+.cp-tab:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.cp-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--cyan);
+}
 .cp-label {
   font: 600 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
@@ -145,6 +174,11 @@
   overflow: hidden;
   background: var(--panel);
   border-top: 1px solid var(--line);
+}
+.cp-body-brakes {
+  display: block;
+  overflow: auto;
+  padding: var(--space-3) var(--gutter);
 }
 .cp-table {
   min-width: 0;
