@@ -13,6 +13,7 @@ import type { Snapshot } from "./model.ts";
 import type { ReleaseLine } from "./release.ts";
 import { readReleaseLines } from "./release-store.ts";
 import { currentAlerts } from "./supervisor-alerts-run.ts";
+import { timed } from "./job-timing.ts";
 
 export const TICK_MS = 60_000;
 const WARMUP_MS = 3 * 60_000; // 서버가 뜬 직후(RTS 재시작)에는 스냅샷이 비어 있다: 이만큼 기다린다
@@ -128,7 +129,7 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
       running = false;
     }
   };
-  setInterval(() => void tick(), TICK_MS).unref();
+  setInterval(() => void timed("tick:duty-review", tick), TICK_MS).unref();
 
   // 읽기만: 스위치 상태와 하루 세기(스위치는 설정 창에서만 바뀐다: PUT /api/settings의 dutyReview, Origin 검사)
   app.get("/api/duty/review", async (c) => {

@@ -68,6 +68,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "orphan-flight-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "job-timing-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }

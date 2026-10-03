@@ -82,6 +82,8 @@ import { mountTouches } from "./touches-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
+import { mountJobTiming } from "./job-timing-run.ts";
+import { timed } from "./job-timing.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
 import { mountStuckUnserved } from "./stuck-unserved-run.ts";
 import { mountStopCheck } from "./control-stop-check-run.ts";
@@ -151,22 +153,24 @@ const version = () => ({ build, startedAt, head });
 async function tick() {
   checkBuild();
   try {
-    const next = await buildSnapshot();
-    const sig = JSON.stringify({ ...next, at: null });
-    for (const event of eventLog.push(diffSnapshots(current, next))) {
-      record({ t: event.at, kind: "event", epoch: eventLog.epoch, event });
-    }
+    const next = await timed("tick:buildSnapshot", buildSnapshot); // 잰 시간은 job-timing/에만 적는다(ATC-525)
+    const sig = timed("tick:signature", () => JSON.stringify({ ...next, at: null }));
+    timed("tick:events", () => {
+      for (const event of eventLog.push(diffSnapshots(current, next))) {
+        record({ t: event.at, kind: "event", epoch: eventLog.epoch, event });
+      }
+    });
     // 주기로 도는 일(ATC-393): server/jobs/의 선언이 순서대로. 스냅샷이 따뜻할 때만(샘플·DISPATCH·착수 기록·LOGBOOK·OOOI·STAND 없는 FLIGHT·ATFM·AUTOLAND·판정·QRH)
-    runner.tick(next, isWarm(next));
+    timed("tick:jobs", () => runner.tick(next, isWarm(next))); // 잡마다의 시간은 러너가 job:<이름>으로 따로 잰다
 
     // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
-    const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
+    const alertEvent = isWarm(next) ? timed("tick:alerts", () => runSupervisorAlerts(next)) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
-    if (isWarm(next)) await supervisorQueueNow(async () => next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
-    const summary = isWarm(next) ? runSummary(next) : null;
+    if (isWarm(next)) await timed("tick:queue", () => supervisorQueueNow(async () => next, () => update.status())).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
+    const summary = isWarm(next) ? timed("tick:summary", () => runSummary(next)) : null;
     if (summary) for (const l of summaryListeners) l(summary);
-    radioFeed.poll();
+    timed("tick:radio", () => radioFeed.poll());
 
     current = next;
     if (sig !== signature) {
@@ -183,6 +187,7 @@ const app = new Hono();
 
 // SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
 app.use("/api/*", supervisorGate());
+app.use("/api/*", (c, next) => timed(`http:${c.req.method} ${c.req.path.split("/").slice(0, 3).join("/")}`, next)); // 경로별 요청 수·시간(ATC-525). 스트림 길은 wallMs가 연결 시간이다
 app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
 
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
@@ -292,6 +297,7 @@ provideService("flowDeps", { updateStatus: () => update.status(), alerts: curren
 mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)
+mountJobTiming(app); // JOB TIMING(ATC-525): 스위치와 일별 시간(읽기만)
 mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountHomeFlow(app, getSnapshot, () => update.status(), currentAlerts); // HOME 흐름판(ATC-499): 판정·칸·주체·묶은 할 일(읽기만, 새 GitHub·Linear 호출 없음)
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)

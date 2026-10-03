@@ -120,6 +120,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],
     ["operations", "ORPHAN FLIGHT", "주인 잃은 FLIGHT 감지", "orphan flight 주인 잃은 세션 끊김 한도 limit resume 새 세션 orphanFlight"],
     ["operations", "STUCK UNSERVED", "받을 AIRCRAFT가 없는 Todo의 막힘 알림 문구", "stuck unserved 막힘 알림 문구 no-aircraft unqualified no-tail 받을 AIRCRAFT 없음 LAUNCH stuckUnserved"],
+    ["operations", "JOB TIMING", "서버 일별 시간 측정", "job timing 잡 시간 측정 cpu 서버 부하 steady jobTiming"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);

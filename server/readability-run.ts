@@ -12,6 +12,7 @@ import { readRecords } from "./recorder.ts";
 import { DEFAULT_TEAM_PATTERN, registrationOf } from "./registration.ts";
 import { gitReadSync } from "./sources/git.ts";
 import { ROLE_DIRS } from "./squelch-run.ts";
+import { timed } from "./job-timing.ts";
 
 // READABILITY R0(ATC-176, docs/readability.md): 하루에 한 번 어제의 교신 질을 readability.jsonl에 한 줄로 더한다(추가만).
 // 처음 돌 때는 START_DAY부터 빠진 날을 모두 채운다. 대화 기록은 읽기만 하고 옮기거나 쓰지 않는다: 답마다 첫 줄(≤ 200자)과 길이만 남긴다.
@@ -317,5 +318,5 @@ export function startReadability(deps: Deps = realDeps()) {
     }
   };
   setTimeout(tick, 20_000).unref();
-  setInterval(tick, 3_600_000).unref();
+  setInterval(() => timed("tick:readability", tick), 3_600_000).unref();
 }

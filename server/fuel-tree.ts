@@ -1,5 +1,6 @@
 import { type FSWatcher, statSync, watch } from "node:fs";
 import { relative, sep } from "node:path";
+import { timed } from "./job-timing.ts";
 
 // FUEL의 대화 기록 목록(ATC-83, docs/fuel.md 4.1): ~/.claude/projects를 fs.watch(recursive, inotify)로 지켜 바뀐 파일만 표시해 둔다.
 // 목록은 알려진 기록 파일의 mtime 표이고, 바뀐 파일만 다시 stat한다. watch가 안 되거나 오류가 나면 매번 전체를 걷는 옛 방식으로 돌아간다.
@@ -48,7 +49,7 @@ export class FuelTree {
   // fs.watch를 시작한다. 안 되면 false(전체 걷기로 돌아간다). onChange는 바뀐 기록 파일이 생길 때마다(같은 틱에 여러 번 올 수 있다)
   start(onChange?: () => void): boolean {
     try {
-      const w = watch(this.root, { recursive: true, persistent: false }, (_event, filename) => {
+      const w = watch(this.root, { recursive: true, persistent: false }, (_event, filename) => timed("fuel:watch-event", () => {
         if (filename == null) {
           this.needFull = true; // 어느 파일인지 모르면 다음에 전체를 본다
         } else {
@@ -59,7 +60,7 @@ export class FuelTree {
         }
         this.seq++;
         onChange?.();
-      });
+      }));
       w.on("error", () => this.stop()); // 폴더가 사라지는 등: 전체 걷기로 돌아간다
       this.watcher = w;
       this.needFull = true;
@@ -78,6 +79,10 @@ export class FuelTree {
   }
 
   private fullWalk(now: number) {
+    timed("fuel:fullWalk", () => this.fullWalkInner(now));
+  }
+
+  private fullWalkInner(now: number) {
     this.files = new Map(this.walk(0, this.root).map((f) => [f.path, f]));
     this.dirty.clear();
     this.needFull = false;
@@ -86,6 +91,10 @@ export class FuelTree {
 
   // 표시된 경로만 다시 stat한다
   private applyDirty() {
+    timed("fuel:applyDirty", () => this.applyDirtyInner());
+  }
+
+  private applyDirtyInner() {
     for (const path of this.dirty) {
       const cls = classifyFuelPath(relative(this.root, path).split(sep));
       let mtime: number | null = null;
