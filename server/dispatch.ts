@@ -101,6 +101,7 @@ export interface DispatchConfig {
   releaseParked: "on" | "off";
   // 비슷한 제목 검사(ATC-488): "on"(기본)이면 `duty linear create`가 열린 ATC 이슈와 거의 같은 제목을 409로 거절하고 PARKED 줄에 "possible duplicate" 표시를 단다. "off"면 둘 다 없다
   duplicateTitle: "on" | "off";
+  stuckUnserved: "on" | "off"; // 막힘 알림 문구(ATC-522): plan.unserved인 Todo FLIGHT의 follow|stuck에 사유와 다음 한 걸음을 적는다. off면 옛 문구
 }
 export type K3HoldMode = "on" | "off";
 export type AutoMode = "off" | "shadow" | "on";
@@ -154,6 +155,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   crossAccountRelease: "on",
   releaseParked: "on",
   duplicateTitle: "on",
+  stuckUnserved: "on",
   bgMemoryCap: "on",
   bgMemoryHigh: "20G",
   bgMemoryMax: "24G",
@@ -220,6 +222,18 @@ export function saveDuplicateTitle(mode: "on" | "off", file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, duplicateTitle: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// stuckUnserved만 바꿔 저장한다(설정 창, ATC-522). 다른 설정은 그대로 둔다
+export function saveStuckUnserved(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, stuckUnserved: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -379,6 +393,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       releaseParked: user.releaseParked === "off" ? "off" : "on",
       // 비슷한 제목 검사(ATC-488): 파일에 "off"라고 적었을 때만 끈다
       duplicateTitle: user.duplicateTitle === "off" ? "off" : "on",
+      // 막힘 알림 문구(ATC-522): 파일에 "off"라고 적었을 때만 끈다
+      stuckUnserved: user.stuckUnserved === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)

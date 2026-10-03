@@ -1,6 +1,6 @@
 import { canceledKeysOf, canceledPrsOf, standHoldersOf } from "./canceled-flight.ts";
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
-import { readRecords } from "./recorder.ts";
+import { readRecords, record } from "./recorder.ts";
 import { k3HoldOf } from "./k3-allow.ts";
 import { type EndedKey, followingNow } from "./following.ts";
 import { endsTrackable, endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
@@ -219,7 +219,9 @@ function pendingInput(s: Snapshot, now: number, teamPattern: string) {
 function followAlertInput(s: Snapshot, now: number) {
   if (!loadFollow().parents.length && !Object.keys(readReleaseView().records).length) return { rows: [], now };
   try {
-    return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now };
+    const cfg = loadDispatchConfig();
+    // plan.unserved 문구 스위치(ATC-522): on이면 K3 RELAUNCH가 켜졌나만 알려 준다
+    return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now, ...(cfg.stuckUnserved === "on" ? { stuckUnserved: { k3Relaunch: cfg.k3Relaunch === "on" } } : {}) };
   } catch {
     return { rows: [], now }; // 보드를 못 만들어도 다른 알림은 그대로
   }
@@ -235,6 +237,8 @@ export function runSupervisorAlerts(s: Snapshot, now = Date.now()): AlertEvent |
   const items = collectAlerts(s, now);
   const d = diffAlerts(known, items);
   known = new Map(items.map((a) => [a.key, a]));
+  // 새 문구를 쓴 막힘 알림이 올라올 때마다 한 줄(ATC-522, 센 수). 서버를 켠 첫 번(기준선)도 올라온 알림이다
+  for (const a of warmed ? d.raised : items) if (a.unserved) record({ t: new Date(now).toISOString(), kind: "policy", op: "stuck-unserved", flight: a.unserved.flight, why: a.unserved.why, airport: a.unserved.airport });
   // 서버를 켠 첫 번은 기준선이다: 화면은 initial 이벤트를 이미 있던 것으로 맞춰 본다(알리지 않는다)
   if (!warmed) {
     warmed = true;
