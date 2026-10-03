@@ -50,6 +50,10 @@ Nothing else needs editing: the PUT route, the mode line, the ⚠ confirmation, 
 
 `codexLane` (`server/switches/codex-lane.ts`, `codex-lane.json` `auto`, default `on`, SUPERVISOR only) turns the silent review lane of [ATC-386](occ.md) off: no new silent decisions, no records, no use of an earlier silent state, so only the per-PR 6 h rule remains. It is shown as ⚠ when `on` (it lets a PR land on one review lane), so turning it back on asks for confirmation. `loadLaneSwitch` fails open: a missing or unreadable `codex-lane.json` reads as `on` (the default), like the other `auto` switches that default to on; an unreadable file therefore cannot turn the lane off, and turning it off is the SUPERVISOR's explicit write. Two review fixes ride with it: the lane runs only for repositories that use Codex (not the MCC AIRPORT's, where INSPECTION is the review), and the single-lane count keys a landing by AIRPORT as well as number and head, so the same PR number in another repository is not counted.
 
+## SCOPE MEMORY CAP switch (ATC-505)
+
+`bgMemoryCap` (`server/switches/bg-memory-cap.ts`, `dispatch.json`, default `on`, SUPERVISOR only) adds `MemoryHigh` and `MemoryMax` (`bgMemoryHigh` 20G, `bgMemoryMax` 24G) to the transient scope of each fresh LAUNCH so an OOM stays inside it; `off` is the old launch (`OOMPolicy=continue` only). It is not a ⚠ value. Misfire counter: `oom_kill` of each `atc-claude-*.scope` (`jobs/scope-oom.ts`, `policy / scope-oom` records, shown in the CONTROL block). See [fleet.md](fleet.md) "Outside the service".
+
 ## Not built
 
 - The old nested `ServerSettings` fields (`review`, `fuel`, `dispatchAuto`, `autonomyAuto`, `mcc`, `fleetPlan`) are still sent for older readers; nothing in the screen needs them.

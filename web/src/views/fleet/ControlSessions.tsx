@@ -287,6 +287,7 @@ export function ControlSessions({ snapshot, attached, selected = null, onSelect 
           백그라운드 세션 daemon이 atc 서비스 안에서 돌고 있음 — atc를 재시작하면(배포·RTS) 모든 백그라운드 세션이 함께 멈춘다. 재시작한 뒤 LAUNCH하면 daemon이 서비스 밖(systemd scope)에서 뜬다
         </p>
       )}
+      {list?.scopeOom?.text && <p className="fl-c-warn">{list.scopeOom.text}</p>}
       {error && <p className="fl-c-warn is-error">{error}</p>}
       {/* 일괄 동작(ATC-255): 모두 내려가 있으면(호스트 재부팅 뒤 등) 복구 배너 */}
       {allControlDown(list?.sessions) && !bulk && <RecoveryBanner onLaunchAll={() => setBulk("launch")} />}

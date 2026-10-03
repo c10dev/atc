@@ -138,6 +138,13 @@ test("LAUNCH는 systemd scope에서: claude --bg가 띄우는 daemon이 atc.serv
   assert.deepEqual(launchCommandOf("/b/claude", ["agents"], null, "x"), { cmd: "/b/claude", args: ["agents"] });
 });
 
+test("LAUNCH scope의 메모리 상한(ATC-505): 켜면 MemoryHigh·MemoryMax가 붙고, 끄면(null) 옛 명령 그대로, scope가 없으면 상한도 없다", () => {
+  const on = launchCommandOf("/b/claude", ["--bg"], "/usr/bin/systemd-run", "atc-claude-1", { high: "20G", max: "24G" });
+  assert.deepEqual(on.args, ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", "-p", "MemoryHigh=20G", "-p", "MemoryMax=24G", "--unit=atc-claude-1", "--", "/b/claude", "--bg"]);
+  assert.deepEqual(launchCommandOf("/b/claude", ["--bg"], "/usr/bin/systemd-run", "atc-claude-1", null), launchCommandOf("/b/claude", ["--bg"], "/usr/bin/systemd-run", "atc-claude-1"));
+  assert.deepEqual(launchCommandOf("/b/claude", ["agents"], null, "x", { high: "20G", max: "24G" }), { cmd: "/b/claude", args: ["agents"] });
+});
+
 test("daemon이 atc 서비스 cgroup 안에 있나", () => {
   assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc.service"]), true);
   assert.equal(inServiceCgroup(["0::/user.slice/user-1000.slice/user@1000.service/app.slice/atc-claude-1.scope"]), false);
