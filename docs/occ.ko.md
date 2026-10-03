@@ -527,7 +527,8 @@ SUPERVISOR 결정 2026-09-29: atc는 관제 세션에 `ocx`(opencodex) 경로를
 - **세션으로 돌아가는 길.** 다음 `atcctl tick <role>`이 `ACT`(REASONS `decision-answered`)로 바뀌고 브리핑 앞에 `DECISION DC-xxxx [<key>] ANSWERED by SUPERVISOR — option n (…) · note: …`를 찍는다. DUTY는 tick이 없어 같은 줄이 `atcctl duty brief` 끝에 붙는다. 세션은 답대로 일하고 `atcctl decision ack <role> <DC-xxxx>`를 한다. 그때까지 그 줄은 반복된다. 더 필요 없는 카드는 `decision withdraw`, 열린 카드와 읽지 않은 답은 `decision list`.
 - **규칙.** 관제 `CLAUDE.md` 다섯 개가 말한다: SUPERVISOR를 기다리며 턴을 끝내지 않는다. 결정마다 카드 한 장. SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션, 다시 보내기, STAND 정리)은 QUEUE가 아니라 DUTY나 DISPATCH에. K1/K2/K3 결정은 그대로 SUPERVISOR 몫이고, 카드는 묻는 방법만 바꾼다. 도구 승인 프롬프트(`permission_prompt`)는 대상이 아니다.
 - **규칙 위반.** job 상태가 `blocked`로 기준 분을 넘긴 관제 세션은 더는 NEEDS YOU로 보이지 않는다(QUEUE에서도 뺀다). 대신 ALERTS에 **WARNING** `RULE BREACH — 관제 세션 <이름> …`(key `health|CONTROL-BLOCKED|<id>`)이 뜨고, 상태가 `blocked`를 벗어나면 사라진다. 팀 세션은 전과 같이 NEEDS YOU CAUTION이다.
-- **Guard.** TOWER와 OCC는 이미 모든 `atcctl` 명령을 쓴다. MCC·CROSSCHECK·DUTY는 쓸 수 있는 `atcctl` 하위 명령 목록이 있다. 거기서 바뀐 것은 PR 본문에 적는다.
+- **K1–K3만 카드, 나머지는 기본값.** 카드는 K1–K3 결정에만 쓴다. 그 밖의 결정은 세션이 로그에 밝힌 기본값으로 진행하고, TOWER와 OCC는 `atcctl decision default <role> <key> --what '…' --chose '…'`로 FLIGHT RECORDER에도 남긴다(`POST /api/decisions/default`, `kind: decision`, `op: default`, 카드는 만들지 않는다).
+- **Guard(그대로).** TOWER와 OCC는 이미 모든 `atcctl` 명령을 쓰므로 카드를 올리고 기본값을 남길 수 있다. MCC·CROSSCHECK·REVIEW·DUTY guard 허용 목록에는 `decision`이 **없고** 이번 변경은 그대로 둔다. 그 세션에 이 명령을 주려면 guard 변경이라 SUPERVISOR 승인이 필요하다. 그래서 그 세션의 규칙에는 `decision` 명령이 없다: MCC는 PR 결정을 `mcc escalate`로 올리고, CROSSCHECK·DUTY는 K1–K3 결정을 보고에 적어 OCC나 TOWER가 카드를 올린다. 이들의 기본값은 세션 로그에만 남는다.
 
 ## 10. atc에 더할 것
 

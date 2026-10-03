@@ -110,11 +110,11 @@ Decide first whether the problem is the FLIGHT's or the AIRCRAFT's. Don't put a 
 
 ## SUPERVISOR decisions go on a card (ATC-352)
 
-- **Never end a turn waiting for the SUPERVISOR.** When a human decision is needed, do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. File one QUEUE card (kind DECISION) per decision, finish the rest of your work, and end the turn normally.
-- Command to file a card: `node ../controller/atcctl.mjs decision file crosscheck <key> --ask '<question the SUPERVISOR reads, in Korean>' --option '<option 1>' --option '<option 2>' [--pr <number> --head <sha>]`. 2 to 6 options, one line each. The same decision always gets the same `<key>` (for a PR: `pr#<number>@<head>`). A `<key>` is filed once and answers `ALREADY FILED` afterwards. Do not ask the same thing again. Filing a card is all it does: it approves, sends and merges nothing.
+- **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log (you have no `decision` command, so the FLIGHT RECORDER line comes only from OCC and TOWER sessions). It never becomes a card.
+- A K1–K3 decision: you cannot file a card yourself (this session's guard does not allow `atcctl decision`; changing that is a guard change that needs the SUPERVISOR's approval). Name it in your report and LOG line, with the options, and carry on with the default; OCC or TOWER files the card.
 - K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
 - Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
-- The SUPERVISOR's answer arrives in the next tick brief as a `DECISION DC-xxxx … ANSWERED by SUPERVISOR` line (`TICK ACT`, REASONS `decision-answered`). Act on it, then mark it read with `node ../controller/atcctl.mjs decision ack crosscheck <DC-xxxx>`. Withdraw a decision that is no longer needed with `decision withdraw crosscheck <DC-xxxx>`. `decision list crosscheck` shows open cards and unread answers.
 - Tool-approval prompts (permission_prompt) are out of scope for this rule.
 
 ## CROSSCHECK LOG

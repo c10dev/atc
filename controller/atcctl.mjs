@@ -91,6 +91,7 @@ const USAGE = `사용법:
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
   node atcctl.mjs decision file <역할> <key> --ask '<글>' --option '<a>' --option '<b>' [--pr <번호> [--head <sha>]]
                                             사람의 결정 하나를 SUPERVISOR QUEUE 카드 한 장으로 올린다(같은 key는 한 번만). 올린 뒤 턴을 끝낸다
+  node atcctl.mjs decision default <역할> <key> --what '<글>' --chose '<글>'   K1–K3가 아닌 결정을 기본값으로 진행한 기록(카드 없음, FLIGHT RECORDER)
   node atcctl.mjs decision ack|withdraw <역할> <DC-0001>   SUPERVISOR의 답을 읽었다 / 더 필요 없어 거둔다
   node atcctl.mjs decision list <역할>      그 역할의 열린 카드와 읽지 않은 답
   node atcctl.mjs undeliverable <C-0007> -- <사유>
@@ -727,11 +728,25 @@ export function parseDecisionArgs(args) {
     if (rest.length) throw new Error("decision list <역할>");
     return { sub, role };
   }
+  if (sub === "default") {
+    const [key, ...opts] = rest;
+    if (!key || key.startsWith("-")) throw new Error("decision default <역할> <key> --what '<글>' --chose '<글>'");
+    let what;
+    let chose;
+    for (let i = 0; i < opts.length; i += 2) {
+      const v = opts[i + 1];
+      if (v === undefined) throw new Error(`${opts[i]} 뒤에 값이 필요함`);
+      if (opts[i] === "--what") what = v;
+      else if (opts[i] === "--chose") chose = v;
+      else throw new Error(`알 수 없는 옵션 ${opts[i]}`);
+    }
+    return { sub, role, body: { role, key, what, chose } };
+  }
   if (sub === "ack" || sub === "withdraw") {
     if (rest.length !== 1 || !/^DC-\d{4,}$/i.test(rest[0])) throw new Error(`decision ${sub} <역할> <DC-0001>`);
     return { sub, role, id: rest[0].toUpperCase() };
   }
-  if (sub !== "file") throw new Error("decision file|ack|withdraw|list …");
+  if (sub !== "file") throw new Error("decision file|default|ack|withdraw|list …");
   const [key, ...opts] = rest;
   if (!key || key.startsWith("-")) throw new Error("decision file <역할> <key> --ask '<글>' --option '<a>' --option '<b>' [--pr <번호> [--head <sha>]]");
   let ask;
@@ -756,6 +771,7 @@ export function decisionText(r, out) {
     const ds = out.decisions ?? [];
     return ds.length ? ds.map((d) => `${d.id} ${d.status.toUpperCase()} [${d.key}]${d.status === "answered" ? ` — option ${d.answer.choice === null ? "-" : d.answer.choice + 1}${d.answer.text ? ` · ${d.answer.text}` : ""}` : ""}`).join("\n") : `DECISION none open for ${r.role}`;
   }
+  if (r.sub === "default") return `DECISION DEFAULT recorded [${r.body.key}] in the FLIGHT RECORDER — no card. Carry on with the stated default and put it in your log.`;
   const d = out.decision;
   if (r.sub === "file") return `${d.id} ${out.duplicate ? "ALREADY FILED" : "FILED"} [${d.key}] ${d.status.toUpperCase()} — one QUEUE card for the SUPERVISOR. End your turn now; the answer arrives in a later tick brief. Do not wait.`;
   return `${d.id} ${d.status.toUpperCase()}${r.sub === "ack" ? " — answer read" : " — card withdrawn"}`;
@@ -1174,7 +1190,7 @@ if (isMain) {
       console.log(await squelchLine(args[0]));
     } else if (cmd === "decision") {
       const r = parseDecisionArgs(args);
-      const out = r.sub === "file" ? await call("POST", "/api/decisions", r.body) : r.sub === "list" ? await call("GET", `/api/decisions?role=${r.role}`) : await call("POST", `/api/decisions/${encodeURIComponent(r.id)}/${r.sub}`, { role: r.role });
+      const out = r.sub === "file" ? await call("POST", "/api/decisions", r.body) : r.sub === "default" ? await call("POST", "/api/decisions/default", r.body) : r.sub === "list" ? await call("GET", `/api/decisions?role=${r.role}`) : await call("POST", `/api/decisions/${encodeURIComponent(r.id)}/${r.sub}`, { role: r.role });
       console.log(decisionText(r, out));
     } else if (cmd === "relay") {
       const r = parseRelayArgs(args);

@@ -80,11 +80,11 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 ## SUPERVISOR의 결정은 카드로 (ATC-352)
 
-- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** 사람의 결정이 필요해도 job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 결정 하나마다 QUEUE 카드 한 장(kind DECISION)을 올리고, 하던 일을 마저 한 뒤 턴을 평소처럼 끝낸다.
-- 카드를 올리는 명령: `node ../controller/atcctl.mjs decision file mcc <key> --ask '<SUPERVISOR가 읽는 한국어 질문>' --option '<선택지 1>' --option '<선택지 2>' [--pr <번호> --head <sha>]`. 선택지는 2~6개, 각자 한 줄이다. 같은 결정이면 `<key>`가 늘 같다(PR이면 `pr#<번호>@<head>`). 같은 `<key>`는 한 번만 올라가고 `ALREADY FILED`로 답한다. 같은 일로 다시 묻지 않는다. 카드를 올리는 일 외에 승인·전송·머지는 하지 않는다.
+- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 (이 세션에는 `decision` 명령이 없어 FLIGHT RECORDER 줄은 OCC·TOWER 세션만 남긴다) 카드로는 올리지 않는다.
+- PR에 대한 K1–K3 결정은 이미 카드다: `mcc escalate <PR> -- '<사유>'`로 user 등급으로 올린다. PR이 아닌 K1–K3 결정은 MCC LOG 줄에 적고 기본값으로 진행한다. 카드는 OCC나 TOWER가 올린다. 이 세션의 guard는 `atcctl decision`을 허용하지 않는다(바꾸려면 guard 변경이라 SUPERVISOR 승인이 필요하다).
 - K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
 - SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
-- SUPERVISOR의 답은 다음 tick 브리핑에 `DECISION DC-xxxx … ANSWERED by SUPERVISOR` 줄로 온다(`TICK ACT`의 REASONS `decision-answered`). 답을 따라 일한 뒤 `node ../controller/atcctl.mjs decision ack mcc <DC-xxxx>`로 읽었다고 표시한다. 더 필요 없어진 결정은 `decision withdraw mcc <DC-xxxx>`로 거둔다. 열린 카드와 읽지 않은 답은 `decision list mcc`.
 - 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
 
 ## MCC LOG

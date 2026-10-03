@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
-import { type Decision, type DecisionOp, decisionAnswerOf, decisionInputOf, duplicateOf, foldDecisions, isDecisionRole, nextDecisionId } from "./decision-card.ts";
+import { type Decision, type DecisionOp, decisionAnswerOf, decisionDefaultOf, decisionInputOf, duplicateOf, foldDecisions, isDecisionRole, nextDecisionId } from "./decision-card.ts";
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { record } from "./recorder.ts";
@@ -49,6 +49,14 @@ export function mountDecisionCards(app: Hono) {
     append({ op: "create", id, at, ...input });
     record({ t: at, kind: "decision", op: "create", id, by: input.role, key: input.key, pr: input.pr?.number ?? null });
     return c.json({ decision: allDecisions().find((d) => d.id === id), duplicate: false });
+  });
+
+  // K1–K3가 아닌 결정을 기본값으로 진행했다는 기록: 카드를 만들지 않고 FLIGHT RECORDER에만 적는다
+  app.post("/api/decisions/default", async (c) => {
+    const input = decisionDefaultOf(await c.req.json().catch(() => null));
+    if ("error" in input) return c.json(input, 400);
+    record({ t: new Date().toISOString(), kind: "decision", op: "default", by: input.role, key: input.key, what: input.what, chose: input.chose });
+    return c.json({ recorded: true, card: false });
   });
 
   // 그 역할의 카드(열린 것과 읽지 않은 답)

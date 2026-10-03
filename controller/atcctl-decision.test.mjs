@@ -17,6 +17,13 @@ test("decision: bad role, missing key, unknown option, --head without --pr", () 
   assert.throws(() => parseDecisionArgs(["merge", "tower", "k"]), /decision file/);
 });
 
+test("decision default: key, --what, --chose; no card options", () => {
+  assert.deepEqual(parseDecisionArgs(["default", "occ", "resend@D-1", "--what", "다시 보낼까", "--chose", "한 번 더"]), { sub: "default", role: "occ", body: { role: "occ", key: "resend@D-1", what: "다시 보낼까", chose: "한 번 더" } });
+  assert.throws(() => parseDecisionArgs(["default", "occ"]), /decision default/);
+  assert.throws(() => parseDecisionArgs(["default", "occ", "k", "--option", "x"]), /알 수 없는 옵션/);
+  assert.match(decisionText({ sub: "default", role: "occ", body: { key: "k" } }, {}), /no card/);
+});
+
 test("decision ack|withdraw|list", () => {
   assert.deepEqual(parseDecisionArgs(["ack", "mcc", "dc-0003"]), { sub: "ack", role: "mcc", id: "DC-0003" });
   assert.deepEqual(parseDecisionArgs(["withdraw", "duty", "DC-0003"]), { sub: "withdraw", role: "duty", id: "DC-0003" });

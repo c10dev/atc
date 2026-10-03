@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { Hono } from "hono";
-import { answerLineOf, type DecisionOp, decisionAnswerOf, decisionInputOf, duplicateOf, foldDecisions, nextDecisionId, unackedAnswers } from "./decision-card.ts";
+import { answerLineOf, type DecisionOp, decisionAnswerOf, decisionDefaultOf, decisionInputOf, duplicateOf, foldDecisions, nextDecisionId, unackedAnswers } from "./decision-card.ts";
 import { type QueueInput, supervisorQueueOf } from "./supervisor-queue.ts";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
@@ -55,7 +55,7 @@ test("decisionAnswerOf and answerLineOf", () => {
   assert.deepEqual(decisionAnswerOf(d, { text: " 기다려 " }), { choice: null, text: "기다려" });
   assert.ok("error" in decisionAnswerOf(d, { choice: 2 }));
   assert.ok("error" in decisionAnswerOf(d, {}));
-  assert.match(answerLineOf({ id: "DC-0001", key: "k", options: ["merge", "hold"], answer: { choice: 1, text: "after CI" } }), /DC-0001 \[k\] ANSWERED by SUPERVISOR — option 2 \(hold\) · note: after CI — .*atcctl decision ack DC-0001/);
+  assert.match(answerLineOf({ id: "DC-0001", key: "k", role: "mcc", options: ["merge", "hold"], answer: { choice: 1, text: "after CI" } }), /DC-0001 \[k\] ANSWERED by SUPERVISOR — option 2 \(hold\) · note: after CI — .*atcctl decision ack mcc DC-0001/);
 });
 
 test("QUEUE: an open card is one DECISION row; answered or withdrawn cards leave it", () => {
@@ -125,6 +125,29 @@ test("tick: a quiet role becomes ACT with the SUPERVISOR answer until the sessio
     await app.request(`/api/decisions/${filed.decision.id}/ack`, json({ role: "mcc" }));
     assert.equal((await tick()).act, false);
     assert.equal(((await (await app.request("/api/tick/tower")).json()) as { answers?: string[] }).answers, undefined); // 다른 role에는 안 간다
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("default: a non-K1–K3 decision is checked and recorded without a card", async () => {
+  assert.deepEqual(decisionDefaultOf({ role: "occ", key: "resend@D-1", what: "다시 보낼까", chose: "한 번 더 보낸다" }), { role: "occ", key: "resend@D-1", what: "다시 보낼까", chose: "한 번 더 보낸다" });
+  assert.match((decisionDefaultOf({ role: "x", key: "k", what: "a", chose: "b" }) as { error: string }).error, /role/);
+  assert.match((decisionDefaultOf({ role: "occ", key: "bad key", what: "a", chose: "b" }) as { error: string }).error, /key/);
+  assert.match((decisionDefaultOf({ role: "occ", key: "k", what: "", chose: "b" }) as { error: string }).error, /what/);
+  assert.match((decisionDefaultOf({ role: "occ", key: "k", what: "a", chose: "日本語" }) as { error: string }).error, /chose/);
+  const dir = mkdtempSync(join(tmpdir(), "atc-decision-"));
+  try {
+    const { config } = await import("./config.ts");
+    (config as { stateDir: string }).stateDir = dir;
+    const { mountDecisionCards, allDecisions } = await import("./decision-card-run.ts");
+    const app = new Hono();
+    mountDecisionCards(app);
+    const post = (body: unknown) => app.request("/api/decisions/default", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const ok = await post({ role: "occ", key: "k", what: "a", chose: "b" });
+    assert.deepEqual(await ok.json(), { recorded: true, card: false });
+    assert.equal((await post({ role: "occ", key: "k", what: "a" })).status, 400);
+    assert.deepEqual(allDecisions(), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

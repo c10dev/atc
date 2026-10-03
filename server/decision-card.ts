@@ -55,6 +55,27 @@ const textError = (name: string, v: string, max: number): string | null => {
   return null;
 };
 
+// K1–K3가 아닌 결정을 기본값으로 진행했다는 기록(카드 없이 FLIGHT RECORDER에만 남는다). 순수 검사
+export interface DecisionDefault {
+  role: DecisionRole;
+  key: string;
+  what: string;
+  chose: string;
+}
+export function decisionDefaultOf(body: unknown): DecisionDefault | { error: string } {
+  const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  if (!isDecisionRole(b.role)) return { error: `role은 ${DECISION_ROLES.join("|")} 중 하나` };
+  const key = typeof b.key === "string" ? b.key.trim() : "";
+  if (!KEY.test(key)) return { error: "key는 영문·숫자와 | : # @ . _ / - 로 120자 이내" };
+  const what = typeof b.what === "string" ? b.what.trim() : "";
+  const whatErr = textError("what", what, DECISION_ASK_MAX);
+  if (whatErr) return { error: whatErr };
+  const chose = typeof b.chose === "string" ? b.chose.trim() : "";
+  const choseErr = textError("chose", chose, DECISION_OPTION_MAX);
+  if (choseErr) return { error: choseErr };
+  return { role: b.role, key, what, chose };
+}
+
 // 요청 본문 검사(순수). 틀리면 사유 하나, 맞으면 정리한 입력
 export function decisionInputOf(body: unknown): DecisionInput | { error: string } {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
@@ -129,8 +150,8 @@ export function decisionAnswerOf(d: Pick<Decision, "options">, body: unknown): {
 }
 
 // 세션이 읽는 답 한 줄(영어: 세션끼리 주고받는 글, ATC-126)
-export function answerLineOf(d: Pick<Decision, "id" | "key" | "options" | "answer">): string {
+export function answerLineOf(d: Pick<Decision, "id" | "key" | "role" | "options" | "answer">): string {
   const a = d.answer;
   const picked = a && a.choice !== null ? `option ${a.choice + 1} (${d.options[a.choice]})` : "no option";
-  return `DECISION ${d.id} [${d.key}] ANSWERED by SUPERVISOR — ${picked}${a?.text ? ` · note: ${a.text}` : ""} — act on it, then \`atcctl decision ack ${d.id}\``;
+  return `DECISION ${d.id} [${d.key}] ANSWERED by SUPERVISOR — ${picked}${a?.text ? ` · note: ${a.text}` : ""} — act on it, then \`atcctl decision ack ${d.role} ${d.id}\``;
 }
