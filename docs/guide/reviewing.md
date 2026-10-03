@@ -11,7 +11,7 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 | QUEUE | 사용자의 결정을 기다리는 것(SUPERVISOR QUEUE 전체). 설정의 **DISPATCH 자동 운항**을 끄면 ASSIGN·launch 카드가 줄로 옵니다. RELEASE 카드(STAND 없이 7일 넘게 ENROUTE인 FLIGHT를 Todo로 되돌릴지)도 같습니다 | 줄의 **승인**·**거절**(누르면 줄 안에서 한 번 확인합니다. 거절은 사유를 적을 수 있고 같은 짝은 24시간 다시 제안하지 않습니다). 다른 줄(FLEET PLAN, UPDATE, 머지 …)의 버튼도 같은 자리입니다 |
 | ALERTS | WARNING과 CAUTION 알림 | 눌러서 그 항목으로 갑니다 |
 | STUCK | 막힌 FLIGHT 줄([FOLLOW](follow.md)의 막힘 한도를 넘은 것)과 이유 | 줄에서 **CANCEL…**(승인했지만 아직 안 보낸 카드), **RECALL…**(보낸 FLIGHT PLAN) |
-| BRAKES | 늘 있는 중립 줄: `GROUND STOP n` · `수동 출발 중지 n`, 자동화 스위치의 지금 상태 한 줄, DISPATCH 모드 | **ATFM…**(GROUND STOP 스위치, 수동 출발 중지, ATFM OFF, 머지 슬롯), **STOP ALL…**(관제 세션 모두 내림. 미리 보기를 먼저 봅니다), DISPATCH 2a↔2b 전환, **스위치 설정**(설정 창) |
+| BRAKES(아래 패널의 **BRAKES** 탭. 어느 화면에서든 열린다. 접힌 머리에서는 정지가 걸려 있으면 `BRAKES 1 STOP`처럼 개수가 보인다) | 늘 있는 중립 줄: `GROUND STOP n` · `수동 출발 중지 n`, 자동화 스위치의 지금 상태 한 줄, DISPATCH 모드 | **ATFM…**(GROUND STOP 스위치, 수동 출발 중지, ATFM OFF, 머지 슬롯), **STOP ALL…**(관제 세션 모두 내림. 미리 보기를 먼저 봅니다), DISPATCH 2a↔2b 전환, **스위치 설정**(설정 창) |
 
 배정의 이력은 **FLIGHT 서랍**의 `배정 기록`에서 읽습니다: 제안마다 단계 시각, 사유, 그리고 지금 할 수 있는 CANCEL…·RECALL…·**FRESH START…**. 자동 승인한 카드가 나중에 틀렸다고 드러난 몫은 **METRICS**의 MISFIRE에 날짜별로 있습니다. FOLLOW의 각 줄에도 같은 CANCEL…·RECALL…이 있습니다.
 
@@ -19,7 +19,7 @@ atc의 자동화는 **그림자 운용**에서 시작한다. 제안과 초안을
 
 ## SCHEDULE 초안: HOME의 QUEUE
 
-OCC가 Linear에 쓸 변경을 초안으로 남긴다. SCHEDULE 탭은 2026-10-02에 없어졌다(`#schedule`은 HOME을 연다). 남은 것은 이렇게 나뉘었다: **S2(승인 운용)에서 판정을 기다리는 초안은 HOME의 QUEUE 줄**이고(줄마다 **승인**·**거절**, 한 번 확인. TARGET·ROUTE는 적용하는 길이 없어 **동의**·**거절**로 기록만 한다), 지연 WAYPOINT는 HOME의 **LATE WAYPOINTS**, 승인한 CLOSE는 HOME의 **LINEAR에서 직접 DONE**, SCHEDULE S1↔S2 스위치는 HOME의 BRAKES 줄, 새 이슈 제안(NEW)은 RELEASE의 후보다. 사라진 것: S1에서 초안을 "승인했을 것 / 거절했을 것"으로 판정하는 화면, CROSSCHECK 칩, 판정 계열 칩, 후보·RECENT·IN PROGRESS 표, 맨 아래 READINESS 줄(S2 진입 점검, ROUTES WITHOUT WAYPOINTS). S1에서는 초안이 QUEUE에 오지 않고, 서버의 SCHEDULE AUTO가 켜져 있으면 서버가 승인한다.
+OCC가 Linear에 쓸 변경을 초안으로 남긴다. SCHEDULE 탭은 2026-10-02에 없어졌다(`#schedule`은 HOME을 연다). 남은 것은 이렇게 나뉘었다: **S2(승인 운용)에서 판정을 기다리는 초안은 HOME의 QUEUE 줄**이고(줄마다 **승인**·**거절**, 한 번 확인. TARGET·ROUTE는 적용하는 길이 없어 **동의**·**거절**로 기록만 한다), 지연 WAYPOINT는 HOME의 **LATE WAYPOINTS**, 승인한 CLOSE는 HOME의 **LINEAR에서 직접 DONE**, SCHEDULE S1↔S2 스위치는 아래 패널의 BRAKES 탭, 새 이슈 제안(NEW)은 RELEASE의 후보다. 사라진 것: S1에서 초안을 "승인했을 것 / 거절했을 것"으로 판정하는 화면, CROSSCHECK 칩, 판정 계열 칩, 후보·RECENT·IN PROGRESS 표, 맨 아래 READINESS 줄(S2 진입 점검, ROUTES WITHOUT WAYPOINTS). S1에서는 초안이 QUEUE에 오지 않고, 서버의 SCHEDULE AUTO가 켜져 있으면 서버가 승인한다.
 
 | 초안 | 내용 |
 |---|---|
@@ -39,7 +39,7 @@ OCC가 Linear에 쓸 변경을 초안으로 남긴다. SCHEDULE 탭은 2026-10-0
 - **LATE WAYPOINTS**: ETA가 WAYPOINT(Linear 마일스톤)의 목표일을 넘거나 목표일이 지났으면 HOME에 예외로 뜬다(있을 때만). 판정할 것은 아니다. OCC는 새 경고를 세션에서 한 번 보고하고, 목록에는 풀릴 때까지 남는다("OCC 보고 …"). 목표일을 옮길지, 일을 줄일지, FLIGHT를 더 배정할지는 SUPERVISOR가 정한다. ETA 계산은 NETWORK 탭 ROUTE MAP과 같다.
 - **WAYPOINT 없는 ROUTE**: 열린 FLIGHT가 있는데 WAYPOINT(마일스톤)가 하나도 없는 ROUTE는 ETA를 셀 수 없고 WAYPOINT 초안도 쓸 곳이 없다. 이 목록은 화면에서 없어졌다(OCC는 새 ROUTE를 세션에서 한 번 알린다). WAYPOINT가 필요하면 Linear에서 그 프로젝트에 마일스톤을 만든다(OCC는 만들지 않는다).
 - **S2 진입 점검**: 판정 20건 이상, 합의율 80% 이상. 그때 Linear 쓰기가 열린다(승인한 초안만, linear-guard로). 점검 숫자를 보이던 SCHEDULE 화면의 READINESS 줄은 없어졌다.
-- **S2(승인 운용)**: HOME의 BRAKES 줄 `SCHEDULE SHADOW — S2로`로 켠다(만들어 두었고 기본은 꺼짐). 켜면 초안이 QUEUE 줄에 "승인 / 거절"로 오고, 승인한 작업은 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 진행한다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
+- **S2(승인 운용)**: 아래 패널 BRAKES 탭의 `SCHEDULE SHADOW — S2로`로 켠다(만들어 두었고 기본은 꺼짐). 켜면 초안이 QUEUE 줄에 "승인 / 거절"로 오고, 승인한 작업은 APPROVED → RELEASED(OCC가 Linear에 씀) → APPLIED(Linear에 보임)로 진행한다. OCC가 쓰는 내용은 atc가 만들고, linear-guard가 그 입력과 다른 쓰기는 모두 막는다. 같은 호출은 한 번만 통과하므로 되풀이해도 댓글이 두 번 달리지 않는다. RELEASED인데 Linear에 반영되지 않았으면 OCC가 보고하고, Linear에서 직접 바꾸면 APPLIED로 닫힌다. 켜기 전 준비는 저장소의 `docs/occ.ko.md` "S2 켜는 법".
 
 ## RECALL: 보낸 FLIGHT PLAN 거둬들이기
 

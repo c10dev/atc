@@ -1,0 +1,31 @@
+/* BRAKES 탭 몸통(ATC-455). HOME의 .hm-brakes 줄이 아래 패널로 옮겨 왔다. 색·글꼴은 :root 토큰만 */
+.bk {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.bk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.bk-chip {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.bk-chip b {
+  color: var(--text);
+}
+.bk-switches {
+  flex: 1 1 280px;
+  min-width: 0;
+  font: var(--text-xs) var(--mono);
+  overflow-wrap: anywhere;
+}
+.bk-error {
+  margin: 0;
+  color: var(--alert);
+  font-size: var(--text-sm);
+}
