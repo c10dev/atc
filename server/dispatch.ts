@@ -6,6 +6,8 @@ import { crossAccountAircraftWhy } from "./account-reach.ts";
 import { callsign } from "./callsign.ts";
 import { config } from "./config.ts";
 import { accountOf, type Classification, canFly, classOf, DEFAULT_FLEET, type FleetFile, type FlightType, needsStand, profileOf, type Rating, WAKE_SLOTS } from "./crew.ts";
+import { holdAccountOf } from "./account-key.ts";
+import { type AccountFolder } from "./accounts.ts";
 import { accountHoldDetail, accountHoldLabel, accountHoldOf, accountHolds, type Health, healthLabel, hhmm } from "./health.ts";
 import { DEFAULT_FUEL, type FuelConfig, fuelConfigOf, fuelHoldReason, fuelHolds } from "./fuel-remaining.ts";
 import { type Holder, holderLabel, isHeavy, overlapConfigOf, DEFAULT_OVERLAP, type OverlapConfig, overlapDetail, overlapHoldWhy, overlapsOf, overlapValueOf, predictedOf, sameTeamOnlyNote, soleTeamOf, splitByTeam } from "./overlap.ts";
@@ -85,6 +87,8 @@ export interface DispatchConfig {
   k3Hold: K3HoldMode;
   // ACCOUNT 불일치 카드 풀기(ATC-458): "on"(기본)이면 OCC와 ACCOUNT가 달라 닿지 않는 AIRCRAFT의 열린 ASSIGN 카드를 닫고 FLIGHT를 계획으로 돌린다. "off"면 카드가 ATC-251 사유로 계속 기다린다(계획 규칙은 그대로)
   crossAccountRelease: "on" | "off";
+  // PARKED(ATC-487): "on"(기본)이면 RELEASE 화면이 막는 이슈 없이 손으로 올린 Backlog 이슈를 접힌 PARKED 절에 보이고 /api/releases/fire가 받는다. "off"면 절이 없고 fire가 거절한다(옛 동작)
+  releaseParked: "on" | "off";
 }
 export type K3HoldMode = "on" | "off";
 export type AutoMode = "off" | "shadow" | "on";
@@ -134,6 +138,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   staleStop: "on",
   k3Hold: "on",
   crossAccountRelease: "on",
+  releaseParked: "on",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -185,6 +190,18 @@ export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, k3Hold: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// releaseParked만 바꿔 저장한다(설정 창, ATC-487). 다른 설정은 그대로 둔다
+export function saveReleaseParked(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, releaseParked: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -289,6 +306,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       k3Hold: user.k3Hold === "off" ? "off" : "on",
       // ACCOUNT 불일치 카드 풀기(ATC-458): 파일에 "off"라고 적었을 때만 끈다
       crossAccountRelease: user.crossAccountRelease === "off" ? "off" : "on",
+      // PARKED(ATC-487): 파일에 "off"라고 적었을 때만 끈다
+      releaseParked: user.releaseParked === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
@@ -667,6 +686,8 @@ export function planDispatch(
   files: FilesInFlight = NO_FILES, // 파일 겹침(ATC-71): 날고 있는 FLIGHT의 파일과 이슈 본문
   resumes: AssignPlan[] = [], // RESUME 카드(ATC-129, dispatch-launch.ts resumePlansOf). 그 AIRCRAFT는 새 FLIGHT를 받지 않는다
   confirmAirport: string = DEFAULT_MCC.airport, // SUPERVISOR CONFIRM을 내는 AIRPORT(ATC-159). 호출부는 mccAirportNow()를 넘긴다
+  accountFolders: readonly AccountFolder[] = [], // ACCOUNT HOLD가 같은 폴더의 라벨을 한 ACCOUNT로 본다(ATC-490). 호출부는 accountFolders()를 넘긴다
+  claudeDir: string = config.claudeDir,
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
@@ -712,7 +733,7 @@ export function planDispatch(
   const waitsOf = (k: string) => waitsToLandOf((s.pulls ?? []).filter((p) => p.ticketKey === k), openClearanceOf(k));
   const waitingCap = cfg.slots.waitingPr;
   const teamSessions = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
-  const holds = accountHolds(teamSessions.map((x) => ({ name: x.name, account: accountOf(fleet, x.name), health: x.health })), now);
+  const holds = accountHolds(teamSessions.map((x) => ({ name: x.name, account: holdAccountOf(fleet, x, accountFolders, claudeDir), health: x.health })), now);
   const occSession = s.sessions.find((x) => x.status !== "dead" && x.name === "OCC");
   const aircraft: AircraftState[] = teamSessions
     .map((x) => {
@@ -725,7 +746,7 @@ export function planDispatch(
       if (x.health?.holds) return { ...base, available: false, reason: `${healthLabel(x.health, now)} — ${x.health.detail}` };
       // RESUME·STALLED(ATC-86): 멈춘 팀은 비어 있는 팀이 아니다. STAND 없는 FLIGHT도 받지 않는다(resting false)
       if (x.health?.code === "RESUME" || x.health?.code === "STALLED") return { ...base, available: false, stopped: true as const, reason: stoppedHealthWhy(x.health, now) };
-      const acct = accountHoldOf(holds, accountOf(fleet, x.name), x.name);
+      const acct = accountHoldOf(holds, holdAccountOf(fleet, x, accountFolders, claudeDir), x.name);
       if (acct) return { ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` };
       // ACCOUNT 불일치(ATC-458): OCC가 닿지 못하는 AIRCRAFT는 배정하지 않는다. 한쪽이라도 ACCOUNT를 모르면 막지 않는다(crossAccountWhyOf와 같은 규칙)
       const cross = crossAccountAircraftWhy(x, occSession);
@@ -799,7 +820,7 @@ export function planDispatch(
       aircraft.push({ ...base, available: false, stopped: true, reason: `RESUME — ${resume.flight}을 이어서(RESUME 카드)` });
       continue;
     }
-    const acct = accountHoldOf(holds, accountOf(fleet, reg), reg);
+    const acct = accountHoldOf(holds, holdAccountOf(fleet, { name: reg }, accountFolders, claudeDir), reg);
     if (acct) {
       aircraft.push({ ...base, available: false, reason: `${accountHoldLabel(acct, now)} — ${accountHoldDetail(acct)}` });
       continue;

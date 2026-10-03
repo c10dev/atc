@@ -16,6 +16,7 @@ export type ReleaseLine =
       at: string;
       hash: string; // 승인한 내용(목표·완료 기준·선언한 K 효과)의 해시
       via?: "click" | "bulk"; // screen: 한 건 클릭 / 일괄 확인
+      parked?: true; // screen 클릭이 RELEASE 화면의 PARKED 절에서 한 발권(ATC-487). 오작동 수를 센다
       words?: string; // duty-chat: SUPERVISOR 글 앞부분, attested: 증언한 말
       session?: string; // attested: 증언한 세션 이름
     }

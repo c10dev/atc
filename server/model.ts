@@ -103,6 +103,7 @@ export interface Ticket {
   airport?: string | null; // 이 FLIGHT의 AIRPORT 코드(DISPATCH와 같은 규칙, airportOfTicket). 어디에도 속하지 않으면 null (ATC-443)
   labels: string[];
   createdAt: string | null;
+  creator?: string | null; // 이슈를 만든 사람·agent의 이름(Linear creator, ATC-487 PARKED 줄이 보인다). 모르면 빈 칸
   startedAt: string | null; // started 상태(ENROUTE 등)에 들어간 시각
   blocks: string[]; // 이 FLIGHT가 막고 있는 FLIGHT key
   blockedBy: string[]; // 이 FLIGHT를 막고 있는 FLIGHT key

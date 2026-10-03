@@ -73,7 +73,7 @@ interface Filed {
   at: string;
 }
 // 발권 순서의 나무(ATC-456, server/release-tree.ts): 상위 이슈마다 그룹, 막는 이슈 밑에 막힌 이슈
-type StateWord = { kind: "ready" } | { kind: "todo" } | { kind: "waiting"; on: string[] } | { kind: "stage"; word: string };
+type StateWord = { kind: "ready" } | { kind: "parked" } | { kind: "todo" } | { kind: "waiting"; on: string[] } | { kind: "stage"; word: string };
 interface TreeRow {
   key: string;
   title: string;
@@ -91,6 +91,19 @@ interface TreeRow {
   filed: { by: string; at: string } | null;
   why: string | null;
   stale: boolean;
+  parked?: { by: string | null; createdAt: string | null }; // PARKED 줄(ATC-487)
+}
+// PARKED(ATC-487): 막는 이슈 없이 손으로 올린 Backlog 이슈. 접힌 절에 보이고 발권 단추는 READY와 같다
+interface ParkedRow {
+  key: string;
+  title: string;
+  priority: number;
+  createdAt: string | null;
+  by: string | null;
+  hash: string | null;
+  kEffects: string | null;
+  k3: K3Status | null;
+  sequence: { after: string; reason: string } | null;
 }
 interface TreeGroup {
   key: string | null;
@@ -106,6 +119,7 @@ interface ReleaseData {
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
   filed: Filed[];
+  parked?: { on: boolean; rows: ParkedRow[]; fired: number; misfires: string[] };
   proposals: Proposal[];
   unreleased: Row[];
   kPending?: KPending[];
@@ -159,7 +173,7 @@ function KFact({ text, k3 }: { text: string | null; k3?: K3Status | null }) {
 const PRIO_CODE = ["—", "URG", "HIGH", "MED", "LOW"];
 const prioOf = (p: number) => PRIO_CODE[p] ?? "—";
 
-const STATE_TAG = { ready: "READY", todo: "TODO", waiting: "대기" } as const;
+const STATE_TAG = { ready: "READY", parked: "PARKED", todo: "TODO", waiting: "대기" } as const;
 const tagOf = (r: TreeRow) => (r.state.kind === "stage" ? r.state.word : STATE_TAG[r.state.kind]);
 
 // 줄에서 한 마디로 말하는 문제("괜찮은가"에 아니오인 것). 없으면 null
@@ -177,6 +191,8 @@ function stateText(r: TreeRow): string {
       return "Backlog이고 막는 이슈가 모두 끝났습니다. 발권하면 Todo로 옮기고 발권을 기록합니다";
     case "todo":
       return r.released ? "Todo · 발권됨" : r.stale ? "Todo · 발권 뒤 내용이 바뀌어 다시 발권해야 합니다" : r.why ? `Todo · 발권을 거뒀습니다 — ${r.why}` : "Todo · 발권 전";
+    case "parked":
+      return "Backlog이고 막는 이슈가 없습니다. 발권하면 Todo로 옮기고 발권을 기록합니다. 두고 싶으면 그대로 둡니다(이 절은 아무것도 스스로 옮기지 않습니다)";
     case "waiting":
       return `${r.state.on.join(", ")}가 끝나야 풀립니다`;
     case "stage":
@@ -229,7 +245,7 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
           {problem && <span className="rls-problem"> — {problem}</span>}
         </>
       }
-      age={prioOf(r.priority)}
+      age={r.parked?.createdAt ? `${prioOf(r.priority)} · ${timeAgo(r.parked.createdAt, Date.now())}` : prioOf(r.priority)}
       open={open}
       onToggle={toggle}
       action={action}
@@ -238,6 +254,7 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
           <Fact name="상태">{stateText(r)}</Fact>
           {r.group && <Fact name="상위 이슈">{r.group}</Fact>}
           {r.fire && <KFact text={r.kEffects} k3={r.k3} />}
+          {r.parked && <Fact name="올린 사람">{r.parked.by ?? "알 수 없음"}</Fact>}
           {r.filed && (
             <Fact name="제안">
               {r.filed.by} · <span className="mono">{clock(r.filed.at)}</span>
@@ -371,6 +388,27 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     const open = openKey === id;
     return <FlightRow key={id} row={r} open={open} toggle={() => setOpenKey(open ? null : id)} acts={acts} />;
   };
+  const parked = data.parked?.on ? data.parked : null;
+  const parkedRows: FlatRow[] = (parked?.rows ?? []).map((p) => ({
+    key: p.key,
+    title: p.title,
+    priority: p.priority,
+    state: { kind: "parked" },
+    fire: "fire",
+    released: false,
+    after: p.sequence ? { key: p.sequence.after, reason: p.sequence.reason, known: true } : null,
+    sequenceProblem: null,
+    sameFiles: [],
+    children: [],
+    hash: p.hash,
+    kEffects: p.kEffects,
+    k3: p.k3,
+    filed: null,
+    why: null,
+    stale: false,
+    parked: { by: p.by, createdAt: p.createdAt },
+    group: null,
+  }));
   const kPending = data.kPending ?? [];
   const now = Date.now();
   const candidateCount = candidates.length + data.proposals.length;
@@ -550,6 +588,22 @@ export function Release({ refreshKey }: { refreshKey: string }) {
           </p>
         )}
       </section>
+
+      {parked && (
+        <Fold title="PARKED" count={parkedRows.length} defaultOpen={false}>
+          <p className="rls-note faint" title="막는 이슈 없이 손으로 올린 Backlog 이슈(상위 이슈 제외). 이 절은 아무것도 스스로 발권하거나 옮기지 않습니다. 오작동: 이 절에서 발권한 이슈가 24시간 안에 Canceled·Duplicate가 됨(설정 창 PARKED로 끕니다)">
+            7일 이 절에서 발권 {parked.fired} · 24시간 안에 취소·중복 {parked.misfires.length}
+            {parked.misfires.length > 0 && ` (${parked.misfires.join(", ")})`}
+          </p>
+          {parkedRows.length === 0 ? (
+            <Empty>PARKED 이슈 없음</Empty>
+          ) : (
+            <ul className="rls-rows" aria-label="PARKED">
+              {parkedRows.map((r) => row("parked", r))}
+            </ul>
+          )}
+        </Fold>
+      )}
 
       {rest.length > 0 && (
         <Fold title="대기·진행 중" count={rest.length} defaultOpen={false}>

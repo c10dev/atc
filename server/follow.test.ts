@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { arrowsBundleOf, ARROWS_KEY, bundleKeysOf, chainOrder, type FollowInput, followBoardOf, followRowOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
+import { arrowsBundleOf, ARROWS_KEY, bundleKeysOf, chainOrder, type FollowInput, followBoardOf, followProgressOf, followRowOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
 import { followingOf } from "./following.ts";
 import type { Milestones } from "./milestones.ts";
 import type { PullRequest, Ticket } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
+import type { FlightProgress } from "./progress.ts";
 
 const NOW = Date.parse("2026-10-01T04:00:00.000Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -360,4 +361,50 @@ test("화살표: PR 없는 FLIGHT의 ARRIVED 시각이 줄에 실린다(arrivedA
   assert.equal(row.arrivedAt, arrived);
   assert.equal(row.finished, true);
   assert.equal(followRowOf("ATC-1", base({ tickets: [ticket("ATC-1")] })).arrivedAt, null);
+});
+
+// ── ATC-491: FollowRow.progress와 묶음 안의 순서(막힘 → 날고 있음 → 기다림 → 끝남) ──
+const typ = { p25: 5, p50: 8, p75: 14, n: 279, level: "TYPE×WAKE" as const, group: "BUILD·M" };
+const fp = (over: Partial<FlightProgress>): FlightProgress => ({ segment: "work", elapsedMin: 10, typical: typ, late: false, marker: 0.1, standFree: false, ...over });
+
+test("progress: 구간마다(work·landing·rts·done), 보통 범위가 없을 때, 길어졌을 때", () => {
+  assert.equal(followProgressOf(null), null);
+  assert.deepEqual(followProgressOf(fp({})), { segment: "work", elapsed: 10, usual: { lo: 5, hi: 14 }, late: false, sample: "BUILD·M, n=279" });
+  assert.deepEqual(followProgressOf(fp({ segment: "work", elapsedMin: 1541, late: true })), { segment: "work", elapsed: 1541, usual: { lo: 5, hi: 14 }, late: true, sample: "BUILD·M, n=279" });
+  assert.deepEqual(followProgressOf(fp({ segment: "landing", elapsedMin: 3 })), { segment: "landing", elapsed: 3, usual: { lo: 5, hi: 14 }, late: false, sample: "BUILD·M, n=279" });
+  assert.deepEqual(followProgressOf(fp({ segment: "rts", elapsedMin: 7, typical: null })), { segment: "rts", elapsed: 7, usual: null, late: false, sample: null });
+  assert.deepEqual(followProgressOf(fp({ segment: "done", elapsedMin: null, typical: null, marker: null })), { segment: "done", elapsed: null, usual: null, late: false, sample: null });
+  assert.deepEqual(followProgressOf(fp({ typical: null, elapsedMin: 42 })), { segment: "work", elapsed: 42, usual: null, late: false, sample: null }); // 데이터 부족
+});
+
+test("progress: 줄에 실리고 now의 글은 그대로, 진행 자료가 없으면 null", () => {
+  const tickets = [ticket("ATC-4"), ticket("ATC-5")];
+  const ps = [proposal("D-4", "ATC-4", "accepted", { proposed: ago(90), approved: ago(80), sent: ago(70), accepted: ago(68) })];
+  const inp = withFollowing(base({ tickets, proposals: ps, progress: { "ATC-4": fp({ elapsedMin: 42, typical: { p25: 30, p50: 50, p75: 90, n: 8, level: "WAKE", group: "M" } }) } }));
+  const r = followRowOf("ATC-4", inp);
+  assert.deepEqual(r.progress, { segment: "work", elapsed: 42, usual: { lo: 30, hi: 90 }, late: false, sample: "M, n=8" });
+  assert.equal(r.now, "작업 42분 · 보통 30분–1시간 30분 (M, n=8)");
+  assert.equal(followRowOf("ATC-5", inp).progress, null);
+});
+
+test("순서: 막힘 → 날고 있음 → 기다림 → 끝남, 같은 무리 안에서는 주어진 순서 — 번들과 화살표 묶음", () => {
+  const tickets = [
+    ticket("ATC-1", { children: ["ATC-10", "ATC-13", "ATC-12", "ATC-14", "ATC-11"], state: "Backlog", stateType: "backlog" }),
+    ticket("ATC-10", { parent: "ATC-1", updatedAt: ago(5) }), // 기다림
+    ticket("ATC-13", { parent: "ATC-1", state: "Done", stateType: "completed" }), // 끝남
+    ticket("ATC-12", { parent: "ATC-1", state: "In Progress", stateType: "started", updatedAt: ago(4) }), // 날고 있음(발송)
+    ticket("ATC-14", { parent: "ATC-1", updatedAt: ago(6) }), // 기다림
+    ticket("ATC-11", { parent: "ATC-1", updatedAt: ago(90) }), // 막힘(Todo 90분, 제안 없음)
+  ];
+  const ps = [proposal("D-12", "ATC-12", "sent", { proposed: ago(30), approved: ago(20), sent: ago(4) })];
+  const milestones = new Map([["ATC-13", ms({ on: ago(60), in: ago(50) })]]);
+  const inp = withFollowing(base({ tickets, proposals: ps, milestones }));
+  const [b] = followBoardOf({ ...inp, parents: ["ATC-1"] });
+  const keys = b.rows.map((r) => r.key);
+  assert.deepEqual(keys.slice(0, 2), ["ATC-11", "ATC-12"]);
+  assert.notEqual(b.rows[0].stuck, null);
+  assert.equal(keys.at(-1), "ATC-13");
+  assert.deepEqual(keys.slice(2, 4).sort(), ["ATC-10", "ATC-14"]);
+  const a = arrowsBundleOf([{ flight: "ATC-13", at: ago(5) }, { flight: "ATC-10", at: ago(10) }, { flight: "ATC-12", at: ago(20) }, { flight: "ATC-11", at: ago(30) }], inp)!;
+  assert.deepEqual(a.rows.map((r) => r.key), ["ATC-11", "ATC-12", "ATC-10", "ATC-13"]); // 발권이 나중인 순서가 무리 안의 순서
 });

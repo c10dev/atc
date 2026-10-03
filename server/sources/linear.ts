@@ -12,6 +12,7 @@ const ENDPOINT = "https://api.linear.app/graphql";
 const ISSUE_FIELDS = `identifier title url description priority updatedAt createdAt startedAt
   state { name type color }
   assignee { id displayName }
+  creator { displayName }
   delegate { id displayName }
   project { name }
   labels(first: 20) { nodes { name parent { name } } }
@@ -48,6 +49,7 @@ export interface IssueNode {
   startedAt?: string | null;
   state: { name: string; type: string; color: string };
   assignee: { id?: string; displayName: string } | null;
+  creator?: { displayName: string } | null;
   delegate?: { id: string; displayName: string } | null; // Linear agent 위임(Codex 등)
   project?: { name: string } | null;
   labels?: { nodes: { name: string; parent?: { name: string } | null }[] };
@@ -121,6 +123,7 @@ export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
     // 라벨 그룹의 하위 라벨은 "그룹:이름"(예: Risk:Security, type:BUILD). 단독 라벨은 이름 그대로.
     labels: (n.labels?.nodes ?? []).map((l) => (l.parent?.name ? `${l.parent.name}:${l.name}` : l.name)),
     createdAt: n.createdAt ?? null,
+    creator: n.creator?.displayName ?? null,
     startedAt: n.startedAt ?? null,
     blocks: uniq(out.filter((r) => r.type === "blocks").map((r) => r.relatedIssue!.identifier)),
     blockedBy: uniq(inn.filter((r) => r.type === "blocks").map((r) => r.issue!.identifier)),
