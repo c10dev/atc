@@ -48,6 +48,7 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 
 - atc Linear 백로그에서 **이슈 10~12개**를 **기록한 시드로 무작위 추첨**한다. 크기(S, M)와 종류(screen, server, docs)로 층을 나눈다.
 - **두세 쌍은 일부러 파일이 겹치게** 한다. atc의 머지 처리는 거기서만 보인다.
+- 추첨은 스크립트라서 아무도 손으로 고르지 않는다: `node server/benchmark-draw-run.ts --candidates <후보.json> --out <결과.json> [--seed n] [--count 10..12] [--pairs 2..3]`(순수 함수는 `server/benchmark-draw.ts`, 오프라인, Linear·GitHub 호출 없음, 쓰는 곳은 `--out` 하나). 후보 목록은 손으로 만들거나 내보낸다: `[{ "key": "ATC-n", "size": "S|M", "kind": "screen|server|docs", "files": ["경로 또는 폴더/"], "flags": { "blocked", "needsDecision", "userTier", "hardToReverse" } }]`. 플래그가 붙은 후보는 이유와 함께 뺀다. 쌍을 먼저 고르고(`files`가 같은 경로이거나 `폴더/` 아래로 겹치는 서로 다른 이슈), 크기 × 종류 6개 층을 가장 덜 찬 층부터 고르게 채운다. 팔 순서는 층 안에서 번갈아 atc 먼저와 solo 먼저가 균형을 이룬다. 출력에는 시드, 이슈별 층과 팔 순서, 겹친 파일이 있는 쌍, 경고가 담긴다. 층·개수·쌍을 채울 풀이 모자라면 경고로 보고하고 조용히 채우지 않는다. 같은 시드와 같은 후보(순서 무관)는 같은 출력이다.
 - 뺀다: `user` 등급 이슈(바뀐 경로로 정하는 착륙 등급, `deploy/landing-tier.mjs`), 되돌리기 어려운 변경, 사람의 결정이 필요한 이슈.
 - 이슈마다 **두 팔 모두 같은 기준 커밋에서** **같은 작업 지시서 글**을 첫 프롬프트로 구현한다. 작업 지시서를 쓰는 시간은 따로 적고 주의에서 뺀다.
 - **이월 효과 통제**:
