@@ -729,6 +729,16 @@ A Todo FLIGHT that DISPATCH lists in `plan.unserved` used to raise `follow|stuck
 - **Counter.** Each alert that is raised with the new text records `policy / stuck-unserved` (`flight`, `why`, `airport`) once, when it appears. `GET /api/stuck-unserved?days=7` reads the switch and the count.
 - **Formats.** `stuckUnserved` in `dispatch.json`, the two `policy` record ops and `unserved` on the alert item are additive.
 
+## An orphan FLIGHT counts against its REGISTRATION's slot, as built (ATC-516)
+
+`planDispatch` takes the ORPHAN FLIGHTs of [fleet.md](fleet.md) ("ORPHAN FLIGHT as built") as a last optional input (`orphans`, REGISTRATION → FLIGHTs; `orphanCountsNow` fills it at all five call sites).
+
+- **Counted from the first plan after the old session stopped.** DISPATCH does not wait for the alert's grace period. An orphan joins the REGISTRATION's `unfinished` set like a `tail:` FLIGHT and uses its `perTeam` slot by its WAKE. A full slot makes the REGISTRATION `stopped` with the reason `VOC-317 ORPHAN FLIGHT(앞 세션이 멈춘 뒤 아무도 쥐지 않음)`, and it appears in `excluded`, so the REGISTRATION gets no other FLIGHT. The 2026-10-03 case at 07:52: TEAM_O is `stopped` and VOC-352 is not assigned to it.
+- **Stops counting** as soon as a live session holds the FLIGHT, a PR merges or the FLIGHT is canceled (it is no longer an orphan).
+- **`orphanOnly`.** When the stop would not exist without the orphan, `AircraftState.orphanOnly` lists those FLIGHTs; `runDispatch` writes one `hold` line per orphan to `orphan-flight-events.jsonl` for the misfire counter.
+- **Off switch.** `orphanFlight` off passes an empty map: the plan is exactly as before.
+- **Formats.** `orphan-flight.json`, `orphan-flight-events.jsonl` and `AircraftState.orphanOnly` are additive; `proposals.jsonl` does not change.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

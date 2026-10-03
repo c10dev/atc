@@ -477,6 +477,7 @@ export interface AircraftState {
   room?: number; // 끝나지 않은 FLIGHT를 쥐고도 슬롯(perTeam)이 남은 양(WAKE로 셈). STAND가 필요한 새 FLIGHT는 WAKE가 이 안에 들어야 한다
   restarting?: true; // /clear 뒤 첫 메시지를 기다리는 자리(ATC-91). 세션은 없고 배정은 받지 않지만 승인된 제안은 닫지 않는다
   launch?: true; // 세션이 없는 백그라운드 AIRCRAFT(ATC-129, 스냅샷 absent). 이 AIRCRAFT의 카드는 승인하면 LAUNCH한다
+  orphanOnly?: string[]; // 멈춤이 오직 이 ORPHAN FLIGHT들 때문이다(ATC-516). 그것을 빼면 슬롯이 남는다
   waiting?: string[]; // 착륙만 기다리며 슬롯을 쓰지 않는 FLIGHT(ATC-387). 새 FLIGHT는 새 STAND에서 시작하고 이 FLIGHT의 STAND는 FIX·GO AROUND를 위해 남긴다
 }
 
@@ -524,6 +525,7 @@ export function waitsToLandOf(prs: readonly Pick<PullRequest, "draft" | "blocks"
 }
 
 // 끝나지 않은 In Progress FLIGHT 하나의 사유. PR이 열려 있어도 머지 전이면 아직 진행 중이다
+export const orphanWhy = (key: string) => `${key} ORPHAN FLIGHT(앞 세션이 멈춘 뒤 아무도 쥐지 않음)`;
 export const unfinishedWhy = (key: string, hasPr: boolean) => `${key} 아직 진행 중(${hasPr ? "PR 머지 전" : "PR 없음"})`;
 
 export interface Plan {
@@ -776,6 +778,7 @@ export function planDispatch(
   confirmAirport: string = DEFAULT_MCC.airport, // SUPERVISOR CONFIRM을 내는 AIRPORT(ATC-159). 호출부는 mccAirportNow()를 넘긴다
   accountFolders: readonly AccountFolder[] = [], // ACCOUNT HOLD가 같은 폴더의 라벨을 한 ACCOUNT로 본다(ATC-490). 호출부는 accountFolders()를 넘긴다
   claudeDir: string = config.claudeDir,
+  orphans: ReadonlyMap<string, readonly string[]> = new Map(), // ORPHAN FLIGHT(ATC-516, orphan-flight.ts): REGISTRATION → 그 REGISTRATION이 쥔 것으로 세는 FLIGHT. 스위치가 꺼졌으면 비어 있다
 ): Plan {
   const team = new RegExp(cfg.teamPattern, "i");
   const regOf = (name: string) => regKey(name, cfg.teamPattern); // 세션 이름 → REGISTRATION(ATC-67)
@@ -852,6 +855,9 @@ export function planDispatch(
       const unfinished = new Set<string>();
       for (const k of held) if (k) unfinished.add(k);
       for (const t of s.tickets) if (t.stateType === "started" && tailsOf(t, now).has(reg)) unfinished.add(t.key);
+      // ORPHAN FLIGHT(ATC-516): 앞 세션이 멈춘 FLIGHT는 새 세션이 쥐기 전까지 이 REGISTRATION이 쥔 것으로 센다(grace를 기다리지 않는다)
+      const orphanKeys = new Set(orphans.get(reg) ?? []);
+      for (const k of orphanKeys) unfinished.add(k);
       const started = [...unfinished].filter((k) => {
         const t = byKey.get(k);
         return t && t.stateType === "started" && !landed.has(k) && needsStand(classOf(t.labels).type);
@@ -865,8 +871,13 @@ export function planDispatch(
       }
       if (holding.length) {
         const load = holding.reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
-        const why = holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ");
-        if (load >= cfg.slots.perTeam - 1e-9) return { ...base, ...waitNote, resting: true, available: false, stopped: true as const, reason: why };
+        const why = holding.map((k) => (orphanKeys.has(k) ? orphanWhy(k) : unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k)))).join(", ");
+        if (load >= cfg.slots.perTeam - 1e-9) {
+          // 이 멈춤이 오직 ORPHAN FLIGHT 때문인가(그것을 빼면 슬롯이 남는다): MISFIRE 셈이 읽는다
+          const rest = holding.filter((k) => !orphanKeys.has(k)).reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
+          const only = holding.some((k) => orphanKeys.has(k)) && rest < cfg.slots.perTeam - 1e-9;
+          return { ...base, ...waitNote, resting: true, available: false, stopped: true as const, reason: why, ...(only ? { orphanOnly: holding.filter((k) => orphanKeys.has(k)) } : {}) };
+        }
         if (base.airport) return { ...base, ...waitNote, resting: true, available: true, room: cfg.slots.perTeam - load, reason: `${why} — 남은 슬롯 ${cfg.slots.perTeam - load}` };
       }
       if (open.length >= cfg.slots.perTeam) {

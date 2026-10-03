@@ -81,6 +81,7 @@ import { mountLeaks } from "./leaks-run.ts";
 import { mountTouches } from "./touches-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
+import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
 import { mountStuckUnserved } from "./stuck-unserved-run.ts";
 import { mountStopCheck } from "./control-stop-check-run.ts";
@@ -291,6 +292,7 @@ provideService("flowDeps", { updateStatus: () => update.status(), alerts: curren
 mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)
+mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountHomeFlow(app, getSnapshot, () => update.status(), currentAlerts); // HOME 흐름판(ATC-499): 판정·칸·주체·묶은 할 일(읽기만, 새 GitHub·Linear 호출 없음)
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)

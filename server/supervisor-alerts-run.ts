@@ -8,9 +8,12 @@ import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-en
 import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
 import { landByOf, type LandBy } from "./land-by.ts";
+import { handoffResolver } from "./autoland-handoff-run.ts";
 import { type ControlName, controlNameOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { landedOf, loadDispatchConfig } from "./dispatch.ts";
+import { loadLogbook } from "./logbook.ts";
+import { orphanViewsNow } from "./orphan-flight-run.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
 import { readReleaseView } from "./release-store.ts";
@@ -97,7 +100,8 @@ function runningNames(s: Snapshot, teamPattern: string): { control: Set<string>;
 // land 항목의 목적지를 가르는 PR별 landBy(ATC-197). 이미 캐시된 등급만 쓴다(mccLandInfoCached) — 등급 규칙은 landByOf 그대로
 function landByMap(s: Snapshot): Map<string, LandBy> {
   const info = mccLandInfoCached(s);
-  return new Map((s.pulls ?? []).map((p) => [`${p.repo}#${p.number}`, landByOf(p, info, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false)] as const));
+  const handoffOf = handoffResolver(s); // AUTOLAND가 SUPERVISOR에게 넘긴 PR도 큐로 간다(ATC-513): HOME·/api/status의 기다림과 어긋나지 않게
+  return new Map((s.pulls ?? []).map((p) => [`${p.repo}#${p.number}`, landByOf(p, info, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false, handoffOf(p))] as const));
 }
 
 // 끝 규칙의 상태(ATC-385): 처음 본 시각과 끝 규칙이 뺀 알림. 처음 쓸 때 파일에서 읽는다
@@ -188,6 +192,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     controlChecks: { unverified: unverifiedOf(rs.flatMap((r) => (r.kind === "control" && r.op === "stop-check" ? [r as unknown as StopCheckLine] : [])), (id) => jobStateOf(id), now), duplicates: duplicatesNow() },
     hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
+    orphans: orphanViewsNow(s, now, proposals, landedOf(loadLogbook()), teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, line: o.line, since: o.since })),
     landBy: landByMap(s),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(rs, now),

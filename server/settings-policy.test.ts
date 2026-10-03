@@ -94,7 +94,7 @@ test("설정 색인: 분류마다 블록이 하나 이상, 같은 코드는 한 
 // ATC-393 이전에 SETTINGS_INDEX에 손으로 적던 정책 블록과 같다(코드·이름·찾을 말·순서). CODEX LANE(ATC-393)만 새로 더해졌다
 test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 항목과 같다", () => {
   const old = [
-    ["landing", "AUTOLAND", "착륙 자동화", "update merge ground stop autoland.mode"],
+    ["landing", "AUTOLAND", "착륙 자동화", "update merge ground stop autoland.mode autoland 넘김 handoff 제외 사유 LANDING land holder 오작동 autolandHandoff"],
     ["landing", "MCC", "atc 착륙·RETURN TO SERVICE", "shadow land rts land+rts rollback 배포 shadow gate mcc.mode k approval kApproval K3 발권 user 등급 착륙 release removal guard removalGuard 지우기 기능 삭제 Removed"],
     ["landing", "REVIEW", "Codex 한도 때 착륙 리뷰", "보안 pr sonnet deepseek exclude externalReview.security"],
     ["landing", "MIGRATE", "마이그레이션 리허설", "migrate 마이그레이션 리허설 hostedDb 시험 DB PITR migrateRehearsal"],
@@ -118,6 +118,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "JUDGES", "판정 계열", "jev typesafe replay shadow judges.jev"],
     ["operations", "LANDING GAP", "착륙 없음 막힘 규칙(HOME)", "landing gap 착륙 없음 막힘 p90 기준 landingGap"],
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],
+    ["operations", "ORPHAN FLIGHT", "주인 잃은 FLIGHT 감지", "orphan flight 주인 잃은 세션 끊김 한도 limit resume 새 세션 orphanFlight"],
     ["operations", "STUCK UNSERVED", "받을 AIRCRAFT가 없는 Todo의 막힘 알림 문구", "stuck unserved 막힘 알림 문구 no-aircraft unqualified no-tail 받을 AIRCRAFT 없음 LAUNCH stuckUnserved"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);

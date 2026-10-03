@@ -1342,6 +1342,18 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 - **설정 창.** ACCOUNTS 분류가 라벨 → 폴더, `loggedIn`, `authMethod`, statusline·hook 경고를 보인다(ATC-189부터 메뉴의 한 분류, 전에는 AGENTS 탭의 블록). SUPERVISOR만 고친다.
 - **스냅샷.** `Session.account`가 더해진다. `~/.claude`만 있으면 없다.
 
+### ORPHAN FLIGHT, 만든 것 (ATC-516)
+
+출발한 FLIGHT의 AIRCRAFT 세션이 죽었을 때(예: 사용 한도로 끊김) 같은 REGISTRATION이 새 세션으로 돌아와도 그 FLIGHT가 사라지지 않게 한다. 사례: 2026-10-03, TEAM_O 세션 `6bc31035`가 D-0652(VOC-317)로 출발해 07:46에 한도로 멈췄고, 07:47에 새 TEAM_O 세션이 떴지만 VOC-317을 쥐지 않았다. DISPATCH는 TEAM_O에 FLIGHT를 둘 더 줬고 STAND에는 푸시한 WIP 커밋과 커밋 안 된 변경 12개가 있었다.
+
+- **감지**(`server/orphan-flight.ts`, 순수 `orphansOf`). STAND 점유가 아니라(`ATC_CLAIM_TTL_MIN` 180분이 지나면 없어진다) 출발 기록으로 한다: Linear에서 시작됐고, 마지막 ASSIGN이 READBACK됐거나 출발했고(`D-xxxx`와 그 REGISTRATION), 머지된 PR이 없고, 취소되지 않았고, 그 기록의 세션이 더는 살아 있지 않고, 같은 REGISTRATION의 어느 살아 있는 세션도 **쥐지** 않는다. 쥠은 atc가 기록하는 것에서 센다: 그 세션이 그 FLIGHT의 STAND에 가진 활성 점유, 세션의 `keptFlights`, `tail:` 라벨(DISPATCH도 이미 센다). FLIGHT를 말한 적 없는 새 세션은 쥔 것이 아니다. orphan이 아닌 것: `RESTARTING`인 REGISTRATION, 마지막 세션이 한도로 끊긴 ABSENT AIRCRAFT(RESUME 카드, `RESUME`·`LIMIT` health): 그 길이 이미 주인이다. REGISTRATION에 살아 있는 세션이 있으면 옛 세션이 끊겼다는 이유로 빼지 않는다. `since`는 옛 세션이 멈춘 시각(마지막 활동)이다.
+- **FLIGHT 기록에서 STAND 찾기.** 그 FLIGHT의 STAND가 있는 가장 최근 출발 기록, 없으면 제안의 `departedStand`. 푸시된 커밋(`@{upstream}`)과 커밋 안 된 변경(삭제 수 포함)은 그 경로에서 git으로 읽는다(30초 캐시, `standFactsOf`). 경로가 없으면 줄은 `STAND 모름`, RESUME 글은 STAND를 모른다고 쓴다.
+- **유예(ALERT·HOME 줄만).** `orphanGraceMin`(`ATC_ORPHAN_GRACE_MIN`, 기본 15, 최소 1, 설정 → 서버). orphan이 `since`부터 이만큼 비어 있어야 ALERT와 HOME 줄이 나온다. DISPATCH는 기다리지 않는다(dispatch.md).
+- **ALERT와 HOME 줄.** FLIGHT마다 ALERT 하나, key `alert|orphan-flight|<FLIGHT>`, CAUTION, 목적지 alerts라서 HOME 할 일의 ALERT 줄 하나로도 나온다: `VOC-317 · TEAM_O · 3시간 42분 주인 없음 · STAND voc-317-landing: 마지막 푸시 65abab9, 변경 12(삭제 3)`. 살아 있는 세션이 쥐거나 PR이 머지되거나 FLIGHT가 취소되면 저절로 사라진다. 옛 STAND 알림 `orphan`·`unattended`는 그대로다.
+- **RESUME 글, 팀으로 가는 새 길 없음.** `resumeTextOf`가 영어 글을 만든다: FLIGHT, STAND 경로, 푸시된 WIP 커밋, 커밋 안 된 변경 수, 그 STAND에 커밋 안 된 변경이 있는 동안 새 STAND로 옮기지(다른 FLIGHT를 받지) 말고 거기서 이어가라는 지시(변경이 없으면 그 문장은 빠진다). ALERT 줄이 이 글을 RELAY 초안(`kind: instruction`, ATC-271, `RelayBox`)으로 붙이고 SUPERVISOR가 한 번 눌러 보낸다. atc와 OCC는 스스로 보내지 않는다.
+- **스위치.** `orphanFlight`(`off`·`on`, 기본 `on`), `orphan-flight.json`(원자적 JSON), 설정 → OPERATIONS → ORPHAN FLIGHT, SUPERVISOR만(`fromThisApp`, `atcctl` 명령 없음, 바꾸면 `policy orphan-flight-mode`로 기록). off면 감지·ALERT·HOME 줄·DISPATCH 셈이 함께 꺼지고 전과 같다.
+- **MISFIRE 셈.** `orphan-flight` 일(1분)이 `orphan-flight-events.jsonl`에 덧붙인다(`open`·`alert`·`hold`·`close`, `endedBy`는 `held`·`merged`·`canceled`·`switch`·`gone`). `held`로 닫힌 것에서 (a) 알림이 나온 지 15분 안에 사라졌고 그 REGISTRATION에 그 FLIGHT의 RELAY도 머지된 PR도 없으면 **알림 MISFIRE** 1, (b) DISPATCH가 오직 orphan 때문에 REGISTRATION을 막았는데(`AircraftState.orphanOnly`, `runDispatch`가 `hold` 줄로 남김) 유예 안에 살아 있는 세션이 다시 쥐었으면 **hold MISFIRE** 1을 센다. `GET /api/orphan-flight?days=7`(읽기만)과 METRICS → MISFIRE의 `ORPHAN FLIGHT` 레인이 에피소드·MISFIRE·닫힌 에피소드 몫을 보인다.
+
 ## 9. `lane:`에서 `tail:`로 옮기기
 
 네 단계 모두 끝났다.

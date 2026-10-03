@@ -433,6 +433,21 @@ function RelayOffer({ item }: { item: QueueItem }) {
   );
 }
 
+// ORPHAN FLIGHT(ATC-516): 앞 세션이 멈춘 FLIGHT의 RESUME 글. RELAY 초안이고 SUPERVISOR가 한 번 눌러 보낸다(atc와 OCC는 보내지 않는다)
+function OrphanRelay({ item }: { item: QueueItem }) {
+  const o = item.orphan;
+  if (!o) return null;
+  return (
+    <div className="hd" role="group" aria-label={`${o.flight} RESUME RELAY 초안`}>
+      <p className="hd-title">{o.to}의 새 세션이 {o.flight}를 쥐지 않았다. RESUME 글을 RELAY로 보낼 수 있다</p>
+      <pre className="hd-cmd mono">{o.text}</pre>
+      <div className="du-actions">
+        <RelayBox to={o.to} editableTo kind="instruction" flight={o.flight} text={o.text} btnClass="btn" />
+      </div>
+    </div>
+  );
+}
+
 // DECISION(ATC-352): 관제 세션이 올린 결정 하나. 옵션 버튼 하나를 누르면 답이 되고(덧붙일 글은 선택), 답은 그 세션의 다음 tick 브리핑으로 간다
 function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: (outcome: string) => void }) {
   const d = item.decision;
@@ -473,6 +488,7 @@ export function Actions({ item, actions, onDone }: { item: QueueItem; actions: C
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
       {item.offer && <RelayOffer item={item} />}
+      {item.orphan && <OrphanRelay item={item} />}
       {item.decision && <DecisionAnswer item={item} onDone={onDone} />}
       {actions.map((a, n) =>
         a.type === "link" ? (

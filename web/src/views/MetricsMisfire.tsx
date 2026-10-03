@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type AutoView, type DispatchMisfire, type GapView, LANE_OF_KIND, laneRowsOf, recentLinesOf, WHY_LABEL } from "../misfire-rows.ts";
+import { type AutoView, type DispatchMisfire, type GapView, type OrphanView, LANE_OF_KIND, laneRowsOf, recentLinesOf, WHY_LABEL } from "../misfire-rows.ts";
 import { apiGet } from "../api.ts";
 import { timeAgo } from "../derive.ts";
 import { AutoMisfire } from "./AutoMisfire.tsx";
@@ -17,6 +17,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
   const [dispatch, setDispatch] = useState<DispatchMisfire | null>(null);
   const [auto, setAuto] = useState<AutoView | null>(null);
   const [gap, setGap] = useState<GapView | null>(null);
+  const [orphan, setOrphan] = useState<OrphanView | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -24,7 +25,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       apiGet(path)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((d: T) => alive && set(d));
-    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap)])
+    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap), get<OrphanView>(`/api/orphan-flight?days=${DAYS}`, setOrphan)])
       .then(() => alive && setError(null))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => {
@@ -32,7 +33,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
     };
   }, [refreshKey]);
 
-  const lanes = laneRowsOf(dispatch, auto, gap);
+  const lanes = laneRowsOf(dispatch, auto, gap, orphan);
   const recent = recentLinesOf(auto);
   return (
     <>

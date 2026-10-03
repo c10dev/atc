@@ -31,6 +31,7 @@ import {
 } from "./autoland.ts";
 import { mergeReviewOf, pullKey, reviewPasses, slugOfUrl } from "./landing.ts";
 import { appendRecord } from "./autoland-record.ts";
+import { observeCycle } from "./autoland-handoff-run.ts";
 import { readMergeReviews } from "./landing-review.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { hostedDbOfAirport } from "./airports.ts";
@@ -123,6 +124,12 @@ async function cycle(s: Snapshot) {
     appendRecord({ op: "groundstop-clear", mode: cfg.mode, airport: g.airport, head: g.sha, result: "cleared", detail: "auto-revert: 다음 head가 초록" });
   }
   setCheckWarnings(checkWarningsOf(cfg, covered, s.atfm.mains)); // applicationCheck가 main에서 어떤 체크·워크플로 이름과도 안 맞으면 설정 창이 알린다(ATC-330)
+
+  // AUTOLAND가 SUPERVISOR에게 넘긴 PR의 기록(ATC-513): 새로 넘긴 head를 적고, 열린 목록에서 사라진 PR은 머지인지 머지 없이 닫힘인지 GitHub에서 읽는다(읽기 하나)
+  await observeCycle(s, async (slug, number) => {
+    const r = JSON.parse(await gh(["pr", "view", String(number), "--repo", slug, "--json", "state,mergedAt"])) as { state?: string; mergedAt?: string | null };
+    return r.mergedAt || r.state === "MERGED" ? "merged" : r.state === "CLOSED" ? "closed" : "open";
+  }).catch((e) => console.error("[atc] autoland handoff record failed:", String((e as Error)?.message ?? e).slice(0, 200)));
 
   // 갱신한 PR 정리: 닫힘·CI 끝남(CLEARED나 다른 막힘)·시간 초과
   const settled: { f: InFlight; p: PullRequest }[] = [];

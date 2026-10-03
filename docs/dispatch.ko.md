@@ -729,6 +729,16 @@ DISPATCH가 `plan.unserved`에 올린 Todo FLIGHT는 `follow|stuck`가 `제안 �
 - **카운터.** 새 글로 올라온 알림마다 올라올 때 한 번 `policy / stuck-unserved`(`flight`, `why`, `airport`)를 기록한다. `GET /api/stuck-unserved?days=7`이 스위치와 수를 읽는다.
 - **형식.** `dispatch.json`의 `stuckUnserved`, 두 `policy` 기록 op, 알림 항목의 `unserved`는 덧붙은 것이다.
 
+## orphan FLIGHT는 그 REGISTRATION의 슬롯을 쓴다, 만든 것 (ATC-516)
+
+`planDispatch`는 [fleet.md](fleet.md)의 ORPHAN FLIGHT("ORPHAN FLIGHT, 만든 것")를 마지막 선택 입력(`orphans`, REGISTRATION → FLIGHT들. 다섯 호출부 모두 `orphanCountsNow`가 채운다)으로 받는다.
+
+- **앞 세션이 멈춘 뒤 첫 계획부터 센다.** DISPATCH는 알림의 유예를 기다리지 않는다. orphan은 `tail:` FLIGHT처럼 REGISTRATION의 `unfinished` 집합에 들어가 WAKE만큼 `perTeam` 슬롯을 쓴다. 슬롯이 차면 그 REGISTRATION은 `stopped`이고 사유는 `VOC-317 ORPHAN FLIGHT(앞 세션이 멈춘 뒤 아무도 쥐지 않음)`이며 `excluded`에도 나와, 다른 FLIGHT를 받지 않는다. 2026-10-03 07:52의 경우: TEAM_O는 `stopped`이고 VOC-352는 배정되지 않는다.
+- **세기를 그친다**: 살아 있는 세션이 쥐거나, PR이 머지되거나, FLIGHT가 취소되면(더는 orphan이 아니다).
+- **`orphanOnly`.** orphan이 없으면 멈춤이 없을 때 `AircraftState.orphanOnly`가 그 FLIGHT들을 담는다. `runDispatch`가 MISFIRE 셈을 위해 orphan마다 `hold` 줄을 `orphan-flight-events.jsonl`에 한 번 쓴다.
+- **끄는 스위치.** `orphanFlight`가 off면 빈 맵을 넘겨 계획이 전과 똑같다.
+- **형식.** `orphan-flight.json`, `orphan-flight-events.jsonl`, `AircraftState.orphanOnly`는 더하기만 한다. `proposals.jsonl`은 그대로다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

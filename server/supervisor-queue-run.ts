@@ -1,9 +1,11 @@
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { landedOf, loadDispatchConfig } from "./dispatch.ts";
+import { orphanViewsNow } from "./orphan-flight-run.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { landDecisionOf } from "./land-by.ts";
+import { handoffResolver } from "./autoland-handoff-run.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
@@ -40,6 +42,7 @@ export const queueEvents = () => eventsOf();
 export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise<UpdateStatus | null>, now: number, events: () => readonly TrafficEvent[] = eventsOf): Promise<QueueInput> {
   // 등급을 못 읽으면(GitHub off·오류) mcc가 null이거나 tiers가 비어 landBy가 supervisor·holder로 떨어진다(TOWER와 같은 규칙)
   const mcc = await mccLandInfo(s).catch(() => null);
+  const handoffOf = handoffResolver(s);
   const st = await updateStatus().catch(() => null);
   const relays = allRelays();
   const clearances = allClearances();
@@ -73,8 +76,8 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     schedule: { mode: loadScheduleMode(), ops: scheduleOps },
     fleetPlan: openFleetPlanNow(now),
     pulls: (s.pulls ?? []).map((p) => {
-      const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
-      return { ...p, landBy: d.by, landWhy: d.why };
+      const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false, handoffOf(p));
+      return { ...p, landBy: d.by, landWhy: d.why, ...(d.detail ? { landDetail: d.detail } : {}) };
     }),
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
@@ -83,6 +86,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     relays,
     clearances,
     decisions: allDecisions(),
+    orphans: orphanViewsNow(s, now, allProposals(), landedOf(loadLogbook()), loadDispatchConfig().teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, text: o.text })),
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], sessions: s.sessions ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     backlog: filedProposalsOf(s.tickets, proposalSourcesOf(readReviewLines(), loadScheduleOps()), candidateTeamsOf(loadDispatchConfig())).map((f) => ({ key: f.key, by: f.by, at: f.at })),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),

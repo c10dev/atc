@@ -49,6 +49,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `snapshot.ts` | 소스 병합, TTL 안의 점유만 남기기, 경보와 `pulls` 계산. 스냅샷 필드: `linear`·`github` 상태(`{enabled, error, fetchedAt}`), `sessions`, `workspaces`, `tickets`, `columns`, `airports`, `claims`, `handoffs`, `alerts`, `clearances`, `pulls`(열린 PR, CLEARED 먼저) |
 | `landing.ts` | PR마다 CLEARED TO LAND 조건(체크, head 리뷰, 머지 상태, Draft, LOS), head별 `readyAt`, LANDING SEQUENCE 순서(순수 함수 `buildPulls`, `landingBlocks`) |
 | `autoland.ts` | AUTOLAND(ATC-34, [docs/occ.ko.md](../docs/occ.ko.md) 9.7): `autoland.json`의 스위치와 HOLD(`parseAutoland`, `saveAutoland`), `autoland-state.json` 상태, merge 제외 목록(순수 함수 `mergeExclusionOf`), GROUND STOP 걸기(순수 함수 `latchGroundStops`), 갱신이 끝났나(순수 함수 `settleOf`), 리뷰가 이어지지 않은 갱신의 재리뷰(ATC-38, 순수 함수 `reviewRequestOf`, `escalateOf`, `fastTrackOf`), AIRPORT마다 할 일 하나와 PR마다 표시(순수 함수 `planAutoland`, `snapshot.autoland`) |
+| `autoland-handoff.ts` | AUTOLAND가 SUPERVISOR에게 넘긴 PR(ATC-513, [docs/mcc.md](../docs/mcc.md)): 순수 함수 `handoffOf`(현재 head의 판정), LANDING 줄 글(`handoffNeedOf`, 마이그레이션 먼저 안내), 오작동 세기(`countHandoff`), 주기마다 적을 것(`observeHandoffs`). 파일 입출력·스위치(`autoland.json`의 `handoff`)·주기 연결은 `autoland-handoff-run.ts` |
 | `human-check.ts` | HUMAN CHECK(ATC-37, [docs/occ.ko.md](../docs/occ.ko.md) 9.8): PR 본문 `## UI change` 블록(`uiChangeOf`), head에 묶인 상태와 ATC-31 잇기(`humanCheckStatusOf`, `waitsOnHuman`), AUTOLAND merge 제외(`humanCheckExclusionOf`), 본문 한 줄 고치기와 요청 확인(`setHumanCheckLine`, `checkRequestOf`), 증거 이미지와 RUN-UP 보고서 고르기(`imagesOf`, `pickRunup`, `runupViewOf`, `insideDir`). 모두 순수 함수 |
 | `human-check-run.ts` | HUMAN CHECK 입출력: 증거 댓글 이미지(`body_html`, 메모리에 3분), AIRPORT 체크아웃과 STAND의 RUN-UP 보고서, SUPERVISOR의 PASS·FAIL(`Human check` 줄 하나, PR 댓글 하나), `human-checks.jsonl`. `GET /api/human-check`, `…/evidence`, `…/runup/:run/<파일>`(sandbox), `POST /api/human-check/:owner/:name/:number` |
 | `standfree.ts` | STAND 없는 FLIGHT의 ARRIVED(ATC-72, [docs/fleet.ko.md](../docs/fleet.ko.md) 5.1.1): 팀 세션의 `post` 사건으로 팀을 아는 CHECK·SURVEY 후보 감지(`checkSuggestionOf`, `surveySuggestionOf`, `docsOnlyOf`), 직접 배정의 READBACK 착수(`readbackDeparturesOf`), 확인된 PR 없는 LOGBOOK 줄(`standFreeLine`, `directDepartureOf`), 24시간 지표(`timelinessOf`). 모두 순수 함수 |
@@ -240,6 +241,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `proposals.jsonl` | `proposals.ts` | DISPATCH 제안(추가만 함) |
 | `schedule.jsonl` | `schedule.ts` | OCC SCHEDULE 초안과 SUPERVISOR 판정(추가만 함) |
 | `autoland.json` | `autoland.ts` | AUTOLAND 스위치(`mode`, 기본 off), `airports`, `mergeMethod`, `applicationCheck`, `holds`(원자적으로 바꿔 씀) |
+| `autoland-handoff.jsonl` | `autoland-handoff-run.ts` | 추가만 하는 기록: AUTOLAND가 SUPERVISOR에게 넘긴 PR(`mark`·`done`·`land-sent`, ATC-513). FLIGHT RECORDER에도 kind `handoff`로 간다 |
 | `autoland-state.json` | `autoland-run.ts` | AUTOLAND 비행 중인 갱신, GROUND STOP, 푼 main SHA, 건너뛴·머지한 head, head별 재리뷰 요청 |
 | `human-checks.jsonl` | `human-check-run.ts` | SUPERVISOR가 기록한 HUMAN CHECK 결과: PR, head, pass·fail, class, 메모, 댓글 URL, 오류(추가만) |
 | `autoland.jsonl` | `autoland-run.ts` | AUTOLAND 기록: 갱신, 머지, 결과, GROUND STOP, 스위치·HOLD 변경(추가만 함) |

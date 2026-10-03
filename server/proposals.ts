@@ -62,6 +62,7 @@ import { confirmCodesOf, confirmReasonOf, type Preflight } from "./preflight.ts"
 import { parentKeysOf, type Snapshot, type Ticket, type TrafficEvent } from "./model.ts";
 import { composeReason, parseReasonCodes, REASON_CODES, ReasonCodeError, reasonCountsOf } from "./reasons.ts";
 import { readiness2bOf, readinessFiles } from "./readiness.ts";
+import { noteDispatchHolds, orphanCountsNow } from "./orphan-flight-run.ts";
 import { record } from "./recorder.ts";
 import { closingLine, overdueBase, responseOf } from "./response.ts";
 import { activeWaypointsOf, type Route } from "./routes.ts";
@@ -1213,7 +1214,8 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
   // 켜진 GROUND STOP이 걸린 AIRPORT의 ASSIGN은 계획에서 뺀다(docs/atfm.md 6장). 열린 제안은 그 사유로 SUPERSEDED
   // 끝내고 나서 시작한다(ATC-392): PR HOLDER 카드를 새 ASSIGN보다 먼저 계획한다. 먼저 계획의 AIRCRAFT 상태를 얻어 holder가 쓸 AIRCRAFT를 고르고(RESUME이 고른 것만 빼고),
   // 그 AIRCRAFT를 예약으로 넣어 계획을 다시 짠다 → 놀고 있는 AIRCRAFT는 열린 PR을 먼저 받고, 새 ASSIGN은 남은 AIRCRAFT에 간다
-  const plan0 = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders()), s.atfm?.groundStops ?? []);
+  const orphans = orphanCountsNow(s, now, existing, landed, cfg.teamPattern); // ORPHAN FLIGHT(ATC-516): 앞 세션이 멈춘 FLIGHT를 그 REGISTRATION의 슬롯으로 센다(스위치 off면 비어 있다)
+  const plan0 = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(existing, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders(), undefined, orphans), s.atfm?.groundStops ?? []);
   // PR HOLDER(ATC-354): 계획의 AIRCRAFT 상태로 STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받을 AIRCRAFT를 고른다. 결과 경로는 RELAY 카드와 DUTY brief가 읽는다
   const holders = holderPlansOf(s, { clearances: allClearances(), events: events(), existing, lastAircraft: { departures: readDepartures(), proposals: existing, reports: readReports(), regOf: (n) => registrationOf(n, cfg.teamPattern) }, fleet, aircraft: plan0.aircraft, teamPattern: cfg.teamPattern, assigned: (plan0.resume ?? []).map((a) => regOfAssign(a, cfg.teamPattern)), keyFromBranch: ticketKeyFromBranch, now });
   const reserved = reservedOf(existing, now);
@@ -1224,7 +1226,8 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
     reserved.aircraftFlights?.set(reg, [...new Set([...(reserved.aircraftFlights.get(reg) ?? []), h.flight])]);
     if (!reserved.flights.has(h.flight)) reserved.flights.set(h.flight, by);
   }
-  const plan = holders.plans.length ? applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reserved, fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders()), s.atfm?.groundStops ?? []) : plan0;
+  const plan = holders.plans.length ? applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reserved, fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders(), undefined, orphans), s.atfm?.groundStops ?? []) : plan0;
+  noteDispatchHolds(plan.aircraft, now); // ORPHAN FLIGHT 때문에만 막힌 REGISTRATION을 기록(MISFIRE 셈)
   plan.holders = holders.plans;
   setHolderRoutes(holders.routes);
   const seq = ops.filter((o) => o.op === "create").length;
@@ -1300,7 +1303,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
     const fuel = watchFuel?.(s) ?? null;
     const landed = landedOf(logbook);
     const fleet = loadFleet();
-    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern)), mccAirportNow(), accountFolders()), s.atfm?.groundStops ?? []);
+    const plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumePlansOf(s, readDepartures(), landed, now, baseOfFleet(fleet, cfg.teamPattern)), mccAirportNow(), accountFolders(), undefined, orphanCountsNow(s, now, proposals, landed, cfg.teamPattern)), s.atfm?.groundStops ?? []);
     // SETTLED(ATC-117): 열린·HELD 제안마다 settled와 남은 분(settlesInMin)을 붙인다. OCC는 settled인 것만 메모·BRIEFING을 단다
     const { open, held, unsettled } = settledItemsOf(proposals, now, cfg.settleMin);
     const inFlight = proposals.filter(isInFlight).sort((a, b) => a.statusAt.localeCompare(b.statusAt));

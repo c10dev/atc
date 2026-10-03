@@ -18,16 +18,27 @@ export interface MccLandInfo {
 // SUPERVISOR가 착륙시키는 이유(ATC-300). landBy가 "supervisor"일 때만 있고, 판정과 같은 갈래에서 정해져 코드와 이유가 어긋나지 않는다.
 //   user — user 등급 / escalate — MCC가 ESCALATE / hold — SUPERVISOR HOLD / mode — MCC 모드가 착륙시키지 않음(shadow·rts)
 //   tier-unknown — 등급을 아직 모르거나 head가 바뀌어 옛 값 / teams-merge-off — 이 AIRPORT는 팀이 머지하지 않는다(ATC-154)
-export type LandWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
+//   autoland — AUTOLAND(merge 모드)가 이 head의 PR을 SUPERVISOR에게 넘겼다(ATC-513). detail에 AUTOLAND 자신의 사유 글
+export type LandWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off" | "autoland";
 export interface LandDecision {
   by: LandBy;
   why: LandWhy | null; // by가 supervisor일 때만
+  detail?: string; // why가 autoland일 때 AUTOLAND의 제외 사유(mergeExclusionOf가 준 글 그대로)
+}
+
+// AUTOLAND가 이 head의 CLEARED PR을 SUPERVISOR에게 넘겼다는 판정(autoland-handoff.ts의 handoffOf). 없으면 null이고 결과는 오늘과 같다
+export interface AutolandHandoff {
+  reason: string;
 }
 
 // 누가, 왜. landByOf는 이 결과의 by만 돌려준다 — 규칙은 여기 한 곳이다
 // teamsMerge: 이 PR의 AIRPORT가 "팀은 여기서 머지하지 않는다"로 표시됐나(ATC-154). MCC AIRPORT는 위 ATC-151 규칙이 먼저다
-export function landDecisionOf(p: { repo: string; number: number; head: string }, mcc: MccLandInfo | null, teamsMerge = true): LandDecision {
-  if (!mcc || p.repo !== mcc.repo) return teamsMerge ? { by: "holder", why: null } : { by: "supervisor", why: "teams-merge-off" };
+// handoff: AUTOLAND AIRPORT(MCC가 착륙시키지 않는 저장소)에서만 뜻이 있다. teamsMerge: false가 먼저이고, MCC AIRPORT의 규칙은 그대로다(ATC-513)
+export function landDecisionOf(p: { repo: string; number: number; head: string }, mcc: MccLandInfo | null, teamsMerge = true, handoff: AutolandHandoff | null = null): LandDecision {
+  if (!mcc || p.repo !== mcc.repo) {
+    if (!teamsMerge) return { by: "supervisor", why: "teams-merge-off" };
+    return handoff ? { by: "supervisor", why: "autoland", detail: handoff.reason } : { by: "holder", why: null };
+  }
   if (!mccLands(mcc.mode)) return { by: "supervisor", why: "mode" };
   if (mcc.holds.includes(p.number)) return { by: "supervisor", why: "hold" };
   if (mcc.escalated.includes(p.number)) return { by: "supervisor", why: "escalate" };
@@ -37,6 +48,6 @@ export function landDecisionOf(p: { repo: string; number: number; head: string }
   return t.tier === "user" && !t.k ? { by: "supervisor", why: "user" } : { by: "mcc", why: null };
 }
 
-export function landByOf(p: { repo: string; number: number; head: string }, mcc: MccLandInfo | null, teamsMerge = true): LandBy {
-  return landDecisionOf(p, mcc, teamsMerge).by;
+export function landByOf(p: { repo: string; number: number; head: string }, mcc: MccLandInfo | null, teamsMerge = true, handoff: AutolandHandoff | null = null): LandBy {
+  return landDecisionOf(p, mcc, teamsMerge, handoff).by;
 }
