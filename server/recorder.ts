@@ -64,6 +64,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "duplicate-title-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
@@ -79,9 +80,11 @@ export type RecordLine =
   // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval" | "auto:on" | "auto:off"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)
-  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string }
+  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string; unverified?: boolean }
+  // CONTROL STOP CHECK(ATC-521): stop의 unverified는 claude stop이 종료 코드 0이었지만 job state.json이 stopped가 되지 않아 ok를 막은 것. stop-check는 그 막음·같은 이름 job 중복 경고·그것이 틀렸다는 표시(contradicted 검사가 뒤늦게 틀렸다, dismissed SUPERVISOR가 오탐 표시)
+  | { t: string; kind: "control"; op: "stop-check"; event: "blocked" | "duplicate" | "contradicted" | "dismissed"; session: string; by: string; jobIds: string[]; account?: string | null; state?: string | null; of?: string; detail?: string }
   // CONTROL RECYCLE(ATC-166): atc가 관제 세션을 안전한 순간에 STOP·LAUNCH한 결과(shadow면 result would). 스위치 바꿈은 recycle-mode
-  | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string; launch?: { ok: boolean; jobId?: string; error?: string }; blocks?: string[] }
+  | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string; launch?: { ok: boolean; jobId?: string; error?: string }; blocks?: string[] }
   | { t: string; kind: "control"; op: "recycle-mode"; by: string; from: string; to: string }
   // 캡·auto 바꿈(ATC-175): 세션마다 한 줄. from·to는 CAP 토큰(null이면 없음) 또는 auto true·false
   | { t: string; kind: "control"; op: "recycle-caps" | "recycle-auto"; by: string; session: string; from: number | boolean | null; to: number | boolean | null }
