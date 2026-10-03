@@ -35,13 +35,6 @@
   align-items: center;
   gap: var(--space-2);
 }
-/* 알림(Z6)이 들어올 자리. 아직 비어 있어 너비가 없다 */
-.sb-notify {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-1);
-}
 .sb-search {
   display: flex;
   flex: 1;
