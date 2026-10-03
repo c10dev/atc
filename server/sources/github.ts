@@ -521,6 +521,7 @@ export interface ReviewSource {
   diff: string;
   diffSource: "pr-diff" | "files-api"; // diff를 어디서 읽었나(ATC-449): gh pr diff, 또는 GitHub가 diff를 거절해서 files API의 파일별 patch
   removedFiles: string[]; // 지워진 파일(patch가 없어 이름만). files-api일 때만 채운다
+  unreadFiles: string[]; // patch가 없어 내용을 읽을 수 없는 파일(지워진 파일 포함, 이진·너무 큼). files-api일 때만 채운다(ATC-489)
 }
 
 // GitHub가 너무 큰 diff(20,000줄 넘음 등)를 거절한 오류인가
@@ -534,22 +535,25 @@ interface PullFile {
   patch?: string | null;
 }
 // 파일별 patch를 diff 글로 이어 붙인다. 지워진 파일은 patch가 없어 이름만(removedFiles). patch가 없는 파일(이진·너무 큼)은 머리만 쓴다
-export function diffFromFiles(files: readonly PullFile[]): { diff: string; names: string[]; removed: string[] } {
+export function diffFromFiles(files: readonly PullFile[]): { diff: string; names: string[]; removed: string[]; unread: string[] } {
   const names: string[] = [];
   const removed: string[] = [];
+  const unread: string[] = [];
   const parts: string[] = [];
   for (const f of files) {
     names.push(f.filename);
     if (f.previous_filename) names.push(f.previous_filename);
     if (f.status === "removed") {
       removed.push(f.filename);
+      unread.push(f.filename);
       parts.push(`diff --git a/${f.filename} b/${f.filename}\n(removed — no patch)\n`);
     } else {
+      if (!f.patch) unread.push(f.filename);
       const from = f.previous_filename || f.filename;
       parts.push(`diff --git a/${from} b/${f.filename}\n${f.patch ? `--- a/${from}\n+++ b/${f.filename}\n${f.patch}\n` : "(no patch — binary or too large)\n"}`);
     }
   }
-  return { diff: parts.join(""), names, removed };
+  return { diff: parts.join(""), names, removed, unread };
 }
 
 export async function fetchReviewSource(slug: string, number: number, exec: (args: string[]) => Promise<string> = gh): Promise<ReviewSource> {
@@ -564,14 +568,14 @@ export async function fetchReviewSource(slug: string, number: number, exec: (arg
   const viewFiles = (view.files ?? []).map((f) => f.path);
   try {
     const diff = await exec(["pr", "diff", String(number), "--repo", slug]);
-    return { ...base, files: viewFiles, diff, diffSource: "pr-diff", removedFiles: [] };
+    return { ...base, files: viewFiles, diff, diffSource: "pr-diff", removedFiles: [], unreadFiles: [] };
   } catch (e) {
     if (!diffTooLarge(e)) throw e;
     // GitHub가 diff를 거절했다(ATC-449): 파일별 patch를 files API에서 읽는다. 이름은 view의 목록과 합쳐 게이트가 빠짐없이 보게 한다
     const out = await exec(["api", "--paginate", `repos/${slug}/pulls/${number}/files?per_page=100`, "--jq", ".[] | {filename, status, previous_filename, patch} | tojson"]);
     const rows = out.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as PullFile);
-    const { diff, names, removed } = diffFromFiles(rows);
-    return { ...base, files: [...new Set([...viewFiles, ...names])], diff, diffSource: "files-api", removedFiles: removed };
+    const { diff, names, removed, unread } = diffFromFiles(rows);
+    return { ...base, files: [...new Set([...viewFiles, ...names])], diff, diffSource: "files-api", removedFiles: removed, unreadFiles: unread };
   }
 }
 

@@ -9,7 +9,7 @@ import { modelFamily } from "./crosscheck.ts";
 import { type LandingReview, type MergeReview, externalGateOf, severityOf, slugOfUrl } from "./landing.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { record } from "./recorder.ts";
-import { fetchReviewSource } from "./sources/github.ts";
+import { fetchReviewSource, type ReviewSource } from "./sources/github.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 
 // Codex 한도 때 착륙 리뷰(ATC-7, ATC-27, docs/occ.md 9.2). REVIEW 세션(Claude Sonnet, 2026-09-29)이 자료를 읽고(GET) 리뷰를 남긴다(POST).
@@ -139,8 +139,69 @@ export function capText(text: string, max: number): { text: string; truncated: b
   return { text: text.slice(0, cut > max / 2 ? cut : max), truncated: true, chars: text.length };
 }
 
+// diff를 DIFF_MAX 이하의 쪽으로 나눈다(ATC-489). 쪽을 이어 붙이면 원래 diff와 글자까지 같다. 파일 경계(`diff --git`)에서 먼저 끊고,
+// 한 파일이 max보다 크면 줄 경계에서, 줄 하나가 max보다 길면 max 글자에서 끊는다. files는 그 쪽에 글이 있는 파일 이름(이어지는 쪽은 이어지는 파일부터)
+export function splitDiff(diff: string, max: number): { text: string; files: string[] }[] {
+  if (diff === "") return [{ text: "", files: [] }];
+  const chunks = diff.split(/^(?=diff --git )/m).filter((x) => x !== "");
+  const parts: { text: string; files: string[] }[] = [];
+  let cur = { text: "", files: [] as string[] };
+  const flush = () => {
+    if (cur.text) parts.push(cur);
+    cur = { text: "", files: [] };
+  };
+  const nameOf = (chunk: string) => /^diff --git a\/\S+ b\/(\S+)/.exec(chunk)?.[1] ?? "(머리 앞)";
+  for (const chunk of chunks) {
+    const name = nameOf(chunk);
+    if (cur.text && cur.text.length + chunk.length > max) flush();
+    if (chunk.length <= max) {
+      cur.text += chunk;
+      if (!cur.files.includes(name)) cur.files.push(name);
+      continue;
+    }
+    // 한 파일이 한 쪽보다 크다: 새 쪽에서 시작해 줄 단위로 채운다
+    flush();
+    let rest = chunk;
+    while (rest.length > 0) {
+      let take = rest.length;
+      if (take > max) {
+        const nl = rest.lastIndexOf("\n", max - 1);
+        take = nl >= 0 ? nl + 1 : max;
+      }
+      parts.push({ text: rest.slice(0, take), files: [name] });
+      rest = rest.slice(take);
+    }
+  }
+  flush();
+  return parts;
+}
+
+// 리뷰 자료의 diff 쪽(ATC-489). part가 없으면 1쪽. 쪽 번호가 범위 밖이면 400.
+// diffTruncated는 어느 쪽으로도 읽을 수 없는 글이 있을 때만 true: files API 자료에서 patch가 빠진 파일(너무 큼·이진·지워짐)이다(ATC-449)
+export function diffPacketOf(
+  src: Pick<ReviewSource, "diff" | "diffSource" | "removedFiles" | "unreadFiles">,
+  partParam: string | undefined,
+  max = DIFF_MAX,
+) {
+  const all = splitDiff(src.diff, max);
+  const part = partParam === undefined ? 1 : /^\d+$/.test(partParam) ? Number(partParam) : 0;
+  if (part < 1 || part > all.length) throw new ReviewError(`part는 1~${all.length}의 정수`, 400);
+  const cur = all[part - 1]!;
+  return {
+    part,
+    parts: all.length,
+    partFiles: cur.files,
+    diff: cur.text,
+    diffSource: src.diffSource,
+    diffTruncated: src.unreadFiles.length > 0,
+    ...(src.unreadFiles.length ? { unreadFiles: src.unreadFiles } : {}),
+    ...(src.removedFiles.length ? { removedFiles: src.removedFiles } : {}),
+    diffChars: src.diff.length,
+  };
+}
+
 const REVIEW_GUIDE =
-  "diff가 FLIGHT의 완료 기준을 채우는지, 금지 사항을 어기지 않는지, 버그·보안·데이터 손상 위험이 없는지 본다. 지적은 Codex처럼 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에)로 적는다. P0·P1이 없으면 pass. diff가 잘렸으면 본 범위를 적고, 잘린 부분에 위험이 있을 수 있으면 findings(P1)로 남긴다.";
+  "diff가 FLIGHT의 완료 기준을 채우는지, 금지 사항을 어기지 않는지, 버그·보안·데이터 손상 위험이 없는지 본다. 지적은 Codex처럼 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에)로 적는다. P0·P1이 없으면 pass. diff가 여러 쪽(parts)이면 `--part <n>`으로 모든 쪽을 읽은 뒤에 판정하고, 읽은 쪽을 리뷰 글에 적는다. diffTruncated(unreadFiles의 내용을 못 읽음)이면 본 범위를 적고, 못 읽은 파일에 위험이 있을 수 있으면 findings(P1)로 남긴다.";
 
 // 오류의 첫 줄(stderr가 있으면 그것)
 export const firstLine = (e: unknown) => String(((e as { stderr?: string }).stderr || (e as Error)?.message || e) ?? "").trim().split("\n")[0].slice(0, 300) || "원인 모름";
@@ -209,7 +270,7 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
       const exclusion = gate.hard ?? (allowSecurity ? null : gate.security);
       if (exclusion) throw new ReviewError(`외부 리뷰 제외 — ${exclusion}`, 403);
       const flight = { key: p.ticketKey, title: issue.title ?? null, url: issue.url ?? null, ...sectionsOf(desc), description: capText(desc, ISSUE_MAX) };
-      const diff = capText(src.diff, DIFF_MAX);
+      const dp = diffPacketOf(src, c.req.query("part"));
       return c.json({
         pr: `${slug}#${p.number}`,
         url: p.url,
@@ -219,12 +280,7 @@ export function mountLandingReview(app: Hono, getSnapshot: () => Promise<Snapsho
         body: capText(src.body, BODY_MAX),
         flight,
         files: src.files,
-        diff: diff.text,
-        diffSource: src.diffSource,
-        // files API 자료는 patch가 빠진 파일(너무 큼·이진)이 있을 수 있어 늘 잘린 자료로 본다(ATC-449)
-        diffTruncated: diff.truncated || src.diffSource === "files-api",
-        ...(src.removedFiles.length ? { removedFiles: src.removedFiles } : {}),
-        diffChars: diff.chars,
+        ...dp,
         // 보안 PR(스위치로 보냄): 사유. 리뷰어는 권한·RLS·인증·마이그레이션을 더 엄격히 본다(review/CLAUDE.md)
         security: gate.security,
         guide: gate.security ? `${REVIEW_GUIDE} 보안 PR이다(${gate.security}): 권한·RLS·GRANT/REVOKE·인증·세션·마이그레이션 되돌림을 특히 본다. 확신이 없으면 pass하지 않는다.` : REVIEW_GUIDE,

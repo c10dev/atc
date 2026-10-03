@@ -379,3 +379,8 @@ test("schedule charter-seen: --occ만 통과, 그 밖의 모드는 막고, OCC�
   assert.ok(check("node ../controller/atcctl.mjs schedule charter-seen CR-0001 -- \"$(id)\"", HERE, { ghRead: true, occ: true }));
   assert.ok(check("rm -rf x", HERE, { ghRead: true, occ: true }));
 });
+
+test("REVIEW(--review, ATC-489): landing review --part <n>은 읽기라 지금의 guard를 그대로 통과한다", () => {
+  const REVIEW = HERE.replace(/controller$/, "review");
+  for (const c of ["node ../controller/atcctl.mjs landing review vocado_nextjs#385 --part 2", "node ../controller/atcctl.mjs landing review vocado_nextjs#385 --part 3 | jq '.partFiles'"]) assert.equal(check(c, REVIEW, { review: true }), null, c);
+});
