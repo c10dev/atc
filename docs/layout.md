@@ -288,6 +288,14 @@ Each step is one work order and one PR, filed under [ATC-404](https://linear.app
 
 The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet move and live regions apply to the top bar Z1 builds.
 
+### S8 as built (ATC-432)
+
+- **Stylesheet.** `web/src/App.css` (imported by `App.tsx`) holds the top bar (`.console`, readouts, LINK, DUTY, the fold button and brand text that Z1 added), the ticker, the ALERT list and its level colours, the NEW VERSION and UPDATE bars, the tab-error box, their `≤ 860 px` rules and their `night` rules. The matching blocks left `styles.css` and `Rail.css`. The import check owns `App.css` as HEADER.
+- **Announcements.** `AlertLive.tsx` mounts two visually hidden regions: `role="status"` (polite: new CAUTION alerts, and a rise in the atc notification count) and `role="alert"` (assertive: new WARNING only). `alert-live.ts` (pure, tested in `server/alert-live.test.ts`) reads only keys that were not in the previous snapshot, nothing on the first load and nothing for ADVISORY, so a poll that changes nothing is silent. The ticker is not read line by line: its button is named `경보 n건, 목록 펼치기`. The ALERTS readout is named with its count. The opened list (`ul.alerts`) is a labelled list the SUPERVISOR opens, not a live region; the regions above announce what is new. The UPDATE and NEW VERSION rows were already `role="status"` and stay so. The old BELL count moved to the notifications (Z6, ATC-447); the rise in its `atc` count is announced by the same polite region.
+- **Motion** (principle 10). Infinite in the header: the brand sweep (RADAR liveness, named in principle 10) and the UPDATE dot while an update runs (busy dot). The ticker runs twice and rests at its start, and keeps running only while a WARNING is on it; it still pauses on hover and focus.
+- **Buttons.** The header buttons (`접기`, `새로고침`, `업데이트`, `다시 시도`, `PR n`, `닫기`) are `.btn` (`is-primary` for the one action); the bars set `--layer` for the face they sit on.
+- **390 px.** The top bar is 86–88 px (the earlier audit measured 263 px) and the first HOME element starts at about 186 px of an 844 px screen, with the UPDATE bar showing.
+
 ### 7.6 Decisions (SUPERVISOR, 2026-10-02)
 
 - **E1.** The rail holds icons only, and a sidebar beside it lists what is inside the selected screen, grouped by AIRPORT. The SUPERVISOR gave a screenshot of a desktop chat app as the model.

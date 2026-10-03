@@ -127,22 +127,22 @@ export function UpdateBar({ update }: { update: ReturnType<typeof useUpdate> }) 
         <div className="update-bar" data-kind={kind}>
           <div className="update-row">
             <span className="update-text">
-              <i aria-hidden className={kind === "running" || kind === "starting" || kind === "restarting" ? "is-busy" : undefined} />
+              <i aria-hidden className={`update-dot${kind === "running" || kind === "starting" || kind === "restarting" ? " is-busy" : ""}`} />
               {text}
             </span>
             {showMeta && prs && prs.length > 0 && (
-              <button className="update-pr" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
+              <button type="button" className="btn update-pr" aria-expanded={listOpen} onClick={() => setListOpen((v) => !v)}>
                 PR {prs.length}
               </button>
             )}
             {showMeta && <span className="update-ci">{ci}</span>}
             {button && (
-              <button className="update-go" onClick={button.on}>
+              <button type="button" className="btn is-primary update-go" onClick={button.on}>
                 {button.label}
               </button>
             )}
             {kind === "done" && (
-              <button className="update-close" onClick={close} aria-label="업데이트 알림 닫기">
+              <button type="button" className="btn update-close" onClick={close} aria-label="업데이트 알림 닫기">
                 닫기
               </button>
             )}
