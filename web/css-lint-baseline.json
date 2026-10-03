@@ -10,10 +10,10 @@
     "color-literal": 2
   },
   "web/src/styles.css": {
-    "color-literal": 19,
+    "color-literal": 16,
     "radius-literal": 3,
     "spacing-literal": 34,
-    "token-family": 32
+    "token-family": 24
   },
   "web/src/views/Docs.css": {
     "font-size-em": 4
@@ -31,7 +31,7 @@
     "token-family": 2
   },
   "web/src/views/Teams.css": {
-    "token-family": 12
+    "token-family": 15
   },
   "web/src/views/fleet/Card.css": {
     "token-family": 6

@@ -88,7 +88,7 @@ function Dots({ row, stages }: { row: FollowRow; stages: FollowStage[] }) {
         const cls = c.na ? "is-na" : s === row.current ? (row.finished ? "is-done is-now" : "is-now") : c.done ? "is-done" : "";
         return (
           <span key={s} className={`fw-dot ${cls}${s === stuck ? " is-stuck" : ""}`} title={`${LONG[s]}${c.na ? " — 없음" : c.at ? ` ${clock(c.at)}` : c.done ? " ✓" : ""}`}>
-            <i aria-hidden="true">{c.na ? "—" : ""}</i>
+            {c.na ? <i className="fw-na" aria-hidden="true">—</i> : <i className="dot" data-shape={cls ? undefined : "ring"} aria-hidden="true" />}
             <small>{SHORT[s]}</small>
           </span>
         );
@@ -100,15 +100,15 @@ function Dots({ row, stages }: { row: FollowRow; stages: FollowStage[] }) {
 // 다음 할 일 칩: release만 버튼(기존 상태 길), 나머지는 이미 있는 화면으로 가는 링크
 function NextChip({ row, next, busy, moved, onRelease }: { row: FollowRow; next: FollowNext; busy: boolean; moved: boolean; onRelease: (row: FollowRow) => void }) {
   // 옮겼는데 Linear 읽기가 아직 Backlog이면 칩을 되살리지 않는다(다시 누르면 서버가 409로 막는다)
-  if (next.kind === "release" && moved) return <span className="fw-chip is-moved">Todo로 옮김</span>;
+  if (next.kind === "release" && moved) return <span className="tag">Todo로 옮김</span>;
   if (next.kind === "release")
     return (
-      <button type="button" className="fw-chip is-write" disabled={busy} onClick={() => onRelease(row)} aria-label={`${row.key}를 Todo로 옮기기`}>
+      <button type="button" className="btn fw-next" disabled={busy} onClick={() => onRelease(row)} aria-label={`${row.key}를 Todo로 옮기기`}>
         {next.label}
       </button>
     );
   return (
-    <a className="fw-chip" href={next.href ?? undefined} aria-label={`${row.key} ${next.label}`}>
+    <a className="btn fw-next" href={next.href ?? undefined} aria-label={`${row.key} ${next.label}`}>
       {next.label}
     </a>
   );
@@ -134,13 +134,13 @@ function Row({ row, stages, busy, error, moved, onRelease, onChanged, mode, pull
         </span>
         {row.stuck && (
           <details className="fw-issue-det">
-            <summary className="fw-issue is-warn">막힘</summary>
+            <summary className="tag" data-tone="amber">막힘</summary>
             <span className="fw-issue-text is-warn">{row.stuck.text}</span>
           </details>
         )}
         {row.issues.map((i) => (
           <details key={i.code} className="fw-issue-det">
-            <summary className={`fw-issue is-${i.severity}`}>{i.code}</summary>
+            <summary className="tag" data-tone={i.severity === "warn" ? "amber" : "cyan"}>{i.code}</summary>
             <span className={`fw-issue-text is-${i.severity}`}>{i.text}</span>
           </details>
         ))}
@@ -192,7 +192,7 @@ function Bundle({ b, stages, now, onUnfollow, busy, rowBusy, rowError, moved, on
         )}
         {!b.arrows && (
           <div className="fw-actions">
-            <button type="button" className="fw-btn" disabled={busy} onClick={onUnfollow}>
+            <button type="button" className="btn" disabled={busy} onClick={onUnfollow}>
               따라가기 끝내기
             </button>
           </div>
@@ -242,7 +242,7 @@ export function Follow({ refreshKey, now, pulls = [] }: { refreshKey: string; no
         <h2 className="label">따라가는 FLIGHT</h2>
         <form className="fw-form" onSubmit={submit}>
           <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="상위 이슈 key (예: ATC-253)" aria-label="따라갈 이슈 key" spellCheck={false} autoCapitalize="characters" />
-          <button type="submit" className="fw-btn is-primary" disabled={busy || !key.trim()}>
+          <button type="submit" className="btn is-primary" disabled={busy || !key.trim()}>
             따라가기
           </button>
         </form>
