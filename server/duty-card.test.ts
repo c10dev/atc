@@ -5,7 +5,7 @@ import { chatFromHistory, emptyChat, foldDuty } from "./duty-chat.ts";
 import { QUEUE_KINDS, type QueueItem } from "./supervisor-queue.ts";
 
 const AIRPORTS = [{ name: "atc", code: "ATCC", repo: "/home/c10/projects/atc" }];
-const row = (kind: QueueItem["kind"], key: string): QueueItem => ({ kind, key, since: "2026-09-30T00:00:00.000Z", title: `${kind} ${key}`, hash: "#x" });
+const row = (kind: QueueItem["kind"], key: string): QueueItem => ({ kind, key, since: "2026-09-30T00:00:00.000Z", title: `${kind} ${key}`, hash: "#x", primary: { action: "open", label: "x", hash: "#x" } });
 const t = "2026-09-30T00:00:00.000Z";
 
 test("인라인 버튼은 FLEET PLAN·UPDATE·PROPOSAL(승인·거절, ATC-377)뿐이고, 나머지는 링크다(GO도 링크)", () => {

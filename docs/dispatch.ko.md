@@ -221,6 +221,7 @@ CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch ar
 - **ARRIVED까지 잡아 둔다.** `inFlight`에 남고 AIRCRAFT·FLIGHT를 계속 잡으며, 만료·SUPERSEDED 없다. 보고 없이 24시간이 지나면 `overdue`에 든다. `sent`·`accepted`처럼 RECALL할 수 있다.
 - **끝난 FLIGHT는 CLOSED(ATC-266).** `sent`·`accepted`·STAND 없는 `departed` 카드의 FLIGHT가 Linear에서 Done·Canceled·Duplicate가 되면 다음 동기화가 op `close`, 상태 `closed`, 사유 `FLIGHT 상태가 바뀜(<상태>)`로 닫는다. 사유는 RECENT 목록과 FOLLOWING에 하루 보인다(FOLLOWING은 이 카드의 지연을 세지 않는다). `recalling` 카드는 RECALL의 READBACK이 남아 있어 이렇게 닫지 않고, STAND가 있는 `departed`는 LOGBOOK(머지)이 끝낸다. Done인 FLIGHT는 STAND를 본 적 없는 카드(또는 STAND 없는 `departed`)에 `dispatch report`로 기록한 ARRIVED 보고나 머지된 PR이 있으면 닫는 대신 `arrived`로 끝내고, 보고가 없는 STAND 없는 FLIGHT는 보고를 기다린다. 닫힌 카드는 같은 짝을 다시 제안할 때 superseded처럼 센다: 24시간 짝 규칙은 그대로다.
 - **`accepted`에서 `dispatch arrived`(ATC-266).** `accepted` 카드도 FLIGHT가 STAND 없는 종류이거나, STAND를 본 적이 없고(DEPARTURE LOG 줄도 워크트리도 없음) 그 FLIGHT의 ARRIVED 보고가 있으면 `arrived`를 받는다. 카드에는 `departedVia: "report"`가 붙고 `timeline.departed`는 없어서 FOLLOWING은 STAND 없는 FLIGHT로 읽고 LOGBOOK 줄은 쓰지 않는다. 아니면 사유와 함께 409로 거절한다.
+- **ARRIVED인데 Linear는 아직 In Progress(ATC-473).** STAND 없는 FLIGHT는 워크트리가 있을 수 없어서 `no-workspace` 알림("진행 중인데 워크트리가 없음")을 내지 않는다(`server/arrived-open.ts`의 `noWorkspaceKeysOf`. STAND가 필요한 FLIGHT는 알림이 그대로다). 그런 FLIGHT에 되돌려지지 않은 LOGBOOK ARRIVED 줄이 있는데 Linear 이슈가 아직 `started`이면, HOME 할 일 목록의 종류 `ARRIVED` 한 줄이 된다(`arrivedOpenOf`): 제목에 FLIGHT key와 AIRCRAFT, 상세에 이슈 제목·ARRIVED 글·결과 링크·도착 시각·이슈 링크. Linear 상태가 `started`를 벗어나면 사라진다. `Done…` 동작은 화면에서 확인을 한 번 묻고, 기존 SUPERVISOR 전용 길 `POST /api/flight/:key/state`에 `{from, toType: "completed"}`를 보내 그 이슈 하나를 팀의 completed 상태로 옮긴다. 길은 같은 목록에 든 FLIGHT(STAND 없음, ARRIVED, `started`)만 이렇게 옮기고, 다른 started → completed 이동은 그대로 막히며, 서버는 스스로 Linear에 쓰지 않는다.
 - **gate3.** STAND 없는 READBACK은 READBACK 비율에는 넣고 DEPARTED 비율에서는 뺀다. 정의상 DEPARTED라 넣으면 비율이 저절로 오른다. `gate3.standFree`가 그 READBACK·ARRIVED 수를 따로 보인다.
 
 #### 6.1 최근 짝과 판정 대기 제안 지키기
@@ -701,6 +702,17 @@ D-0441 사례: TEAM_K에게 낸 ASSIGN 카드를 TEAM_K가 ABSENT(살아 있는 
 - **띄울 수 없으면.** 카드는 기다린다. `approvedWaitMin`(`dispatch.json`, 기본 승인 뒤 15분)이 지나면 `승인 뒤 세션 없음 — LAUNCH 못 함(<상한>)…` 사유로 SUPERSEDED로 닫는다. 판정이 아니라서 24시간 짝 규칙을 시작하지 않으므로 FLIGHT는 planner로 돌아가 다른 AIRCRAFT를 받을 수 있다. LAUNCH가 실패하면 다른 launch 카드처럼 `LAUNCH 실패 — …`로 닫는다.
 - **센다.** DISPATCH brief의 `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: 세션을 기다리는 승인 카드 수, 그중 `approvedWaitMin`을 넘긴 수(이 주기가 돌면 0으로 남아야 한다), 지난 24시간에 이 사유로 닫은 수.
 - **형식.** `relaunch` op와 `approvedWaitMin`은 추가다. `proposals.jsonl`의 다른 것은 바뀌지 않는다.
+
+## OCC가 닿지 못하는 AIRCRAFT는 DISPATCH가 고르지 않는다, 만든 것 (ATC-458)
+
+ATC-251(accounts.md 5.6)의 후속이다. 그때는 계획이 AIRCRAFT를 이미 고른 뒤에 카드가 `ACCOUNT 불일치`라고 말하는 데 그쳤고, 승인된 카드는 FLIGHT를 쥔 채 끝없이 기다렸다.
+
+- **계획 규칙.** 살아 있는 AIRCRAFT의 관찰한 ACCOUNT가 OCC의 관찰한 ACCOUNT와 다르면 `available: false`, `crossAccount: true`이고 사유는 `ACCOUNT 불일치 — <AIRCRAFT>는 ACCOUNT x에 있고 OCC는 y에 있어 … ACCOUNT CHANGE·APPLY NOW …`다(`crossAccountAircraftWhy`, `server/account-reach.ts`. `crossAccountWhyOf`와 같은 규칙: 한쪽 ACCOUNT를 모르면 막지 않는다). ABSENT AIRCRAFT는 그대로다: LAUNCH ACCOUNT로 LAUNCH한다.
+- **쥔 FLIGHT 풀기.** 닿지 못하게 된 AIRCRAFT의 열린 ASSIGN 카드(제안·승인, 아직 안 보냄)는 기존 AIRCRAFT 불가 규칙(`syncOps`)으로 `AIRCRAFT 불가: ACCOUNT 불일치 — …` 사유와 함께 SUPERSEDED가 되고, 자동 승인한 카드는 `misfireOf`가 `wrong-aircraft`로 센다. FLIGHT는 계획으로 돌아간다. 판정이 아니라서 24시간 짝 규칙을 시작하지 않는다: 그 AIRCRAFT가 닿게 되면 곧바로 다시 후보다.
+- **끄는 스위치.** `dispatch.json`의 `crossAccountRelease`(기본 `on`, 설정 → OPERATIONS → ACCOUNT RELEASE, SUPERVISOR만, `atcctl` 명령 없음, 바꾸면 `policy / cross-account-release-mode`로 기록). `off`면 계획 규칙만 적용되고 카드는 ATC-251 사유로 계속 기다린다(`syncOps`의 `waits` 규칙).
+- **세는 곳.** `GET /api/dispatch/misfire`의 날짜별과 `total`에 `crossAccount`(이 규칙으로 닫은 카드, 닫은 날 기준, 누가 승인했든 센다)가 있고, METRICS → MISFIRE에 `ACCOUNT 불일치로 닫은 DISPATCH 카드 n건`으로 보인다.
+- **보이는 사유.** 승인된 카드가 ACCOUNT 불일치로 기다리는 동안 FOLLOW 줄과 `GET /api/status`(`now`, 10분 뒤 `stuck`)는 `승인 n분 · 발송 없음` 대신 `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함`을 보인다(`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
+- **형식.** `dispatch.json`의 `crossAccountRelease`와 misfire 보기의 `crossAccount` 수는 추가 항목이다. `proposals.jsonl`은 바뀌지 않는다.
 
 ## DIRECT briefs (ATC-32)
 

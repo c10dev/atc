@@ -394,3 +394,39 @@ test("제안 버리기(ATC-401): 옮기기가 실패하면 실패를 그대로 �
   assert.equal(warn.status, 200);
   assert.deepEqual(await warn.json(), { discarded: "ATC-1", warning: "comment failed" });
 });
+
+// ATC-448: 발권이 성공하면 서버의 Linear 캐시가 바로 Todo가 되어 READY·제안 목록에서 빠진다
+test("발권 fire 뒤: 캐시가 Todo로 바뀌어 releaseView의 ready·filed에 더는 없다(버튼을 두 번 누를 수 없다)", async () => {
+  let tickets: Ticket[] = [done("ATC-90"), backlog("ATC-1", { blockedBy: ["ATC-90"] })];
+  const { h, post } = fireHarness(tickets, async (k) => {
+    tickets = tickets.map((t) => (t.key === k ? { ...t, state: "Todo", stateType: "unstarted" } : t)); // moveFlight가 서버 캐시에 하는 일
+    return { ok: true };
+  });
+  h.deps.snapshot = async () => snap(tickets);
+  assert.deepEqual(releaseView(snap(tickets), h.deps).ready.map((r) => r.key), ["ATC-1"]);
+  assert.equal((await post({ flight: "ATC-1" })).status, 200);
+  const after = releaseView(await h.deps.snapshot(), h.deps);
+  assert.deepEqual(after.ready.map((r) => r.key), []);
+  assert.deepEqual(after.filed.map((f) => f.key), []);
+});
+
+test("GET /api/releases: tree는 상위 이슈 그룹·막는 이슈 밑 중첩·다음 발권을 싣고, 기존 목록(ready·unreleased)은 그대로다 (ATC-456)", () => {
+  const s = snap([
+    tk("ATC-90", { children: ["ATC-1", "ATC-2", "ATC-3", "ATC-4"], stateType: "backlog", state: "Backlog" }),
+    tk("ATC-1", { parent: "ATC-90", blocks: ["ATC-2"] }),
+    tk("ATC-2", { parent: "ATC-90", stateType: "backlog", state: "Backlog", blockedBy: ["ATC-1"], blocks: ["ATC-3"] }),
+    tk("ATC-3", { parent: "ATC-90", stateType: "backlog", state: "Backlog", blockedBy: ["ATC-2"] }),
+    tk("ATC-4", { parent: "ATC-90", stateType: "completed", state: "Done" }),
+  ]);
+  const h = harness([]);
+  const v = releaseView(s, { ...h.deps, files: () => null });
+  assert.deepEqual(v.tree.map((g) => [g.key, g.done, g.total, g.next]), [["ATC-90", 1, 4, "ATC-1"]]);
+  const top = v.tree[0]!.rows[0]!;
+  assert.equal(top.key, "ATC-1");
+  assert.equal(top.fire, "release");
+  assert.equal(top.hash, "hash-ATC-1");
+  assert.deepEqual(top.children.map((c) => c.key), ["ATC-2"]);
+  assert.deepEqual(top.children[0]!.children.map((c) => c.key), ["ATC-3"]);
+  assert.deepEqual(v.unreleased.map((r) => r.key), ["ATC-1"]); // 기존 목록은 그대로
+  assert.deepEqual(v.ready.map((r) => r.key), []);
+});

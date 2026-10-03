@@ -32,7 +32,7 @@ test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);
   assert.deepEqual(v.items, []);
-  assert.equal(Object.keys(v.counts).length, 11);
+  assert.equal(Object.keys(v.counts).length, 16);
   assert.ok(Object.values(v.counts).every((n) => n === 0));
 });
 
@@ -135,14 +135,14 @@ test("GO: a CAPTAIN waits for the SUPERVISOR's go", () => {
   assert.deepEqual(q.map((i) => [i.kind, i.key, i.title, i.since]), [["GO", "D-9", "ATC1 TEAM_A", ago(7)]]);
 });
 
-test("sorted oldest first; unknown since goes last; ties break by kind", () => {
+test("sorted by group (team holders first), then oldest first; unknown since goes last; ties break by kind", () => {
   const q = supervisorQueueOf({
     ...empty(),
     proposals: [proposal({ id: "D-new", statusAt: ago(1) }), proposal({ id: "D-old", statusAt: ago(60) })],
     schedule: { mode: "approval", ops: [{ id: "S-mid", kind: "TAIL", flight: null, status: "draft", statusAt: ago(30) }] as never },
     pulls: [pull({ landing: "CLEARED", landBy: "supervisor" })],
   }, NOW);
-  assert.deepEqual(q.map((i) => i.key), ["D-old", "S-mid", "D-new", "atc#7@abc1234def"]);
+  assert.deepEqual(q.map((i) => i.key), ["D-old", "D-new", "S-mid", "atc#7@abc1234def"]); // PROPOSAL holds a team, so both cards come before the older SCHEDULE draft (ATC-454)
 });
 
 test("titles carry atc terms only, never a ticket or PR title", () => {

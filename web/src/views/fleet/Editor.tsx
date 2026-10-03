@@ -80,12 +80,12 @@ export function Editor({
                   aria-label="agent"
                   onChange={(e) => setCrew(crew.map((x, j) => (j === i ? { ...x, agent: e.target.value } : x)))}
                 />
-                <button className="fl-btn" onClick={() => setCrew(crew.filter((_, j) => j !== i))} aria-label="빼기">
+                <button className="btn" onClick={() => setCrew(crew.filter((_, j) => j !== i))} aria-label="빼기">
                   −
                 </button>
               </div>
             ))}
-            <button className="fl-btn" onClick={() => setCrew([...crew, { position: "", agent: "" }])}>
+            <button className="btn" onClick={() => setCrew([...crew, { position: "", agent: "" }])}>
               팀원 추가
             </button>
           </>
@@ -164,10 +164,10 @@ export function Editor({
       </fieldset>
 
       <div className="fl-actions">
-        <button className="fl-btn" onClick={onCancel}>
+        <button className="btn" onClick={onCancel}>
           취소
         </button>
-        <button className="fl-btn primary" onClick={submit}>
+        <button className="btn is-primary" onClick={submit}>
           저장
         </button>
       </div>

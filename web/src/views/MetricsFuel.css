@@ -77,7 +77,7 @@
 .mf-scroll {
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--panel);
 }
 .mf-table {
@@ -228,7 +228,7 @@
   padding: var(--space-2);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .mf-chart svg {
   display: block;
@@ -304,7 +304,7 @@
 }
 .mft-tiles {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--space-2);
   margin: 0;
 }
@@ -381,7 +381,7 @@
 .mft-bars {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   height: 36px;
 }
 .mft-cell {
@@ -398,7 +398,7 @@
 }
 .mft-fill {
   width: 100%;
-  border-radius: 2px 2px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--muted);
 }
 .mft-cell.is-now .mft-fill {

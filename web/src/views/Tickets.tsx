@@ -18,6 +18,8 @@ import { SplitFlap } from "../SplitFlap.tsx";
 import { useMilestones } from "../useMilestones.ts";
 import { AirportCode, PriorityMark, SessionBadge } from "../badges.tsx";
 import { Empty } from "../kit/Empty.tsx";
+import { Segmented } from "../kit/Segmented.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 import "./Tickets.css";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
@@ -118,7 +120,7 @@ function ViewOptions({ settings }: { settings: Settings }) {
   return (
     <div className="view-options" ref={ref}>
       <button
-        className="icon-button"
+        className="btn icon-button"
         aria-label="표시 옵션"
         title="표시 옵션"
         aria-expanded={open}
@@ -129,19 +131,16 @@ function ViewOptions({ settings }: { settings: Settings }) {
       </button>
       {open && (
         <div className="view-menu" role="dialog" aria-label="표시 옵션">
-          <div className="view-switch" role="radiogroup" aria-label="보기">
-            {(
-              [
-                ["list", "List", <ListIcon key="i" />],
-                ["board", "Board", <BoardIcon key="i" />],
-              ] as const
-            ).map(([id, label, icon]) => (
-              <button key={id} role="radio" aria-checked={settings.fidsView === id} onClick={() => updateSettings({ fidsView: id })}>
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            className="view-switch"
+            label="보기"
+            value={settings.fidsView}
+            options={[
+              ["list", <><ListIcon />List</>],
+              ["board", <><BoardIcon />Board</>],
+            ]}
+            onChange={(fidsView) => updateSettings({ fidsView })}
+          />
           <p className="view-menu-hint">
             {settings.fidsView === "list" ? "DEPARTURES 안내판처럼 한 줄에 FLIGHT 하나, 곧 LANDING할 FLIGHT부터" : "비행 단계별 열"}
           </p>
@@ -174,8 +173,8 @@ function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups
           <SplitFlap bare text={formatClock(now, clock)} />
         </span>
       </header>
-      <div className="fids-table-wrap">
-        <table className="fids-table">
+      <TableScroll label="FIDS 표">
+        <table className="kit-table fids-table">
           <thead>
             <tr>
               <th className="col-time">
@@ -221,7 +220,7 @@ function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups
           ))}
         </table>
         {total === 0 && <Empty className="fids-empty">표시할 편이 없음</Empty>}
-      </div>
+      </TableScroll>
     </div>
   );
 }
@@ -282,7 +281,7 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
         {latest?.name !== "out" && milestones?.out && <span className="remark-ms mono">OUT {formatClock(milestones.out, clock)}</span>}
         {milestones?.reverted && <span className="remark-rev">PR 되돌림{reverted}</span>}
         {noContact && (
-          <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
+          <span className="tag code-chip alert-no-workspace" data-tone="inherit" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
             NO CONTACT
           </span>
         )}
@@ -335,7 +334,7 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
       )}
       {alerts.map((a) => (
         <div key={a.kind} className={`ticket-alert alert-${a.kind}`}>
-          <span className="code-chip">{alertCode[a.kind]}</span>
+          <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
           {alertLabel[a.kind]} · {alertMessage(a, (id) => callsign(idx.sessionById.get(id) ?? { name: id }))}
         </div>
       ))}

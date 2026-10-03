@@ -27,7 +27,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 2px solid var(--amber);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
   color: var(--muted);
 }
@@ -168,7 +168,7 @@
   position: absolute;
   width: 5px;
   height: 5px;
-  margin: -2.5px 0 0 -2.5px;
+  margin: calc(var(--space-0-5) * -1) 0 0 calc(var(--space-0-5) * -1);
   border-radius: 50%;
   background: var(--cyan);
   pointer-events: none;

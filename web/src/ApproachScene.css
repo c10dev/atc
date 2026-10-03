@@ -1,0 +1,103 @@
+/* 첫 불러오기의 장면(ApproachScene.tsx, ATC-453). 색은 :root 토큰만: 불빛은 글 계열(--text), 활주로는 면 계열, 선은 선 계열,
+   --radar는 "준비됨"의 순간(문턱 불빛)에만. 움직임이 꺼지면(data-motion="off", 움직임 줄이기) 불빛은 멈춘 채 어슴푸레 켜져 있다 */
+.approach {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 16rem;
+  color: var(--text);
+  transition: opacity var(--dur-base) var(--ease);
+}
+.approach.is-ready {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--gutter);
+  right: var(--gutter);
+  opacity: 0;
+  pointer-events: none;
+}
+.approach-svg {
+  width: min(100%, 24rem);
+  height: auto;
+}
+.approach-text {
+  margin: 0;
+  color: var(--muted);
+}
+.ap-horizon {
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+.ap-rwy-edge {
+  fill: var(--panel-3);
+}
+.ap-rwy {
+  fill: var(--panel);
+}
+.ap-centre {
+  stroke: var(--line-strong);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+}
+.ap-lights circle,
+.ap-threshold circle {
+  fill: currentColor;
+}
+.ap-lights circle {
+  opacity: 0.35;
+  animation: approach-light 1s var(--ease) infinite;
+}
+.ap-lights .ap-crossbar {
+  animation: none;
+}
+.ap-threshold circle {
+  opacity: 0.6;
+  transition: fill var(--dur-base) var(--ease);
+}
+.approach.is-ready .ap-threshold {
+  color: var(--radar);
+}
+.approach.is-ready .ap-threshold circle {
+  opacity: 1;
+}
+@keyframes approach-light {
+  0%,
+  45%,
+  100% {
+    opacity: 0.35;
+  }
+  20% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-lights circle {
+    animation: none;
+  }
+  .approach {
+    transition: none;
+  }
+}
+:root[data-motion="off"] .ap-lights circle {
+  animation: none;
+}
+/* 장면이 있었을 때만 화면이 --dur-base 동안 들어온다: 늦춰서 막는 것은 없다 */
+.main-enter {
+  animation: approach-enter var(--dur-base) var(--ease);
+}
+@keyframes approach-enter {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .main-enter {
+    animation: none;
+  }
+}
+:root[data-motion="off"] .main-enter {
+  animation: none;
+}

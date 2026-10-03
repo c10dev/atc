@@ -54,7 +54,7 @@ function openRadio(code: string) {
   } catch {
     /* 저장소를 못 쓰면 RADIO가 전부 보여 준다 */
   }
-  location.hash = "flights/radio";
+  location.hash = "radio";
 }
 
 export function AirportView({ code, scene, txs, motion, now }: { code: string; scene: GlobeScene; txs: readonly Transmission[]; motion: boolean; now: number }) {

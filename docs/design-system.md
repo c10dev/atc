@@ -30,7 +30,7 @@ Read from `origin/main` (`44f59e6`, 2026-10-02).
   - HOME imports `Drawer.css`, `DutyDrawer.css` and `fleet/Fleet.css` to borrow their classes.
   - The night block restyles strips and FIDS by selector.
 - **Checks today:**
-  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
+  - `server/css-lint.ts`: colour literals, px and em font sizes, literal spacing, literal radius, literal z-index, token family per colour property (ATC-437), `transition: all`, `outline: none`; ratcheted by `web/css-lint-baseline.json`.
   - `server/theme-contrast.test.ts` (ATC-408, ATC-438): a declared table of (foreground, background, minimum) pairs checked in every theme found in `styles.css`; see section 4.
   - `server/boundaries.test.ts` (ATC-335): import cycles, and web → Node imports.
   - Nothing checks which layer may use which.
@@ -75,6 +75,7 @@ A new theme (the light theme, D7) cannot land unless the table passes. A pair th
 | Primitive | Form | Refactor unit |
 |---|---|---|
 | Button (`.btn`, `.is-primary`, `.is-danger`) | CSS class, `web/src/kit/Button.css` (built, ATC-411: replaces `fb-`, `rl-`, `hm-`, `apt-btn`) | U5 (ATC-411) |
+| Loading (`Loading`, `Lights` in `web/src/kit/Loading.tsx` and `.css`) | Component with a CSS animation; the lights appear only after about 300 ms, the text keeps `role="status"` (ATC-453, design-language principle 10) | — |
 | Chip, tag, dot (design-language 4.4) | CSS classes; a dot never stands without a word or a name | U6 (ATC-412) |
 | Table and scroll region | CSS class; the scroll region as a small component (focusable, named) | U7 (ATC-413) |
 | Fold | Component (`aria-expanded`, Enter / Space, the count in the header) | U8 (ATC-414) |
@@ -100,7 +101,7 @@ Rules:
 
 - `web/src/kit/Table.css` (`.kit-table`): the base table: header row, row divider, `tabular-nums`, and `.num` on `th` and `td` for right-aligned numbers (Craft 3.5.7). It reads `--layer` and `--layer-hover`; no domain token, literal or screen class. `web/src/kit/TableScroll.tsx` (`.kit-scroll`) is the one scroll region for a wide table: a named `role="region"` with a tab stop.
 - `mx-table` (METRICS DAILY and MISFIRE, NETWORK) and the NETWORK-only `Scroll` / `.nw-scroll` / `.mx-scroll` are gone; screens keep only layout (`.nw-table` turns the collapse off so row heads can stick). The ROUTE map line uses `.kit-scroll` as well.
-- Four tables are still separate styles: `apt-table`, `bf-table`, `mf-table`, `fids-table`; they move to the base in later units.
+- Three tables are still separate styles: `apt-table`, `bf-table`, `mf-table`; they move to the base in later units. `fids-table` moved in ATC-425: it carries `.kit-table` inside `.kit-scroll` and keeps its departure-board look through its own rules in `views/Tickets.css`.
 
 ### L2 Patterns
 
@@ -122,7 +123,7 @@ The patterns of design-language section 4: row and expanded detail, card (header
 | Boundary | Check | Status |
 |---|---|---|
 | No literal colour, size, z-index, radius or spacing outside L0 | `server/css-lint.ts` (colour, font size, `em`, spacing, radius, z-index; ATC-410) | built, ratcheted |
-| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | decided (S5) |
+| A property takes only its token family (`color` → text and signal tokens, `background` → surface tokens, `border-color` → line and signal tokens), as Primer's `primer/colors` does | a new css-lint rule, ratcheted like the others | built (ATC-437): rule `token-family` and the two tables `TOKEN_FAMILIES` and `PROP_FAMILIES` in `server/css-lint.ts`; today's count is in the baseline |
 | Primitives use no domain token and no screen class | css-lint, scoped to the primitive files | to build |
 | A screen imports no other screen's stylesheet; a primitive imports nothing from screens | `server/boundaries.test.ts`, which already parses imports, gains a layer map by path | built (ATC-436): a `kit/` file imports no screen file and no stylesheet outside `kit/`; a screen imports no stylesheet that belongs to another screen. Today's four exceptions are an allow list that only shrinks, each with the unit that removes it (HOME's three: S1, ATC-422; `SettingsAlerts` → `alerts.css`: S6, ATC-430) |
 | Theme blocks hold custom properties only | css-lint: a `:root[data-theme=…]` rule with a selector after it fails | to build (with S9) |
@@ -145,6 +146,32 @@ Decided (S1): a theme is a short list of inputs.
   - a second test checks that the committed CSS equals the generator's output, so hand edits and inputs cannot drift apart.
 
 The light theme (D7) would then be one more input set. The three dark themes would be re-expressed as inputs first, with **no visible change** as the acceptance test. Then later colour fixes become input changes.
+
+### As built (ATC-439)
+
+- **Inputs** (`THEMES` in `web/src/theme-gen.ts`, one entry per theme): `bg`, `surface` (the panel colour: surfaces lean toward it), `fg`, the five `hues`, `contrast` (how far `--line` and `--line-strong` sit from the background; 1 is the baseline), `depth` (how far cards and floating surfaces rise above the panel), and `glass` (translucent surfaces and lines, Night Sky). `surface`, `depth` and `glass` are additions to the S1 list: the old themes tint their surfaces differently per theme, and one background plus one foreground cannot reproduce that.
+- **Generator:** `generate(inputs)` is pure. It returns the palette and the semantic tokens; `block(inputs)` formats them as CSS; `applyGenerated(css)` swaps the marked region in `styles.css`.
+- **Palette** (`--n-1` … `--n-11`, `--hue-*`), each step with one job:
+
+  | Step | Token | Job |
+  |---|---|---|
+  | n-1 | `--bg` | app background (layer 0) |
+  | n-2 | `--scope` | inside of the RADAR scope, a breath above the background |
+  | n-3 | `--chrome` | console and rail on top (layer 0.5) |
+  | n-4 | `--panel` | panel (layer 1) |
+  | n-5 | `--panel-2` | card, hover surface (layer 2) |
+  | n-6 | `--panel-3` | floating or pressed surface (layer 3) |
+  | n-7 | `--line` | divider, decorative border (no contrast requirement) |
+  | n-8 | `--line-strong` | control border (WCAG 1.4.11, 3:1 target) |
+  | n-9 | `--faint` | faintest text (4.5:1) |
+  | n-10 | `--muted` | secondary text |
+  | n-11 | `--text` | body text |
+
+  `--hue-radar`, `--hue-amber`, `--hue-cyan`, `--hue-alert` and `--hue-blue` are the five signals, one meaning each.
+- **Semantic tokens** (`--bg` … `--text`, `--radar` … `--blue`) are `var()` references to the palette. Token names did not change (S6). Domain tokens (`--paper-*`, `--fids-*`, `--blk-*`, `--phase-*`) stay hand-set, and so do `--bracket`, `--scope-glow`, shadows and fonts.
+- **Written into CSS:** between `/* theme-gen:<name> begin … */` and `/* theme-gen:<name> end */` in each theme's block (`:root` is Radar Console). The output is committed; nothing runs at page load. To change a theme, edit its inputs and run `node web/gen-themes.ts`; the `:root` comment says the same.
+- **Tests:** `server/theme-gen.test.ts` (pure function; committed CSS equals the generator output; no generated token is set again outside the marked region; every generated colour is within 12/255 per channel of the pre-ATC-439 hand-set value, the five hues exactly) and `server/theme-contrast.test.ts` (the pairs table in every theme).
+- **Not changed:** the pairs in `KNOWN` of the contrast test still fail, because this unit kept today's colours. Raising `contrast` or the alert hue in the inputs fixes them as a visible change, tracked separately.
 
 `color-mix()` and `oklch()` in plain CSS can do part of this at runtime (hover = the surface mixed toward the text colour). They are supported in current browsers. They are an option for hover and pressed states even without a generator.
 
@@ -172,7 +199,7 @@ Asked in the ENGINEERING session; every answer was the recommended option.
 | S1 | How is a theme defined? | **A few inputs and a pure generator** (background, foreground, the five signal hues, a contrast level). The palette and semantic tokens are written into committed CSS; a test checks that the CSS equals the generator's output. The three dark themes are re-expressed first with no visible change; the light theme is one more input set | U9, S9, D7 |
 | S2 | A contextual layer token? | **Yes:** a container sets `--layer` / `--layer-hover` for its children | U5–U8 |
 | S3 | Where do primitives live? | **`web/src/kit/`**, one `.css` (and a `.tsx` where needed) per primitive; today's `ui.tsx` is renamed to say it holds domain badges | U2, U5–U8, the import check |
-| S4 | Patterns as code or guidance? | **Code only when two or more screens draw one the same way** (the section heading and the card shell first); the rest stays guidance in design-language section 4 | S1–S8 |
+| S4 | Patterns as code or guidance? | **Code only when two or more screens draw one the same way** (the section heading and the card shell first); the rest stays guidance in design-language section 4. As built (ATC-422): `web/src/kit/TodoRow.tsx` is the to-do **row** (one line with fixed columns: tag, subject, what is needed, age, one button; pressing it opens a detail below, design-language 4.1) and `SectionHead` the list heading, both in `kit/TodoRow.css`. HOME uses them first; RELEASE (S2) uses them next | S1–S8 |
 | S5 | A property → token family lint? | **Yes**, ratcheted from today's count | new unit after U4 |
 | S6 | Rename tokens by job? | **No:** keep `--bg`, `--panel`, `--panel-2`, `--panel-3`, `--text`, `--muted`, `--faint`; the S1 palette carries the job names underneath | all |
 

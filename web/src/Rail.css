@@ -148,6 +148,10 @@
   font: 700 var(--text-2xs)/1.5 var(--mono);
   text-align: center;
 }
+/* HOME 배지는 WARNING 줄이 있을 때만 알림 톤(ATC-454). 색만 바꾼다 */
+.rail-badge[data-tone="alert"] {
+  background: var(--alert);
+}
 /* HELP 메뉴: 레일 옆으로 열린다 */
 .rail-menu {
   position: relative;
@@ -169,7 +173,15 @@
   border-right: 1px solid var(--line);
   background: none;
   color: var(--faint);
-  cursor: default;
+  cursor: pointer;
+}
+.fold-btn:hover,
+.fold-btn[aria-expanded="true"] {
+  color: var(--text);
+}
+.fold-btn:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
 }
 .top-brand {
   display: none;
@@ -212,8 +224,7 @@
     grid-template-areas: "main";
     padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
   }
-  .shell > .sidebar,
-  .shell > .drawer-col {
+  .shell > .sidebar {
     display: none;
   }
   .rail {
@@ -302,9 +313,6 @@
     width: auto;
   }
   /* 상단 바: 첫 줄은 로고 글자와 DUTY, 둘째 줄부터 수치 */
-  .fold-btn {
-    display: none;
-  }
   .top-brand {
     display: flex;
     flex: 1;

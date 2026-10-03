@@ -10,6 +10,13 @@ export function unreachableWhy(input: { fromName: string; from: string | null | 
   return `${toName}는 ACCOUNT ${to}에 있고 ${fromName}는 ${from}에 있어 FLIGHT PLAN이 닿지 않는다 — ${REACH_RULE}. ${toName}를 ${from}로 옮기거나(ACCOUNT CHANGE·APPLY NOW) ${fromName}를 ${to}로 옮긴 뒤 보낸다`;
 }
 
+// ACCOUNT 불일치 사유(ATC-458): 카드(waitingOf)와 계획(planDispatch)이 같은 글을 쓴다. crossAccountWhyOf와 같은 규칙: 한쪽이라도 ACCOUNT를 모르면 null
+export const CROSS_ACCOUNT_LABEL = "ACCOUNT 불일치";
+export function crossAccountAircraftWhy(to: { name: string; account?: string | null }, occ: { account?: string | null } | undefined): string | null {
+  const why = unreachableWhy({ fromName: "OCC", from: occ?.account, toName: to.name, to: to.account });
+  return why ? `${CROSS_ACCOUNT_LABEL} — ${why}` : null;
+}
+
 // LAUNCH ACCOUNT 설정 경고: AIRCRAFT용과 관제 세션용이 다르면 다음 LAUNCH·APPLY NOW 뒤 OCC가 AIRCRAFT에 닿지 못한다. 한쪽이 "각 home"(null)이면 알 수 없어 경고하지 않는다
 export function launchSplitWarning(setting: { aircraft?: string | null; control?: string | null }): string | null {
   const a = setting.aircraft;

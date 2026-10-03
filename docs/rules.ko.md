@@ -28,6 +28,8 @@
 - **작업 지시서** (DUTY와 ENGINEERING, SUPERVISOR 결정 2026-10-02):
   - 본문(영어)은 Goal · Done when · K effects · Measure · Context · Release 여섯 절이다. 묶는 것은 앞의 셋뿐이고, Context는 정보일 뿐 지시가 아니다(PILOT'S DISCRETION). 어떻게 할지는 정하지 않는다.
   - **K3 효과**(ATC-398): `## K effects`의 K3 효과는 선언 한 줄씩, 서버가 읽는 꼴 `K3[<라벨>]: <바꾸는 통제> | files: <저장소 기준 경로, …>`로 쓴다. `<라벨>`은 `server/k3-allow.ts`의 `K3_LABELS` 가운데 하나다(`docs/autonomy.md` C9). 산문으로 `K3: …`라고 쓰지 않는다. K3 효과가 없는 작업 지시서에는 `K3`로 시작하는 줄이 없다(`K3: none`도 쓰지 않는다. 읽히지 않는 줄이라 DISPATCH가 보내지 않는다).
+  - **본문 점검**(ATC-469): DUTY가 `duty linear create`로 만들거나 본문을 싣는 `update`를 하면 서버(`server/work-order-check.ts`)가 본문 모양을 먼저 본다. `## Goal`·`## Done when`·`## K effects` 절이 없거나 비었거나, `## K effects`의 `K3` 줄이 선언으로 읽히지 않으면(`K3: none` 포함) HTTP 400이고 Linear에는 아무것도 쓰지 않는다. 오류는 빠진 것과 틀린 것을 한꺼번에 알리고 K3 줄 꼴과 라벨을 보인다. `## Measure`가 없거나 읽히지 않으면 만들되 답에 `warning`을 싣는다(잴 것이 없으면 `None`). 절 이름은 발권 해시가 읽는 규칙과 같다. 제목·우선순위·라벨만 고치는 `update`와 `comment`는 보지 않는다.
+  - **Sequence 줄**(ATC-456): `## Release` 절에 줄 하나를 둘 수 있다. 꼴은 `Sequence: after ATC-n — <이유>`다. 쓰는 때: 같은 파일을 고치는 일처럼 **먼저 쏘면 좋은 순서**가 있지만 진짜 선행조건은 아닐 때. 진짜 선행조건(앞 일이 끝나야 이 일을 할 수 있다)은 `blockedBy`다. Sequence 줄은 막지 않는다: RELEASE 화면이 그 줄을 `after ATC-n: <이유>`로 보이고 발권 순서에서 ATC-n 뒤에 놓지만, 줄은 READY 그대로 쏠 수 있다. 줄은 한 줄만 쓰고(둘이면 읽히지 않는다), 모르는 이슈나 꼴이 틀린 줄은 화면이 그대로 보이되 순서에는 쓰지 않는다. 서버는 Linear가 저장한 그대로 읽는다(쓴 `ATC-n`이 이슈 멘션 `<issue id=… href=…>ATC-n</issue>`으로 바뀌어도 읽힌다). 발권 해시는 Goal·Done when·K effects만 묶으므로 이 줄을 고쳐도 다시 발권하지 않는다.
   - **K3 발권**(ATC-398): K3 효과가 있는 작업 지시서는 RELEASE 화면이나 DUTY 채팅에서 발권한다. 세션은 그 발권을 증언(attest)하지 않는다: 세션은 이슈를 만들고 SUPERVISOR가 화면에서 쏜다. 증언한 발권으로는 allow 항목이 만들어지지 않아 DISPATCH가 그 FLIGHT를 보내지 않는다(`docs/autonomy.md` C9).
   - **Measure**(ATC-402): 이 FLIGHT가 바꿔야 할 기록이나 수와 방향과 기간을 atc가 읽는 모양으로 적는다. 배포(RTS) 뒤 atc가 같은 기간의 앞뒤를 견줘 평결 하나(`improved`·`not improved`·`worse`·`too little data`)를 남긴다. 줄은 셋이다:
     ```
@@ -36,7 +38,7 @@
     * direction: down | up
     * window: <n>d   (1d~30d)
     ```
-    종류는 atc가 이미 기록하는 것만이다: `leak:<종류>`(leak 건수. 종류는 QUEUE 종류 PROPOSAL·LANDING·NEEDS YOU …), `leak-minutes:<종류>`(붙잡은 분), `misfire:dispatch`(자동 승인이 틀렸다고 드러난 수), `alert:<alertKind>`(FLIGHT RECORDER의 `alert.raised`, 예 `conflict`), `clearance:<TYPE>`(CLEARANCE 수, 예 `GO AROUND`). 잴 것이 없으면 절 본문을 `None`으로 쓴다(평결이 없다). 발권 해시는 Goal·Done when·K effects만 묶으므로 Measure를 고쳐도 다시 발권하지 않는다.
+    종류는 atc가 이미 기록하는 것만이다: `leak:<종류>`(leak 건수. 종류는 QUEUE 종류 PROPOSAL·LANDING·NEEDS YOU …), `leak-minutes:<종류>`(붙잡은 분), `misfire:dispatch`(자동 승인이 틀렸다고 드러난 수), `alert:<alertKind>`(FLIGHT RECORDER의 `alert.raised`, 예 `conflict`), `clearance:<TYPE>`(CLEARANCE 수, 예 `GO AROUND`), `flow:<이름>`(ATC-468. `idle-empty-min`은 놀 AIRCRAFT가 있는데 기다리는 Todo가 없던 분의 합, `created-todo`·`todo-release`·`release-launch`는 그 구간을 마친 이슈들의 중앙값. 중앙값은 앞뒤 창 모두 이슈 3건 이상이어야 견준다). 잴 것이 없으면 절 본문을 `None`으로 쓴다(평결이 없다). 발권 해시는 Goal·Done when·K effects만 묶으므로 Measure를 고쳐도 다시 발권하지 않는다.
   - 사람 단계를 대신하는 새 자동 통제는 Done when에 SUPERVISOR만 바꾸는 끄는 스위치(기본 켜짐)와 오작동 카운터를 넣는다(live first).
   - AIRCRAFT가 받은(READBACK) 작업 지시서는 고치지 않는다. 더할 것은 후속 이슈로 만들어 앞 이슈 뒤에 건다(blockedBy). 출발한 FLIGHT를 바꾸면 RELAY와 다시 발권이 필요해진다.
   - Todo(발권)는 SUPERVISOR가 말한 것만이고, Release 절에 그 말을 그대로 적는다. 세션이 스스로 낸 제안(DUTY REVIEW·SCHEDULE NEW)은 Backlog에 두고 SUPERVISOR가 RELEASE 화면의 제안 목록에서 한 번의 클릭으로 쏘거나 버린다(ATC-401). 목록에는 우선순위와 K 효과가 보이고, 우선순위가 없으면 Todo로 옮기지 않으니 늘 정한다.

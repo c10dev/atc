@@ -31,6 +31,7 @@ import { ReportLine } from "./ReportMark.tsx";
 import { Fold } from "./Fold.tsx";
 import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, ratingHelp, stripOf } from "./shared.ts";
 import "./Card.css";
+import { Lights } from "../../kit/Loading.tsx";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
 // variant detail은 목록 행 아래(FLYING·활동·FOB는 행이 이미 보인다), card는 "카드" 보기(전부)
@@ -488,14 +489,19 @@ export function Card({
             <span className="fl-launch">
               <span className="fl-split" role="group" aria-label="LAUNCH">
                 {!optsOpen && (
-                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
-                    {launchBusy ? "띄우는 중…" : "LAUNCH"}
+                  <button type="button" className="btn is-primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
+                    {launchBusy ? (
+            <>
+              <Lights />
+              띄우는 중…
+            </>
+          ) : "LAUNCH"}
                   </button>
                 )}
                 <button
                   ref={toggleRef}
                   type="button"
-                  className={`fl-btn fl-split-more${optsOpen ? " is-open" : ""}`}
+                  className={`btn fl-split-more${optsOpen ? " is-open" : ""}`}
                   aria-expanded={optsOpen}
                   aria-controls={optsId}
                   aria-label={optsOpen ? "LAUNCH 옵션 닫기" : "LAUNCH 옵션"}
@@ -512,14 +518,14 @@ export function Card({
             </span>
           )}
           {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
-            <button className="fl-btn" onClick={onStop}>
+            <button className="btn" onClick={onStop}>
               STOP
             </button>
           )}
-          <button className="fl-btn" onClick={(e) => onBriefing(e.currentTarget)}>
+          <button className="btn" onClick={(e) => onBriefing(e.currentTarget)}>
             CREW BRIEFING
           </button>
-          <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="fl-btn" />
+          <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="btn" />
           <MoreMenu aog={Boolean(a.aog)} onEdit={onEdit} attach={origin?.attach ?? null} onAog={onAog} onRetire={onRetire} />
         </div>
       </header>
@@ -563,7 +569,7 @@ export function Card({
                 {a.ratings.length ? (
                   <span className="fl-chips">
                     {a.ratings.map((r) => (
-                      <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
+                      <span key={r} className={`chip r-${r}`} title={ratingHelp[r]}>
                         {r}
                       </span>
                     ))}
@@ -679,19 +685,19 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
   };
   return (
     <div className="fl-more-menu">
-      <button ref={btn} type="button" className="fl-btn" aria-haspopup="menu" aria-expanded={open} aria-controls={id} aria-label="더 보기" onClick={() => setOpen(!open)}>
+      <button ref={btn} type="button" className="btn" aria-haspopup="menu" aria-expanded={open} aria-controls={id} aria-label="더 보기" onClick={() => setOpen(!open)}>
         <Icon icon={Ellipsis} />
       </button>
       {open && (
         <div ref={box} id={id} role="menu" className="fl-menu" onKeyDown={key}>
-          <button type="button" role="menuitem" className="fl-btn" onClick={run(onEdit)}>
+          <button type="button" role="menuitem" className="btn" onClick={run(onEdit)}>
             고치기
           </button>
           {attach && (
             <button
               type="button"
               role="menuitem"
-              className="fl-btn"
+              className="btn"
               title={attach}
               aria-label={`${attach} 복사`}
               onClick={async () => {
@@ -703,10 +709,10 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
               {copied === "ok" ? "복사됨" : copied === "fail" ? "복사 못 함 — 툴팁의 명령을 직접" : "ATTACH 복사"}
             </button>
           )}
-          <button type="button" role="menuitem" className="fl-btn" onClick={run(onAog)}>
+          <button type="button" role="menuitem" className="btn" onClick={run(onAog)}>
             {aog ? "AOG 해제" : "AOG"}
           </button>
-          <button type="button" role="menuitem" className="fl-btn danger" onClick={run(onRetire)}>
+          <button type="button" role="menuitem" className="btn is-danger" onClick={run(onRetire)}>
             퇴역
           </button>
         </div>

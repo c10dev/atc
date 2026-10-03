@@ -1,13 +1,14 @@
-import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
+import { SoundLockChip } from "./AlertBell.tsx";
+import { NoticeTotal, useNotices } from "./Notices.tsx";
 import { FollowNext } from "./FollowNext.tsx";
 import { canonicalHash } from "./legacy-hash.ts";
-import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
 import { alertCode, alertLabel, alertLevel, alertLevelLabel, alertMessage, callsign, flightNumber, groupAlerts, HANDOFF_LABEL } from "./aviation.ts";
 import { buildIndex, timeAgo } from "./derive.ts";
-import { ControlStrip } from "./ControlStrip.tsx";
+import { ControlPanel } from "./ControlPanel.tsx";
+import { opensControlPanel } from "../../server/control-panel.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
 import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
@@ -19,6 +20,7 @@ import { HelpMenu } from "./HelpMenu.tsx";
 import { GlobeMode } from "./GlobeMode.tsx";
 import { PanelLeft } from "lucide-react";
 import { Icon } from "./kit/Icon.tsx";
+import { Sidebar, loadSidebarFolded, saveSidebarFolded, useNarrow } from "./Sidebar.tsx";
 import { Rail, RAIL_SCREENS } from "./Rail.tsx";
 import type { SettingsTab } from "../../server/settings-policy.ts";
 import { lazyTab, TabBoundary, TabLoading } from "./lazyTab.tsx";
@@ -28,17 +30,20 @@ import { readoutState } from "../../server/duty-chat.ts";
 import type { Snapshot } from "../../server/model.ts";
 import type { Index } from "./derive.ts";
 import { Empty } from "./kit/Empty.tsx";
+import { ApproachScene } from "./ApproachScene.tsx";
 
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
+const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
-const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
+const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot }>(() => import("./views/Home.tsx"), "Home");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
+const DutyScreen = lazy(() => import("./views/DutyScreen.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 // 화면(주소 #<id>가 여는 것). 레일에 보이는 것은 RAIL_SCREENS(Rail.tsx)다(ATC-381·442): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
@@ -68,9 +73,29 @@ export function App({ build }: { build: string }) {
   const [settingsOpen, setSettingsOpen] = useState(() => headOf(location.hash) === "airports");
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(() => (headOf(location.hash) === "airports" ? "airports" : null));
   const [globeOpen, setGlobeOpen] = useState(() => headOf(location.hash) === "globe");
+  // 첫 불러오기의 장면(ATC-453): 늦을 때만 보이고(sceneSeen), 첫 스냅샷이 오면 문턱 불빛이 켜진 채 사라진다(introDone)
+  const [introDone, setIntroDone] = useState(false);
+  const [sceneSeen, setSceneSeen] = useState(false);
+  const showScene = useCallback(() => setSceneSeen(true), []);
+  const sceneGone = useCallback(() => setIntroDone(true), []);
   const closeSettings = useCallback(() => (setSettingsOpen(false), setSettingsTab(null)), []);
   const settings = useSettings();
   const idx = useMemo(() => (snapshot ? buildIndex(snapshot) : null), [snapshot]);
+  // 화면 사이드바(ATC-443, Z2): 넓은 폭에서는 접힘을 이 브라우저에 기억하고, ≤ 860px에서는 눌렀을 때만 화면 위로 열린다
+  const narrow = useNarrow();
+  const [sbFolded, setSbFolded] = useState(loadSidebarFolded);
+  const [sbOver, setSbOver] = useState(false);
+  const sbShown = narrow ? sbOver : !sbFolded;
+  const toggleSidebar = () => {
+    if (narrow) return setSbOver((v) => !v);
+    const next = !sbFolded;
+    setSbFolded(next);
+    saveSidebarFolded(next);
+  };
+  const notices = useNotices(snapshot?.at.slice(0, 16) ?? "");
+  const closeSidebarOver = useCallback(() => setSbOver(false), []);
+  // 레일로 화면을 바꾸면 화면 위로 열린 사이드바는 닫는다
+  useEffect(() => setSbOver(false), [tab]);
 
   // FLIGHT·PR 서랍(#flight/<KEY>, #pr/<AIRPORT>/<번호>): 탭 위에 열리고, 탭은 그대로다
   const [drawer, setDrawer] = useState<DrawerRef | null>(() => drawerOfHash(location.hash));
@@ -83,12 +108,23 @@ export function App({ build }: { build: string }) {
   // DUTY 서랍(#duty, ATC-220): 어느 탭 위에서도 열린다. 꺼져 있으면 헤더에 readout이 없고, 주소로 열면 꺼짐 안내만 보인다
   const duty = useDuty();
   const [dutyOpen, setDutyOpen] = useState(() => location.hash === "#duty");
+  // DUTY 화면(#duty/screen, ATC-477): 레일 항목이 아니라 서랍의 "화면" 단추로 들어온다. 화면 자리(main)에 같은 대화를 세 열로 그린다
+  const [dutyScreen, setDutyScreen] = useState(() => location.hash === "#duty/screen");
+  // #fleet/control과 #control은 아래 CONTROL 패널을 연다(ATC-445). 올라가는 숫자가 "열어라"는 신호다
+  const [controlSignal, setControlSignal] = useState(() => (opensControlPanel(location.hash) ? 1 : 0));
   const closeDuty = useCallback(() => {
     setDutyOpen(false);
+    setDutyScreen(false);
     history.replaceState(null, "", `#${tabRef.current}`);
   }, []);
+  const prevTab = useRef(tab);
   useEffect(() => {
     // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
+    // DUTY 화면은 탭이 바뀔 때만(레일로 다른 화면을 고를 때) 나간다
+    const changed = prevTab.current !== tab;
+    prevTab.current = tab;
+    if (location.hash === "#duty/screen" && !changed) return;
+    setDutyScreen(false);
     if (drawerOfHash(location.hash) || location.hash === "#duty" || headOf(location.hash) === "globe") return;
     if (headOf(location.hash) !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
@@ -102,7 +138,17 @@ export function App({ build }: { build: string }) {
       const d = drawerOfHash(location.hash);
       setDrawer(d);
       const isDuty = location.hash === "#duty";
+      const isDutyScreen = location.hash === "#duty/screen";
       setDutyOpen(isDuty);
+      setDutyScreen(isDutyScreen);
+      // CONTROL 패널 주소: 화면은 그대로(옛 #fleet/control은 FLEET), 패널만 열고 주소는 화면 주소로 되돌린다
+      if (opensControlPanel(location.hash)) {
+        const to: Tab = headOf(location.hash) === "fleet" ? "fleet" : tabRef.current;
+        setTab(to);
+        history.replaceState(null, "", `#${to}`);
+        setControlSignal((n) => n + 1);
+        return;
+      }
       // #globe는 창, #airports는 설정 창의 AIRPORTS(ATC-381): 탭은 그대로다
       const head = headOf(location.hash);
       setGlobeOpen(head === "globe");
@@ -112,7 +158,7 @@ export function App({ build }: { build: string }) {
         history.replaceState(null, "", `#${tabRef.current}`);
         return;
       }
-      if (!d && !isDuty && head !== "globe") setTab(initialTab());
+      if (!d && !isDuty && !isDutyScreen && head !== "globe") setTab(initialTab());
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -137,14 +183,38 @@ export function App({ build }: { build: string }) {
   const subjectOf = (a: (typeof alerts)[number]) =>
     a.ticketKey ? flightNumber(a.ticketKey) : (a.workspacePath?.split("/").pop() ?? a.sessionIds?.map(nameOf).join(", "));
 
+  // 열린 서랍 종류(ATC-444). 서랍 열의 너비와 사이드바 접기(7.3)가 이것을 읽는다
+  const drawerKind = dutyOpen ? "duty" : drawer ? (drawer.kind === "ideas" || drawer.kind === "idea" ? "ideas" : "flight") : null;
+  // 서랍을 연 컨트롤을 기억했다가 서랍이 닫히면 거기로 포커스를 돌려준다. 서랍은 항목이 바뀔 때마다 다시 그려져 서랍 안에서는 그 컨트롤을 잃는다.
+  // 자식 서랍의 포커스 이동(passive effect)보다 먼저 돌도록 layout effect다
+  const openerRef = useRef<HTMLElement | null>(null);
+  const drawerWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    const open = drawerKind !== null;
+    if (open && !drawerWasOpen.current) {
+      const a = document.activeElement;
+      openerRef.current = a instanceof HTMLElement && a !== document.body ? a : null;
+    } else if (!open && drawerWasOpen.current) {
+      const o = openerRef.current;
+      openerRef.current = null;
+      if (o?.isConnected) o.focus();
+    }
+    drawerWasOpen.current = open;
+  }, [drawerKind]);
   const brandTitle = `ATC · LOCAL CONTROL · ${location.port || "80"}`;
   const brandMark = settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />;
   return (
-    <div className="app shell">
+    <div className={`app shell${sbShown ? (narrow ? " sidebar-over" : " has-sidebar") : ""}`} data-drawer={drawerKind ?? undefined} data-screen={dutyScreen ? "duty" : undefined}>
       {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
       <Rail
         tab={tab}
-        onTab={(id) => setTab(id as Tab)}
+        onTab={(id) => {
+          setTab(id as Tab);
+          if (dutyScreen) {
+            setDutyScreen(false);
+            history.replaceState(null, "", `#${id}`);
+          }
+        }}
         refreshKey={snapshot?.at.slice(0, 16) ?? ""}
         brandTitle={brandTitle}
         brand={brandMark}
@@ -156,13 +226,17 @@ export function App({ build }: { build: string }) {
       >
         {settingsOpen && <SettingsPanel key={settingsTab ?? "last"} settings={settings} snapshot={snapshot} onClose={closeSettings} openTab={settingsTab} />}
       </Rail>
-      {/* 사이드바(Z2)·서랍 열(Z3)·아래 패널(Z5) 자리. 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
-      <aside className="sidebar" hidden />
+      {/* 사이드바(Z2). 서랍 열(Z3)·아래 패널(Z5) 자리는 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
+      <aside className="sidebar" id="screen-sidebar" aria-label="화면 목록" hidden={!sbShown}>
+        {sbShown && <Sidebar screen={tab} snapshot={snapshot} idx={idx} refreshKey={snapshot?.at.slice(0, 16) ?? ""} notices={notices} over={narrow} onPick={closeSidebarOver} onClose={closeSidebarOver} />}
+      </aside>
+      {narrow && sbOver && <button type="button" className="sidebar-scrim" aria-label="목록 닫기" tabIndex={-1} onClick={closeSidebarOver} />}
       <div className="shell-main">
         <header className="console">
-          <button type="button" className="fold-btn" aria-label="사이드바 접기" aria-disabled="true" title="사이드바가 생기면 여기서 접는다" tabIndex={-1}>
+          <button type="button" className="fold-btn" aria-label={sbShown ? "사이드바 접기" : "사이드바 펴기"} aria-expanded={sbShown} aria-controls="screen-sidebar" title={sbShown ? "사이드바 접기" : "사이드바 펴기"} onClick={toggleSidebar}>
             <Icon icon={PanelLeft} size={16} />
           </button>
+          {!sbShown && <NoticeTotal notices={notices} onOpen={toggleSidebar} />}
           <span className="top-brand" aria-hidden="true">
             {brandMark}
             <span>{brandTitle}</span>
@@ -186,7 +260,6 @@ export function App({ build }: { build: string }) {
                 ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
               </span>
             </button>
-            <AlertBell />
             <SoundLockChip />
             <div className="readout clock">
               <Clock clock={settings.clock} />
@@ -210,7 +283,6 @@ export function App({ build }: { build: string }) {
               <span>DUTY · {dutyWord}</span>
             </button>
           )}
-          <ControlStrip snapshot={snapshot} now={now} />
         </header>
 
         <SupervisorPairing auth={supervisorAuth} />
@@ -223,7 +295,7 @@ export function App({ build }: { build: string }) {
             <Ticker>
               {actionable.map((a, i) => (
                 <span key={i} className={`ticker-item alert-${a.kind} lv-${levelOf(a)}`}>
-                  <span className="code-chip">{alertCode[a.kind]}</span>
+                  <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
                   {alertLabel[a.kind] !== alertCode[a.kind] && `${alertLabel[a.kind]} · `}
                   <span className="mono">{subjectOf(a)}</span> · {alertMessage(a, nameOf)}
                 </span>
@@ -239,7 +311,7 @@ export function App({ build }: { build: string }) {
                 <li className={`alert-group lv-${g.level}`}>{alertLevelLabel[g.level]}</li>
                 {g.alerts.map((a, i) => (
                   <li key={i} className={`alert alert-${a.kind} lv-${g.level}`}>
-                    <span className="code-chip">{alertCode[a.kind]}</span>
+                    <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
                     {alertLabel[a.kind] !== alertCode[a.kind] && <span className="alert-label">{alertLabel[a.kind]}</span>}
                     <span className="mono">{subjectOf(a)}</span>
                     <span className="muted">{alertMessage(a, nameOf)}</span>
@@ -249,7 +321,7 @@ export function App({ build }: { build: string }) {
             ))}
             {handoffs.map((h) => (
               <li key={`${h.workspacePath}:${h.from}`} className="alert alert-handoff">
-                <span className="code-chip">HO</span>
+                <span className="tag code-chip" data-tone="inherit">HO</span>
                 <span className="alert-label">{HANDOFF_LABEL}</span>
                 <span className="mono">{h.workspacePath.split("/").pop()}</span>
                 <span className="muted">
@@ -263,23 +335,29 @@ export function App({ build }: { build: string }) {
           </ul>
         )}
 
-        <main className="main">
+        <main className={dutyScreen ? "main is-duty" : "main"}>
+          {!introDone && !(connection === "lost" && !snapshot) && <ApproachScene ready={Boolean(snapshot && idx)} onShow={showScene} onGone={sceneGone} />}
           {!snapshot || !idx ? (
-            <Empty>{connection === "lost" ? "서버에 연결할 수 없음" : "불러오는 중…"}</Empty>
+            connection === "lost" ? <Empty>서버에 연결할 수 없음</Empty> : null
+          ) : dutyScreen ? (
+            <TabBoundary key="duty-screen" stale={false}>
+              <Suspense fallback={<TabLoading />}>
+                <DutyScreen chat={duty} onClose={closeDuty} airports={snapshot.airports ?? []} refreshKey={snapshot.at} now={now} />
+              </Suspense>
+            </TabBoundary>
           ) : (
             // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
-            <>
-              {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
-              {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
+            <div className={sceneSeen && !introDone ? "main-enter" : undefined}>
               <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-                <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
+                <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
               </TabBoundary>
-            </>
+            </div>
           )}
         </main>
-        <section className="panel-area" hidden />
+        <section className="panel-area">
+          <ControlPanel snapshot={snapshot} now={now} openSignal={controlSignal} onOpenSettings={() => setSettingsOpen(true)} />
+        </section>
       </div>
-      <div className="drawer-col" hidden />
       {globeOpen && snapshot && (
         <TabBoundary key="globe" stale={false}>
           <Suspense fallback={<TabLoading />}>
@@ -287,34 +365,39 @@ export function App({ build }: { build: string }) {
           </Suspense>
         </TabBoundary>
       )}
-      {dutyOpen && (
-        <TabBoundary key="duty" stale={false}>
-          <Suspense fallback={null}>
-            <DutyDrawer chat={duty} onClose={closeDuty} airports={snapshot?.airports ?? []} refreshKey={snapshot?.at ?? ""} now={now} />
-          </Suspense>
-        </TabBoundary>
-      )}
-      {drawer && !dutyOpen && (
-        <TabBoundary key={JSON.stringify(drawer)} stale={false}>
-          <Suspense fallback={null}>
-            {drawer.kind === "ideas" || drawer.kind === "idea" ? (
-              <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
-            ) : (
-              <Drawer target={drawer} onClose={closeDrawer} now={now} />
-            )}
-          </Suspense>
-        </TabBoundary>
-      )}
+      {/* 서랍 열(ATC-444): FLIGHT·PR, DUTY, IDEAS가 한 칸을 나눠 쓴다. 하나를 열면 다른 하나는 닫힌다(DUTY가 먼저) */}
+      <div className="drawer-col" hidden={!drawerKind}>
+        {dutyOpen && (
+          <TabBoundary key="duty" stale={false}>
+            <Suspense fallback={null}>
+              <DutyDrawer chat={duty} onClose={closeDuty} airports={snapshot?.airports ?? []} refreshKey={snapshot?.at ?? ""} now={now} />
+            </Suspense>
+          </TabBoundary>
+        )}
+        {drawer && !dutyOpen && (
+          <TabBoundary key={JSON.stringify(drawer)} stale={false}>
+            <Suspense fallback={null}>
+              {drawer.kind === "ideas" || drawer.kind === "idea" ? (
+                <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
+              ) : (
+                <Drawer target={drawer} onClose={closeDrawer} now={now} />
+              )}
+            </Suspense>
+          </TabBoundary>
+        )}
+      </div>
     </div>
   );
 }
 
 // 탭 이름 → view. 하위 경로(#docs/requesting)는 그 view가 location.hash에서 읽는다.
-function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSettings: () => void) {
+function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
   const refreshKey = snapshot.at.slice(0, 16);
   switch (tab) {
     case "flights":
       return <Flights snapshot={snapshot} idx={idx} now={now} refreshKey={snapshot.at} />;
+    case "radio":
+      return <Radio />;
     case "fleet":
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":
@@ -322,11 +405,11 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
     case "release":
       return <Release refreshKey={refreshKey} />;
     case "home":
-      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} />;
     case "docs":
       return <Docs />;
     default:
-      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} />;
   }
 }
 

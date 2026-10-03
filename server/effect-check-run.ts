@@ -5,6 +5,10 @@ import { type AutoSwitch, parseAutoSwitch } from "./autonomy-auto.ts";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
+import { appendEffectLine, readEffectLines, VERDICTS_FILE } from "./effect-store.ts";
+import { flowDataOf } from "./flow.ts";
+import { loadFlow } from "./flow-run.ts";
+import { bustQueue } from "./queue-bust.ts";
 import { loadMcc } from "./mcc.ts";
 import { isAutoApproved, misfireOf } from "./misfire.ts";
 import { milestonesNow } from "./milestones-run.ts";
@@ -19,7 +23,7 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // EFFECT CHECK의 읽고 쓰기(ATC-402). 규칙은 effect-check.ts(순수). 평결은 effect-verdicts.jsonl에 추가만 한다(FLIGHT마다 하나, 그 뒤 SUPERVISOR의 표시 줄).
 // 끄는 스위치는 effect-check.json의 `on`(on·off, 없으면 on). 바꾸는 길은 설정 창뿐이다(SUPERVISOR 자격이 있는 요청만, atcctl 명령은 없다).
 const DAY = 86_400_000;
-export const VERDICTS_FILE = () => join(config.stateDir, "effect-verdicts.jsonl");
+export { appendEffectLine, readEffectLines, VERDICTS_FILE };
 const SWITCH_FILE = () => join(config.stateDir, "effect-check.json");
 export const TICK_MS = 10 * 60_000;
 const MAX_FETCH = 15; // 한 주기에 Linear에서 읽는 본문 수
@@ -40,23 +44,6 @@ export function saveEffectSwitch(v: AutoSwitch, file = SWITCH_FILE()) {
   renameSync(tmp, file);
 }
 
-export function readEffectLines(file = VERDICTS_FILE()): EffectLine[] {
-  if (!existsSync(file)) return [];
-  const out: EffectLine[] = [];
-  for (const l of readFileSync(file, "utf8").split("\n")) {
-    if (!l) continue;
-    try {
-      const r = JSON.parse(l);
-      if (r?.v === 1 && (r.ev === "verdict" || r.ev === "mark") && typeof r.flight === "string") out.push(r);
-    } catch {}
-  }
-  return out;
-}
-export function appendEffectLine(line: EffectLine, file = VERDICTS_FILE()) {
-  mkdirSync(dirname(file), { recursive: true });
-  appendFileSync(file, JSON.stringify(line) + "\n");
-}
-
 // ── 측정할 것을 모으기 ──
 const recorderFirstAt = (): number | null => {
   try {
@@ -71,12 +58,14 @@ const minMs = (xs: (string | undefined)[]) => {
   return ts.length ? Math.min(...ts) : null;
 };
 
-export function gatherEffectData(sinceMs: number): EffectData {
+export function gatherEffectData(sinceMs: number, tickets: Snapshot["tickets"] = []): EffectData {
   const leaks = readLeaks();
   const proposals = allProposals();
   const clearances = allClearances();
   const events = readRecords(sinceMs).flatMap((r) => (r.kind === "event" && r.event.kind === "alert.raised" && r.event.alertKind ? [{ at: r.event.at, kind: String(r.event.alertKind) }] : []));
+  const flow = loadFlow(tickets, Date.now()); // FLOW(ATC-468): flow:<name> 측정
   return {
+    flow: flowDataOf(flow.input, flow.samples),
     leaks,
     misfires: proposals.filter((p) => isAutoApproved(p) && misfireOf(p)).map((p) => ({ at: p.timeline.approved! })),
     alerts: events,
@@ -181,7 +170,7 @@ export const realDeps = (s: Snapshot): EffectDeps => ({
     const d = (await fetchIssueDetail(f)) as { description?: unknown };
     return typeof d.description === "string" ? d.description : "";
   },
-  data: gatherEffectData,
+  data: (since) => gatherEffectData(since, s.tickets),
   releaseOf: (f) => {
     const r = readReleaseView().records[f];
     return r ? releaseIdOf(r) : null;
@@ -227,6 +216,7 @@ export function mountEffectCheck(app: Hono, getSnapshot: () => Promise<Snapshot>
     if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight) || typeof b?.wrong !== "boolean") return c.json({ error: "flight(ATC-n)와 wrong(true|false)이 필요함" }, 400);
     if (!foldEffects(readEffectLines()).some((v) => v.flight === flight)) return c.json({ error: "그 FLIGHT의 평결이 없음" }, 404);
     appendEffectLine({ v: 1, ev: "mark", at: new Date().toISOString(), flight, wrong: b.wrong });
+    bustQueue(); // 틀림으로 표시하면 EFFECT 줄이 큐에서 바로 빠진다(ATC-454, 5초 캐시를 비운다)
     return c.json(viewOf());
   });
 }

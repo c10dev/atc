@@ -31,7 +31,11 @@ import {
   type ReleaseGateMode,
   type ReleaseLine,
 } from "./release.ts";
+import { classOf } from "./crew.ts";
+import { filesInFlight } from "./overlap-run.ts";
+import type { FilesInFlight } from "./dispatch.ts";
 import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
+import { releaseTreeOf } from "./release-tree.ts";
 import { loadScheduleOps, type NewPayload } from "./schedule.ts";
 import { readReviewLines } from "./duty-review-store.ts";
 import { bustQueue } from "./queue-bust.ts";
@@ -53,6 +57,7 @@ export interface ReleaseDeps {
   // 제안(ATC-401): atc가 Backlog에 올린 이슈의 출처(DUTY REVIEW·SCHEDULE NEW), 버리기(Canceled로 옮기고 사유를 이슈에 남긴다)
   proposalSources?: () => Map<string, ProposalSource>;
   discard?: (key: string, from: string, reason: string) => Promise<MoveOutcome & { warning?: string }>;
+  files?: () => FilesInFlight | null; // 파일 겹침 자료(ATC-456 같은 파일 칸). 시험이 채운다(없으면 DISPATCH가 모은 캐시)
   k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
 type MoveOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
@@ -151,10 +156,25 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     words: r.words ?? null,
     kEffects: ticketOf(r.flight)?.kEffects ?? null,
   }));
+  // 순서(ATC-456): 상위 이슈마다 나무. 읽기만 한다
+  const filedBy = new Map(filed.map((f) => [f.key, f]));
+  const parents = parentKeysOf(s.tickets);
+  const openPr = new Set((s.pulls ?? []).filter((p) => p.ticketKey).map((p) => p.ticketKey as string));
+  const tree = releaseTreeOf({
+    tickets: s.tickets,
+    candidate: (t) => isCandidateTicket(t, d.teams()) && !parents.has(t.key),
+    filed: filedKeys,
+    released: (k) => releaseStateOf(k, ticketOf(k)?.releaseHash, view) === "released",
+    stageOf: (t) => (openPr.has(t.key) ? "PR" : null),
+    wakeOf: (t) => classOf(t.labels).wake,
+    files: d.files ? d.files() : filesInFlight(),
+    extra: (t) => ({ hash: t.releaseHash ?? null, kEffects: t.kEffects ?? null, k3: k3Of(t, view), filed: filedBy.get(t.key) ? { by: filedBy.get(t.key)!.by, at: filedBy.get(t.key)!.at } : null, why: view.revoked?.[t.key]?.reason ?? null, stale: releaseStateOf(t.key, t.releaseHash, view) === "stale" }),
+  });
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
     gate: { mode: d.gateMode(), on: releaseGateOn(d.gateMode(), view.armedAt), armedAt: view.armedAt },
+    tree: tree.groups,
     ready,
     filed,
     proposals: d.proposals?.() ?? [],
@@ -166,6 +186,9 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     attested: attestedCounts(lines),
   };
 }
+
+// 발권할 수 있는 READY 목록만(GET /api/releases의 ready와 같은 값, NOTICES가 읽는다, ATC-447)
+export const releaseReadyNow = (s: Snapshot) => releaseView(s, defaultDeps(async () => s)).ready;
 
 export function mountReleases(app: Hono, snapshot: () => Promise<Snapshot>, deps: ReleaseDeps = defaultDeps(snapshot)) {
   const readBody = async (c: Context): Promise<Record<string, unknown> | null> => {

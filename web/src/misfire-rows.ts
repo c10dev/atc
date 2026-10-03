@@ -2,7 +2,7 @@
 // `/api/autonomy/auto`의 SCHEDULE·FLEET PLAN 적용·misfire)을 레인마다 한 줄로 나란히 놓을 뿐이다.
 
 export interface DispatchMisfire {
-  total: { approvals: number; misfires: number; share: number | null };
+  total: { approvals: number; misfires: number; share: number | null; crossAccount?: number }; // crossAccount: ACCOUNT 불일치 규칙으로 닫은 카드(ATC-458)
 }
 export interface AutoMisfireLine {
   at: string;

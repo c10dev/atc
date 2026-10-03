@@ -196,11 +196,11 @@ const kitDir = join(webDir, "kit") + "/";
 const viewsDir = join(webDir, "views") + "/";
 export const TOP_SCREEN_FILES = [
   // 서랍(S7)
-  "Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict", "SinceLook",
+  "Drawer", "DutyDrawer", "DutyChat", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict", "SinceLook",
   // 설정 창(S6)
   "SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing",
   // 머리글·알림·갱신(S8)
-  "App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlStrip", "ApplyNow",
+  "App", "AlertBell", "Notices", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow",
   // GLOBE 보기 모드
   "GlobeMode",
 ];
@@ -211,18 +211,15 @@ const SCREEN_GROUPS: [string, string[]][] = [
   ["FLEET", ["views/fleet/", "views/FleetCrew", "views/FleetPlan", "views/Checkride"]],
   ["METRICS", ["views/Metrics", "views/MetricsFuel", "views/MetricsFuelTrend", "views/MetricsLeaks", "views/MetricsMisfire", "views/Network"]],
   ["GLOBE", ["views/Globe", "views/GlobeAirport", "views/GlobeFlights", "views/GlobeRadio", "views/GlobeSpace", "GlobeMode"]],
-  ["DRAWERS", ["Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
+  ["DRAWERS", ["Drawer", "DutyDrawer", "DutyChat", "views/DutyScreen", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
   ["SETTINGS", ["SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing", "views/Airports"]],
-  ["HEADER", ["App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlStrip", "ApplyNow"]],
+  ["HEADER", ["App", "AlertBell", "Notices", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow"]],
 ];
 // 같은 이름의 소스 파일이 없는 스타일시트의 주인 화면
 const STYLESHEET_OWNER: Record<string, string> = { "alerts.css": "HEADER" };
 
 // 오늘의 위반 "가져오는 파일 -> 스타일시트": 그것을 없앨 화면 단위. 새 항목을 더하지 않는다.
 export const ALLOWED_LAYER_VIOLATIONS: Record<string, string> = {
-  "web/src/views/Home.tsx -> web/src/Drawer.css": "S1 (ATC-422)",
-  "web/src/views/Home.tsx -> web/src/DutyDrawer.css": "S1 (ATC-422)",
-  "web/src/views/Home.tsx -> web/src/views/fleet/Fleet.css": "S1 (ATC-422)",
   "web/src/SettingsAlerts.tsx -> web/src/alerts.css": "S6 (ATC-430): the alert-row classes move into the settings stylesheet or a kit part",
 };
 

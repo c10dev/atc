@@ -4,6 +4,7 @@ import { apiGet } from "../api.ts";
 import { timeAgo } from "../derive.ts";
 import { AutoMisfire } from "./AutoMisfire.tsx";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 import { TableScroll } from "../kit/TableScroll.tsx";
 
 // METRICS → MISFIRE(ATC-380, docs/layout.md Y5): 사람 없이 도는 레인(DISPATCH, SCHEDULE, FLEET PLAN)이 한 일 가운데 나중에 틀렸다고 드러난 몫.
@@ -43,7 +44,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {lanes.length === 0 ? (
-        !error && <Empty>불러오는 중…</Empty>
+        !error && <Loading>불러오는 중…</Loading>
       ) : (
         <TableScroll label="레인별 MISFIRE 표">
         <table className="kit-table" aria-label="레인별 MISFIRE">
@@ -72,6 +73,11 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
           </tbody>
         </table>
         </TableScroll>
+      )}
+      {dispatch && typeof dispatch.total.crossAccount === "number" && (
+        <p className="muted" data-testid="cross-account-closed">
+          ACCOUNT 불일치로 닫은 DISPATCH 카드 <span className="mono">{dispatch.total.crossAccount}</span>건 · 지난 {DAYS}일 (OCC가 닿지 못하는 AIRCRAFT의 카드, 스위치 ACCOUNT RELEASE)
+        </p>
       )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (

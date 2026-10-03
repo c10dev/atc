@@ -242,39 +242,18 @@
 .pr-autoland.is-delegated {
   color: var(--phase-cleared);
 }
-.pr-hold {
+/* HOLD: 공용 .btn(켜면 .is-primary) 위에서 크기만 줄인다(ATC-424) */
+.btn.pr-hold {
+  --btn-h: 20px;
   padding: 0 var(--space-1-5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  font: 700 var(--text-2xs)/16px var(--mono);
+  font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.04em;
-  color: var(--muted);
-  cursor: pointer;
-}
-.pr-hold:hover:not(:disabled) {
-  color: var(--text);
-  border-color: currentColor;
-}
-.pr-hold.is-held {
-  border-color: var(--phase-cleared);
-  color: var(--phase-cleared);
-}
-.pr-hold:disabled {
-  opacity: 0.6;
-  cursor: progress;
 }
 
 /* APPROACH·Draft 묶음: 접어 둔다. Draft는 흐리게 */
 .ls-list + .ls-group,
 .ls-group + .ls-group {
   margin-top: var(--space-2);
-}
-.ls-group summary {
-  width: fit-content;
-  cursor: pointer;
-  font-size: var(--text-xs);
-  color: var(--muted);
 }
 .ls-group .ls-list {
   margin-top: var(--space-2);
@@ -328,7 +307,7 @@
 .flp-bar {
   position: relative;
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex: 0 1 240px;
   min-width: 120px;
   height: 8px;
@@ -336,7 +315,7 @@
 .flp-seg {
   flex: 1;
   height: 100%;
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   box-sizing: border-box;
 }
 .flp-seg.is-past {
@@ -357,13 +336,13 @@
 }
 .flp-mark {
   position: absolute;
-  top: -4px;
+  top: calc(var(--space-1) * -1);
   width: 5px;
   height: 16px;
-  margin-left: -2.5px;
+  margin-left: calc(var(--space-0-5) * -1);
   background: var(--paper-ink);
   box-shadow: 0 0 0 1px var(--paper);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 .flp.is-late .flp-seg.is-now {
   background: color-mix(in srgb, var(--stamp-amber) 30%, transparent);
@@ -406,4 +385,308 @@
 .pr-hold-err {
   color: var(--alert);
   font-size: var(--text-2xs);
+}
+
+/* ── AIRCRAFT STRIPS (ATC-424: styles.css에서 옮겼다) ───────────────────────────
+   클래스는 st- 접두어(콜사인 st-cs, 칸 st-cell, 도장 st-stamp …). 칩·태그·점의 기본은 kit/chips.css(.tag), 도장은 그 위에서 색만 바꾼다.
+   칸을 가르는 선은 면 단차로 대신했다(ATC-320): 구간 사이·레일 둘레·좁은 폭의 윗선을 지웠다. */
+.bay {
+  margin-bottom: var(--gap-section);
+}
+.bay-airborne .label {
+  color: var(--radar);
+}
+.bay-holding .label {
+  color: var(--amber);
+}
+.bay-nordo .label {
+  color: var(--alert);
+}
+.bay-rail {
+  display: grid;
+  gap: var(--gap-item);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: repeating-linear-gradient(0deg, var(--panel) 0 46px, var(--bay-line) 46px 47px);
+  box-shadow: var(--shadow-inset-bay);
+}
+.strip {
+  display: grid;
+  grid-template-columns: 10px 190px 1fr;
+  min-height: 58px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--paper-ink);
+  box-shadow: var(--paper-shadow);
+}
+.st-bar {
+  background: var(--amber);
+}
+.strip.is-airborne .st-bar {
+  background: var(--radar);
+}
+.strip.is-nordo .st-bar {
+  background: var(--alert);
+}
+.strip.is-parked {
+  background: var(--paper-parked);
+}
+.strip.is-parked .st-bar {
+  background: var(--holder-parked);
+}
+.strip.is-los {
+  outline: 2px solid var(--alert);
+  outline-offset: 1px;
+}
+.strip.is-los .st-bar {
+  background: repeating-linear-gradient(45deg, var(--alert) 0 5px, var(--on-alert) 5px 10px);
+}
+.strip .apt {
+  padding: 0;
+  border: 0;
+  color: var(--paper-ink);
+}
+.strip-id {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  /* 구분선 대신 면 단차(ATC-320): 콜사인 칸만 한 단 어둡게 */
+  background: color-mix(in srgb, var(--paper-ink) 6%, transparent);
+}
+.st-cs {
+  font: 700 var(--text-lg)/1.15 var(--mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 기종 코드(CLD·CDX): 테두리 없는 작은 글자. 콜사인과 한 줄에서 크기만 다르다 */
+.st-agent {
+  margin-left: var(--space-1-5);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--paper-muted);
+  vertical-align: 3px;
+}
+.strip .sub {
+  margin-top: var(--space-0-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--paper-muted);
+}
+.strip-legs {
+  display: grid;
+  min-width: 0;
+}
+.st-leg {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) 112px minmax(150px, 1.4fr) 124px minmax(110px, 0.8fr);
+  min-width: 0;
+}
+/* 구간 사이는 선 대신 한 단 어두운 면(줄무늬) */
+.st-leg + .st-leg {
+  background: color-mix(in srgb, var(--paper-ink) 4%, transparent);
+}
+/* 넘겨준 구간: 투명도 대신 흐린 잉크(ATC-408) */
+.st-leg.is-handed-off,
+.st-leg.is-handed-off .st-val {
+  color: var(--paper-muted);
+}
+.st-cell {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+}
+/* 숫자(3.5 Craft 7): 칸의 값과 둘째 줄은 자릿수 너비를 맞춘다. styles.css의 .tn과 같은 이유로 !important */
+.st-cell .st-val,
+.st-cell .sub {
+  font-variant-numeric: tabular-nums !important;
+}
+.st-cap {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: var(--space-0-5);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--paper-muted);
+}
+.st-val {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 var(--text-sm) var(--mono);
+}
+.st-val.big {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+a.st-val:hover {
+  text-decoration: underline;
+}
+.st-none {
+  color: var(--paper-muted);
+  font-weight: 400;
+}
+.st-route {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+.st-remarks {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: var(--space-1);
+}
+/* 도장: .tag 위에서 종이 위 잉크 색만 바꾼다. 기울이기와 두꺼운 테두리는 걷었다(한 줄에 모양 하나) */
+.st-stamp {
+  --tag-ink: var(--paper-muted);
+  --tag-line: currentColor;
+  /* 한 구간에 도장이 여럿이면 줄바꿈 때 위아래가 붙지 않게 */
+  margin: 0 var(--space-1) var(--space-0-5) 0;
+}
+.st-stamp[data-tone="red"] {
+  --tag-ink: var(--stamp-red);
+}
+.st-stamp[data-tone="amber"] {
+  --tag-ink: var(--stamp-amber);
+}
+.st-stamp[data-tone="blue"] {
+  --tag-ink: var(--stamp-blue);
+}
+.st-stamp[data-tone="dashed"] {
+  --tag-ink: var(--stamp-gray);
+  border-style: dashed;
+}
+.st-stamp .stamp-why {
+  text-transform: none;
+}
+
+@media (max-width: 1100px) {
+  .st-leg {
+    grid-template-columns: minmax(150px, 1fr) 104px minmax(120px, 1fr) 104px;
+  }
+  .st-remarks {
+    grid-column: 1 / -1;
+  }
+  .st-remarks:empty {
+    display: none;
+  }
+}
+@media (max-width: 860px) {
+  .strip {
+    grid-template-columns: 8px 1fr;
+  }
+  .strip-legs {
+    grid-column: 1 / -1;
+  }
+  .st-leg {
+    grid-template-columns: 1fr 96px;
+  }
+  .st-cell-route,
+  .st-leg .st-cell:nth-child(4) {
+    display: none;
+  }
+}
+
+:root[data-theme="cockpit"] .strip {
+  border-radius: var(--radius-sm);
+}
+:root[data-theme="cockpit"] .bay-rail {
+  background: var(--panel);
+}
+
+/* night: 유리 줄, 별빛이 왼쪽에서 번진다 */
+:root[data-theme="night"] .st-cs,
+:root[data-theme="night"] .st-val.big {
+  font-family: var(--display);
+}
+:root[data-theme="night"] .st-stamp {
+  border-radius: var(--radius-pill);
+}
+:root[data-theme="night"] .bay-rail {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  gap: var(--space-2);
+}
+:root[data-theme="night"] .strip {
+  position: relative;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+:root[data-theme="night"] .strip .st-bar {
+  --star: var(--amber);
+  background: none;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--star) 70%, transparent);
+}
+:root[data-theme="night"] .strip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 140px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 0% 50%, color-mix(in srgb, var(--star, var(--amber)) 22%, transparent), transparent 70%);
+}
+:root[data-theme="night"] .strip.is-airborne {
+  --star: var(--gold);
+}
+:root[data-theme="night"] .strip.is-holding {
+  --star: var(--amber);
+}
+:root[data-theme="night"] .strip.is-nordo,
+:root[data-theme="night"] .strip.is-los {
+  --star: var(--alert);
+}
+:root[data-theme="night"] .strip.is-parked {
+  --star: var(--faint);
+}
+:root[data-theme="night"] .strip.is-airborne .st-bar,
+:root[data-theme="night"] .strip.is-nordo .st-bar,
+:root[data-theme="night"] .strip.is-parked .st-bar,
+:root[data-theme="night"] .strip.is-los .st-bar {
+  background: none;
+}
+:root[data-theme="night"] .strip.is-los {
+  outline: 1px solid color-mix(in srgb, var(--alert) 60%, transparent);
+  outline-offset: -1px;
+  box-shadow: 0 0 28px color-mix(in srgb, var(--alert) 18%, transparent);
+}
+:root[data-theme="night"] .strip.is-airborne .st-cs {
+  color: var(--gold);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--gold) 50%, transparent);
+}
+:root[data-theme="night"] .strip.is-holding .st-cs {
+  color: var(--amber);
+}
+
+/* compact: 한 줄 칸(둘째 줄은 툴팁으로), 목적지는 한 줄 */
+:root[data-density="compact"] .strip {
+  min-height: 0;
+}
+:root[data-density="compact"] .strip-id,
+:root[data-density="compact"] .st-cell {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+:root[data-density="compact"] .st-leg:not(.is-empty) .st-cell .sub {
+  display: none;
+}
+:root[data-density="compact"] .st-route {
+  -webkit-line-clamp: 1;
+}
+:root[data-density="compact"] .bay-rail {
+  padding: var(--space-1);
 }

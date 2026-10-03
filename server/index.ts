@@ -50,7 +50,8 @@ import { pruneRecords, record } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
 import { mountIdeas } from "./ideas-run.ts";
-import { mountFlightState } from "./flight-state-run.ts";
+import { arrivedOpenOf } from "./arrived-open.ts";
+import { defaultStateDeps, mountFlightState } from "./flight-state-run.ts";
 import { mountFollow } from "./follow-run.ts";
 import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
@@ -68,13 +69,16 @@ import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } f
 import { mountQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
+import { applyWrite } from "./linear-overlay.ts";
+import { onLocalState } from "./sources/linear.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { defaultL1Deps, mountDutyL1 } from "./duty-l1-run.ts";
 import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
 import { mountLeaks } from "./leaks-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
-import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
+import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
+import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
 import { mountReadability } from "./readability-run.ts";
@@ -89,6 +93,10 @@ import { githubStartupWarning, githubSwitch } from "./github-switch.ts";
 const TICK_MS = 2_000;
 
 let current: Snapshot | null = null;
+// atc 자신의 Linear 쓰기가 성공하면 이미 만든 스냅샷에도 새 상태를 싣는다(ATC-448): 바로 다음 /api/releases가 옛 상태를 보지 않는다
+onLocalState((key, next) => {
+  if (current) current = { ...current, tickets: applyWrite(current.tickets, new Map(), key, next, 0).tickets };
+});
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
@@ -147,6 +155,7 @@ async function tick() {
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
+    if (isWarm(next)) await supervisorQueueNow(async () => next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
     const summary = isWarm(next) ? runSummary(next) : null;
     if (summary) for (const l of summaryListeners) l(summary);
     radioFeed.poll();
@@ -177,7 +186,7 @@ mountRelay(app, getSnapshot); // SUPERVISOR RELAY(ATC-271): 화면에서 AIRCRAF
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
-mountMetrics(app);
+mountMetrics(app, getSnapshot);
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),
@@ -209,7 +218,8 @@ mountSchedule(app, getSnapshot, allProposals);
 mountAutonomyAuto(app);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
 mountReleases(app, getSnapshot); // 발권 기록(ATC-362): 화면 클릭·일괄 확인(Origin 검사)과 attested 증언
-mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
+// FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다. closable(ATC-473): STAND 없는 ARRIVED인데 아직 started인 FLIGHT만 Done으로 옮길 수 있다(HOME의 ARRIVED 줄과 같은 목록)
+mountFlightState(app, { ...defaultStateDeps, closable: async (key) => arrivedOpenOf((await getSnapshot()).tickets, loadLogbook()).some((a) => a.flight === key) });
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountIdeas(app); // IDEAS 서랍(DUTY G4): atc 저장소 idea 이슈 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);
@@ -258,6 +268,7 @@ mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tic
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountNotices(app, getSnapshot, () => update.status()); // NOTICES(ATC-447): 사이드바 머리의 알림 세 개(읽기만)
 mountEffectCheck(app, getSnapshot); // EFFECT CHECK(ATC-402): 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 effect-verdicts.jsonl에 평결을 남긴다(재기만, 끄는 스위치는 설정 창)
 mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): 릴리스 뒤에도 사람이 거치는 단계를 leaks.jsonl에 열릴 때·닫힐 때 한 줄씩 센다(세기만)
 mountLanes(app); // 조용한 리뷰 레인(ATC-386): 날짜별 착륙 수와 REVIEW 한 레인으로 착륙한 수(읽기만)
@@ -272,7 +283,11 @@ app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); //
 app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
-app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
+app.get("/api/supervisor-summary", async (c) => {
+  if (!current) return c.json({ error: "snapshot not ready" }, 503);
+  await supervisorQueueNow(async () => current!, () => update.status()).catch(() => null); // todo는 큐가 센 수(ATC-454)
+  return c.json(summaryNow(current));
+});
 
 // ?topics=snapshot,alert,version,summary,radio,duty: 받을 이벤트를 고른다. 없으면 summary·radio·duty를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
 app.get("/api/events", (c) => {

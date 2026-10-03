@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  changeText, metricOf, noCompareText, previousLabel, recordedDays, type TrendMetric, tzName, type UsagePeriod, type UsageTrend,
+  changeText, leverageText, metricOf, noCompareText, previousLabel, recordedDays, type TrendMetric, tzName, type UsagePeriod, type UsageTrend,
 } from "../../../server/fuel-trend.ts";
 import { usd } from "../../../server/fuel-view.ts";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
 
 // USAGE TREND(ATC-389, docs/fuel.md "USAGE TREND as built"): 에이전트를 얼마나 쓰는지 어제·지난 같은 기간·최근 주와 견준다. 읽기만 한다.
 // 값과 변화율은 서버(/api/fuel/trend)가 셈하고 여기서는 보이기만 한다. FUEL 개요의 기간·새로고침을 따른다.
@@ -68,7 +69,10 @@ export function SummaryChange({ trend, metric }: { trend: TrendData | null; metr
 }
 
 // ── 오늘 대 어제(기간 고르기와 상관없이 늘 보인다) ──
-const TODAY: { metric: TrendMetric; label: string; text: (p: UsagePeriod) => string }[] = [
+// LEVERAGE(ATC-397): 에이전트 가동 시간의 합이 흐른 시간의 몇 배인가. 밑줄에 그 나눗셈을 보인다
+const leverageSub = (p: UsagePeriod) => `가동 ${hoursText(hours(p))} ÷ ${hoursText(p.elapsedHours)}`;
+const TODAY: { metric: TrendMetric; label: string; text: (p: UsagePeriod) => string; sub?: (p: UsagePeriod) => string }[] = [
+  { metric: "leverage", label: "LEVERAGE", text: (p) => leverageText(p.leverage), sub: leverageSub },
   { metric: "cost", label: "COST", text: (p) => money(p.cost) },
   { metric: "requests", label: "요청", text: (p) => count(p.requests) },
   { metric: "hours", label: "가동 시간", text: (p) => hoursText(hours(p)) },
@@ -90,13 +94,14 @@ export function UsageToday({ trend }: { trend: TrendState }) {
       {trend.error ? (
         <p className="mx-error" role="alert">사용량 추세를 불러오지 못함: {trend.error}</p>
       ) : !d ? (
-        <Empty>{trend.loading ? "불러오는 중…" : "기록 없음"}</Empty>
+        trend.loading ? <Loading>불러오는 중…</Loading> : <Empty>기록 없음</Empty>
       ) : (
         <dl className="mft-tiles mft-tiles-4">
           {TODAY.map((t) => (
             <div key={t.metric}>
               <dt>{t.label}</dt>
               <dd className="mft-value">{t.text(d.today.current)}</dd>
+              {t.sub ? <dd className="mft-sub muted">{t.sub(d.today.current)}</dd> : null}
               <dd className="mft-prev">
                 <Change label={d.today.previous.coverage < 1 ? "어제(기록 일부)" : "어제"} prev={d.today.previous} value={t.text(d.today.previous)} change={d.today.change[t.metric]} />
               </dd>
@@ -121,6 +126,7 @@ const GROUPS: { id: string; label: string; tiles: Tile[] }[] = [
     label: "가동",
     tiles: [
       { metric: "hours", label: "가동 시간", value: (p) => hoursText(hours(p)), sub: (p) => `CAPTAIN ${hoursText(p.captainHours)} · CREW ${hoursText(p.crewHours)}` },
+      { metric: "leverage", label: "LEVERAGE", value: (p) => leverageText(p.leverage), sub: (p) => `÷ 흐른 ${hoursText(p.elapsedHours)}` },
       { metric: "aircraft", label: "AIRCRAFT", value: (p) => count(p.aircraft), sub: () => "요청이 있던 팀" },
     ],
   },
@@ -223,7 +229,7 @@ function Weeks({ data }: { data: TrendData }) {
       <p className="mft-readout muted" aria-live="polite">
         <b>{weekName(w, weeks.indexOf(w) === last)}</b>
         {w.coverage === 0 ? " · 기록 전" : w.coverage < 1 ? ` · 기록 ${cov(w)}` : ""}
-        {w.coverage > 0 ? ` · 요청 ${count(w.requests)} · AIRCRAFT ${w.aircraft} · PR ${w.prs}` : ""}
+        {w.coverage > 0 ? ` · LEVERAGE ${leverageText(w.leverage)} · 요청 ${count(w.requests)} · AIRCRAFT ${w.aircraft} · PR ${w.prs}` : ""}
       </p>
       <button type="button" className="mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
         {table ? "표 닫기" : "표로 보기"}
@@ -237,6 +243,7 @@ function Weeks({ data }: { data: TrendData }) {
                 <th className="num">COST</th>
                 <th className="num">요청</th>
                 <th className="num">가동 시간</th>
+                <th className="num">LEVERAGE</th>
                 <th className="num">AIRCRAFT</th>
                 <th className="num">ARRIVED</th>
                 <th className="num">PR</th>
@@ -250,6 +257,7 @@ function Weeks({ data }: { data: TrendData }) {
                   <td className="num">{money(x.cost)}</td>
                   <td className="num">{count(x.requests)}</td>
                   <td className="num">{hoursText(hours(x))}</td>
+                  <td className="num">{leverageText(x.leverage)}</td>
                   <td className="num">{x.aircraft}</td>
                   <td className="num">{x.flights}</td>
                   <td className="num">{x.prs}</td>

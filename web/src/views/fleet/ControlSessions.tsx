@@ -48,7 +48,7 @@ function fuelByName(r: FuelReply): Map<string, ControlFuelInfo> {
 
 const CONTROL_AIRPORT = "ATCC";
 
-export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; attached: boolean }) {
+export function ControlSessions({ snapshot, attached, selected = null, onSelect }: { snapshot: Snapshot; attached: boolean; selected?: string | null; onSelect?: (name: string) => void }) {
   const [list, setList] = useState<ControlList | null>(memo.list);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -84,19 +84,10 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     }
     inflight.current = false;
   }, []);
-  // #fleet/control로 오면(설정 창의 안내, 헤더 CONTROL 띠) 이 그룹으로 스크롤하고 초점을 둔다
-  const ready = list !== null || error !== null;
+  // 칩으로 고른 세션(ATC-445)의 줄은 펼쳐 둔다
   useEffect(() => {
-    const go = () => {
-      if (location.hash.slice(1) !== "fleet/control") return;
-      const el = document.getElementById("control");
-      el?.scrollIntoView({ block: "start" });
-      el?.focus({ preventScroll: true });
-    };
-    go();
-    addEventListener("hashchange", go);
-    return () => removeEventListener("hashchange", go);
-  }, [ready]);
+    if (selected) setOpen((prev) => (prev.has(selected) ? prev : new Set([...prev, selected])));
+  }, [selected]);
   // 처음과 60초마다. 숨겨진 탭(브라우저)은 건너뛴다
   useEffect(() => {
     void load();
@@ -182,12 +173,14 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
     fresh.forEach((n) => autoOpened.current.add(n));
     setOpen((prev) => new Set([...prev, ...fresh]));
   }, [view]);
-  const toggle = (name: string) =>
+  const toggle = (name: string) => {
+    onSelect?.(name);
     setOpen((prev) => {
       const next = new Set(prev);
       if (!next.delete(name)) next.add(name);
       return next;
     });
+  };
 
   const accountEdit = (name: string) => {
     const a = accounts?.rows.find((r) => r.name === name);
@@ -303,7 +296,7 @@ export function ControlSessions({ snapshot, attached }: { snapshot: Snapshot; at
         {rows.map((r) => (
           <FleetRowShell
             key={r.name}
-            className={r.statusClass}
+            className={`${r.statusClass}${selected === r.name ? " is-selected" : ""}`}
             detailId={`fl-control-detail-${r.name}`}
             isOpen={open.has(r.name)}
             onToggle={() => toggle(r.name)}

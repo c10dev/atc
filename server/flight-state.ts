@@ -6,6 +6,8 @@ import { MOVABLE_TYPES } from "./detail.ts";
 export interface MoveBody {
   from: string;
   to: string;
+  // ATC-473: STAND 없는 FLIGHT가 ARRIVED인데 아직 started일 때만 쓰는 이동. to 대신 "completed"를 주면 그 팀의 completed 상태(Done)로 옮긴다
+  toType?: "completed";
 }
 export type MoveParse = { ok: true; move: MoveBody } | { ok: false; error: string };
 
@@ -14,6 +16,10 @@ export function parseMoveBody(raw: unknown): MoveParse {
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const name = (v: unknown) => (typeof v === "string" && v.trim() && v.length <= 64 && !/[\u0000-\u001f]/.test(v) ? v.trim() : null);
   const from = name(b.from);
+  if (b.toType !== undefined) {
+    if (b.toType !== "completed" || !from) return { ok: false, error: "본문은 {from, toType: \"completed\"}" };
+    return { ok: true, move: { from, to: "", toType: "completed" } };
+  }
   const to = name(b.to);
   if (!from || !to) return { ok: false, error: "본문은 {from, to}(상태 이름)" };
   return { ok: true, move: { from, to } };
@@ -35,9 +41,17 @@ export type MoveVerdict = { ok: true; stateId: string; to: TeamState } | { ok: f
 
 // 옮겨도 되나. 순서: 우리가 읽는 팀인가(403) → 지금 상태가 from 그대로인가(409) → 지금 상태가 Backlog·Todo·Canceled인가(409)
 // → to가 이 팀의 Backlog·Todo·Canceled 상태인가(400). 같은 상태로 옮기는 것은 400
-export function moveVerdict(issue: MoveIssue, move: MoveBody, teams: readonly string[]): MoveVerdict {
+// arrivedClose(ATC-473): 이 FLIGHT가 STAND 없는 ARRIVED인데 started인 목록(arrived-open.ts)에 있다. toType completed는 이때만 되고 다른 started → completed는 그대로 막힌다
+export function moveVerdict(issue: MoveIssue, move: MoveBody, teams: readonly string[], opts: { arrivedClose?: boolean } = {}): MoveVerdict {
   if (!issue.team || !teams.includes(issue.team.toUpperCase())) return { ok: false, status: 403, error: `팀 ${issue.team ?? "?"}은 atc가 읽는 팀이 아님` };
   if (issue.state.name !== move.from) return { ok: false, status: 409, error: `상태가 이미 바뀜: 지금 ${issue.state.name} (요청한 from ${move.from})` };
+  if (move.toType === "completed") {
+    if (!opts.arrivedClose) return { ok: false, status: 409, error: `${issue.key}는 STAND 없는 ARRIVED FLIGHT가 아님 — started에서 Done으로는 옮기지 않는다(팀의 PR과 Linear의 몫)` };
+    if (issue.state.type !== "started") return { ok: false, status: 409, error: `${issue.state.name}(${issue.state.type})는 started가 아님` };
+    const done = issue.states.find((x) => x.type === "completed");
+    if (!done) return { ok: false, status: 400, error: "이 팀에 completed 상태가 없음" };
+    return { ok: true, stateId: done.id, to: done };
+  }
   if (!MOVABLE_TYPES.includes(issue.state.type)) return { ok: false, status: 409, error: `${issue.state.name}(${issue.state.type})에서는 옮기지 않는다 — 팀의 PR과 Linear의 몫` };
   const to = issue.states.find((x) => x.name === move.to);
   if (!to) return { ok: false, status: 400, error: `이 팀에 없는 상태: ${move.to}` };

@@ -14,7 +14,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .rd-freqs,
 .rd-speeds {
@@ -94,7 +94,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--scope);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .rd-list,
 .rd-replies {
@@ -206,7 +206,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .rd-listen-row {
   display: flex;

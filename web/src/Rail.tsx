@@ -1,4 +1,4 @@
-import { ChartColumn, Globe, House, Plane, Rocket, UserRound, Users } from "lucide-react";
+import { ChartColumn, Globe, House, Plane, Radio, Rocket, UserRound, Users } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { apiGet } from "./api.ts";
@@ -17,32 +17,44 @@ export const RAIL_SCREENS = [
   { id: "home", code: "HOME", icon: House, note: "지금 할 일" },
   { id: "release", code: "RELEASE", icon: Rocket, note: "발권 후보" },
   { id: "flights", code: "FLIGHTS", icon: Plane, note: "FLIGHT 목록·레이더" },
+  { id: "radio", code: "RADIO", icon: Radio, note: "교신 기록" },
   { id: "fleet", code: "FLEET", icon: Users, note: "AIRCRAFT" },
   { id: "metrics", code: "METRICS", icon: ChartColumn, note: "지표" },
 ] as const satisfies readonly RailScreen[];
 
 // 새 폴링 없이, 화면이 이미 받는 snapshot이 바뀔 때(refreshKey)만 읽는다. 화면 안의 숫자와 같은 길(GET)이다
-function useCount(path: string, pick: (j: unknown) => number, refreshKey: string): number {
+// hot: 배지가 알림 톤이 되는 때(HOME은 WARNING 줄이 있을 때만, ATC-454)
+function useCount(path: string, pick: (j: unknown) => number, refreshKey: string, hotOf?: (j: unknown) => boolean): { n: number; hot: boolean } {
   const [n, setN] = useState(0);
+  const [hot, setHot] = useState(false);
   useEffect(() => {
     let alive = true;
     apiGet(path)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((j) => alive && setN(pick(j)))
-      .catch(() => alive && setN(0));
+      .then((j) => {
+        if (!alive) return;
+        setN(pick(j));
+        setHot(hotOf?.(j) ?? false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setN(0);
+        setHot(false);
+      });
     return () => {
       alive = false;
     };
     // pick은 모듈 상수라 의존성에 두지 않는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, refreshKey]);
-  return n;
+  return { n, hot };
 }
 const lenOf = (key: string) => (j: unknown) => {
   const v = (j as Record<string, unknown> | null)?.[key];
   return Array.isArray(v) ? v.length : 0;
 };
 const queueCount = lenOf("items");
+const queueWarning = (j: unknown) => ((j as { items?: { level?: string }[] } | null)?.items ?? []).some((i) => i.level === "warning");
 const readyCount = lenOf("ready");
 
 export function Rail({
@@ -70,8 +82,8 @@ export function Rail({
   help: ReactNode; // HelpMenu(메뉴가 레일 옆으로 열린다)
   children?: ReactNode; // 설정 창(모달)
 }) {
-  const badges: Record<string, number> = {
-    home: useCount("/api/supervisor/queue", queueCount, refreshKey),
+  const badges: Record<string, { n: number; hot: boolean }> = {
+    home: useCount("/api/supervisor/queue", queueCount, refreshKey, queueWarning),
     release: useCount("/api/releases", readyCount, refreshKey),
   };
   const ref = useRef<HTMLElement>(null);
@@ -93,14 +105,14 @@ export function Rail({
       </span>
       <div className="rail-screens">
         {RAIL_SCREENS.map((s) => {
-          const n = badges[s.id] ?? 0;
+          const { n, hot } = badges[s.id] ?? { n: 0, hot: false };
           const name = n > 0 ? `${s.code} · ${n}` : s.code;
           return (
             <button key={s.id} type="button" className="rail-item" aria-current={tab === s.id ? "page" : undefined} aria-label={name} data-tip={`${s.code} · ${s.note}`} onClick={() => onTab(s.id)}>
               <Icon icon={s.icon} size={16} />
               <span className="rail-label">{s.code}</span>
               {n > 0 && (
-                <span className="rail-badge" aria-hidden="true">
+                <span className="rail-badge" data-tone={hot ? "alert" : undefined} aria-hidden="true">
                   {n > 99 ? "99+" : n}
                 </span>
               )}

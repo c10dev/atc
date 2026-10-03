@@ -81,15 +81,15 @@ export function Checkride({ refreshKey, onChanged }: { refreshKey: string; onCha
               <div className="cr-head">
                 <b className="cr-callsign">{r.callsign}</b>
                 <span className="mono faint">{r.registration}</span>
-                <span className={`fl-chip r-${r.rating}`}>{r.rating}</span>
+                <span className={`chip r-${r.rating}`}>{r.rating}</span>
                 <span className="cr-status">{LABEL[r.status]}</span>
                 {r.status === "GRANT" && (
-                  <button className="fl-btn primary" disabled={busy !== null} onClick={() => act(r, "grant")}>
+                  <button className="btn is-primary" disabled={busy !== null} onClick={() => act(r, "grant")}>
                     부여
                   </button>
                 )}
                 {r.status === "REVIEW" && (
-                  <button className="fl-btn danger" disabled={busy !== null} onClick={() => act(r, "revoke")}>
+                  <button className="btn is-danger" disabled={busy !== null} onClick={() => act(r, "revoke")}>
                     회수
                   </button>
                 )}

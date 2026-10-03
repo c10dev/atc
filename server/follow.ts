@@ -106,6 +106,7 @@ export interface FollowInput {
   noDeploy: ReadonlySet<string>; // MCC AIRPORT가 아닌 곳의 FLIGHT: deployed가 없고 ON이 끝이다
   userPulls?: ReadonlySet<number>; // MCC AIRPORT에서 SUPERVISOR가 머지할 PR 번호(`user` 등급 또는 ESCALATE). 없으면 merge 칩이 없다
   airports?: readonly { code: string; repo: string }[]; // PR 서랍 주소(#pr/<AIRPORT>/<번호>)용
+  cardWaits?: Readonly<Record<string, string>>; // 제안 id → 승인됐는데 보내지 못하는 사유 한 줄(ACCOUNT 불일치, ATC-458). 있으면 "발송 없음" 대신 이 글을 보인다
   now: number;
 }
 
@@ -261,7 +262,7 @@ function stuckOf(c: StuckCtx): FollowStuck | null {
   if (live?.status === "sent" && !stages.readback.done && !live.awaitSupervisor && stages.sent.at && now - Date.parse(stages.sent.at) > READBACK_OVERDUE_MS)
     return { stage: "sent", code: "sent-no-readback", text: `발송 ${mins(stages.sent.at)}분 · READBACK 없음`, since: stages.sent.at };
   if (live?.status === "approved" && stages.approved.at && now - Date.parse(stages.approved.at) >= STUCK_APPROVED_MIN * MIN)
-    return { stage: "approved", code: "approved-not-sent", text: `승인 ${mins(stages.approved.at)}분 · 발송 없음`, since: stages.approved.at };
+    return { stage: "approved", code: "approved-not-sent", text: `승인 ${mins(stages.approved.at)}분 · ${inp.cardWaits?.[live.id] ?? "발송 없음"}`, since: stages.approved.at };
   for (const [code, stage] of [["no-pr", "readback"], ["pr-not-cleared", "pr"], ["landing-wait", "ci"]] as const) {
     const i = issue(code);
     if (i) return { stage, code, text: i.text, since: i.since };
@@ -301,7 +302,7 @@ function nextOf(c: NextCtx): FollowNext | null {
     if (waitsOnHuman(pull.humanCheck)) return { kind: "human-check", label: `HUMAN CHECK #${pull.number}`, href };
     if (pull.landing === "CLEARED" && inp.userPulls?.has(pull.number)) return { kind: "merge", label: `머지 #${pull.number}`, href };
   }
-  if (stuck && (stuck.stage === "sent" || stuck.stage === "readback")) return { kind: "look", label: "살펴보기", href: "#flights/radio" };
+  if (stuck && (stuck.stage === "sent" || stuck.stage === "readback")) return { kind: "look", label: "살펴보기", href: "#radio" };
   if (stuck && stuck.stage === "landed") return { kind: "look", label: "살펴보기", href: "#flights" };
   return null;
 }
@@ -359,7 +360,7 @@ function nowText(c: NowCtx): string {
       return line || `READBACK ${minSince(stages.readback.at, now) ?? 0}분 전`;
     }
     if (stages.sent.done) return `발송 ${minSince(stages.sent.at, now) ?? 0}분 · READBACK 대기`;
-    if (stages.approved.done) return `승인 ${minSince(stages.approved.at, now) ?? 0}분 · 발송 없음`;
+    if (stages.approved.done) return `승인 ${minSince(stages.approved.at, now) ?? 0}분 · ${inp.cardWaits?.[live.id] ?? "발송 없음"}`;
     return "승인 대기";
   }
   if (c.tail) {

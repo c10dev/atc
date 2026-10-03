@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const RULES = ["color-literal", "font-size-px", "font-size-em", "spacing-literal", "radius-literal", "z-index-literal", "transition-all", "outline-none"] as const;
+export const RULES = ["color-literal", "font-size-px", "font-size-em", "spacing-literal", "radius-literal", "z-index-literal", "transition-all", "outline-none", "token-family"] as const;
 export type Rule = (typeof RULES)[number];
 
 export interface Finding {
@@ -23,6 +23,44 @@ const SIZE_EM = /(?:^|[^\w.-])-?\d*\.?\d+em\b/; // rem은 앞이 영문자라 �
 // 간격 속성(ATC-410, Q6): padding·margin·gap·inset·top/right/bottom/left와 그 세부 속성. 0이 아닌 px 리터럴은 var(--space-…)로
 const SPACING_PROP = /^(?:padding|margin|inset)(?:-[a-z]+)*$|^(?:row-|column-)?gap$|^(?:top|right|bottom|left)$/;
 const PX_NONZERO = /(?:^|[^\w.-])-?(?:0*[1-9]\d*\.?\d*|0*\.\d*[1-9]\d*)px\b/;
+// 색 속성과 토큰 계열(ATC-437, design-system 결정 S5, Primer의 primer/colors처럼): 글자색에 바탕 토큰을, 테두리에 면 토큰을 쓰지 못하게 한다.
+// 어떤 토큰이 어느 계열인지와 어떤 속성이 어느 계열을 받는지는 아래 두 표가 정한다. 신호색을 면(점·태그·막대)으로 칠해도 되는 곳도 이 표만 정한다.
+export const TOKEN_FAMILIES = {
+  text: /^--(?:text|muted|faint)$/,
+  signal: /^--(?:radar|amber|cyan|alert|blue|ring|tab-on|update-tone|phase-[\w-]+|series-[\w-]+)$/,
+  ink: /^--(?:paper-ink|paper-muted|stamp-[\w-]+|flap-ink|fids-title|fids-count|blk-title)$/, // 도메인 글자색
+  surface: /^--(?:bg|chrome|panel|panel-2|panel-3|scope|scope-glow|layer|layer-hover|paper|paper-parked|fids-(?:bg|card|head|hover)|flap-tile|blk-(?:bg|free-bg|los-bg)|tab-on-bg)$/,
+  line: /^--(?:line|line-strong|bracket|paper-line|fids-line|fids-hover-line|flap-edge)$/,
+} as const;
+export type Family = keyof typeof TOKEN_FAMILIES;
+
+// 속성 → 받는 계열. currentColor·transparent·inherit·none은 var()가 아니라서 늘 통과한다
+export const PROP_FAMILIES: { prop: RegExp; allow: readonly Family[] }[] = [
+  { prop: /^color$/, allow: ["text", "signal", "ink"] },
+  { prop: /^background(?:-color)?$/, allow: ["surface"] },
+  { prop: /^border(?:-(?:top|right|bottom|left))?(?:-color)?$/, allow: ["line", "signal"] },
+  { prop: /^outline(?:-color)?$/, allow: ["signal"] }, // 포커스 링(--cyan)과 신호색
+];
+
+// 신호색을 배경(면)으로 칠해도 되는 선택자: 점·태그·칩·막대처럼 작은 표시. 이 표에 없는 곳의 신호색 배경은 token-family 위반이다
+export const SIGNAL_FILL_OK: readonly RegExp[] = [/\b[\w-]*(?:dot|badge|tag|chip|pill|bar|seg|fill|stamp|lamp|swatch|mark|led)\b/i];
+
+const familyOf = (token: string): Family | null => (Object.keys(TOKEN_FAMILIES) as Family[]).find((k) => TOKEN_FAMILIES[k].test(token)) ?? null;
+
+// 선언 하나가 속성의 계열을 벗어난 var(--토큰)을 쓰면 그 토큰 이름들을 돌려준다(없으면 빈 배열)
+export function wrongFamily(prop: string, value: string, selector: string): string[] {
+  const rule = PROP_FAMILIES.find((p) => p.prop.test(prop));
+  if (!rule) return [];
+  const bad: string[] = [];
+  for (const m of value.matchAll(/var\((--[\w-]+)/g)) {
+    const fam = familyOf(m[1]!);
+    if (!fam || rule.allow.includes(fam)) continue;
+    if (fam === "signal" && /^background/.test(prop) && SIGNAL_FILL_OK.some((re) => re.test(selector))) continue;
+    bad.push(m[1]!);
+  }
+  return bad;
+}
+
 // 둥근 모서리: 세부 속성(border-top-left-radius …)도 같다
 const RADIUS_PROP = /^border(?:-[a-z]+)*-radius$/;
 // var(--radius-…)·50%·0·전역 키워드만 통과
@@ -120,6 +158,11 @@ export function lintCss(raw: string, file: string): Finding[] {
       if (SPACING_PROP.test(d.prop) && PX_NONZERO.test(value.replace(/var\([^)]*\)/g, "var()"))) add("spacing-literal", d.at, decl);
       // radius-literal: 값 조각마다 var(--radius-…)·50%·0이어야 한다
       if (RADIUS_PROP.test(d.prop) && value.replace(/!important/i, "").split(/[\s/]+/).filter(Boolean).some((part) => !RADIUS_OK.test(part))) add("radius-literal", d.at, decl);
+      // token-family: 색 속성은 자기 계열의 토큰만(토큰 블록의 --이름 정의는 위에서 걸러진다)
+      if (!d.prop.startsWith("--")) {
+        const bad = wrongFamily(d.prop, value, r.prelude);
+        if (bad.length) add("token-family", d.at, `${decl} (${bad.join(", ")})`);
+      }
       // z-index-literal: var(--z-…)만. auto는 쌓임 맥락을 만들지 않아 허용
       if (d.prop === "z-index" && !/var\(--z-[\w-]+\)/.test(value) && value.trim() !== "auto") add("z-index-literal", d.at, decl);
       // transition-all

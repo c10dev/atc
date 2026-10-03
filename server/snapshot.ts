@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type Ticket } from "./model.ts";
+import { type Alert, type Claim, type Session, type Snapshot, type Ticket } from "./model.ts";
 import { hostedDbOfAirport, resolveAirports } from "./airports.ts";
 import { migrationGateOf } from "./migration-gate.ts";
 import { readAppliedCached } from "./sources/supabase-migrations.ts";
@@ -17,8 +17,9 @@ import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
 import { loadMcc, readMccRecords, reviewOfHead } from "./mcc.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { airportOfTicket, loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
+import { noWorkspaceKeysOf } from "./arrived-open.ts";
 import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
 import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
 import { realpathSync } from "node:fs";
@@ -172,6 +173,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
+  // 화면 사이드바가 AIRPORT별로 묶는다(ATC-443). DISPATCH가 쓰는 같은 규칙이라 화면에 따로 규칙을 두지 않는다(원칙 4)
+  for (const t of tickets) t.airport = airportOfTicket(t, dispatchCfg);
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);
@@ -414,11 +417,8 @@ function buildAlerts(
   }
 
   const ticketsWithWs = new Set(workspaces.map((w) => w.ticketKey));
-  // 상위 이슈는 하위 이슈를 묶는 컨테이너라, 그 자체에 워크트리가 없는 것은 방치가 아니다.
-  const parents = parentKeysOf(tickets);
-  for (const t of tickets) {
-    if (t.stateType !== "started" || ticketsWithWs.has(t.key) || parents.has(t.key)) continue;
-    alerts.push({ kind: "no-workspace", message: `진행 중인데 워크트리가 없음`, ticketKey: t.key });
-  }
+  // 상위 이슈는 하위 이슈를 묶는 컨테이너라, 그 자체에 워크트리가 없는 것은 방치가 아니다. STAND 없는 FLIGHT(SURVEY·CHECK)는 워크트리가 있을 수 없어
+  // 이 알림이 아무것도 알리지 못한다: 뺀다(ARRIVED인데 아직 In Progress면 SUPERVISOR의 할 일 한 줄, ATC-473)
+  for (const key of noWorkspaceKeysOf(tickets, ticketsWithWs)) alerts.push({ kind: "no-workspace", message: `진행 중인데 워크트리가 없음`, ticketKey: key });
   return alerts;
 }

@@ -130,7 +130,7 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
 
       <Block code="CONTROL" label="관제 세션(ATC-130)">
         <p className="settings-hint">
-          관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>FLEET 탭 CONTROL SESSIONS</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
+          관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>아래 CONTROL 패널</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
         </p>
       </Block>
 

@@ -128,28 +128,28 @@ export const PAIRS: Pair[] = [
 
 // 지금 못 넘는 짝: 키는 `테마 fg on bg`, 값은 고칠 단위. 고쳐지면 지우고, 목록에 없는 실패는 테스트를 깬다.
 const KNOWN: Record<string, string> = {
-  "radar --alert on --panel-3": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 4.16:1
-  "radar --line-strong on --bg": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.58:1
-  "radar --line-strong on --chrome": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.44:1
-  "radar --line-strong on --panel": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.32:1
-  "radar --line-strong on --panel-2": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.04:1
-  "radar --line-strong on --panel-3": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 1.77:1
+  "radar --alert on --panel-3": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 4.16:1
+  "radar --line-strong on --bg": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.58:1
+  "radar --line-strong on --chrome": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.44:1
+  "radar --line-strong on --panel": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.32:1
+  "radar --line-strong on --panel-2": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.04:1
+  "radar --line-strong on --panel-3": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 1.77:1
   "radar --stamp-red on --paper-parked": "unfiled: darken the stamp inks on parked paper or lighten --paper-parked", // 3.04:1
   "radar --stamp-amber on --paper": "unfiled: darken the stamp inks on parked paper or lighten --paper-parked", // 3.56:1
   "radar --stamp-amber on --paper-parked": "unfiled: darken the stamp inks on parked paper or lighten --paper-parked", // 2.24:1
   "radar --stamp-blue on --paper-parked": "unfiled: darken the stamp inks on parked paper or lighten --paper-parked", // 3.26:1
   "radar --stamp-gray on --paper-parked": "unfiled: darken the stamp inks on parked paper or lighten --paper-parked", // 3.31:1
   "radar #fff on --alert": "unfiled: .los-tag text colour (dark on --alert) or a lighter-text token", // 3.32:1
-  "cockpit --alert on --panel-3": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 4.30:1
-  "cockpit --line-strong on --panel": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.95:1
-  "cockpit --line-strong on --panel-2": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.64:1
-  "cockpit --line-strong on --panel-3": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.28:1
+  "cockpit --alert on --panel-3": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 4.30:1
+  "cockpit --line-strong on --panel": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.95:1
+  "cockpit --line-strong on --panel-2": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.64:1
+  "cockpit --line-strong on --panel-3": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.28:1
   "cockpit #fff on --alert": "unfiled: .los-tag text colour (dark on --alert) or a lighter-text token", // 3.27:1
-  "night --line-strong on --bg": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.28:1
-  "night --line-strong on --chrome": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.30:1
-  "night --line-strong on --panel": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.37:1
-  "night --line-strong on --panel-2": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.40:1
-  "night --line-strong on --panel-3": "ATC-439: the theme generator re-expresses the palettes; raise --line-strong / --alert there", // 2.24:1
+  "night --line-strong on --bg": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.28:1
+  "night --line-strong on --chrome": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.30:1
+  "night --line-strong on --panel": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.37:1
+  "night --line-strong on --panel-2": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.40:1
+  "night --line-strong on --panel-3": "unfiled: ATC-439 kept today's colours (no visible change); raise contrast or the alert hue in the web/src/theme-gen.ts inputs", // 2.24:1
   "night #fff on --alert": "unfiled: .los-tag text colour (dark on --alert) or a lighter-text token", // 2.73:1
 };
 

@@ -14,6 +14,7 @@ import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertTe
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { type CapIdleHint, idleText } from "./other-background.ts";
+import type { HostMemory } from "./host-memory.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -49,7 +50,7 @@ export interface SupervisorAlert {
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
 // key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
 // 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
-export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow", "revert"] as const;
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow", "revert", "host"] as const;
 export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
   const p = item.key.split("|");
   switch (p[0]) {
@@ -73,7 +74,9 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
       return "alerts";
     case "revert": // revert|stop|<airport>|<at>: breaker가 lane을 낮췄다(ATC-351). SUPERVISOR만 다시 올린다
       return "alerts";
-    case "control": // control|down|<session>: 멈춘 채인 관제 세션
+    case "control": // control|down|<session>: 어떤 이유로든 없는 관제 세션(ATC-203)
+      return "alerts";
+    case "host": // host|memory: 호스트 메모리 부족·OOM kill(ATC-203)
       return "alerts";
     case "reposition":
       return p[1] === "stuck" ? "alerts" : "log"; // reposition|stuck|<aircraft>는 조건, 나머지는 결과
@@ -91,8 +94,43 @@ export interface RtsHalted {
 }
 export interface ControlDown {
   session: string;
-  since: string; // 멈춘 RECYCLE 기록 시각
+  since: string | null; // 멈춘 RECYCLE 기록 시각, 이유를 모르는 사라짐(gone)이면 마지막 기록 시각이나 null
   reason: string;
+  gone?: true; // RECYCLE 실패가 아니라 이유 불문 살아 있는 세션이 없다(ATC-203)
+}
+
+// 관제 세션이 마지막으로 겪은 일(FLIGHT RECORDER의 control launch·stop·recycle 기록). SUPERVISOR의 STOP인지 가르는 데 쓴다
+export interface ControlOp {
+  t: string;
+  op: "launch" | "stop" | "recycle";
+  by: string;
+  ok: boolean;
+}
+// 방금 뜨거나 멈춘 세션은 행이 나타나기까지 잠깐 비어 있다: 이 안의 기록은 아직 "없음"으로 치지 않는다
+export const CONTROL_DOWN_GRACE_MS = 120_000;
+// 이 둘이 켜진 관제 세션은 지금 없으면 WARNING(나머지는 CAUTION). 둘 이상이 한꺼번에 없어도 WARNING
+export const CONTROL_CRITICAL = ["TOWER", "MCC"] as const;
+
+// 순수(ATC-203): 설정된 관제 세션(launch bg) 가운데 살아 있는 행이 없는 것. 이유는 묻지 않는다(크래시·OOM·데몬 재시작 모두).
+// 단 SUPERVISOR가 직접 STOP한 것이 그 세션에 일어난 마지막 일이면(성공한 stop, by SUPERVISOR) 제 뜻이니 뺀다. 새 상태는 두지 않고 기존 기록만 읽는다
+export function controlGoneOf(inp: { sessions: readonly string[]; running: ReadonlySet<string>; last: ReadonlyMap<string, ControlOp>; now: number }): ControlDown[] {
+  const out: ControlDown[] = [];
+  for (const name of [...inp.sessions].sort()) {
+    if (inp.running.has(name)) continue;
+    const l = inp.last.get(name);
+    if (l && l.op === "stop" && l.ok && l.by === "SUPERVISOR") continue;
+    if (l && inp.now - Date.parse(l.t) < CONTROL_DOWN_GRACE_MS) continue;
+    // since는 마지막 기록의 시각이지 내려간 시각이 아니다(며칠 전의 launch일 수 있다): 글에는 "부터"가 아니라 기록의 날짜와 시각을 적는다
+    out.push({ session: name, since: l?.t ?? null, reason: l ? `마지막 기록: ${l.op}${l.ok ? "" : " 실패"}(${l.by}) ${l.t.slice(5, 10)} ${l.t.slice(11, 16)}Z` : "살아 있는 세션이 없음", gone: true });
+  }
+  return out;
+}
+
+// 순수: RECYCLE이 멈춘 채인 것(이유가 분명하다)과 이유 불문 없는 것을 한 세션에 하나로 합친다. 같은 세션이면 RECYCLE 쪽 글을 쓴다
+export function mergeControlDown(recycle: readonly ControlDown[], gone: readonly ControlDown[]): ControlDown[] {
+  const by = new Map<string, ControlDown>(gone.map((c) => [c.session, c]));
+  for (const c of recycle) by.set(c.session, c);
+  return [...by.values()].sort((a, b) => a.session.localeCompare(b.session));
 }
 export interface RepositionStuck {
   aircraft: string;
@@ -162,6 +200,7 @@ export interface AlertsInput {
   revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
   k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
   controlDown?: ControlDown[];
+  hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
@@ -490,18 +529,38 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       since: null,
     });
   }
-  for (const c of inp.controlDown ?? []) {
+  // 관제 세션이 없다(ATC-203): CAUTION, TOWER나 MCC가 없거나 둘 이상이 한꺼번에 없으면 WARNING. 키는 세션마다 그대로다
+  const downs = inp.controlDown ?? [];
+  for (const c of downs) {
+    const critical = (CONTROL_CRITICAL as readonly string[]).includes(c.session) || downs.length >= 2;
     out.push({
       key: `control|down|${c.session}`,
       group: "recycle",
-      level: "caution",
+      level: critical ? "warning" : "caution",
       cue: null,
       aircraft: null,
       flight: null,
-      text: `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
+      text: c.gone
+        ? `관제 세션 ${c.session} 없음 — ${c.reason}`
+        : `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",
       since: c.since,
+    });
+  }
+  // 호스트 메모리(ATC-203): 가용 메모리·swap·최근 30분의 OOM kill 수를 글에 싣는다
+  if (inp.hostMemory) {
+    out.push({
+      key: "host|memory",
+      group: "health",
+      level: inp.hostMemory.level,
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: inp.hostMemory.text,
+      next: "어느 프로세스가 죽었나: journalctl -k | grep -i oom, 가용 메모리는 FUEL·health 화면",
+      link: "#metrics/fuel",
+      since: null,
     });
   }
   for (const r of inp.repositionStuck ?? []) {

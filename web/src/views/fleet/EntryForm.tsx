@@ -13,7 +13,7 @@ export function EntryForm({ brief, onEnter }: { brief: FleetBrief; onEnter: (inp
   if (!open) {
     return (
       <div className="fl-entry-toggle">
-        <button className="fl-btn primary" onClick={() => (setRegistration(brief.nextRegistration ?? ""), setOpen(true))}>
+        <button className="btn is-primary" onClick={() => (setRegistration(brief.nextRegistration ?? ""), setOpen(true))}>
           ENTRY INTO SERVICE — 새 AIRCRAFT 들이기
         </button>
       </div>
@@ -62,10 +62,10 @@ export function EntryForm({ brief, onEnter }: { brief: FleetBrief; onEnter: (inp
         </p>
       )}
       <div className="fl-actions">
-        <button type="button" className="fl-btn" onClick={() => setOpen(false)}>
+        <button type="button" className="btn" onClick={() => setOpen(false)}>
           취소
         </button>
-        <button type="submit" className="fl-btn primary">
+        <button type="submit" className="btn is-primary">
           들이기
         </button>
       </div>
