@@ -129,19 +129,40 @@ export function aircraftGroups(items: readonly AircraftInput[], airports: readon
   }));
 }
 
-export interface ReleaseInput {
-  key: string;
-  title: string;
-  priority: number;
-  airport: string | null;
+// RELEASE의 사이드바는 목록이 아니라 구역 색인이다(ATC-423, docs/layout.md Q7). 고르면 주소가 `#release/<구역>`이 되고 RELEASE가 그 구역으로 스크롤한다.
+// 구역 나눔(후보 · 발권 전 Todo · 나머지)은 화면과 사이드바가 같은 함수를 쓴다
+export const RELEASE_SECTIONS = [
+  { id: "candidates", label: "후보", hash: "release/candidates" },
+  { id: "unreleased", label: "Todo 발권 전", hash: "release/unreleased" },
+  { id: "recent", label: "최근 발권", hash: "release/recent" },
+] as const;
+export type ReleaseSection = (typeof RELEASE_SECTIONS)[number]["id"];
+
+// 발권 나무(server/release-tree.ts)의 줄을 구역으로 가른다: 쏠 수 있는 줄(fire)은 후보, 이미 Todo인 줄(release)은 발권 전, 나머지(대기·진행 중)는 따로. 나무 순서를 지킨다
+export function partitionRelease<T extends { fire: "fire" | "release" | null; children: T[] }>(groups: readonly { rows: readonly T[] }[]): { candidates: T[]; unreleased: T[]; rest: T[] } {
+  const out: { candidates: T[]; unreleased: T[]; rest: T[] } = { candidates: [], unreleased: [], rest: [] };
+  const walk = (rows: readonly T[]) => {
+    for (const r of rows) {
+      (r.fire === "fire" ? out.candidates : r.fire === "release" ? out.unreleased : out.rest).push(r);
+      walk(r.children);
+    }
+  };
+  for (const g of groups) walk(g.rows);
+  return out;
 }
 
-export function releaseGroups(items: readonly ReleaseInput[], airports: readonly AirportLite[], query: string): Group<ReleaseInput>[] {
-  const shown = items.filter((r) => matchesQuery(query, [r.key, r.title, r.airport]));
-  return groupByAirport(shown, airports).map((g) => ({
-    ...g,
-    rows: [...g.rows].sort((a, b) => (a.priority || 9) - (b.priority || 9) || a.key.localeCompare(b.key, undefined, { numeric: true })),
-  }));
+// GET /api/releases 한 덩이에서 구역마다 수를 센다(후보는 SCHEDULE NEW 제안을 더한다). 읽지 못하면 빈 수
+export function releaseSectionCounts(j: unknown): { id: ReleaseSection; label: string; hash: string; count: number }[] {
+  const d = (j ?? {}) as { tree?: { rows: { fire: "fire" | "release" | null; children: never[] }[] }[]; proposals?: unknown[]; recent?: unknown[] };
+  const p = partitionRelease(Array.isArray(d.tree) ? d.tree : []);
+  const count = { candidates: p.candidates.length + (Array.isArray(d.proposals) ? d.proposals.length : 0), unreleased: p.unreleased.length, recent: Array.isArray(d.recent) ? d.recent.length : 0 };
+  return RELEASE_SECTIONS.map((s) => ({ ...s, count: count[s.id] }));
+}
+
+// 지금 주소의 RELEASE 구역(#release/candidates …). 없거나 모르면 null
+export function releaseSectionOf(hash: string): ReleaseSection | null {
+  const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
+  return RELEASE_SECTIONS.find((s) => s.id === sub)?.id ?? null;
 }
 
 // METRICS 하위 화면과 HOME 닻. 주소 조각(hash)과 이름을 한곳에 둔다
