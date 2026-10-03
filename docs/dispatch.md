@@ -291,7 +291,7 @@ A background AIRCRAFT is retired by Claude Code about 60 minutes after its last 
 **Candidates** (`planDispatch`, the `snapshot.absent` list from [fleet.md](fleet.md)). An AIRCRAFT with no live session, launched by atc before (a FLIGHT RECORDER LAUNCH in the last 14 days), in the registry and not RETIRED or `RESTARTING` is added to `plan.aircraft` with `id: "absent:<REG>"`, `launch: true`, and its base AIRPORT from the registry. It takes FLIGHTs like a PARKED AIRCRAFT (`reason: "ABSENT — 세션 없음, 승인하면 LAUNCH"`) unless it is held:
 
 - AOG;
-- `LIMIT`: its last turn was cut and the reset has not passed (`HOLD · LIMIT (cut 04:30Z) until 07:40Z`), or the reset is unknown; an ACCOUNT HOLD from a live sibling; a FUEL HOLD;
+- `LIMIT`: its last turn was cut and the reset has not passed (`HOLD · LIMIT (cut 04:30Z) until 07:40Z`), or the reset is unknown; an ACCOUNT HOLD from a live sibling (same folder: observed ACCOUNT first, `default` and the registry entry for `~/.claude` are one ACCOUNT, [accounts.md](accounts.md) 5); a FUEL HOLD;
 - a RESUME card is due for it (`RESUME — ATC-200을 이어서(RESUME 카드)`, `stopped`);
 - an unfinished `tail:`-labelled In Progress FLIGHT (ATC-90, `stopped`);
 - no base AIRPORT.

@@ -37,6 +37,8 @@ import { readRecords } from "./recorder.ts";
 import { launchModeOf } from "./session-origin.ts";
 import { readAbsent } from "./absent-run.ts";
 import { readReleaseView } from "./release-store.ts";
+import { holdAccountOf } from "./account-key.ts";
+import { accountFolders } from "./accounts.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -177,7 +179,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   for (const t of tickets) t.airport = airportOfTicket(t, dispatchCfg);
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
-  const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);
+  const folders = accountFolders();
+  const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? holdAccountOf(fleet, x, folders, config.claudeDir) : null); // DISPATCH의 ACCOUNT HOLD와 같은 키(ATC-490)
   // RESTARTING(ATC-91): 데스크톱 /clear 뒤 다음 지시를 기다리는 AIRCRAFT. 세션 파일이 없는 최근 대화 기록에서 읽는다
   const graceMs = dispatchCfg.restartGraceMin * 60_000;
   const restarting = restartingOf(readEndedSessions(new Set(claude.sessions.map((x) => x.id)), healthAt, graceMs), sessions, healthAt, dispatchCfg.restartGraceMin, dispatchCfg.teamPattern);

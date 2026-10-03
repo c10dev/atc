@@ -155,7 +155,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
   // SUPERVISOR 결정(2026-09-28): ATC FLIGHT도 수요로 센다 — candidateTeams가 아니라 모든 Linear 팀으로 planner를 돌린다
   const plan = planDispatch(
     s, readFlightHistory(), { ...cfg, candidateTeams: config.linearTeamKeys }, now, reservedOf(proposals, now), fleet,
-    landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones),
+    landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), undefined, undefined, undefined, accountFolders(),
   );
   const aircraft = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");
