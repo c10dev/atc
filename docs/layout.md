@@ -351,7 +351,6 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
 - **Header bell removed.** `AlertBell` is gone from the top bar. `SoundLockChip` stays in `AlertBell.tsx`. The data comes from one fetch in `App.tsx` (`useNotices`), refreshed when the snapshot minute or the number of alerts changes (no new polling).
 - **Left out: Linear comments.** "New comments on FLIGHTs in flight" is not in this step: atc keeps no comment data in the snapshot, so it would need a new Linear call, which this route must not make. The linear group has the READY rows only; a comment feed is a separate FLIGHT.
 
-
 ### Z4 as built (ATC-446)
 
 This reverses the RADIO part of Y4 ([ATC-379](https://linear.app/vocado/issue/ATC-379)), by the SUPERVISOR's decision E3.
