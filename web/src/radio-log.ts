@@ -158,31 +158,40 @@ export interface StationCount extends Station {
   count: number;
 }
 const CONTROL_ORDER = ["TOWER", "OCC", "MCC", "REVIEW", "DUTY"];
+// 서버가 보낸 쪽을 알 수 없을 때 채우는 자리 이름(server/radio.ts)과 CROSSCHECK 판정 줄의 보낸 쪽은 스테이션이 아니다. 그 줄은 aircraft로 거른다
+const NOT_STATIONS = ["ALL", "?", "AIRCRAFT", "CROSSCHECK"];
 
-// 교신의 "TOWER" · "GOLF (TEAM_G)" → 스테이션. 모두에게 하는 방송("ALL")과 빈 값은 스테이션이 아니다
+// 교신의 "TOWER" · "GOLF (TEAM_G)" → 스테이션. 모두에게 하는 방송("ALL")과 빈 값, 자리 이름은 스테이션이 아니다
 export function stationOf(name: string): Station | null {
   const n = name.trim();
-  if (!n || n === "ALL") return null;
+  if (!n || NOT_STATIONS.includes(n)) return null;
   const m = /^(.*?)\s*\(([^()]+)\)$/.exec(n);
   return m ? { id: m[2], label: m[1] || m[2], kind: "aircraft" } : { id: n, label: n, kind: "control" };
 }
 
-// 이 교신이 그 스테이션의 것인가(보낸 쪽이거나 받는 쪽). id가 null이면 전부
+// 이 스테이션들의 id(보낸 쪽, 받는 쪽, 그리고 aircraft). PREFLIGHT 줄(CROSSCHECK → OCC, HOLD → ALL)은 AIRCRAFT가 보낸·받는 쪽에 없고 aircraft에만 있다
+function stationsIn(t: Transmission): Station[] {
+  const out = new Map<string, Station>();
+  for (const s of [t.from, t.to]) {
+    const st = stationOf(s);
+    if (st && !out.has(st.id)) out.set(st.id, st);
+  }
+  if (t.aircraft && !out.has(t.aircraft)) out.set(t.aircraft, { id: t.aircraft, label: t.aircraft, kind: "aircraft" });
+  return [...out.values()];
+}
+
+// 이 교신이 그 스테이션의 것인가(보낸 쪽이거나 받는 쪽이거나 그 교신의 AIRCRAFT). id가 null이면 전부
 export function stationPasses(t: Transmission, id: string | null): boolean {
   if (!id) return true;
-  return [t.from, t.to].some((s) => stationOf(s)?.id === id);
+  return stationsIn(t).some((s) => s.id === id);
 }
 export const filterByStation = (txs: readonly Transmission[], id: string | null) => (id ? txs.filter((t) => stationPasses(t, id)) : [...txs]);
 
-// 사이드바 목록: 스테이션마다 교신 수(보낸 쪽과 받는 쪽이 같은 교신은 한 번). 관제는 TOWER·OCC·MCC·REVIEW·DUTY 순 뒤에 이름순, AIRCRAFT는 REGISTRATION순
+// 사이드바 목록: 스테이션마다 교신 수(stationPasses와 같은 규칙, 한 교신은 스테이션마다 한 번). 관제는 TOWER·OCC·MCC·REVIEW·DUTY 순 뒤에 이름순, AIRCRAFT는 REGISTRATION순
 export function stationsOf(txs: readonly Transmission[]): { control: StationCount[]; aircraft: StationCount[] } {
   const by = new Map<string, StationCount>();
   for (const t of txs) {
-    const seen = new Set<string>();
-    for (const s of [t.from, t.to]) {
-      const st = stationOf(s);
-      if (!st || seen.has(st.id)) continue;
-      seen.add(st.id);
+    for (const st of stationsIn(t)) {
       const cur = by.get(st.id);
       if (cur) cur.count += 1;
       else by.set(st.id, { ...st, count: 1 });

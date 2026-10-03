@@ -12,7 +12,6 @@ const LEGACY_HASH: Record<string, string> = {
   strips: "flights",
   board: "flights/board",
   radar: "flights/radar",
-  "flights/radio": "radio", // RADIO는 레일 화면으로 돌아왔다(ATC-446)
 };
 
 // 옛 주소를 지금 주소로. 보기가 정해진 옛 주소(#board 등)는 그 보기로, 아니면 뒤의 하위 경로를 이어 붙인다. 바꿀 것이 없으면 null

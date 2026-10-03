@@ -121,8 +121,8 @@ test("stationsOf: 관제와 AIRCRAFT로 나누어 세고, 같은 교신의 양�
     reply("C-1#r", "C-1", 1),
     tx("D-1", 2, { freq: "DELIVERY", from: "OCC", to: "HOTEL (TEAM_H)", aircraft: "TEAM_H" }),
     tx("g", 3, { freq: "GROUND", from: "MCC", to: "ALL", aircraft: undefined }),
-    tx("r", 4, { from: "REVIEW", to: "AARDVARK" }),
-    tx("self", 5, { from: "OCC", to: "OCC" }),
+    tx("r", 4, { from: "REVIEW", to: "AARDVARK", aircraft: undefined }),
+    tx("self", 5, { from: "OCC", to: "OCC", aircraft: undefined }),
   ];
   const s = stationsOf(txs);
   assert.deepEqual(s.control.map((c) => [c.id, c.count]), [["TOWER", 2], ["OCC", 2], ["MCC", 1], ["REVIEW", 1], ["AARDVARK", 1]]);
@@ -136,4 +136,19 @@ test("stationOfHash: #radio/<스테이션>만 필터, 나머지는 전부", () =
   assert.equal(stationOfHash("#radio"), null);
   assert.equal(stationOfHash("#flights/TEAM_E"), null);
   assert.equal(stationOfHash("#radio/%E0%A4%A"), "%E0%A4%A");
+});
+
+// PREFLIGHT 줄은 AIRCRAFT가 보낸·받는 쪽에 없고 aircraft에만 있다(CROSSCHECK → OCC, HOLD → ALL): AIRCRAFT 스테이션이 그 줄도 보여야 한다
+test("스테이션: aircraft만 가진 PREFLIGHT 줄도 그 AIRCRAFT의 것이고, 자리 이름은 스테이션이 아님", () => {
+  const cc = tx("p1", 0, { freq: "PREFLIGHT", from: "CROSSCHECK", to: "OCC", kind: "CROSSCHECK", aircraft: "TEAM_G" });
+  const hold = tx("p2", 1, { freq: "PREFLIGHT", from: "OCC", to: "ALL", kind: "HOLD", aircraft: "TEAM_G" });
+  const unknown = tx("p3", 2, { from: "?", to: "OCC", aircraft: undefined });
+  const arrived = tx("p4", 3, { from: "AIRCRAFT", to: "OCC", aircraft: undefined });
+  const all = [cc, hold, unknown, arrived];
+  assert.deepEqual(filterByStation(all, "TEAM_G").map((t) => t.id), ["p1", "p2"]);
+  assert.deepEqual(filterByStation(all, "OCC").map((t) => t.id), ["p1", "p2", "p3", "p4"]);
+  const s = stationsOf(all);
+  assert.deepEqual(s.control.map((c) => [c.id, c.count]), [["OCC", 4]]);
+  assert.deepEqual(s.aircraft.map((c) => [c.id, c.count]), [["TEAM_G", 2]]);
+  assert.equal(stationOf("CROSSCHECK"), null);
 });
