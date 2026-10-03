@@ -71,7 +71,7 @@ Decisions made while the SUPERVISOR is away are not DUTY's either. They belong t
 
 - **Folder `duty/`:**
   - `CLAUDE.md` (Korean original) plus `CLAUDE.en.md`;
-  - `.claude/settings.json`: model `claude-sonnet-5-5` and the permission level (3.5);
+  - `settings.json` (passed with `--settings`, see D1): model `claude-sonnet-5-5[1m]` (1M context window) and the permission level (3.5);
   - `guard.mjs`, fail-closed;
   - `brief-hook.mjs`, a `UserPromptSubmit` hook (3.3).
 - **Process.**
@@ -606,7 +606,7 @@ The server starts a DUTY turn by itself, so the SUPERVISOR does not have to ask 
 Decided by the SUPERVISOR (2026-09-30):
 
 - **Name:** DUTY (Duty Manager).
-- **Model and ACCOUNT:** Claude Sonnet 5.5 (`claude-sonnet-5-5`) on `acct-2`.
+- **Model and ACCOUNT:** Claude Sonnet 5.5 (`claude-sonnet-5-5`) on `acct-2`. Since 2026-10-03 with the 1M context window (`claude-sonnet-5-5[1m]`), so a long shift fits before Claude Code compacts the conversation.
 - **Inline buttons:** FLEET PLAN, UPDATE and GO are inline. DISPATCH, SCHEDULE, HUMAN CHECK and LANDING are links.
 - **Queue placement:** in the DUTY drawer. ui-visibility step 3's separate drawer is not built; its badges may still read the queue API.
 - **Routing:** operations requests go to OCC as CHARTER REQUESTs, starting in shadow.
