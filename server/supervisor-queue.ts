@@ -1,6 +1,7 @@
 import { type Decision } from "./decision-card.ts";
 import { waitingOnPersonOf } from "./waiting-person.ts";
 import type { LandBy, LandWhy } from "./land-by.ts";
+import { handoffNeedOf } from "./autoland-handoff.ts";
 import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
 import type { FleetProposal } from "./fleet-plan.ts";
@@ -71,7 +72,7 @@ export interface QueueInput {
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
   // landBy: TOWER가 쓰는 landByOf의 결과. "supervisor"이고 CLEARED면 SUPERVISOR가 머지한다
-  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy; landWhy?: LandWhy | null })[];
+  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy; landWhy?: LandWhy | null; landDetail?: string })[];
   update: { kind: UpdateKind; deployed: string | null; main: string | null; mainCi: string; at: string } | null;
   sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account" | "health">>)[];
   blockedMin: number;
@@ -141,7 +142,9 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
     const tag = `PR #${pr.number}${pr.ticketKey ? ` ${pr.ticketKey}` : ""}`;
     if (waitsOnHuman(pr.humanCheck)) out.push({ kind: "HUMAN CHECK", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#home", primary: open("확인", "#home") });
     // MCC나 팀이 아니라 SUPERVISOR가 머지할 CLEARED PR(user 등급·ESCALATE·HOLD·MCC가 안 착륙시키는 모드·등급을 모름)
-    if (pr.landing === "CLEARED" && pr.landBy === "supervisor") out.push({ kind: "LANDING", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#flights", primary: open("PR 열기", "#flights") });
+    // AUTOLAND가 넘긴 PR(ATC-513)은 AUTOLAND 자신의 사유를 줄에 싣고, 마이그레이션이 이유면 호스티드 적용이 먼저라고 적는다
+    if (pr.landing === "CLEARED" && pr.landBy === "supervisor")
+      out.push({ kind: "LANDING", key: `${id}@${pr.head}`, since: null, title: tag, hash: "#flights", primary: open("PR 열기", "#flights"), ...(pr.landWhy === "autoland" && pr.landDetail ? { need: handoffNeedOf(pr.landDetail) } : {}) });
   }
 
   // UPDATE: 서비스가 origin/main보다 뒤이고 main CI가 통과했다(UPDATE 바의 [업데이트] 상태)

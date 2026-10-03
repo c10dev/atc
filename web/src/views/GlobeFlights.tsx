@@ -54,6 +54,7 @@ export const LAND_WHY: Record<LandWhy, string> = {
   mode: "MCC가 착륙시키지 않는 모드",
   "tier-unknown": "등급을 아직 모름",
   "teams-merge-off": "팀이 머지하지 않는 AIRPORT",
+  autoland: "AUTOLAND가 SUPERVISOR에게 넘김",
 };
 export const LAND_BY_LABEL = { mcc: "MCC", supervisor: "SUPERVISOR", holder: "TEAM" } as const;
 export const landWhyText = (f: GlobeFlight) => (f.landWhy ? LAND_WHY[f.landWhy] : "");

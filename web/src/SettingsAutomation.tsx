@@ -568,6 +568,30 @@ function BrowserGateStats({ d }: { d: BrowserGateData }) {
     </ul>
   );
 }
+// AUTOLAND 넘김 세기(ATC-513): 넘긴 (PR, head) 수, (a) SUPERVISOR 몫 LANDING 줄이 머지 없이 닫힌 PR 수, (b) 넘겼는데도 팀으로 나간 LAND 수(0이어야 한다). 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface HandoffCounts {
+  marked: number;
+  closedWithoutMerge: number;
+  landSent: number;
+}
+interface HandoffData {
+  total: HandoffCounts;
+  last7d: HandoffCounts;
+}
+function HandoffStats({ d }: { d: HandoffData }) {
+  const row = (label: string, c: HandoffCounts) => (
+    <li>
+      {label} 넘김 <b>{c.marked}</b> · 머지 없이 닫힘 <b>{c.closedWithoutMerge}</b> · 그래도 팀으로 나간 LAND <b>{c.landSent}</b>
+    </li>
+  );
+  return (
+    <ul className="dp-misfire">
+      {row("전체", d.total)}
+      {row("최근 7일", d.last7d)}
+      <li className="faint">팀으로 나간 LAND는 0이어야 한다. 0이 아니면 TOWER가 이 규칙을 따르지 않은 것이다.</li>
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -612,6 +636,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   browserGate: (s) => {
     const d = switchOf(s, "browserGate")?.data as BrowserGateData | undefined;
     return d ? <BrowserGateStats d={d} /> : null;
+  },
+  autolandHandoff: (s) => {
+    const d = switchOf(s, "autolandHandoff")?.data as HandoffData | undefined;
+    return d ? <HandoffStats d={d} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),

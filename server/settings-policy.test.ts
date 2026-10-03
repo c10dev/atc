@@ -94,7 +94,7 @@ test("설정 색인: 분류마다 블록이 하나 이상, 같은 코드는 한 
 // ATC-393 이전에 SETTINGS_INDEX에 손으로 적던 정책 블록과 같다(코드·이름·찾을 말·순서). CODEX LANE(ATC-393)만 새로 더해졌다
 test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 항목과 같다", () => {
   const old = [
-    ["landing", "AUTOLAND", "착륙 자동화", "update merge ground stop autoland.mode"],
+    ["landing", "AUTOLAND", "착륙 자동화", "update merge ground stop autoland.mode autoland 넘김 handoff 제외 사유 LANDING land holder 오작동 autolandHandoff"],
     ["landing", "MCC", "atc 착륙·RETURN TO SERVICE", "shadow land rts land+rts rollback 배포 shadow gate mcc.mode k approval kApproval K3 발권 user 등급 착륙 release removal guard removalGuard 지우기 기능 삭제 Removed"],
     ["landing", "REVIEW", "Codex 한도 때 착륙 리뷰", "보안 pr sonnet deepseek exclude externalReview.security"],
     ["landing", "MIGRATE", "마이그레이션 리허설", "migrate 마이그레이션 리허설 hostedDb 시험 DB PITR migrateRehearsal"],

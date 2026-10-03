@@ -7,6 +7,7 @@ import { followInputOf } from "./follow-run.ts";
 import { followRowOf } from "./follow.ts";
 import { type FlowInput, type FlowPullIn, flowViewOf } from "./home-flow.ts";
 import { landDecisionOf } from "./land-by.ts";
+import { handoffResolver } from "./autoland-handoff-run.ts";
 import { gapThresholdsOf } from "./landing-gap.ts";
 import { loadGapSwitch } from "./landing-gap-run.ts";
 import { loadLogbook } from "./logbook.ts";
@@ -34,7 +35,8 @@ export async function flowInputNow(s: Snapshot, updateStatus: () => Promise<Upda
     .map((t) => ({ row: followRowOf(t.key, follow), airport: t.airport ?? null, blockedBy: t.blockedBy }));
   // 캐시된 MCC 등급만 읽는다(GitHub를 부르지 않는다). 등급을 모르면 landBy가 supervisor로 떨어진다(TOWER와 같은 규칙)
   const mcc = mccLandInfoCached(s);
-  const pulls: FlowPullIn[] = (s.pulls ?? []).filter((p) => !p.draft || p.ticketKey).map((p) => ({ ...p, landBy: landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false).by }));
+  const handoffOf = handoffResolver(s);
+  const pulls: FlowPullIn[] = (s.pulls ?? []).filter((p) => !p.draft || p.ticketKey).map((p) => ({ ...p, landBy: landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false, handoffOf(p)).by }));
   const airportOfRepo = (repo: string) => s.airports.find((a) => a.repo === repo)?.code ?? null;
   const landings = loadLogbook().flatMap((e) => (e.pr && e.airport && !e.reverted ? [{ airport: e.airport, at: e.arrivedAt }] : []));
   const stops = (s.atfm?.groundStops ?? []).filter((g) => g.kind === "stop" && g.enforced && g.land !== false).map((g) => ({ airport: g.airport, text: g.text }));
