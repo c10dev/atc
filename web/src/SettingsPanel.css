@@ -589,3 +589,64 @@
 }
 .acct-login p { margin: var(--space-0-5) 0; }
 /* night 테마는 --settings-bg 같은 값만 정한다(styles.css의 night 블록). 이 파일에는 테마 규칙이 없다 */
+
+/* 알림 구역(SettingsAlerts) */
+.alert-checks {
+  border: 0;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.alert-checks legend {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  padding: 0 0 var(--space-1);
+}
+.alert-checks label,
+.alert-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.alert-checks:disabled {
+  opacity: 0.55;
+}
+.alert-sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.alert-range {
+  margin-top: var(--space-2);
+}
+.alert-range input {
+  flex: 1;
+}
+/* 음성 콜아웃(ATC-140): 목소리 고르기 */
+.alert-range select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+}
+.alert-quiet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.alert-msg {
+  color: var(--amber);
+}
+.alert-unlock.btn {
+  margin-top: var(--space-2);
+  color: var(--amber);
+  border-color: var(--amber);
+}
