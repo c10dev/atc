@@ -190,3 +190,15 @@ test("SCHEDULE waiting (ATC-450): shadow-era agreed/disagreed ops make no alert,
   assert.deepEqual(supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, schedule: { mode: "approval", ops: none as never } } as AlertsInput), []);
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops: none as never } }, NOW), []);
 });
+
+test("ORPHAN FLIGHT (ATC-516): the alert is one HOME ALERT row that carries the RESUME RELAY draft for its REGISTRATION", () => {
+  const orphan = { flight: "VOC-317", registration: "TEAM_O", line: "VOC-317 · TEAM_O · 3h42m unheld · STAND unknown", since: ago(222) };
+  const alerts = supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, orphans: [orphan] });
+  const a = alerts.find((x) => x.key === "alert|orphan-flight|VOC-317")!;
+  assert.deepEqual([a.level, a.dest, a.flight, a.aircraft], ["caution", "alerts", "VOC-317", "TEAM_O"]);
+  assert.match(a.text, /^ORPHAN FLIGHT — VOC-317 · TEAM_O/);
+  const items = supervisorQueueOf({ ...empty(), alerts, orphans: [{ flight: "VOC-317", registration: "TEAM_O", text: "Resume VOC-317." }] }, NOW);
+  const row = items.find((i) => i.kind === "ALERT" && i.flight === "VOC-317")!;
+  assert.deepEqual(row.orphan, { to: "TEAM_O", flight: "VOC-317", text: "Resume VOC-317." });
+  assert.equal(supervisorQueueOf({ ...empty(), alerts }, NOW).find((i) => i.kind === "ALERT")?.orphan, undefined);
+});

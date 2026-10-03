@@ -717,6 +717,16 @@ ATC-251(accounts.md 5.6)의 후속이다. 그때는 계획이 AIRCRAFT를 이미
 - **보이는 사유.** 승인된 카드가 ACCOUNT 불일치로 기다리는 동안 FOLLOW 줄과 `GET /api/status`(`now`, 10분 뒤 `stuck`)는 `승인 n분 · 발송 없음` 대신 `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함`을 보인다(`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
 - **형식.** `dispatch.json`의 `crossAccountRelease`와 misfire 보기의 `crossAccount` 수는 추가 항목이다. `proposals.jsonl`은 바뀌지 않는다.
 
+## orphan FLIGHT는 그 REGISTRATION의 슬롯을 쓴다, 만든 것 (ATC-516)
+
+`planDispatch`는 [fleet.md](fleet.md)의 ORPHAN FLIGHT("ORPHAN FLIGHT, 만든 것")를 마지막 선택 입력(`orphans`, REGISTRATION → FLIGHT들. 다섯 호출부 모두 `orphanCountsNow`가 채운다)으로 받는다.
+
+- **앞 세션이 멈춘 뒤 첫 계획부터 센다.** DISPATCH는 알림의 유예를 기다리지 않는다. orphan은 `tail:` FLIGHT처럼 REGISTRATION의 `unfinished` 집합에 들어가 WAKE만큼 `perTeam` 슬롯을 쓴다. 슬롯이 차면 그 REGISTRATION은 `stopped`이고 사유는 `VOC-317 ORPHAN FLIGHT(앞 세션이 멈춘 뒤 아무도 쥐지 않음)`이며 `excluded`에도 나와, 다른 FLIGHT를 받지 않는다. 2026-10-03 07:52의 경우: TEAM_O는 `stopped`이고 VOC-352는 배정되지 않는다.
+- **세기를 그친다**: 살아 있는 세션이 쥐거나, PR이 머지되거나, FLIGHT가 취소되면(더는 orphan이 아니다).
+- **`orphanOnly`.** orphan이 없으면 멈춤이 없을 때 `AircraftState.orphanOnly`가 그 FLIGHT들을 담는다. `runDispatch`가 MISFIRE 셈을 위해 orphan마다 `hold` 줄을 `orphan-flight-events.jsonl`에 한 번 쓴다.
+- **끄는 스위치.** `orphanFlight`가 off면 빈 맵을 넘겨 계획이 전과 똑같다.
+- **형식.** `orphan-flight.json`, `orphan-flight-events.jsonl`, `AircraftState.orphanOnly`는 더하기만 한다. `proposals.jsonl`은 그대로다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

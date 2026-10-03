@@ -1,7 +1,8 @@
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { landedOf, loadDispatchConfig } from "./dispatch.ts";
+import { orphanViewsNow } from "./orphan-flight-run.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
@@ -83,6 +84,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     relays,
     clearances,
     decisions: allDecisions(),
+    orphans: orphanViewsNow(s, now, allProposals(), landedOf(loadLogbook()), loadDispatchConfig().teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, text: o.text })),
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], sessions: s.sessions ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
     backlog: filedProposalsOf(s.tickets, proposalSourcesOf(readReviewLines(), loadScheduleOps()), candidateTeamsOf(loadDispatchConfig())).map((f) => ({ key: f.key, by: f.by, at: f.at })),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
