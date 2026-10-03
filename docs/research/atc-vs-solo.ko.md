@@ -17,11 +17,12 @@ atc가 **머지 준비가 끝난 이슈 하나당 SUPERVISOR의 능동 주의**�
 
 | | atc 팔 | solo 팔 |
 |---|---|---|
-| 누가 일하나 | 평소 atc 운영: DISPATCH, AIRCRAFT(CAPTAIN과 CREW), MCC INSPECTION과 착륙 | SUPERVISOR가 대화형 Claude Code 세션 하나를 몰고, 한 번에 이슈 하나. subagent는 써도 된다 |
-| 어디서 | 실전 fleet. **실험 시간대를 따로 잡는다**(그동안 fleet은 다른 일을 하지 않는다) | 이슈마다 STAND(worktree) 하나, 같은 기준 커밋에서 |
+| 누가 일하나 | 평소 atc 운영: DISPATCH, AIRCRAFT(CAPTAIN과 CREW), MCC INSPECTION과 착륙 | SUPERVISOR가 대화형 Claude Code **클라우드** 세션([claude.ai/code](https://claude.ai/code)) 하나를 몰고, 한 번에 이슈 하나. subagent는 써도 된다 |
+| 어디서 | 실전 fleet. **실험 시간대를 따로 잡는다**(그동안 fleet은 다른 일을 하지 않는다) | 이슈마다 클라우드 컨테이너 하나, 같은 기준 커밋에서 딴 브랜치 |
 | 규칙 파일 | 루트 `CLAUDE.md` 그대로 | **중립화한 CLAUDE.md**(아래) |
 | 머지 전 리뷰 | MCC INSPECTION과 Codex 리뷰, 평소대로 | atc의 것은 없음. atc 팔과 같은 블라인드 리뷰(5절) |
 
+- 대체안: 파일럿에서 클라우드 세션 transcript를 추출기가 읽는 형태로 내보낼 수 없어 토큰과 끼어듦을 못 재면(4절), solo 팔은 STAND(worktree)의 로컬 데스크톱 세션으로 돌리고 개정에 적는다(12절).
 - 두 팔 모두 같은 모델과 effort. 모델과 CLI 버전은 실행마다 기록한다.
 - MCC와 Codex 리뷰는 일부러 atc 팔의 이점으로 둔다. atc가 무엇인지의 일부다.
 - 운영자: SUPERVISOR 혼자이고, atc의 설계자이기도 하다. 한계다(10절).
@@ -40,8 +41,10 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 
 - `server/solo-claude-md.ts`가 순수 함수 `neutralize(md)`를 낸다. `server/solo-claude-md.test.ts`가 확인하는 것: 교신 절과 그 표지가 없다, 다른 절은 그대로다, 결과가 원문에서 그 두 부분을 뺀 것과 같다, 두 번 만들면 같은 바이트다, 루트 구조가 바뀌면 조용히 넘어가지 않고 던진다.
 - 루트 `CLAUDE.md`는 고치지 않고, 만든 사본을 커밋하지도 않는다. 파일은 solo STAND에만 있다.
-- 놓는 법: 이슈의 기준 커밋에서 solo STAND를 만들고, STAND의 `CLAUDE.md`를 그 파일로 덮은 뒤 `git update-index --skip-worktree CLAUDE.md`를 돌려 덮은 파일이 solo diff에 들어가지 않게 한다. 해시와 모델·CLI 버전을 실행 기록에 적는다.
-- solo 세션의 첫 프롬프트는 이슈의 작업 지시서 글 그대로다(3절). atc의 skill은 알려 주지 않는다. 세션이 `atc-task` skill을 불렀다면 실행 기록에 적는다(그 skill에는 atc의 STAND·PR·보고 단계가 있다. 본 실행 전에 두 번째 중립화가 필요한지는 파일럿이 정한다).
+- 놓는 법(클라우드 세션): 이슈의 기준 커밋에서 브랜치를 만들고 `CLAUDE.md`를 그 파일로 덮은 뒤, 그것만 바뀐 커밋("setup" 커밋)으로 올려 브랜치를 push한다. 모두 **세션을 시작하기 전에** 한다. 그 브랜치에서 클라우드 세션을 연다. setup 커밋의 SHA가 solo diff의 기준이라(`git diff <setup-sha> <head>`) 덮은 파일은 solo diff에 들어가지 않고, 리뷰 묶음도 `CLAUDE.md`를 뗀다(`--strip CLAUDE.md`). 해시와 모델·CLI 버전을 실행 기록에 적는다.
+- 브랜치는 atc 팔과 같은 저장소에 있다. 브랜치 이름은 문체 단서라 리뷰 묶음에서 뗀다(5절).
+- 대체안(로컬 데스크톱 세션): 기준 커밋에서 solo STAND를 만들고 STAND의 `CLAUDE.md`를 덮은 뒤, 커밋하지 않고 `git update-index --skip-worktree CLAUDE.md`를 돌린다.
+- solo 세션의 첫 프롬프트는 이슈의 작업 지시서 글 그대로다(3절). 클라우드 세션에는 브랜치가 담은 저장소 skill이 있고, 같은 규칙을 적용한다. atc의 skill은 알려 주지 않는다. 세션이 `atc-task` skill을 불렀다면 실행 기록에 적는다(그 skill에는 atc의 STAND·PR·보고 단계가 있다. 본 실행 전에 두 번째 중립화가 필요한지는 파일럿이 정한다).
 - MCC나 착륙 등급을 말하는 규칙은 PR 자체를 다루므로 파일에 남는다. solo에는 MCC가 없어서 그냥 안내가 된다. 두 팔이 다른 점으로 밝혀 둔다.
 
 ## 3. 이슈와 짝짓기
@@ -95,7 +98,7 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
   - Claude(`/code-review high` 방식)와 Codex 실행은 손으로 한다. 각자 `FINDING <X|Y> <P0|P1|P2> <file>:<line> — <글>` 줄을 파일로 저장한다. `node server/blind-pack-run.ts merge --mapping <파일> --claude <파일> --codex <파일>`이 팔·리뷰어별 P0/P1/P2와 P1+, 그리고 합을 낸다.
 - **server 이슈는 인수 테스트를 먼저** 어느 팔이 시작하기 전에 써서, 어느 팔도 못 본 것으로 정확성을 가린다.
 - 지적은 리뷰어마다 P0~P2로 매긴다. **P1+**는 P0 또는 P1이다. 앞선 조사에서 리뷰어 잡음이 컸으므로, 판정에는 두 리뷰어의 합을 쓰고 리뷰어별 수도 함께 적어 한 리뷰어만의 현상이 보이게 한다.
-- atc의 PR은 평소대로 착륙한다. solo의 PR은 품질에서 분명히 이기지 않으면 리뷰 뒤 닫는다.
+- atc의 PR은 평소대로 착륙한다. solo의 PR은 **Draft**로 연다. MCC는 Draft PR을 건너뛰고(`server/mcc-run.ts`가 `!draft`로 거른다) autoland는 건드리지 않으므로(`server/autoland.ts`의 NEVER 목록에 `draft`), solo PR은 atc가 검사도 착륙도 못 하고 atc 팔의 흐름 밖에 머문다. CI `check`는 그대로 돈다. solo PR은 품질에서 분명히 이겨 착륙시킬 때만 ready로 바꾸고, 아니면 리뷰 뒤 닫는다.
 
 ## 6. 판정 규칙 (사전 등록)
 
@@ -109,7 +112,10 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 
 ## 7. 일정
 
-- **파일럿**: 오늘의 구성으로 이슈 하나를 두 팔 모두에 돌려 기록, 타이머, 추출, 토큰 나눔, 리뷰 묶음을 점검한다. 결과에서는 뺀다.
+- **파일럿**: 오늘의 구성으로 이슈 하나를 두 팔 모두에 돌려 기록, 타이머, 추출, 토큰 나눔, 리뷰 묶음을 점검한다. 결과에서는 뺀다. 클라우드 solo 팔을 위한 점검도 들어간다:
+  - 클라우드 세션 transcript를 내보내 추출기로 읽는다(토큰과 끼어듦이 나오고 세션 화면과 맞는다). 못 읽으면 2절의 대체안을 쓴다.
+  - claude.ai/code 탭이 `attention-windows.json`에서 실제 창 제목으로 잡힌다.
+  - solo PR이 Draft로 열리고 `check`가 돌며, MCC와 autoland가 건드리지 않는다.
 - **오늘의 구성으로 본 실행.** ANNUNCIATOR 앱을 기다리지 않는다. 앱에 Linear 쓰기([ATC-249](https://linear.app/vocado/issue/ATC-249))와 터미널이 생기면 **atc 팔만 다시 잰다.** 앱에서 일하면 주의가 더 줄어드는지 보려는 것이다.
 - 예산: 하루 간격을 두면 대략 2~3주, SUPERVISOR 하루 1~2시간.
 
@@ -131,6 +137,7 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 - **저장소 하나**(atc), 모델 계열 하나, 빌더와 Claude 리뷰어가 같은 회사다.
 - solo 팔의 데이터는 git, `gh`, transcript로 다시 만든다(4절).
 - 중립화한 CLAUDE.md는 교신 규칙만 가른다. atc 팔은 fleet, MCC, Codex 리뷰도 다르다(2절). 이 비교는 "atc 전체 대 Claude Code 단독"이고 기능 하나의 시험이 아니다.
+- **solo 팔은 클라우드 컨테이너, atc는 호스트.** 경과 시간과 테스트 속도는 기계에 따라 달라진다(컨테이너 기동, 설치, 차가운 캐시). 주의보다 이쪽이 더 크다. 경과 시간은 이 단서와 함께 적고 판정에는 넣지 않는다.
 - 주의 도구는 창을 재지 생각을 재지 않는다. 손 타이머가 교차 확인이다.
 
 ## 11. 결과
@@ -148,3 +155,4 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 | 날짜 | 바뀐 것 | 이유 | 첫 본 실행 전/후 |
 |---|---|---|---|
 | 2026-10-03 | ATC-459에서 PROTOCOL 작성 | B1 (ATC-462) | 전 |
+| 2026-10-03 | solo 팔을 Claude Code 클라우드 세션에서 돌린다. solo PR은 Draft로 연다. 파일럿 점검표와 한계를 고침 | ATC-462 승인 뒤의 결정 (ATC-474) | 전 |

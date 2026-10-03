@@ -17,11 +17,12 @@ Does atc cut **active SUPERVISOR attention per merge-ready issue**, at no worse 
 
 | | atc arm | Solo arm |
 |---|---|---|
-| Who works | Normal atc operation: DISPATCH, AIRCRAFT (CAPTAIN and CREW), MCC INSPECTION and landing | The SUPERVISOR drives one interactive Claude Code session, one issue at a time. Subagents are allowed |
-| Where | The production fleet, in **exclusive experiment windows** (the fleet does nothing else) | A STAND (worktree) per issue, from the same base commit |
+| Who works | Normal atc operation: DISPATCH, AIRCRAFT (CAPTAIN and CREW), MCC INSPECTION and landing | The SUPERVISOR drives one interactive Claude Code **cloud** session ([claude.ai/code](https://claude.ai/code)), one issue at a time. Subagents are allowed |
+| Where | The production fleet, in **exclusive experiment windows** (the fleet does nothing else) | A cloud container per issue, on a branch from the same base commit |
 | Rules file | Root `CLAUDE.md` as it is | The **neutralized CLAUDE.md** (below) |
 | Review before merge | MCC INSPECTION and Codex review, as usual | None of atc's; the same blind review as the atc arm (section 5) |
 
+- Fallback: if the pilot shows the cloud session transcript cannot be exported in a form the extractor reads (needed for tokens and interruptions, section 4), the solo arm runs as a local desktop session in a STAND (worktree) instead, and the amendment is logged (section 12).
 - Same model and effort in both arms. Model and CLI versions are logged per run.
 - MCC and Codex review stay an atc-arm advantage on purpose: they are part of what atc is.
 - Operator: the SUPERVISOR alone, who is also atc's designer. This is a limitation (section 10).
@@ -40,8 +41,10 @@ sha256sum <solo STAND>/CLAUDE.md        # write the hash in the run log
 
 - `server/solo-claude-md.ts` exports the pure function `neutralize(md)`. `server/solo-claude-md.test.ts` checks that the radio section and its markers are gone, that the other sections are untouched, that the result is the original minus those two parts, that two runs give the same bytes, and that a changed root structure throws instead of passing silently.
 - The root `CLAUDE.md` is never edited and no derived copy is committed; the file lives only in the solo STAND.
-- Placing it: create the solo STAND from the issue's base commit, write the file over the STAND's `CLAUDE.md`, then run `git update-index --skip-worktree CLAUDE.md` so the replaced file never enters the solo diff. The hash goes in the run log. The model and CLI versions go there too.
-- The solo session's first prompt is the issue's work-order text, unchanged (section 3). It is not told about atc's skills. If the session invokes the `atc-task` skill anyway, the run log says so (the skill still carries atc's STAND, PR and report steps; the pilot decides whether that needs a second neutralization before the main run).
+- Placing it (cloud session): create a branch from the issue's base commit, write the file over `CLAUDE.md`, commit it as the only change (a "setup" commit) and push the branch, all **before the session starts**. Then start the cloud session on that branch. The setup commit's SHA is the solo diff's base, so the replaced file never enters the solo diff (`git diff <setup-sha> <head>`); the review package also strips `CLAUDE.md` (`--strip CLAUDE.md`). The hash goes in the run log. The model and CLI versions go there too.
+- The branch lives in the same repository as the atc arm's. Its name is a style giveaway and is stripped from review packages (section 5).
+- Fallback (local desktop session): create the solo STAND from the base commit, write the file over the STAND's `CLAUDE.md`, then run `git update-index --skip-worktree CLAUDE.md` instead of committing it.
+- The solo session's first prompt is the issue's work-order text, unchanged (section 3). In a cloud session the repository's own skills are present because the branch carries them; the same rule applies. It is not told about atc's skills. If the session invokes the `atc-task` skill anyway, the run log says so (the skill still carries atc's STAND, PR and report steps; the pilot decides whether that needs a second neutralization before the main run).
 - Rules that mention MCC or the landing tiers stay in the file because they govern the PR itself; the solo session has no MCC, so they act as plain guidance. That is part of the stated difference between the arms.
 
 ## 3. Issues and pairing
@@ -95,7 +98,7 @@ Known data gaps, stated before the run: the solo arm has no LOGBOOK, leak log or
   - Running Claude (`/code-review high` style) and Codex on the package stays manual: each saves its `FINDING <X|Y> <P0|P1|P2> <file>:<line> — <text>` lines to a file. `node server/blind-pack-run.ts merge --mapping <file> --claude <file> --codex <file>` prints P0/P1/P2 and P1+ per arm and reviewer, and the sum.
 - **Server issues get acceptance tests first**, written before either arm starts, so correctness is judged by something neither arm saw.
 - Findings are graded P0 to P2 per reviewer. **P1+** means P0 or P1. The earlier studies found large reviewer noise: the count that decides is the sum over both reviewers, and the per-reviewer counts are reported so a one-reviewer artefact is visible.
-- The atc PR lands as usual. The solo PR is closed after review unless it clearly wins on quality.
+- The atc PR lands as usual. Solo PRs are opened as **Draft**. MCC skips Draft PRs (`server/mcc-run.ts` filters `!draft`) and autoland never touches them (`server/autoland.ts`, `draft` is on its NEVER list), so a solo PR can neither be inspected nor landed by atc and stays out of the atc arm's flow; CI `check` still runs on it. A solo PR is marked ready only when it wins on quality and is to land; otherwise it is closed after review.
 
 ## 6. Decision rule (pre-registered)
 
@@ -109,7 +112,10 @@ If any one is reversed, solo wins. Otherwise the result is **inconclusive** and 
 
 ## 7. Schedule
 
-- **Pilot**: one issue in both arms on today's setup, to check logging, the timer, extraction, the token split and review packaging. Excluded from the results.
+- **Pilot**: one issue in both arms on today's setup, to check logging, the timer, extraction, the token split and review packaging. Excluded from the results. The checklist also covers the cloud solo arm:
+  - export a cloud session transcript and read it with the extractor (tokens and interruptions come out and match what the session showed); if it cannot be read, use the fallback of section 2;
+  - the claude.ai/code tab is matched by `attention-windows.json` against its real title;
+  - the solo PR opens as Draft, `check` runs, and MCC and autoland leave it alone.
 - **Main run on today's setup.** It does not wait for the ANNUNCIATOR app. When the app has Linear writes ([ATC-249](https://linear.app/vocado/issue/ATC-249)) and a terminal, **re-measure the atc arm only**, to test whether working from the app cuts attention further.
 - Budget: roughly 2 to 3 weeks given the one-day gap; 1 to 2 hours a day of the SUPERVISOR.
 
@@ -131,6 +137,7 @@ Aggregates and a per-issue table (issue key, attention, tokens, findings), negat
 - **One repository** (atc), one model family, the same vendor for builders and the Claude reviewer.
 - The solo arm's data are rebuilt from git, `gh` and transcripts (section 4).
 - The neutralized CLAUDE.md separates the radio rules only; the atc arm also differs by the fleet, MCC and Codex review (section 2). The comparison is "atc as a whole against Claude Code alone", not a test of one feature.
+- **Solo arm in a cloud container, atc on the host.** Elapsed time and test speed differ with the machine (container start, install, cold caches), more than attention does; elapsed time is reported with this caveat and is not part of the verdict.
 - Attention tooling measures windows, not thought; the manual timer is the cross-check.
 
 ## 11. Results
@@ -148,3 +155,4 @@ Summary rows (sum, ratio against solo, verdict by section 6) are added after the
 | Date | Change | Why | Before or after the first main run |
 |---|---|---|---|
 | 2026-10-03 | Protocol written from ATC-459 | B1 (ATC-462) | before |
+| 2026-10-03 | Solo arm runs in a Claude Code cloud session; solo PRs opened as Draft; pilot checklist and limitations updated | Decisions after ATC-462 was accepted (ATC-474) | before |
