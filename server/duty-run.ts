@@ -23,6 +23,7 @@ import type { DraftLine } from "./duty-drafts.ts";
 import { checkDutyText } from "./duty-language.ts";
 import { createDutyParser, type DutyEvent, type DutyRate, type DutyTurnUsage } from "./duty-stream.ts";
 import { fromThisApp } from "./origin.ts";
+import { timed } from "./job-timing.ts";
 
 // 컨텍스트 CAP은 duty.json의 cap 또는 모델에서 정한다(duty-cap.ts, ATC-496). 이 CAP으로 스스로 재시작하는 것은 아직 없다(NEW SHIFT는 손으로)
 const IDLE_TICK_MS = 30_000;
@@ -83,7 +84,7 @@ export class DutyRuntime {
     this.o = o;
     this.now = o.now ?? Date.now;
     this.s = initialState(this.readSession());
-    this.timer = setInterval(() => this.tick(), o.idleTickMs ?? IDLE_TICK_MS);
+    this.timer = setInterval(() => timed("tick:duty-run", () => this.tick()), o.idleTickMs ?? IDLE_TICK_MS);
     this.timer.unref();
     process.on("exit", this.onExit);
   }

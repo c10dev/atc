@@ -114,3 +114,7 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 - `invalid`·`missing`: 이 브라우저의 비밀이 파일의 해시와 맞지 않습니다(다른 브라우저, 저장소를 지움). 자격 만들기로 다시 짝짓고 새 해시 줄을 더합니다. 기기를 여럿 쓰면 줄이 여럿입니다.
 - 시험 서버(7702)는 `ATC_SUPERVISOR_HASH_FILE=<임시 파일> ATC_SUPERVISOR_ALLOW_USER_FILE=1`로 띄우면 사용자 소유 해시 파일을 받습니다(운영에서는 쓰지 않습니다).
 - `atcctl`로 하는 일(관제·팀 세션의 보고, READBACK, 착륙 …)은 자격 없이 그대로 됩니다.
+
+## atc 서버가 CPU를 많이 쓴다
+
+설정 → OPERATIONS → **JOB TIMING**(기본 on, SUPERVISOR 전용)이 서버의 일마다 몇 번 돌고 이벤트 루프를 얼마나 붙들었는지 5분 구간으로 `job-timing/<날짜>.jsonl`에 적습니다(ATC-525, [job-timing.md](../job-timing.ko.md)). 지난 한 시간을 출처별로 합친 값은 `curl -s localhost:7700/api/job-timing?hours=1`입니다. 재기만 하고 화면은 바뀌지 않으며, 끄면 재지도 적지도 않습니다. `dropped`가 0이 아니면 남기지 못한 시간이 있다는 뜻입니다. 동기 시간만 잡히므로 `await` 뒤에 도는 일(자식 프로세스 spawn)은 호스트에서 `top -H -p <pid>`나 시험 서버의 `NODE_OPTIONS=--cpu-prof`로 봅니다.

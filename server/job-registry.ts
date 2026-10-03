@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { JobContext, JobDecl } from "./job-def.ts";
+import { timed } from "./job-timing.ts";
 import type { Snapshot } from "./model.ts";
 import { loadDeclarations } from "./declarations.ts";
 
@@ -54,17 +55,17 @@ export function createJobRunner(jobs: readonly JobDecl[], ctx: JobContext, timer
           if (t - (last.get(j.name) ?? 0) < every) continue;
           last.set(j.name, t);
         }
-        void j.run(ctx, snapshot);
+        void timed(`job:${j.name}`, () => j.run(ctx, snapshot)); // 시간만 잰다(ATC-525): 던지면 옛날처럼 그대로 던진다
       }
     },
     startTimers() {
       for (const j of jobs) {
-        if (j.start) void Promise.resolve(j.run(ctx, null)).catch(failed(j));
+        if (j.start) void Promise.resolve(timed(`job:${j.name}`, () => j.run(ctx, null))).catch(failed(j));
         if (j.every !== undefined) {
           timers
             .setInterval(() => {
               try {
-                void Promise.resolve(j.run(ctx, ctx.current())).catch(failed(j));
+                void Promise.resolve(timed(`job:${j.name}`, () => j.run(ctx, ctx.current()))).catch(failed(j));
               } catch (e) {
                 failed(j)(e);
               }

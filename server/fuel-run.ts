@@ -27,6 +27,7 @@ import { fleetKeyOf, regKey } from "./registration.ts";
 import { trendScanDays, tzOffsetOf, usageTrend } from "./fuel-trend.ts";
 import { loadShard, pruneShards, saveShard, shardName } from "./fuel-cache.ts";
 import { type FuelFile, FuelTree } from "./fuel-tree.ts";
+import { timed } from "./job-timing.ts";
 
 // FUEL 읽기(ATC-50, docs/fuel.md 4): ~/.claude/projects의 대화 기록을 파일마다 지난번 바이트 뒤부터만 읽는다(talkEventsFile과 같은 방식).
 // 본 대화 기록 <sessionId>.jsonl은 CAPTAIN, <sessionId>/subagents/**/agent-*.jsonl은 CREW. 읽기만 하고 아무것도 쓰지 않는다.
@@ -308,6 +309,10 @@ export interface FuelScan {
 
 // since 뒤에 바뀐 기록 파일을 읽는다(파일마다 지난번 바이트 뒤부터). GET /api/fuel과 LOGBOOK(FUEL F4)이 같이 쓴다
 export function scanFuel(since: number, sessions: Snapshot["sessions"]): FuelScan {
+  return timed("fuel:scan", () => scanFuelInner(since, sessions)); // 시간만 잰다(ATC-525)
+}
+
+function scanFuelInner(since: number, sessions: Snapshot["sessions"]): FuelScan {
   const files = listFiles(since);
   const seen = new Set(files.map((f) => f.path));
   // 더 긴 기간으로 한 번 읽은 파일은 캐시에 남기고, 없어진 파일만 지운다
