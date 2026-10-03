@@ -11,6 +11,7 @@ import {
   NODE_SHIM,
   parseGateConfig,
   parseRuns,
+  pollMsOf,
   queuePosition,
   shouldAnnounce,
   timeoutMessage,
@@ -30,6 +31,22 @@ test("config: 기본값, 환경이 파일을 이긴다, 틀린 값은 기본값,
   assert.equal(parseGateConfig({ slots: 99 }).slots, 2);
   assert.equal(parseGateConfig({}, { ATC_GATE_WAIT_LIMIT_SEC: "5" }).waitLimitMs, 5000);
   assert.equal(parseGateConfig({}, { ATC_GATE_TEST_CONCURRENCY: "x" }).testConcurrency, 3);
+});
+
+test("시험용 손잡이: 점검 간격과 ms 대기 한도. 비었거나 틀리면 운영 기본 그대로(ATC-523)", () => {
+  assert.equal(pollMsOf(undefined), 1000);
+  assert.equal(pollMsOf(""), 1000);
+  assert.equal(pollMsOf("abc"), 1000);
+  assert.equal(pollMsOf("5"), 1000, "너무 작으면 기본");
+  assert.equal(pollMsOf("100000"), 1000, "너무 크면 기본");
+  assert.equal(pollMsOf("50"), 50);
+  assert.equal(pollMsOf("20"), 20);
+  assert.equal(parseGateConfig({}).waitLimitMs, 1_800_000, "기본 한도는 그대로");
+  assert.equal(parseGateConfig({}, { ATC_GATE_WAIT_LIMIT_MS: "400" }).waitLimitMs, 400);
+  assert.equal(parseGateConfig({ waitLimitSec: 9 }, { ATC_GATE_WAIT_LIMIT_MS: "400" }).waitLimitMs, 400, "ms 손잡이가 먼저");
+  assert.equal(parseGateConfig({ waitLimitSec: 9 }, { ATC_GATE_WAIT_LIMIT_MS: "50" }).waitLimitMs, 9000, "100ms 미만은 무시");
+  assert.equal(parseGateConfig({ waitLimitSec: 9 }, { ATC_GATE_WAIT_LIMIT_MS: "x" }).waitLimitMs, 9000);
+  assert.equal(parseGateConfig({}, { ATC_GATE_WAIT_LIMIT_SEC: "5" }).waitLimitMs, 5000, "초 손잡이는 그대로");
 });
 
 test("gateDirOf: 환경 변수가 먼저, 아니면 운영 상태 폴더와 따로인 atc-gate", () => {

@@ -32,6 +32,15 @@ test("설정: 기본값은 켜짐·3슬롯·90초, 틀린 값은 기본값, 끄�
   assert.equal(parseBrowserGateConfig(null).slots, BROWSER_SLOTS_DEFAULT);
 });
 
+test("설정: ms 대기 한도는 시험용 손잡이다. 기본과 초 단위 값은 그대로(ATC-523)", () => {
+  assert.equal(parseBrowserGateConfig({}).waitLimitMs, 90_000);
+  assert.equal(parseBrowserGateConfig({}, { ATC_BROWSER_WAIT_LIMIT_MS: "400" }).waitLimitMs, 400);
+  assert.equal(parseBrowserGateConfig({ waitLimitSec: 30 }, { ATC_BROWSER_WAIT_LIMIT_MS: "400" }).waitLimitMs, 400);
+  assert.equal(parseBrowserGateConfig({ waitLimitSec: 30 }, { ATC_BROWSER_WAIT_LIMIT_MS: "50" }).waitLimitMs, 30_000, "100ms 미만은 무시");
+  assert.equal(parseBrowserGateConfig({ waitLimitSec: 30 }, { ATC_BROWSER_WAIT_LIMIT_MS: "x" }).waitLimitMs, 30_000);
+  assert.equal(parseBrowserGateConfig({}, { ATC_BROWSER_WAIT_LIMIT_SEC: "5" }).waitLimitMs, 5000);
+});
+
 test("설정: 환경 변수가 파일을 이기고, 진짜 Chrome은 절대 경로만 받는다", () => {
   const c = parseBrowserGateConfig({ slots: 2, waitLimitSec: 30 }, { ATC_BROWSER_SLOTS: "4", ATC_BROWSER_WAIT_LIMIT_SEC: "bad", ATC_BROWSER_REAL: "/opt/chrome" });
   assert.equal(c.slots, 4);

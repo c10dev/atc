@@ -4,9 +4,9 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { exitCodeOf, mayTry, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision } from "./verify-gate.ts";
+import { exitCodeOf, mayTry, pollMsOf, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision } from "./verify-gate.ts";
 
-export { exitCodeOf, mayTry, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision };
+export { exitCodeOf, mayTry, pollMsOf, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision };
 
 export const BROWSER_WHERE = "local";
 export const BROWSER_SLOTS_DEFAULT = 3; // 8 vCPU: VERIFY GATE 두 건이 test 프로세스 3개씩 쓰고, 브라우저는 보통 놀고 가끔 한 코어를 쓴다
@@ -38,7 +38,8 @@ export function parseBrowserGateConfig(raw: unknown, env: NodeJS.ProcessEnv = {}
   return {
     mode: f.mode === "off" ? "off" : "on",
     slots: intIn(env.ATC_BROWSER_SLOTS ?? f.slots, 1, BROWSER_SLOTS_MAX, BROWSER_SLOTS_DEFAULT),
-    waitLimitMs: intIn(env.ATC_BROWSER_WAIT_LIMIT_SEC ?? f.waitLimitSec, 1, 3600, BROWSER_WAIT_LIMIT_SEC_DEFAULT) * 1000,
+    // ATC_BROWSER_WAIT_LIMIT_MS는 시험용 정밀 손잡이(100ms 이상). 있으면 초 단위 값보다 먼저 본다
+    waitLimitMs: intIn(env.ATC_BROWSER_WAIT_LIMIT_MS, 100, 3_600_000, 0) || intIn(env.ATC_BROWSER_WAIT_LIMIT_SEC ?? f.waitLimitSec, 1, 3600, BROWSER_WAIT_LIMIT_SEC_DEFAULT) * 1000,
     realExecutable: typeof real === "string" && real.startsWith("/") ? real : null,
   };
 }

@@ -13,6 +13,7 @@ export const WAIT_LIMIT_SEC_DEFAULT = 1800;
 export const TEST_CONCURRENCY_DEFAULT = 3;
 export const SLOTS_MAX = 8;
 export const ANNOUNCE_EVERY_MS = 30_000;
+export const POLL_MS_DEFAULT = 1000; // 줄 선 실행이 자리를 다시 보는 간격
 
 export type GateMode = "on" | "off";
 
@@ -41,12 +42,16 @@ export function parseGateConfig(raw: unknown, env: NodeJS.ProcessEnv = {}): Gate
   return {
     mode: f.mode === "off" ? "off" : "on",
     slots: intIn(env.ATC_GATE_SLOTS ?? f.slots, 1, SLOTS_MAX, SLOTS_DEFAULT),
-    waitLimitMs: intIn(env.ATC_GATE_WAIT_LIMIT_SEC ?? f.waitLimitSec, 1, 86_400, WAIT_LIMIT_SEC_DEFAULT) * 1000,
+    // ATC_GATE_WAIT_LIMIT_MS는 시험용 정밀 손잡이(100ms 이상). 있으면 초 단위 값보다 먼저 본다
+    waitLimitMs: intIn(env.ATC_GATE_WAIT_LIMIT_MS, 100, 86_400_000, 0) || intIn(env.ATC_GATE_WAIT_LIMIT_SEC ?? f.waitLimitSec, 1, 86_400, WAIT_LIMIT_SEC_DEFAULT) * 1000,
     testConcurrency: intIn(env.ATC_GATE_TEST_CONCURRENCY ?? f.testConcurrency, 1, 64, TEST_CONCURRENCY_DEFAULT),
     remote: f.remote === "off" ? "off" : "on",
     probeMs: intIn(env.ATC_GATE_REMOTE_PROBE_SEC ?? f.remoteProbeSec, 1, 30, PROBE_SEC_DEFAULT) * 1000,
   };
 }
+
+// 점검 간격: 시험이 줄이려고 ATC_GATE_POLL_MS를 둔다(20–5000ms). 비었거나 틀린 값은 기본 1000ms라 운영 동작은 그대로다
+export const pollMsOf = (raw: unknown): number => intIn(raw, 20, 5000, POLL_MS_DEFAULT);
 
 // 줄: 표 이름은 `<붙은 ms 15자리>-<pid>-<무작위>`라 이름순이 도착순이다
 export interface Ticket {
