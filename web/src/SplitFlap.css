@@ -1,0 +1,118 @@
+/* 판 글자(split-flap, SplitFlap.tsx): 타일과 넘기는 반쪽 판, 테마·밀도별 글자(ATC-425). 넘기는 움직임은 SplitFlap.tsx가 건다 */
+.flap {
+  display: inline-flex;
+  gap: var(--space-0-5);
+}
+.flap b {
+  display: inline-grid;
+  place-items: center;
+  width: var(--flap-w, 15px);
+  height: var(--flap-h, 21px);
+  border-radius: var(--radius-sm);
+  background: var(--flap-tile);
+  box-shadow: inset 0 0 0 1px var(--flap-edge);
+  font: 700 var(--text-sm) var(--mono);
+  color: var(--flap-ink);
+}
+/* 판 없이 글자만 넘기는 칸(TIME·REMARKS 등). 글꼴과 색은 둘러싼 글에서 받는다. */
+.flap-bare b {
+  display: inline-block;
+  font: inherit;
+}
+.flap b,
+.flap-bare b {
+  position: relative;
+  white-space: pre;
+}
+/* ── split-flap 칸의 반쪽 판. 넘기는 움직임은 SplitFlap.tsx가 건다 ── */
+.is-flipping {
+  perspective: 140px;
+}
+.fl-sizer {
+  visibility: hidden;
+}
+.fl-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: visible clip;
+  border-radius: inherit;
+  background: var(--flap-tile);
+  background-size: 100% 200%;
+  box-shadow: inherit;
+  backface-visibility: hidden;
+}
+.flap-bare .fl-half {
+  background: none;
+}
+.fl-half i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 200%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+}
+.flap-bare .fl-half i {
+  justify-items: start;
+}
+.fl-top {
+  top: 0;
+  background-position: top;
+  transform-origin: bottom;
+}
+.fl-bot {
+  top: 50%;
+  background-position: bottom;
+  transform-origin: top;
+}
+.fl-bot i {
+  top: -100%;
+}
+/* 기울어진 판의 그늘 */
+.fl-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--shade);
+  opacity: 0;
+}
+/* 판이 없는 칸에서 떨어져 앉는 글자 */
+.fl-tick {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.flap-bare .fl-tick {
+  justify-items: start;
+}
+:root[data-theme="cockpit"] .flap {
+  gap: 0;
+}
+:root[data-theme="cockpit"] .flap b {
+  width: auto;
+  height: auto;
+  font-size: var(--text-lg);
+  letter-spacing: 0.04em;
+}
+:root[data-theme="night"] .flap b {
+  font-family: var(--display);
+}
+:root[data-theme="night"] .flap {
+  gap: 0;
+}
+:root[data-theme="night"] .flap b {
+  color: var(--tone);
+  width: auto;
+  height: auto;
+  font-size: var(--text-lg);
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--tone) 50%, transparent);
+}
+/* 판 타일이 있는 Radar Console에서만 글자를 줄인다(다른 테마는 타일 없이 글자만) */
+:root[data-density="compact"][data-theme="radar"] .flap b {
+  font-size: var(--text-xs);
+}
