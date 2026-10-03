@@ -43,7 +43,7 @@ import {
 } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
 import { fleetKeyOf, regKey, registrationOf } from "./registration.ts";
-import { unreachableWhy } from "./account-reach.ts";
+import { CROSS_ACCOUNT_LABEL, unreachableWhy } from "./account-reach.ts";
 import { RESTARTING_TEXT } from "./restarting.ts";
 import { applyGroundStops, enforcedStops, groundStopWhy } from "./atfm.ts";
 import { classLabel, classOf, needsStand } from "./crew.ts";
@@ -151,6 +151,8 @@ export const regOfProposal = (p: Pick<Proposal, "registration" | "aircraftName">
 
 // SUPERSEDED 사유의 앞머리: AIRCRAFT 사정으로 닫힘
 export const AIRCRAFT_WHY = "AIRCRAFT 불가";
+// ACCOUNT 불일치로 닫은 카드의 사유 머리(ATC-458): AIRCRAFT 불가로 시작해 misfireOf가 wrong-aircraft로 센다. crossAccountClosedOf가 이 머리로 센다
+export const CROSS_ACCOUNT_CLOSED_WHY = `${AIRCRAFT_WHY}: ${CROSS_ACCOUNT_LABEL}`;
 // 승인된 ASSIGN의 AIRCRAFT에 세션이 없는 채 approvedWaitMin이 지나 닫음(ATC-388). 판정이 아니라서 24시간 짝 규칙을 시작하지 않는다
 export const APPROVED_NO_SESSION_WHY = "승인 뒤 세션 없음";
 // 멈춘 AIRCRAFT(RESUME·STALLED, 끝나지 않은 In Progress FLIGHT, ATC-90)로 닫힘. SUPERVISOR 판정이 아니라 24시간 짝 규칙을 시작하지 않는다
@@ -465,9 +467,10 @@ function pairUntil(p: Pick<Proposal, "at" | "timeline" | "requeuedAt">, now: num
   return until > now ? until : null;
 }
 // "더 나은 배정으로 바뀜"으로 닫힌 제안은 판정받지 못한 것이다. 24시간 규칙에서 빼 다시 후보가 되게 한다
+// ACCOUNT 불일치로 닫은 카드(ATC-458)도 판정이 아니다: AIRCRAFT가 닿게 되면 같은 짝이 다시 후보가 된다
 // LAUNCH 실패(ATC-129)도 판정이 아니다: 다음 계획에 같은 카드가 다시 나와 SUPERVISOR가 다시 승인할 수 있다(스스로 다시 띄우지는 않는다)
 const churned = (p: Pick<Proposal, "status" | "reason">) =>
-  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY, DELIVERY_FAILED_WHY, AUTO_STALE_WHY].some((w) => (p.reason ?? "").startsWith(w));
+  p.status === "superseded" && [BETTER_WHY, STOPPED_WHY, LAUNCH_FAILED_WHY, DELIVERY_FAILED_WHY, AUTO_STALE_WHY, CROSS_ACCOUNT_CLOSED_WHY].some((w) => (p.reason ?? "").startsWith(w));
 // 판정 대기 중인 제안을 바꾸려면 새 제안 점수가 이만큼(비율) 높아야 한다
 export const REPLACE_MARGIN = 0.2;
 
@@ -581,6 +584,19 @@ export function crossAccountWhyOf(p: Pick<Proposal, "launch" | "registration" | 
   return unreachableWhy({ fromName: "OCC", from: from?.account, toName: p.aircraftName ?? reg, to: to?.account });
 }
 
+// 승인됐는데 ACCOUNT 불일치로 보내지 못하는 카드 → FOLLOW·STATUS에 보일 한 줄(ATC-458). 짧은 글: 누가 어느 ACCOUNT에 있나. 한쪽이라도 모르면 없다
+export function crossAccountCardWaitsOf(proposals: readonly Proposal[], s: Pick<Snapshot, "sessions">, teamPattern?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const from = s.sessions.find((x) => x.status !== "dead" && x.name === "OCC");
+  for (const p of proposals) {
+    if (p.kind !== "ASSIGN" || p.status !== "approved" || !crossAccountWhyOf(p, s, teamPattern)) continue;
+    const reg = regOfProposal(p, teamPattern)!;
+    const to = s.sessions.find((x) => x.status !== "dead" && regKey(x.name, teamPattern) === reg);
+    out[p.id] = `${CROSS_ACCOUNT_LABEL} — ${p.aircraftName ?? reg}(${to?.account}) ≠ OCC(${from?.account}), OCC가 닿지 못함`;
+  }
+  return out;
+}
+
 // RESTARTING(ATC-91): /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 열린·승인된 ASSIGN → 카드가 보일 글.
 // LAUNCHING(ATC-129): LAUNCH한 launch 카드의 AIRCRAFT에 아직 세션이 없다(계획에 absent로 남음)
 export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, teamPattern?: string, sessions?: Pick<Snapshot, "sessions">): Record<string, string> {
@@ -593,7 +609,7 @@ export function waitingOf(proposals: Proposal[], plan: Pick<Plan, "aircraft">, t
     const reg = regOfProposal(p, teamPattern) ?? "";
     if (restarting.has(reg)) out[p.id] = RESTARTING_TEXT;
     else if (p.status === "approved" && p.launched?.ok && absent.has(reg)) out[p.id] = LAUNCHING_TEXT;
-    else if (sessions && p.kind === "ASSIGN" && (crossWhy = crossAccountWhyOf(p, sessions, teamPattern))) out[p.id] = `ACCOUNT 불일치 — ${crossWhy}`; // ATC-251: 보내기 전에 카드가 먼저 말한다
+    else if (sessions && p.kind === "ASSIGN" && (crossWhy = crossAccountWhyOf(p, sessions, teamPattern))) out[p.id] = `${CROSS_ACCOUNT_LABEL} — ${crossWhy}`; // ATC-251: 보내기 전에 카드가 먼저 말한다
   }
   return out;
 }
@@ -706,8 +722,11 @@ export function syncOps(
     Boolean(acOf(p) && canTakeNow(acOf(p)!, stateOf.get(p.flight)));
   // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT의 제안은 AIRCRAFT 사정만으로는 닫지 않는다(ATC-91). 유예(restartGraceMin)가 지나면 RESTARTING이 사라져 예전처럼 닫힌다.
   // LAUNCH한 launch 카드(ATC-129)도 같은 유예 동안 기다린다: 새 세션은 CREW BRIEFING을 읽느라 잠깐 AIRBORNE이다
+  // ACCOUNT 불일치(ATC-458): 스위치(crossAccountRelease)가 꺼져 있으면 카드를 닫지 않고 ATC-251 사유로 기다린다
   const waits = (p: Proposal, reason: string) =>
-    p.kind === "ASSIGN" && (acOf(p)?.restarting === true || launchWaiting(p, now, cfg.restartGraceMin)) && reason.startsWith(`${AIRCRAFT_WHY}:`);
+    p.kind === "ASSIGN" &&
+    (acOf(p)?.restarting === true || launchWaiting(p, now, cfg.restartGraceMin) || (acOf(p)?.crossAccount === true && cfg.crossAccountRelease === "off")) &&
+    reason.startsWith(`${AIRCRAFT_WHY}:`);
   // RESUME 카드(ATC-129): FLIGHT가 아직 In Progress이고 LOGBOOK에 없어야 한다. 아니면 닫을 사유
   const resumeWhy = (p: Proposal): string | null => {
     const t = stateOf.get(p.flight);

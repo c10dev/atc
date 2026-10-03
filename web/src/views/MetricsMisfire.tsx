@@ -74,6 +74,11 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
         </table>
         </TableScroll>
       )}
+      {dispatch && typeof dispatch.total.crossAccount === "number" && (
+        <p className="muted" data-testid="cross-account-closed">
+          ACCOUNT 불일치로 닫은 DISPATCH 카드 <span className="mono">{dispatch.total.crossAccount}</span>건 · 지난 {DAYS}일 (OCC가 닿지 못하는 AIRCRAFT의 카드, 스위치 ACCOUNT RELEASE)
+        </p>
+      )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (
         <>
