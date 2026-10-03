@@ -83,6 +83,7 @@ export interface FlowInput {
   mainRed: readonly string[]; // main CI가 빨간 AIRPORT
   queue: readonly QueueItem[]; // SUPERVISOR QUEUE(할 일)
   thresholds?: Readonly<Record<string, number>>; // AIRPORT별 "착륙 없음" 기준(분). 없으면 floor
+  noGapRule?: readonly string[]; // 간격 규칙이 없는 AIRPORT(스위치 off거나 간격이 8개 미만, ATC-501). ground stop·main CI 판정은 그대로
   floorMin?: number; // 기본 30
   sinceLook?: { since: string; released: number; landed: number; deployed: number } | null;
 }
@@ -116,6 +117,8 @@ export interface FlowAirport {
   reason?: string;
   holder?: Holder;
   thresholdMin: number;
+  gapStopped?: boolean; // 막힘이 간격 규칙에서 나왔다(ATC-501: 에피소드 기록이 읽는다)
+  lastOnAt?: string | null; // 마지막 착륙(ON)
   sinceOnMin: number | null;
   landings12h: number[]; // 오래된 시간부터 12칸
   cells: FlowCell[];
@@ -364,6 +367,7 @@ export function flowViewOf(inp: FlowInput): FlowView {
     let reason: string | undefined;
     let holder: Holder | undefined;
     let waitMin = 0;
+    let gapStopped = false;
     const stop = inp.stops.find((s) => s.airport === a.code);
     if (stop) {
       verdict = "stopped";
@@ -373,8 +377,9 @@ export function flowViewOf(inp: FlowInput): FlowView {
       verdict = "stopped";
       reason = "main CI 빨강";
       holder = "EXTERNAL";
-    } else if (sinceOnMin !== null && sinceOnMin > thresholdMin && moving.length > 0) {
+    } else if (!inp.noGapRule?.includes(a.code) && sinceOnMin !== null && sinceOnMin > thresholdMin && moving.length > 0) {
       verdict = "stopped";
+      gapStopped = true;
       holder = (stalled.find((p) => p.holder !== "SUPERVISOR") ?? leadMoving)?.holder;
       reason = `착륙 없음 ${ageText(sinceOnMin)} (기준 ${thresholdMin}m)${holder ? ` · ${HOLDER_TEXT[holder]}` : ""}`;
       waitMin = sinceOnMin;
@@ -388,7 +393,7 @@ export function flowViewOf(inp: FlowInput): FlowView {
     if (verdict === "stopped" && waitMin === 0) waitMin = sinceOnMin ?? 0;
     // 막힌 AIRPORT의 시스템 몫 칸은 경고 톤
     if (verdict === "stopped") for (const c of cells) if (c.stuck && c.holder !== "SUPERVISOR") c.tone = "warning";
-    return { code: a.code, name: a.name, verdict, ...(reason ? { reason } : {}), ...(holder ? { holder } : {}), thresholdMin, sinceOnMin, landings12h: l12, cells, waitMin };
+    return { code: a.code, name: a.name, verdict, ...(reason ? { reason } : {}), ...(holder ? { holder } : {}), thresholdMin, gapStopped, lastOnAt: last === null ? null : new Date(last).toISOString(), sinceOnMin, landings12h: l12, cells, waitMin };
   });
 
   // 5) 가장 나쁜 AIRPORT가 판정 한 줄을 정한다

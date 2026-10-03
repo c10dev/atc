@@ -63,6 +63,7 @@ export type RecordLine =
   // STALE STOP(ATC-369): FLIGHT가 끝난(머지·ARRIVED) AIRCRAFT가 PENDING·HUNG으로 30분 남아 서버가 멈춘 것. ok는 STOP 결과(세션 기록은 fleet stop 줄이 따로 남는다), mode는 스위치 바꿈
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "duplicate-title-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것

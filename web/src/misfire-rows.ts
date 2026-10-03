@@ -21,7 +21,16 @@ export interface AutoView {
   recent: AutoMisfireLine[];
 }
 
-export type LaneName = "DISPATCH" | "SCHEDULE" | "FLEET PLAN";
+// `/api/landing-gap`(ATC-501): HOME 착륙 간격 규칙의 에피소드와 스스로 풀린 막힘(MISFIRE) 수
+export interface GapView {
+  switch: string;
+  episodes: number;
+  closed: number;
+  misfires: number;
+  share: number | null;
+}
+
+export type LaneName = "DISPATCH" | "SCHEDULE" | "FLEET PLAN" | "LANDING GAP";
 export interface LaneRow {
   lane: LaneName;
   switch: string | null; // on·off, DISPATCH는 서버의 자동 운항 스위치가 따로라 모른다
@@ -34,7 +43,7 @@ export interface LaneRow {
 const share = (m: number, a: number) => (a > 0 ? m / a : null);
 
 // 레인마다 한 줄. 읽지 못한 레인은 줄을 내지 않는다(0으로 지어내지 않는다)
-export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | null): LaneRow[] {
+export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | null, gap: GapView | null = null): LaneRow[] {
   const out: LaneRow[] = [];
   if (dispatch) out.push({ lane: "DISPATCH", switch: null, applied: dispatch.total.approvals, misfires: dispatch.total.misfires, share: dispatch.total.share, failed: 0 });
   if (auto) {
@@ -42,6 +51,8 @@ export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | nu
     out.push({ lane: "SCHEDULE", switch: auto.switches.schedule, applied: auto.applied.schedule, misfires: sum("schedule"), share: share(sum("schedule"), auto.applied.schedule), failed: 0 });
     out.push({ lane: "FLEET PLAN", switch: auto.switches.fleetPlan, applied: auto.applied.fleet, misfires: sum("fleet"), share: share(sum("fleet"), auto.applied.fleet), failed: auto.applied.fleetFailed });
   }
+  // 한 일 = 간격 규칙이 낸 막힘 에피소드, 몫은 닫힌 에피소드 중 스스로 풀린 것
+  if (gap) out.push({ lane: "LANDING GAP", switch: gap.switch, applied: gap.episodes, misfires: gap.misfires, share: gap.share, failed: 0 });
   return out;
 }
 
