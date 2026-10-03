@@ -188,6 +188,7 @@ Every `*.test.ts` next to a module is its unit test.
 | `GET /api/dispatch/proposals/:id` | One proposal and the current mode (for send-guard) |
 | `POST /api/dispatch/mode` | Switch `{mode: "shadow" \| "approval"}` (saved in `dispatch.json`) |
 | `GET /api/dispatch/flight/:key` | Ticket body and comments from Linear (read-only) |
+| `PUT /api/settings` `{dutyCap}` | DUTY CAP (ATC-496): `duty.json` `cap`, an integer in tokens from 50,000 to 1,000,000, or `null` to remove it. SUPERVISOR only (this screen's Origin); atomic write, one FLIGHT RECORDER line `duty-cap` `{by, from, to}`. `GET /api/duty/status` returns the effective `cap`, `capSource` (`"duty.json" \| "model" \| "default"`) and `capNote` (why a bad `cap` in the file was ignored, else null). No `cap`: 1,000,000 when the last seen model id ends in `[1m]`, else 250,000 (`dutyCapOf`, `server/duty-cap.ts`) |
 | `GET /api/duty/brief` | DUTY L0 (ATC-219): one-page text summary of what atc knows (`{v, at, chars, truncated, text}`), capped at `duty.briefMaxChars`. Read-only |
 | `POST /api/duty/card` `{kind, key}` | DUTY draft: accepted only if `<kind>/<key>` is a current SUPERVISOR QUEUE row. Appends a line to `duty-drafts.jsonl` (state folder); nothing goes out |
 | `POST /api/duty/note` `{text, until?}` | DUTY draft: a proposed standing decision (not `decisions.jsonl`, D4). Appends to `duty-drafts.jsonl` |

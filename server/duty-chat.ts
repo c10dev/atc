@@ -20,6 +20,8 @@ export interface DutyStatusView {
   model: string | null;
   context: number | null;
   cap: number;
+  capSource?: "duty.json" | "model" | "default"; // ATC-496
+  capNote?: string | null;
   costUsd: number | null;
   rates: DutyRate[];
   queued: number;

@@ -80,6 +80,8 @@ export type RecordLine =
   // 그 밖의 백그라운드 세션 STOP(ATC-184): AIRCRAFT도 관제 세션도 아닌 세션을 SUPERVISOR가 FLEET 탭에서 멈춤
   | { t: string; kind: "other"; op: "stop"; session: string; by: string; ok: boolean; jobId: string; cwd?: string; account?: string; error?: string }
   // LAUNCH MODEL을 바꿈(ATC-279): 설정 창에서 SUPERVISOR가 한 칸을 바꿀 때마다 한 줄. scope default는 key 없음
+  // DUTY 컨텍스트 CAP을 바꿈(ATC-496): 설정 창에서 SUPERVISOR가 바꿀 때마다 한 줄. from·to는 duty.json의 cap 토큰(null이면 없음 = 모델로 정함)
+  | { t: string; kind: "duty-cap"; by: string; from: number | null; to: number | null }
   | { t: string; kind: "launch-model"; by: string; scope: "default" | "airport" | "aircraft"; key?: string; from: string | null; to: string | null }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
