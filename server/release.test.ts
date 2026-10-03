@@ -238,9 +238,10 @@ test("화면 자료: 에이전트 제안(SCHEDULE NEW 초안)과 최근 발권·
   assert.deepEqual(v.channels, { screen: 1, "duty-chat": 1, attested: 0 });
 });
 
-function fireHarness(tickets: Ticket[], moveToTodo: NonNullable<ReleaseDeps["moveToTodo"]>) {
+function fireHarness(tickets: Ticket[], moveToTodo: NonNullable<ReleaseDeps["moveToTodo"]>, parkedOn = false) {
   const h = harness(tickets);
   h.deps.moveToTodo = moveToTodo;
+  h.deps.parkedOn = () => parkedOn; // 스위치가 꺼진 옛 동작이 기본, PARKED 시험은 켠다(ATC-487)
   const app = new Hono();
   mountReleases(app, h.deps.snapshot, h.deps);
   const post = (body: unknown, headers: Record<string, string> = FROM_SCREEN) =>
@@ -271,6 +272,34 @@ test("발권 fire: Todo로 옮긴 뒤 screen 발권을 적는다. 옮기기가 �
   assert.equal((await post({ flight: "ATC-1", hash: "hash-ATC-1" })).status, 200);
   assert.deepEqual(moves, [["ATC-1", "Backlog"], ["ATC-1", "Backlog"]]);
   assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel, l.via] : l.op)), [["ATC-1", "screen", "click"]]);
+});
+
+test("발권 fire PARKED(ATC-487): 스위치가 켜지면 막는 이슈 없는 Backlog 이슈를 Todo로 옮기며 parked 발권을 적는다. 거절 조건은 그대로", async () => {
+  const moves: string[] = [];
+  const tickets = [done("ATC-90"), backlog("ATC-3", { blockedBy: [] }), backlog("ATC-4", { blockedBy: [], priority: 0 }), backlog("ATC-5", { blockedBy: ["ATC-6"] }), backlog("ATC-6", { blockedBy: [] }), backlog("VOC-1", { blockedBy: [] }), backlog("ATC-7", { blockedBy: [], children: ["ATC-8"] }), backlog("ATC-8", { blockedBy: [], parent: "ATC-7" })];
+  const { h, post } = fireHarness(tickets, async (k) => (moves.push(k), { ok: true }), true);
+  assert.equal((await post({ flight: "ATC-3" }, {})).status, 403); // Origin 없음
+  assert.equal((await post({ flight: "ATC-4" })).status, 409); // 우선순위 없음
+  assert.equal((await post({ flight: "ATC-5" })).status, 409); // 막는 이슈가 안 끝남
+  assert.equal((await post({ flight: "VOC-1" })).status, 409); // 후보 팀 아님
+  assert.equal((await post({ flight: "ATC-7" })).status, 409); // 상위 이슈
+  assert.equal((await post({ flight: "ATC-3", hash: "stale" })).status, 409);
+  assert.deepEqual(moves, []);
+  assert.equal(h.lines.length, 0);
+  assert.equal((await post({ flight: "ATC-3", hash: "hash-ATC-3" })).status, 200);
+  assert.deepEqual(moves, ["ATC-3"]);
+  assert.deepEqual(h.lines.map((l) => (l.op === "release" ? [l.flight, l.channel, l.via, l.parked] : l.op)), [["ATC-3", "screen", "click", true]]);
+});
+
+test("발권 fire PARKED(ATC-487): 스위치가 꺼지면 옛 거절 그대로, 화면 자료의 절도 없다", async () => {
+  const tickets = [backlog("ATC-3", { blockedBy: [] })];
+  const { h, post } = fireHarness(tickets, async () => ({ ok: true }), false);
+  assert.equal((await post({ flight: "ATC-3" })).status, 409);
+  assert.equal(h.lines.length, 0);
+  assert.deepEqual(releaseView(snap(tickets), h.deps).parked, { on: false, rows: [], fired: 0, misfires: [] });
+  h.deps.parkedOn = () => true;
+  const on = releaseView(snap(tickets), h.deps).parked;
+  assert.deepEqual(on.rows.map((r) => r.key), ["ATC-3"]);
 });
 
 // ATC-391: attested 발권의 K 효과 확인(화면 클릭만)

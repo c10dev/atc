@@ -1,7 +1,7 @@
 // 발권 기록의 길(ATC-362, docs/autonomy.md 원칙 1·10). 판정은 release.ts(순수), 파일은 release-store.ts.
 // - GET  /api/releases              기록, gate 상태, 발권 없는 FLIGHT 목록, 세션별 attested 수(읽기만)
 // - POST /api/releases              {flight, hash?}  화면 클릭 한 건. 이 화면에서 온 요청만(fromThisApp, 아니면 403): agent·CLI·curl은 Origin이 없어 만들 수 없다
-// - POST /api/releases/fire         {flight, hash?}  READY Backlog FLIGHT나 아직 쏘지 않은 제안(ATC-401): Todo로 옮기고 screen 발권을 한 요청으로 적는다(우선순위가 없으면 옮기지 않는다). 같은 Origin 검사
+// - POST /api/releases/fire         {flight, hash?}  READY Backlog FLIGHT, PARKED 이슈(ATC-487, releaseParked 스위치)나 아직 쏘지 않은 제안(ATC-401): Todo로 옮기고 screen 발권을 한 요청으로 적는다(우선순위가 없으면 옮기지 않는다). 같은 Origin 검사
 // - POST /api/releases/discard      {flight, hash?, reason?}  아직 쏘지 않은 제안을 Canceled로 옮기고 사유를 이슈 댓글로 남긴다(ATC-401). 같은 Origin 검사
 // - POST /api/releases/bulk         {flights: [{key, hash}]}  일괄 확인(이미 Todo에 있는 FLIGHT). 같은 Origin 검사. 이 줄부터 gate가 켜진다(arm)
 // - POST /api/releases/attest       {flight, session, words}  다른 세션에 한 SUPERVISOR의 말을 그 세션이 증언. attested로 표시한다
@@ -35,7 +35,8 @@ import { classOf } from "./crew.ts";
 import { filesInFlight } from "./overlap-run.ts";
 import type { FilesInFlight } from "./dispatch.ts";
 import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
-import { releaseTreeOf } from "./release-tree.ts";
+import { releaseTreeOf, type TreeRow } from "./release-tree.ts";
+import { parkedFireVerdict, parkedMisfiresOf, parkedOf } from "./release-parked.ts";
 import { loadScheduleOps, type NewPayload } from "./schedule.ts";
 import { readReviewLines } from "./duty-review-store.ts";
 import { bustQueue } from "./queue-bust.ts";
@@ -58,6 +59,7 @@ export interface ReleaseDeps {
   proposalSources?: () => Map<string, ProposalSource>;
   discard?: (key: string, from: string, reason: string) => Promise<MoveOutcome & { warning?: string }>;
   files?: () => FilesInFlight | null; // 파일 겹침 자료(ATC-456 같은 파일 칸). 시험이 채운다(없으면 DISPATCH가 모은 캐시)
+  parkedOn?: () => boolean; // PARKED 스위치(releaseParked). 시험이 채운다(없으면 dispatch.json)
   k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
 type MoveOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
@@ -170,6 +172,14 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     files: d.files ? d.files() : filesInFlight(),
     extra: (t) => ({ hash: t.releaseHash ?? null, kEffects: t.kEffects ?? null, k3: k3Of(t, view), filed: filedBy.get(t.key) ? { by: filedBy.get(t.key)!.by, at: filedBy.get(t.key)!.at } : null, why: view.revoked?.[t.key]?.reason ?? null, stale: releaseStateOf(t.key, t.releaseHash, view) === "stale" }),
   });
+  // PARKED(ATC-487): 나무에도 제안에도 없는 후보 팀의 Backlog 이슈. 스위치가 꺼지면 절이 없다. 읽기만 한다
+  const inTree = new Set<string>();
+  const walk = (rows: readonly TreeRow<unknown>[]) => rows.forEach((r) => (inTree.add(r.key), walk(r.children)));
+  for (const g of tree.groups) walk(g.rows);
+  const parkedOn = d.parkedOn ? d.parkedOn() : loadDispatchConfig().releaseParked !== "off";
+  const parked = parkedOn
+    ? { on: true, rows: parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys, inTree }).map((r) => ({ ...r, k3: ((t) => (t ? k3Of(t, view) : null))(ticketOf(r.key)) })), ...parkedMisfiresOf(lines, s.tickets, d.now().getTime()) }
+    : { on: false, rows: [], fired: 0, misfires: [] };
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
@@ -177,6 +187,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     tree: tree.groups,
     ready,
     filed,
+    parked,
     proposals: d.proposals?.() ?? [],
     unreleased,
     kPending,
@@ -224,11 +235,19 @@ export function mountReleases(app: Hono, snapshot: () => Promise<Snapshot>, deps
     const s = await deps.snapshot();
     // 발권할 수 있는 것: READY Backlog FLIGHT와 아직 쏘지 않은 제안(ATC-401)
     const filedKeys = new Set(filedProposalsOf(s.tickets, deps.proposalSources?.() ?? new Map(), deps.teams()).map((f) => f.key));
-    const t = [...readyOf(s, deps.teams()), ...s.tickets.filter((x) => filedKeys.has(x.key))].find((x) => x.key === body.flight);
-    if (!t) return c.json({ error: `${body.flight}는 발권할 수 있는 READY Backlog FLIGHT나 제안이 아님` }, 409);
+    let t = [...readyOf(s, deps.teams()), ...s.tickets.filter((x) => filedKeys.has(x.key))].find((x) => x.key === body.flight);
+    // PARKED(ATC-487): 막는 이슈 없이 손으로 올린 Backlog 이슈. 스위치가 꺼지면 옛 거절 그대로. 아래 Origin·우선순위·K3 길은 READY와 같다
+    let parked = false;
+    if (!t) {
+      const pv = parkedFireVerdict({ tickets: s.tickets, teams: deps.teams(), filed: filedKeys, on: deps.parkedOn ? deps.parkedOn() : loadDispatchConfig().releaseParked !== "off" }, body.flight);
+      if (!pv.ok) return c.json({ error: pv.error }, pv.status);
+      t = pv.ticket;
+      parked = true;
+    }
     if (t.priority <= 0) return c.json({ error: `${t.key}에 우선순위가 없음 — 먼저 FLIGHT 서랍에서 정함(DISPATCH는 우선순위 없는 FLIGHT를 배정하지 않는다)` }, 409);
     const r = screenRelease({ ...t, stateType: "unstarted" }, t.key, body.hash, "click", deps.now());
     if (!r.ok) return c.json({ error: r.error }, r.status);
+    if (parked && r.value.op === "release") r.value.parked = true;
     const moved = await (deps.moveToTodo ?? (async () => ({ ok: false as const, status: 503 as const, error: "상태 옮기기 길이 없음" })))(t.key, t.state);
     if (!moved.ok) return c.json({ error: moved.error }, moved.status);
     deps.append([r.value]);
