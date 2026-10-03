@@ -726,6 +726,10 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 - **API**(`server/session-control.ts`): `GET /api/control/sessions`(`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`. 둘 다 SUPERVISOR만(이 화면 Origin). 순수 함수: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **기록.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}`(`permissionMode`는 ATC-76부터). 백그라운드 세션이면 `jobId`, tmux 세션이면 `tmux`(launch는 세션, stop은 `<세션> <pane>`).
 
+##### CONTROL STOP을 확인한다 (ATC-521)
+
+백그라운드 관제 세션의 STOP은 `claude stop`이 종료 코드 0으로 돌아온 뒤 약 20초 안에 그 job의 `state.json`이 `stopped`가 될 때만 `ok: true`로 기록된다. 아니면 따로 적은 사유와 함께 `ok: false`이고, WARNING `control|unverified|…`이 뜨고, RECYCLE은 새 세션을 띄우지 않는다. 같은 관제 이름의 살아 있는 job이 둘이면 WARNING `control|duplicate|<세션>`이 뜬다(글에 job id와 ACCOUNT가 든다. STALE 줄은 세지 않는다). 스위치는 하나, 기본 on, 설정 창 OPERATIONS의 CONTROL STOP CHECK(SUPERVISOR만), 오작동 수가 같은 블록에 보인다. 자세히는 [control-recycle.ko.md](control-recycle.ko.md).
+
 ##### FLEET 탭의 CONTROL SESSIONS as built (ATC-130)
 
 - **옮겼을 뿐 바꾸지 않았다.** 설정 창 AGENTS 탭의 블록을 FLEET의 `CONTROL SESSIONS` 구역(AIRCRAFT 목록 아래)으로 옮겼다. 보이는 것은 같다: LAUNCH·STOP(같은 tmux 확인), 배지, job 상태와 NEEDS YOU, STALE 줄, ACCOUNT 라벨, daemon 경고, 모델 안내. API와 `session-control.ts`는 그대로이고, LAUNCH·STOP은 SUPERVISOR 전용이다.

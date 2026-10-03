@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
 import { config } from "./config.ts";
+import { confirmStopped } from "./control-stop-check-run.ts";
 import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn } from "./accounts.ts";
 import { authStatusOf } from "./account-health.ts";
 import { cleanEnv, cleanPath } from "./clean-env.ts";
@@ -18,7 +19,8 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
-import { type K3Declaration, type K3Launch, k3LaunchOf } from "./k3-allow.ts";
+import { type K3Declaration, type K3Launch, k3LaunchOf, k3LaunchWaitOf } from "./k3-allow.ts";
+import { k3WaitClear, k3WaitMark } from "./k3-launch-wait.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { memoryArgsOf, type ScopeMemory, scopeOomTextOf } from "./scope-memory.ts";
@@ -505,6 +507,7 @@ export interface ControlResult {
   modelFrom?: string; // 모델을 어디서 골랐나(launch-model.ts ModelFrom, ATC-279)
   account?: string | null; // 띄운 ACCOUNT 라벨(등록부가 없으면 없다)
   error?: string;
+  unverified?: true; // ATC-521: claude stop은 성공했지만 job state.json이 stopped가 되지 않아 ok를 막았다(RECYCLE은 새 세션을 띄우지 않는다)
 }
 
 // LAUNCH: FLEET 카드 버튼과 FLEET PLAN 승인(8.7), DISPATCH launch 카드 승인(ATC-129)이 같이 쓴다. 결과는 FLIGHT RECORDER에 by와 함께 남는다.
@@ -609,9 +612,13 @@ export async function stopControl(name: string, by: string): Promise<ControlResu
     }
     const row = target.row;
     const r = await claude(["stop", row.id as string], undefined, { configDir: configDirOfRow(row) }); // 그 세션의 폴더(ATC-147)
-    const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
-    record({ t, kind: "control", op: "stop", session: spec.name, by, ok: r.ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error });
-    return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
+    // ATC-521: 종료 코드 0만으로 ok로 기록하지 않는다. job의 state.json이 한도 안에 stopped가 되어야 ok(스위치가 꺼져 있으면 옛 판정)
+    const v = r.ok ? await confirmStopped({ session: spec.name, jobId: row.id as string, account: row.account, readState: (id) => jobStateOf(id) }) : null;
+    const unverified = v !== null && !v.ok;
+    const ok = r.ok && !unverified;
+    const error = !r.ok ? r.out.slice(0, 300) || "claude stop 실패" : v && !v.ok ? v.reason : undefined;
+    record({ t, kind: "control", op: "stop", session: spec.name, by, ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error, ...(unverified ? { unverified: true } : {}) });
+    return ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error, ...(unverified ? { unverified: true as const } : {}) };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
     throw e;
@@ -854,7 +861,14 @@ export const k3OfFlight = (s: Pick<Snapshot, "tickets" | "releases">, flight: st
   const t = s.tickets.find((x) => x.key === flight);
   return t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
 };
-export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
+// ATC-506: LAUNCH 직전에 K3 FLIGHT인지 지금 스냅샷에서 다시 보고, entries를 못 만들면 띄우지 않고 wait를 돌려준다(카드는 approved로 남아 다음 tick에 다시 시도)
+export const launchForCard = async (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string): Promise<ControlResult | { ok: false; wait: string }> => {
+  const wait = k3LaunchWaitOf(s, flight, loadDispatchConfig().k3Hold);
+  if (wait) {
+    k3WaitMark(proposal, flight, wait);
+    return { ok: false, wait };
+  }
+  k3WaitClear(proposal);
   const a = s.absent?.find((x) => x.registration === reg);
   const k3 = k3OfFlight(s, flight);
   return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);

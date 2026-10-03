@@ -592,6 +592,66 @@ function HandoffStats({ d }: { d: HandoffData }) {
     </ul>
   );
 }
+
+// CONTROL STOP CHECK(ATC-521): 막은 STOP·중복 경고 수와 틀린 판정(오탐) 수, 열린 중복, 최근 결정(오탐 표시 단추). 서버가 센 것을 그대로 그린다
+interface StopCheckCounts {
+  blocked: number;
+  duplicates: number;
+  dismissed: number;
+  contradicted: number;
+  falseAlarms: number;
+  share: number | null;
+}
+interface StopCheckData {
+  last7d: StopCheckCounts;
+  last30d: StopCheckCounts;
+  open: { control: string; jobs: { id: string; account: string | null; state: string | null }[] }[];
+  recent: { t: string; event: "blocked" | "duplicate"; session: string; jobIds: string[]; detail?: string; marked: boolean }[];
+}
+function StopCheckStats({ d, refresh }: { d: StopCheckData; refresh: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const row = (label: string, c: StopCheckCounts) => (
+    <li>
+      {label} 막은 STOP <b>{c.blocked}</b> · 중복 경고 <b>{c.duplicates}</b> · SUPERVISOR가 오탐 표시 <b>{c.dismissed}</b> · 검사가 나중에 틀렸다고 드러난 것 <b>{c.contradicted}</b> · 오탐 몫 <b>{c.share === null ? "—" : `${Math.round(c.share * 100)}%`}</b>
+    </li>
+  );
+  const dismiss = async (t: string) => {
+    setError(null);
+    try {
+      await apiSend("POST", "/api/control-stop-check/dismiss", { t });
+      refresh();
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    }
+  };
+  return (
+    <ul className="dp-misfire">
+      {row("최근 7일", d.last7d)}
+      {row("최근 30일", d.last30d)}
+      {d.open.map((o) => (
+        <li key={o.control}>
+          지금 중복: <b>{o.control}</b> · {o.jobs.map((j) => `${j.id}(${j.account ?? "—"}, ${j.state ?? "?"})`).join(", ")}
+        </li>
+      ))}
+      {d.recent.map((r) => (
+        <li key={r.t} className="faint">
+          {timeAgo(r.t, Date.now())} · {r.event === "blocked" ? "STOP 확인 못 함" : "중복 경고"} · {r.session} · {r.jobIds.join(", ")}
+          {r.marked ? (
+            " · 오탐 표시됨"
+          ) : (
+            <>
+              {" · "}
+              <button type="button" className="btn" onClick={() => void dismiss(r.t)}>
+                오탐으로 표시
+              </button>
+            </>
+          )}
+        </li>
+      ))}
+      {error && <li className="is-warn">{error}</li>}
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -640,6 +700,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   autolandHandoff: (s) => {
     const d = switchOf(s, "autolandHandoff")?.data as HandoffData | undefined;
     return d ? <HandoffStats d={d} /> : null;
+  },
+  controlStopCheck: (s, save) => {
+    const d = switchOf(s, "controlStopCheck")?.data as StopCheckData | undefined;
+    return d ? <StopCheckStats d={d} refresh={() => save({})} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
