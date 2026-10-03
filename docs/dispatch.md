@@ -702,6 +702,17 @@ Case D-0441: an ASSIGN card to TEAM_K was approved while TEAM_K was ABSENT (no l
 - **Counted.** The DISPATCH brief has `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: approved cards waiting for a session, those waiting longer than `approvedWaitMin` (this should stay 0 once the pass runs), and cards closed for this reason in the last 24 hours.
 - **Formats.** The `relaunch` op and `approvedWaitMin` are additive. Nothing else changes in `proposals.jsonl`.
 
+## DISPATCH does not pick an AIRCRAFT that OCC cannot reach, as built (ATC-458)
+
+Follow-up to ATC-251 (accounts.md 5.6), which only made the card say `ACCOUNT 불일치` after the plan had already picked the AIRCRAFT; an approved card then waited for ever and held its FLIGHT.
+
+- **Plan rule.** A live AIRCRAFT whose observed ACCOUNT differs from OCC's observed ACCOUNT is `available: false` with `crossAccount: true` and the reason `ACCOUNT 불일치 — <AIRCRAFT>는 ACCOUNT x에 있고 OCC는 y에 있어 … ACCOUNT CHANGE·APPLY NOW …` (`crossAccountAircraftWhy`, `server/account-reach.ts`; the same reach rule as `crossAccountWhyOf`: if either ACCOUNT is unknown, nothing is blocked). ABSENT AIRCRAFT are unchanged: they LAUNCH on the LAUNCH ACCOUNT.
+- **Held FLIGHT.** An open ASSIGN card (proposed or approved, not sent) whose AIRCRAFT became unreachable is superseded by the existing AIRCRAFT-unavailable rule (`syncOps`) with the reason `AIRCRAFT 불가: ACCOUNT 불일치 — …`, so `misfireOf` counts an auto-approved one as `wrong-aircraft`, and the FLIGHT returns to the plan. It is not a verdict: the pair is not blocked for 24 hours, and the same AIRCRAFT is a candidate again as soon as it is reachable.
+- **Off switch.** `dispatch.json` `crossAccountRelease` (`on` by default; Settings → OPERATIONS → ACCOUNT RELEASE; SUPERVISOR only, no `atcctl` command; the change is recorded as `policy / cross-account-release-mode`). With `off`, only the plan rule applies and the card keeps waiting with its ATC-251 reason (the `waits` rule in `syncOps`).
+- **Counter.** `GET /api/dispatch/misfire` has `crossAccount` per day and in `total` (cards superseded by this rule, counted on the day they closed, whoever approved them), shown on METRICS → MISFIRE as `ACCOUNT 불일치로 닫은 DISPATCH 카드 n건`.
+- **Visible reason.** While an approved card waits on an ACCOUNT mismatch, the FOLLOW line and `GET /api/status` (`now`, and `stuck` after 10 minutes) read `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함` instead of `승인 n분 · 발송 없음` (`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
+- **Formats.** `crossAccountRelease` in `dispatch.json` and a `crossAccount` count in the misfire view are additive. `proposals.jsonl` does not change.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

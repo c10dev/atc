@@ -18,7 +18,7 @@ import { milestonesNow, progressNow } from "./milestones-run.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { filesInFlight } from "./overlap-run.ts";
-import { allProposals, reservedOf } from "./proposals.ts";
+import { allProposals, crossAccountCardWaitsOf, reservedOf } from "./proposals.ts";
 import { activeWaypointsOf } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 
@@ -76,6 +76,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
     noDeploy,
     userPulls,
     airports: s.airports.map((a) => ({ code: a.code, repo: a.repo })),
+    cardWaits: crossAccountCardWaitsOf(proposals, s, loadDispatchConfig().teamPattern), // ATC-458
     now,
   };
   const manual = followBoardOf({ parents, ...rest });

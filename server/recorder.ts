@@ -51,6 +51,7 @@ export type RecordLine =
   // STALE STOP(ATC-369): FLIGHT가 끝난(머지·ARRIVED) AIRCRAFT가 PENDING·HUNG으로 30분 남아 서버가 멈춘 것. ok는 STOP 결과(세션 기록은 fleet stop 줄이 따로 남는다), mode는 스위치 바꿈
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }
   | { t: string; kind: "reposition"; op: "would"; aircraft: string; from: string; to: string; reasons: string[] }

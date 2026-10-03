@@ -702,6 +702,17 @@ D-0441 사례: TEAM_K에게 낸 ASSIGN 카드를 TEAM_K가 ABSENT(살아 있는 
 - **센다.** DISPATCH brief의 `approvedNoSession: { waiting, overdue, closed24h, waitMin }`: 세션을 기다리는 승인 카드 수, 그중 `approvedWaitMin`을 넘긴 수(이 주기가 돌면 0으로 남아야 한다), 지난 24시간에 이 사유로 닫은 수.
 - **형식.** `relaunch` op와 `approvedWaitMin`은 추가다. `proposals.jsonl`의 다른 것은 바뀌지 않는다.
 
+## OCC가 닿지 못하는 AIRCRAFT는 DISPATCH가 고르지 않는다, 만든 것 (ATC-458)
+
+ATC-251(accounts.md 5.6)의 후속이다. 그때는 계획이 AIRCRAFT를 이미 고른 뒤에 카드가 `ACCOUNT 불일치`라고 말하는 데 그쳤고, 승인된 카드는 FLIGHT를 쥔 채 끝없이 기다렸다.
+
+- **계획 규칙.** 살아 있는 AIRCRAFT의 관찰한 ACCOUNT가 OCC의 관찰한 ACCOUNT와 다르면 `available: false`, `crossAccount: true`이고 사유는 `ACCOUNT 불일치 — <AIRCRAFT>는 ACCOUNT x에 있고 OCC는 y에 있어 … ACCOUNT CHANGE·APPLY NOW …`다(`crossAccountAircraftWhy`, `server/account-reach.ts`. `crossAccountWhyOf`와 같은 규칙: 한쪽 ACCOUNT를 모르면 막지 않는다). ABSENT AIRCRAFT는 그대로다: LAUNCH ACCOUNT로 LAUNCH한다.
+- **쥔 FLIGHT 풀기.** 닿지 못하게 된 AIRCRAFT의 열린 ASSIGN 카드(제안·승인, 아직 안 보냄)는 기존 AIRCRAFT 불가 규칙(`syncOps`)으로 `AIRCRAFT 불가: ACCOUNT 불일치 — …` 사유와 함께 SUPERSEDED가 되고, 자동 승인한 카드는 `misfireOf`가 `wrong-aircraft`로 센다. FLIGHT는 계획으로 돌아간다. 판정이 아니라서 24시간 짝 규칙을 시작하지 않는다: 그 AIRCRAFT가 닿게 되면 곧바로 다시 후보다.
+- **끄는 스위치.** `dispatch.json`의 `crossAccountRelease`(기본 `on`, 설정 → OPERATIONS → ACCOUNT RELEASE, SUPERVISOR만, `atcctl` 명령 없음, 바꾸면 `policy / cross-account-release-mode`로 기록). `off`면 계획 규칙만 적용되고 카드는 ATC-251 사유로 계속 기다린다(`syncOps`의 `waits` 규칙).
+- **세는 곳.** `GET /api/dispatch/misfire`의 날짜별과 `total`에 `crossAccount`(이 규칙으로 닫은 카드, 닫은 날 기준, 누가 승인했든 센다)가 있고, METRICS → MISFIRE에 `ACCOUNT 불일치로 닫은 DISPATCH 카드 n건`으로 보인다.
+- **보이는 사유.** 승인된 카드가 ACCOUNT 불일치로 기다리는 동안 FOLLOW 줄과 `GET /api/status`(`now`, 10분 뒤 `stuck`)는 `승인 n분 · 발송 없음` 대신 `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함`을 보인다(`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
+- **형식.** `dispatch.json`의 `crossAccountRelease`와 misfire 보기의 `crossAccount` 수는 추가 항목이다. `proposals.jsonl`은 바뀌지 않는다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.
