@@ -11,7 +11,7 @@ export type SquelchLast = { lastAt: string; open: boolean; reason: string; opene
 export type ControlSession = { name: string; dir: string | null; prompt: string | null; launch: "bg" | null; blocked: string | null; live: ControlLive[]; stale?: { id?: string; name?: string }[]; squelch?: SquelchLast | null };
 // 그 밖의 백그라운드 세션(ATC-184): AIRCRAFT도 관제 세션도 아닌데 ATC_MAX_LAUNCHED 자리를 쥔 것
 export type OtherView = { id: string; name: string; cwd: string; cwdShort: string; status: string | null; job: { state: string; detail: string; tempo: string | null } | null; lastActiveAt: string | null; idleMin: number | null; account: string | null };
-export type ControlList = { daemonInService?: boolean; sessions: ControlSession[]; others?: OtherView[]; max?: number };
+export type ControlList = { daemonInService?: boolean; scopeOom?: { kills7d: number; scopes: number; cap: "on" | "off"; text: string | null }; sessions: ControlSession[]; others?: OtherView[]; max?: number };
 
 // /api/control/sessions를 이보다 자주 읽지 않는다. `claude agents`를 매번 부르는 값이라 서버가 아끼는 만큼 화면도 아낀다(ATC-127의 30초 캐시와 별개로 늘 60초)
 export const CONTROL_POLL_MS = 60_000;

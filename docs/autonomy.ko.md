@@ -367,6 +367,17 @@ K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow
 - **끄는 스위치.** `dispatch.json`의 `k3Hold`, 기본 켜짐, 설정 창(K3 HOLD, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 켜짐으로 읽는다.
 - **오작동 카운터**(RELEASE 화면 맨 위, `GET /api/releases`의 `k3Hold`): *nuisance*는 `K3` 줄이 효과 없음으로 적힌(`K3: none`) FLIGHT에 걸린 hold, *miss*는 allow 없이 떠난(`launch` 기록에 `k3`가 없는) K3 FLIGHT의 AIRCRAFT가 classifier 거부(세션 health `DENIED`)로 멈춘 것이다(7일 안).
 
+### C9, 만든 것: K3 RELAUNCH (ATC-509)
+
+돌고 있는 세션은 새 `--settings`를 받지 못하므로, 발권된 K3 FLIGHT는 새로 띄운 AIRCRAFT(ABSENT, DISPATCH launch 카드)만 받는다. AIRPORT에 그런 AIRCRAFT가 없으면 SUPERVISOR가 쉬는 AIRCRAFT를 손으로 멈추고 RESTARTING을 기다려야 했다.
+
+- **이유.** 받을 곳 없는 FLIGHT가 이제 말로 이유를 댄다: "K3: needs a fresh LAUNCH"와 고치는 길 한 줄(쉬는 AIRCRAFT를 STOP하거나 `k3Relaunch`를 켠다). DISPATCH 제외 사유와 `unserved[].k3`에 있다.
+- **카드.** `k3Relaunch`가 켜지면 FLEET PLAN이 `K3 RELAUNCH`("STOP <REGISTRATION> and LAUNCH it for <FLIGHT>")를 낸다. 조건: FLIGHT에 K3 entries가 있고(`k3LaunchOf`), 그 AIRPORT에 그 FLIGHT를 받을 ABSENT AIRCRAFT가 없고, 거기 AIRCRAFT 하나가 쉬는 중(백그라운드 세션, NORDO 아님)이고 열린 PR·STAND가 없고 LIMIT도 FUEL hold도 아님. 카드 하나에 AIRCRAFT 하나(가장 오래 쉰 것). 맞는 AIRCRAFT가 없으면 카드도 없다.
+- **승인.** 승인은 조건을 다시 보고, **STOP 전에** 발권이 아직 allow를 주는지(같은 본문 해시) 확인한 뒤, STOP하고 `k3OfFlight`의 entries로 `launchAircraft`를 부른다(`launchForCard`와 같은 함수). 첫 프롬프트는 CREW BRIEFING과 그 FLIGHT의 DIRECT 지시서다(FLEET LAUNCH 라우트와 같다): DISPATCH는 K3 FLIGHT를 launch 카드에만 짝지워 라이브 세션에는 나중에도 넘기지 않기 때문이다. 지시서를 못 읽으면 아무것도 멈추지 않는다. 최근 `minDwellMin` 안에 승인한 FLIGHT에는 새 카드를 내지 않는다. FLIGHT RECORDER의 두 줄(`stop`, `launch`)은 `proposal`에 카드 id를 싣는다.
+- **끄는 스위치.** `dispatch.json`의 `k3Relaunch`, **기본 꺼짐**, 설정 창(K3 RELAUNCH, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 꺼짐으로 읽는다. 꺼져 있으면 이유 문구 말고는 바뀌는 것이 없다.
+- **오작동 카운터**(RELEASE 화면 맨 위, 스위치가 켜졌거나 수가 0보다 클 때만 보임, `GET /api/releases`의 `k3Relaunch`), 7일: 승인한 카드, 만료·반대한 카드, *STOP만*은 카드의 STOP 뒤 `launchCardTimeoutMin` 안에 같은 카드 id의 LAUNCH 성공 줄이 없는 것.
+- **FLEET LAUNCH 버튼.** `flight`를 적은 `POST /api/fleet/:registration/launch`가 launch 카드와 같은 K3 entries를 만든다(`k3OfFlight`: 같은 `k3LaunchOf`, 같은 해시 검사, 화면이나 DUTY 채팅 발권만). 유효한 발권이 없으면 전과 같다.
+
 ## 6. 남는 세 게이트를 내보낼 때 선언으로
 
 화살 방향(원칙 1, 4, 10)에서 K1–K3 효과는 머지 때가 아니라 SUPERVISOR가 FLIGHT를 내보낼 때 한 번 승인한다. 내보내기가 효과를 선언하고, 내보내기 기록(C18)이 승인을 선언의 해시에 묶는다(원칙 7). 내보낸 뒤에는 floor가 빌드된 내용을 선언과 맞댄다. 빌드된 변경이 선언을 넘는 FLIGHT(선언하지 않은 K 경로, 더 넓은 변경, floor가 분류하지 못하는 구문)는 멈추고, 빌드된 내용을 붙인 새 화살로 돌아온다. 그 새 화살이 곧 카드다. 머지 때 SUPERVISOR를 기다리는 것은 없다. 내보내기는 최소로 둔다: 목적지와 선언된 K 효과뿐이고, 경로 목록이나 FLIGHT별 예산은 없다(상한은 C11).

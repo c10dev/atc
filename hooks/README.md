@@ -234,6 +234,7 @@ If a running session doesn't show the line, restart it. Sessions on other machin
 | `shell.mjs` | `workTargets(command)` — a small shell tokenizer (not a full parser) that returns `cd` / `git -C` targets in command position. Handles quotes, `;` `&` `\|` `(` `)` `` ` `` `$(`, heredocs, `VAR=…` and `if`/`then`/`time`… prefixes, and looks up to two levels into `bash -c "…"`. Only global `git` options count, so `git commit -C <commit>` is not a path |
 | `shell.test.mjs` | Cases that must and must not be caught (`npm test`) |
 | `rules-drift.mjs` | The rules-drift hook (`start`, `check`) and the pure functions the server reuses for FLEET (`statusOf`, `readRecords`, `readSource`) |
+| `cloud-setup.mjs` | SessionStart hook for Claude Code cloud sessions (ATC-452): with `CLAUDE_CODE_REMOTE=true` it downloads Node 24 if needed and runs `npm ci`; anywhere else it does nothing. Always exits 0 |
 | `rules-drift.d.mts` | Type declaration for `rules-drift.mjs` |
 | `rules-drift.test.mjs` | No change, one diff then acknowledged, new and resumed sessions, fail open, diff cap, `--ref`, cleanup (`npm test`) |
 | `health.mjs` | The health hook: reads the event from stdin, appends one line to `health/<sessionId>.jsonl` |

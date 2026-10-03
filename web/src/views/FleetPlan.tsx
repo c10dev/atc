@@ -17,6 +17,7 @@ interface PlanBrief {
   background: { count: number | null; max: number };
   permissionModes: string[];
   config: { reserve: number; waitMin: number; idleHours: number; restartDays: number; retireDays: number; minDwellMin: number; refreshTokens?: number; refreshPct?: number };
+  k3Relaunch?: "on" | "off"; // K3 RELAUNCH(ATC-509): 카드 승인은 이 스위치로 한다. 옛 서버면 없음
   reposition?: { mode: "off" | "shadow" | "approval" | "auto"; dailyMax: number; movedToday: number }; // REPOSITION(ATC-179). 옛 서버면 없음
   ranAt: string | null;
   error: string | null;
@@ -37,6 +38,7 @@ const KIND_HELP: Record<FleetPlanKind, string> = {
   REFRESH: "FLIGHT를 마치고 쉬는 AIRCRAFT의 큰 대화를 새로 시작한다(다음 cold wake의 캐시 쓰기를 아낌)",
   "ACCOUNT CHANGE": "FLIGHT 사이의 AIRCRAFT를 사용 한도가 남은 ACCOUNT로 옮긴다(멈추고 그 ACCOUNT에서 다시 띄움). 진행 중인 FLIGHT는 옮기지 않는다",
   REPOSITION: "쉬는 AIRCRAFT의 base를 FLIGHT가 기다리는데 AIRCRAFT가 없는 AIRPORT로 옮긴다(멈추고 base를 바꿔 그 AIRPORT 저장소에서 다시 띄움). 진행 중인 FLIGHT는 옮기지 않는다",
+  "K3 RELAUNCH": "K3 FLIGHT를 받을 ABSENT AIRCRAFT가 없어, 쉬는 AIRCRAFT를 멈추고 그 FLIGHT의 K3 allow로 새로 띄운다(설정 창 K3 RELAUNCH). 진행 중인 FLIGHT·열린 PR이 있으면 내지 않는다",
   AOG: "기한을 두고 배정을 멈춘다(MEL)",
   RETIRE: "퇴역(SUPERVISOR만, 자동 없음)",
   RETURN: "FLEET PLAN이 건 AOG를 푼다(기한이 지남)",
@@ -50,6 +52,7 @@ export const WILL_DO: Record<FleetPlanKind, (p: FleetProposal) => string> = {
   REFRESH: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 새 CREW BRIEFING으로 다시 띄운다(대화를 새로 시작)`,
   "ACCOUNT CHANGE": (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 ACCOUNT ${p.account ?? "?"}에서 CREW BRIEFING으로 다시 띄운다(home ACCOUNT는 그대로, 캐시는 새로 시작)`,
   REPOSITION: (p) => `${p.aircraft}의 백그라운드 세션을 멈추고 base를 ${p.from ?? "?"} → ${p.airport ?? "?"}로 바꾼 뒤 ${p.airport ?? "?"} 저장소에서 CREW BRIEFING으로 다시 띄운다(캐시는 새로 시작, 그 저장소의 CLAUDE.md)`,
+  "K3 RELAUNCH": (p) => `STOP ${p.aircraft} and LAUNCH it for ${String(p.reasons.find((r) => r.code === "flight")?.value ?? "?")}: 백그라운드 세션을 멈추고 그 FLIGHT의 K3 allow로 새로 띄운다(CREW BRIEFING, 캐시는 새로 시작)`,
   AOG: (p) => `${p.aircraft}를 AOG로 둔다(사유 FLEET PLAN ${p.id})`,
   RETIRE: (p) => `${p.aircraft}를 퇴역시킨다`,
   RETURN: (p) => `${p.aircraft}의 AOG를 푼다`,
@@ -222,7 +225,7 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
         <ul className="fp-rows">
           {brief.open.map((p) => {
             // REPOSITION은 자기 스위치(approval·auto)로 승인한다(ATC-179), 나머지는 FLEET PLAN 모드
-            const ap = p.kind === "REPOSITION" ? brief.reposition !== undefined && (brief.reposition.mode === "approval" || brief.reposition.mode === "auto") : approval;
+            const ap = p.kind === "REPOSITION" ? brief.reposition !== undefined && (brief.reposition.mode === "approval" || brief.reposition.mode === "auto") : p.kind === "K3 RELAUNCH" ? brief.k3Relaunch === "on" : approval;
             return (
             <li key={p.id} className={`fp-row k-${p.kind}`}>
               <div className="fp-head">
@@ -337,7 +340,7 @@ function ApproveForm({
   onCancel: () => void;
   onApprove: (input: Record<string, unknown>) => void;
 }) {
-  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH" || p.kind === "ACCOUNT CHANGE" || p.kind === "REPOSITION";
+  const relaunch = p.kind === "RESTART" || p.kind === "REFRESH" || p.kind === "ACCOUNT CHANGE" || p.kind === "REPOSITION" || p.kind === "K3 RELAUNCH";
   const launches = p.kind === "LAUNCH" || p.kind === "ENTRY" || relaunch;
   // RESTART·REFRESH는 비워 두면 서버가 마지막 LAUNCH의 값을 쓴다. 나머지는 auto(SUPERVISOR 결정)
   const [permissionMode, setPermissionMode] = useState(relaunch ? "" : (brief.permissionModes[0] ?? "auto"));

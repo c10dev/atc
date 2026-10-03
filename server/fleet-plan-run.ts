@@ -32,6 +32,7 @@ import {
   persistOf,
   syncFleetPlan,
 } from "./fleet-plan.ts";
+import { k3RelaunchLaunchOptionsOf } from "./k3-relaunch.ts";
 import { readPrices } from "./fuel-prices.ts";
 import type { FuelRemaining } from "./fuel-remaining.ts";
 import { aircraftContexts } from "./fuel-run.ts";
@@ -39,12 +40,12 @@ import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { runAutoFleet, fleetMisfires } from "./autonomy-auto-run.ts";
 import { fromThisApp } from "./origin.ts";
-import { allProposals, reservedOf } from "./proposals.ts";
+import { allProposals, directBriefOf, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { autoRepositionOf, parseReposition, type RepositionConfig, type RepositionEvent, type RepositionMode, REPOSITION_MODES } from "./reposition.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
-import { type AgentRow, agentRows, launchAccountRefusal, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
+import { type AgentRow, agentRows, launchAccountRefusal, k3OfFlight, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 
 // FLEET PLAN 실행부(docs/fleet.md 8.6): DISPATCH 주기(5분)마다 제안을 계산해 fleet-plan.jsonl에 적고,
@@ -127,8 +128,9 @@ export function setRepositionMode(mode: RepositionMode, by = "SUPERVISOR", reaso
   record({ t: new Date().toISOString(), kind: "reposition", op: "mode", by, from: cur.mode, to: mode, ...(reason ? { reason } : {}) });
 }
 // 이 제안을 승인(실행)할 수 있는 모드인가: REPOSITION은 자기 스위치(approval·auto), 나머지는 FLEET PLAN 모드
+// K3 RELAUNCH(ATC-509)도 자기 스위치(dispatch.json k3Relaunch on)다
 export const approvalModeOf = (kind: string): "shadow" | "approval" =>
-  kind === "REPOSITION" ? (["approval", "auto"].includes(loadReposition().mode) ? "approval" : "shadow") : loadFleetPlanMode();
+  kind === "REPOSITION" ? (["approval", "auto"].includes(loadReposition().mode) ? "approval" : "shadow") : kind === "K3 RELAUNCH" ? (loadDispatchConfig().k3Relaunch === "on" ? "approval" : "shadow") : loadFleetPlanMode();
 
 // 지금 승인 운용이면 마지막 mode:approval 줄의 시각(30일 안). 모르면 null
 function approvalSinceOf(now: number): string | null {
@@ -199,6 +201,9 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
     launchAccount: launchAccountOfFleet(fleet, accountLogins), // LAUNCH ACCOUNT(ATC-239): 등록부에 있는 AIRCRAFT용 라벨. ACCOUNT CHANGE의 효과 있는 home, ENTRY·LAUNCH의 ACCOUNT
     context: aircraftContexts(s.sessions, cfg.teamPattern, now), // CONTEXT SIZE(ATC-69): REFRESH
     prices: readPrices().table,
+    k3Relaunch: loadDispatchConfig().k3Relaunch === "on", // K3 RELAUNCH(ATC-509)
+    // 최근 minDwell 안에 승인한 K3 RELAUNCH의 FLIGHT: 새 세션이 STAND를 쥘 때까지 같은 FLIGHT로 또 멈추지 않는다
+    k3Relaunched: new Set(allFleetPlan().filter((p) => p.kind === "K3 RELAUNCH" && p.approval && now - Date.parse(p.approval.at) < FLEET_PLAN_DEFAULTS.minDwellMin * 60_000).map((p) => String(p.reasons.find((r) => r.code === "flight")?.value ?? ""))),
   };
 }
 
@@ -321,6 +326,7 @@ export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
     background: { count: last?.background ?? null, max: MAX_LAUNCHED },
     permissionModes: PERMISSION_MODES,
     config: FLEET_PLAN_DEFAULTS,
+    k3Relaunch: loadDispatchConfig().k3Relaunch,
     reposition: { ...loadReposition(), modes: REPOSITION_MODES, movedToday: repositionEventsOf(now).filter((e) => e.ok && now - Date.parse(e.at) < DAY).length },
     ranAt: last?.at ?? null,
     error: last?.error ?? null,
@@ -378,11 +384,24 @@ export async function runStep(step: ExecStep, by: string, getSnapshot: () => Pro
       }
     }
     case "launch": {
-      const r = await launchAircraft(await getSnapshot(), reg, { permissionMode: step.permissionMode, model: step.model, lastModel: step.lastModel ?? null, ...(step.account ? { account: step.account } : {}) }, by);
+      // K3 RELAUNCH(ATC-509): FLIGHT가 있으면 launch 카드와 같은 K3 entries로 띄운다(k3OfFlight). 카드 id가 LAUNCH 줄에 남는다
+      // FLIGHT도 같이 넘긴다: 첫 프롬프트 = CREW BRIEFING + DIRECT 지시서(FLEET LAUNCH 라우트와 같다). 지시서를 못 읽으면 띄우지 않는다
+      const snap = await getSnapshot();
+      let withFlight: ReturnType<typeof k3RelaunchLaunchOptionsOf> | undefined;
+      if (step.flight) {
+        try {
+          withFlight = k3RelaunchLaunchOptionsOf(step.flight, await directBriefOf(step.flight, reg));
+        } catch (e) {
+          const error = `${step.flight}의 지시서를 읽지 못함 — ${String((e as Error).message ?? e)}`;
+          record({ t: t(), kind: "fleet", op: "launch", aircraft: reg, by, ok: false, error, ...(step.proposal ? { proposal: step.proposal } : {}) });
+          return { action: "launch", registration: reg, ok: false, error };
+        }
+      }
+      const r = await launchAircraft(snap, reg, { permissionMode: step.permissionMode, model: step.model, lastModel: step.lastModel ?? null, ...(step.account ? { account: step.account } : {}), ...(withFlight ?? {}) }, by, step.proposal, step.flight ? k3OfFlight(snap, step.flight) : undefined);
       return { action: "launch", registration: reg, ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
     }
     case "stop": {
-      const r = await stopAircraft(reg, by);
+      const r = await stopAircraft(reg, by, step.proposal);
       if (r.ok) await goneFromAgents(reg);
       return { action: "stop", registration: reg, ok: r.ok, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
     }
@@ -509,6 +528,18 @@ async function runApproval(id: string, body: Record<string, unknown>, who: "supe
     if (moveTo) {
       const refusal = await launchAccountRefusal(moveTo, s.fuelAccounts);
       if (refusal) return fail(409, `${refusal} — ${p.aircraft}는 멈추지 않았다`);
+    }
+    if (p.kind === "K3 RELAUNCH") {
+      // STOP 전에 확인한다(ATC-509): 발권이 아직 그 본문의 것이고 allow를 줄 수 있어야 한다. 아니면 멈춰도 K3 FLIGHT를 못 받는다
+      const flight = String(p.reasons.find((r) => r.code === "flight")?.value ?? "");
+      try {
+        await directBriefOf(flight, reg); // 지시서를 못 읽으면 STOP 전에 거절한다(STOP만 되고 FLIGHT를 못 넘기는 일이 없게)
+      } catch (e) {
+        return fail(502, `${flight}의 지시서를 읽지 못함 — ${String((e as Error).message ?? e)}. ${p.aircraft}는 멈추지 않았다`);
+      }
+      const base = fleetView(s, fleet, cfg.teamPattern, loadLogbook(), now).find((a) => a.registration === reg)?.base;
+      const repo = s.airports.find((a) => a.code === base)?.repo ?? "";
+      if (!k3OfFlight(s, flight)?.(repo)) return fail(409, `${flight}의 K3 발권이 바뀜(본문이 바뀌었거나 취소) — ${p.aircraft}는 멈추지 않았다`);
     }
     if (p.kind === "REPOSITION") {
       // 같은 ACCOUNT로 띄우므로 그 ACCOUNT가 로그인·FUEL hold 때문에 거절하면 멈추지 않는다

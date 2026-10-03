@@ -7,6 +7,8 @@
 | 작은 수정 (5줄 이하, 문서, 의존성) | 팀 세션에 직접 맡긴다. 티켓 없이 PR 본문의 "Explicit user task"에 요청을 적는다 | STRIPS에 **AD HOC** |
 | 티켓이 필요한 일 (기능, 컴포넌트, 화면 수정 …) | OCC 세션에 말한다(**CHARTER REQUEST**) | HOME의 QUEUE(S2일 때)나 RELEASE에 **AD HOC FLIGHT** 초안 |
 
+FLIGHT 하나를 이 호스트가 아니라 Claude Code cloud 세션에서 돌릴 수도 있다(`claude --cloud "…"`, Desktop "Cloud"). 준비와 한계는 `docs/cloud.ko.md`에 있다. atc에는 PR로만 보인다.
+
 ## CHARTER DESK: OCC에 요청하기
 
 OCC 세션이 요청 창구(CHARTER DESK)다. 운항표(Linear)에 없는 일을 받아 티켓 초안으로 만든다.

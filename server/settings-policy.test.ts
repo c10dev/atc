@@ -9,7 +9,7 @@ const INDEX = settingsIndexOf(switchViews());
 test("modeLine: 선언된 스위치를 한 줄로, 기본은 꺼짐(자동 운항·SCHEDULE·FLEET PLAN·CODEX LANE은 기본 on)", () => {
   assert.equal(
     modeLine(modeSegments(switchViews())),
-    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on",
+    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
   );
 });
 
@@ -103,9 +103,11 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "AUTO APPROVE", "일치 기반 자동 승인", "dispatch schedule agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto"],
     ["operations", "STALE STOP", "끝난 FLIGHT의 멈춘 AIRCRAFT 정리", "stale stop pending hung 멈춘 정리 staleStop"],
     ["operations", "K3 HOLD", "K3 줄이 있는 FLIGHT는 allow 없이 보내지 않음", "k3 hold allow 발권 declaration 선언 release 화면 classifier nuisance miss 오작동 k3Hold"],
+    ["operations", "K3 RELAUNCH", "K3 FLIGHT에 쉬는 AIRCRAFT를 멈추고 새로 띄우는 카드", "k3 relaunch stop launch fresh 새로 띄움 쉬는 AIRCRAFT fleet plan 카드 오작동 k3Relaunch"],
     ["operations", "ACCOUNT RELEASE", "ACCOUNT가 달라 닿지 않는 AIRCRAFT의 카드를 닫음", "account 불일치 mismatch cross 닿지 않는 occ release 풀기 카드 supersede wrong-aircraft crossAccountRelease"],
     ["operations", "EFFECT CHECK", "배포 효과 확인(## Measure 평결)", "effect check measure 평결 improved not improved worse too little data 효과 측정 effect-check.json 틀림 misfire"],
     ["operations", "PARKED", "RELEASE 화면의 PARKED 절과 그 발권", "parked backlog 손으로 올린 hand-filed release 발권 접힌 releaseParked"],
+    ["operations", "SCOPE MEMORY", "백그라운드 세션 scope의 메모리 상한(OOM이 scope 안에서 끝나게)", "scope memory 메모리 oom kill cgroup memoryhigh memorymax launch bgMemoryCap"],
     ["operations", "DUPLICATE TITLE", "작업 지시서 제목이 열린 이슈와 거의 같으면 거절·표시", "duplicate title 중복 제목 비슷한 same-title-ok 409 parked possible duplicate duplicateTitle"],
     ["operations", "SCHEDULE·FLEET PLAN AUTO", "SCHEDULE·FLEET PLAN 자동 적용", "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog"],
     ["operations", "REPOSITION", "소속 AIRPORT 옮기기", "base fleet plan approval auto fleet-plan.reposition"],
