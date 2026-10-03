@@ -380,7 +380,7 @@ export function App({ build }: { build: string }) {
               {drawer.kind === "ideas" || drawer.kind === "idea" ? (
                 <IdeasDrawer target={drawer} onClose={closeDrawer} now={now} gate={{ enabled: duty.status ? duty.status.enabled : null, blocked: duty.status?.blocked === true }} />
               ) : (
-                <Drawer target={drawer} onClose={closeDrawer} now={now} />
+                <Drawer target={drawer} onClose={closeDrawer} now={now} pulls={snapshot?.pulls ?? []} refreshKey={snapshot?.at.slice(0, 16) ?? ""} />
               )}
             </Suspense>
           </TabBoundary>

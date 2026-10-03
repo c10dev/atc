@@ -23,10 +23,10 @@ export interface FollowData {
 }
 
 const SHORT: Record<FollowStage, string> = { todo: "TODO", proposed: "PROP", approved: "APPR", sent: "SENT", readback: "RB", pr: "PR", ci: "CLR", landed: "ON", deployed: "IN" };
-const LONG: Record<FollowStage, string> = { todo: "Todo", proposed: "제안", approved: "승인", sent: "발송", readback: "READBACK", pr: "PR", ci: "CLEARED", landed: "착륙(ON)", deployed: "배포(IN)" };
+export const LONG: Record<FollowStage, string> = { todo: "Todo", proposed: "제안", approved: "승인", sent: "발송", readback: "READBACK", pr: "PR", ci: "CLEARED", landed: "착륙(ON)", deployed: "배포(IN)" };
 const MIN_GAP_MS = 10_000; // 스냅샷 이벤트가 잦아도 10초에 한 번만 다시 읽는다
 
-const clock = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+export const clock = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 async function postFollow(parent: string, on: boolean): Promise<string | null> {
   try {

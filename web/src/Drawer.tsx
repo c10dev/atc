@@ -7,6 +7,8 @@ import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { RelayBox } from "./Relay.tsx";
 import { FlightDispatch } from "./FlightDispatch.tsx";
+import { FlightFollowing } from "./FlightFollowing.tsx";
+import type { PullRequest } from "../../server/model.ts";
 import { FlightEffect } from "./EffectVerdict.tsx";
 import { FlightRadio } from "./FlightRadio.tsx";
 import { flightNumber } from "./aviation.ts";
@@ -161,7 +163,7 @@ function FollowToggle({ k }: { k: string }) {
   );
 }
 
-function Flight({ k, now }: { k: string; now: number }) {
+function Flight({ k, now, pulls, refreshKey }: { k: string; now: number; pulls: PullRequest[]; refreshKey: string }) {
   const [rev, setRev] = useState(0);
   const l = useDetail<IssueDetail>(`/api/flight/${k}/detail${rev ? `?r=${rev}` : ""}`);
   if (l.state === "loading") return <p className="dr-note">불러오는 중…</p>;
@@ -242,6 +244,7 @@ function Flight({ k, now }: { k: string; now: number }) {
         </p>
       )}
       <FlightEffect k={d.key} now={now} />
+      <FlightFollowing k={d.key} pulls={pulls} refreshKey={refreshKey} />
       <FlightDispatch k={d.key} now={now} />
       <FlightRadio k={d.key} />
       <h3 className="dr-h">본문</h3>
@@ -459,7 +462,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
   );
 }
 
-export default function Drawer({ target, onClose, now }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number }) {
+export default function Drawer({ target, onClose, now, pulls = [], refreshKey = "" }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number; pulls?: PullRequest[]; refreshKey?: string }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "flight" ? target.key : `${target.airport}/${target.number}`;
   const docked = useDocked();
@@ -467,7 +470,7 @@ export default function Drawer({ target, onClose, now }: { target: Extract<Drawe
   return (
     <aside className="dr" role="dialog" aria-modal={!docked} aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
       <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
-      {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
+      {target.kind === "flight" ? <Flight k={target.key} now={now} pulls={pulls} refreshKey={refreshKey} /> : <Pr airport={target.airport} number={target.number} now={now} />}
     </aside>
   );
 }
