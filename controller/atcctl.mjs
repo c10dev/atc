@@ -212,6 +212,7 @@ REVIEW (착륙 리뷰 세션, review/ 폴더, Claude Sonnet. Codex 한도 PR만 
   node atcctl.mjs landing queue             리뷰를 기다리는 PR(pending), 외부 리뷰에서 뺀 PR(excluded, 사유), 최근 리뷰 (JSON)
   node atcctl.mjs landing review <repo>#<PR>  리뷰 자료(JSON): PR 본문, FLIGHT 완료 기준·금지 사항, head,
                                             크기를 제한한 diff. 외부 리뷰 제외(보안 경로·키워드·라벨, FLIGHT 없음)면 403
+  node atcctl.mjs landing review <repo>#<PR> --part <n>            diff의 n째 쪽(자료의 parts가 2 이상이면 모든 쪽을 읽고 판정한다)
   node atcctl.mjs landing review <repo>#<PR> --head <sha> --verdict pass|findings -- <리뷰>
                                             그 head에 착륙 리뷰를 남긴다(4000자 이내). 지적은 P0·P1·P2,
                                             P0·P1이 없으면 pass. head가 바뀌었으면 409. 모델은 guard가 붙인다
@@ -530,7 +531,7 @@ export function parseCrosscheck(args) {
 }
 
 // crosscheck brief: 두 브리핑에서 CROSSCHECK에 필요한 것만 모은다(FLIGHT 제목·상태 포함)
-// landing review <repo>#<PR> [--head <sha> --verdict pass|findings -- <리뷰>]. 모델 이름은 REVIEW guard가 붙인다(ATC_REVIEW_MODEL)
+// landing review <repo>#<PR> [--part <n>] [--head <sha> --verdict pass|findings -- <리뷰>]. 모델 이름은 REVIEW guard가 붙인다(ATC_REVIEW_MODEL)
 export function parseLandingReview(args) {
   const sep = args.indexOf("--");
   const head = sep < 0 ? args : args.slice(0, sep);
@@ -541,12 +542,18 @@ export function parseLandingReview(args) {
   const opts = {};
   for (let i = 0; i < rest.length; i++) {
     const k = rest[i];
-    if (k !== "--head" && k !== "--verdict") throw new Error(`알 수 없는 인자 ${rest.slice(i).join(" ")}`);
+    if (k !== "--head" && k !== "--verdict" && k !== "--part") throw new Error(`알 수 없는 인자 ${rest.slice(i).join(" ")}`);
     const v = rest[++i];
     if (v === undefined || v.startsWith("--")) throw new Error(`${k} 뒤에 값이 필요함`);
     opts[k.slice(2)] = v;
   }
   const path = `/api/landing/review/${encodeURIComponent(m[1])}/${m[2]}`;
+  // --part <n>: diff의 n째 쪽(ATC-489). 읽기 전용이라 기록 인자와 함께 쓰지 않는다
+  if (opts.part !== undefined) {
+    if (!/^[1-9]\d*$/.test(opts.part)) throw new Error("--part는 1 이상의 정수");
+    if (opts.head || opts.verdict || sep >= 0) throw new Error("--part는 자료를 읽을 때만 쓴다(기록과 함께 쓰지 않는다)");
+    return { path: `${path}?part=${opts.part}`, write: null };
+  }
   if (!opts.head && !opts.verdict && sep < 0) return { path, write: null };
   if (!opts.head) throw new Error("--head <sha>가 필요함(자료의 head)");
   if (opts.verdict !== "pass" && opts.verdict !== "findings") throw new Error("--verdict는 pass|findings");

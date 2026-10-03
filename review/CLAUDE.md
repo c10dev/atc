@@ -20,12 +20,13 @@ CROSSCHECK(Claude Opus)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 �
 | 명령 | 하는 일 |
 |---|---|
 | `node ../controller/atcctl.mjs landing queue` | 리뷰를 기다리는 PR(`pending`), 외부 리뷰에서 뺀 PR(`excluded`와 사유), 최근 리뷰(`recent`) |
-| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | 리뷰 자료: PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff(길면 잘리고 `diffTruncated: true`), `diffSource`(`pr-diff` 또는 `files-api`), `removedFiles` |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR>` | 리뷰 자료: PR 제목·본문, FLIGHT의 완료 기준(`flight.acceptance`)과 금지 사항(`flight.forbidden`), 바뀐 파일, `head`, diff의 한 쪽(`part`, `parts`, `partFiles`. 기본은 1쪽, 한 쪽은 80,000자 이내), `diffSource`(`pr-diff` 또는 `files-api`), `diffTruncated`, `unreadFiles`, `removedFiles` |
+| `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --part <n>` | 같은 자료에 diff의 `n`째 쪽(읽기 전용. `--head`·`--verdict`와 함께 쓰지 않는다) |
 | `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<리뷰>'` | 그 head에 리뷰 기록 |
 | Read `../docs/…` | 필요할 때 설계 문서 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
 
-`diffTruncated: true`면 본 범위를 리뷰 글에 적고, 잘린 부분에 위험이 있을 수 있으면 findings(P1)로 남긴다. `diffSource`가 `files-api`면 GitHub가 너무 큰 diff(20,000줄 넘음)를 거절해 atc가 파일별 patch를 이어 붙인 자료다: `diffTruncated`는 늘 true이고(patch가 빠진 파일이 있을 수 있다), 지워진 파일은 patch 없이 `removedFiles`에 이름만 있다. 이름만 있는 파일과 patch가 빠진 파일은 본 것으로 치지 않고, 그 파일에 위험이 있을 수 있으면 pass하지 않는다.
+**판정 전에 모든 쪽을 읽는다.** `parts`가 2 이상이면 `--part 2`, `--part 3` … `parts`까지 차례로 불러 읽는다(`--part` 없는 자료가 1쪽이다). 읽은 쪽을 리뷰 글에 적는다(예: `read parts 1-4 of 4`). 일부 쪽만 읽고 판정하지 않는다. 쪽은 파일이나 줄 경계에서 끊기고, `partFiles`가 그 쪽의 파일 이름이며, 한 쪽보다 큰 파일은 다음 쪽으로 이어진다. `diffTruncated`는 어느 쪽으로도 읽을 수 없는 글이 있을 때만 true다: `diffSource`가 `files-api`면 GitHub가 너무 큰 diff(20,000줄 넘음)를 거절해 atc가 파일별 patch를 이어 붙인 자료이고, patch가 없는 파일(이진·너무 큼·지워짐)은 `unreadFiles`에 이름이 있다(지워진 파일은 `removedFiles`에도). 그 파일들은 본 것으로 치지 않는다: 리뷰 글에 적고, 그 파일에 위험이 있을 수 있으면 pass하지 않는다.
 
 리뷰 기록 명령은 guard가 이 세션의 기록에서 **실제 모델**을 확인한 뒤에만 실행된다. Claude Sonnet(`claude-sonnet-…`)이 아니면 막힌다 — 막히면 기록하지 말고 LOG에 "모델 확인에서 막힘"이라고 적는다. 기록에 남는 모델 이름도 guard가 붙인다. `--model`이나 명령 앞 환경 변수로 적으려 하지 않는다(막힌다). 기록 명령은 파이프·이어 쓰기 없이 단독으로 쓴다.
 
@@ -37,7 +38,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 - **보는 것**: diff가 완료 기준을 채우는가, 금지 사항을 어기지 않는가, 버그·데이터 손상·되돌리기 어려운 변경이 없는가. 스타일 취향은 지적하지 않는다. diff에 보안 성격(권한, 인증, 비밀)이 보이는데 자료에 `security`가 없으면(서버가 보안 PR로 알아보지 못함) 리뷰하지 말고 `findings`(P0 "보안 변경 — 외부 리뷰 대상 아님, Codex나 SUPERVISOR 리뷰 필요")로 남긴다.
 - **보안 PR**(자료에 `security`가 있음: 설정으로 보낸 PR): 리뷰한다. 권한(GRANT·REVOKE·EXECUTE·SECURITY DEFINER), RLS·policy, 인증·세션·admission 검사, 마이그레이션을 되돌릴 수 있는지, 비밀이 코드나 로그에 새지 않는지를 특히 본다. 확신이 없으면 pass하지 않고 P1로 남긴다. 기록에는 서버가 `security: true`를 붙인다.
 - **등급**: Codex처럼 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 하나도 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄로 쓴다. `pass`에도 본 범위와 P2를 적는다.
-- **잘린 diff**: 본 범위를 적는다. 잘린 부분에 위험이 있을 수 있으면 `findings`(P1 "diff가 잘려 X를 확인하지 못함")로 남긴다.
+- **여러 쪽**: 판정 전에 모두 읽고 읽은 쪽을 적는다. **읽을 수 없는 파일**(`diffTruncated`, `unreadFiles`)은 못 본 범위를 적고, 그 파일에 위험이 있을 수 있으면 `findings`(P1 "X는 patch가 없어 확인하지 못함")로 남긴다. diff가 여러 쪽이라는 이유만으로 P1을 남기지 않는다.
 - **기록**: `--head`는 자료의 `head`. 4000자 이내. head가 바뀌었으면 409 — 다음 바퀴에 새 자료로 다시 본다. `findings`는 TOWER가 CAPTAIN에게 전한다. 그래서 리뷰 글(지적 줄)은 영어로 쓴다(ATC-126). REVIEW LOG는 SUPERVISOR에게 하는 보고라 한국어다.
 - 한 바퀴에 PR 2건까지. 같은 head를 다시 리뷰하지 않는다(pending에서 빠진다).
 

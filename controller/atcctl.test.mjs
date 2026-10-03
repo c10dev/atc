@@ -292,6 +292,14 @@ test("landing review(ATC-7·27): 읽기는 대상만, 기록은 --head·--verdic
   assert.throws(() => parseLandingReview(argv("v#1 --head abc1234 --verdict pass --model x -- ok")), /알 수 없는 인자/);
 });
 
+test("landing review --part(ATC-489): 읽기 전용, 1 이상의 정수, 기록 인자와 함께 쓰지 않는다", () => {
+  assert.deepEqual(parseLandingReview(argv("vocado_nextjs#391 --part 2")), { path: "/api/landing/review/vocado_nextjs/391?part=2", write: null });
+  assert.throws(() => parseLandingReview(argv("v#1 --part 0")), /1 이상/);
+  assert.throws(() => parseLandingReview(argv("v#1 --part x")), /1 이상/);
+  assert.throws(() => parseLandingReview(argv("v#1 --part")), /--part 뒤에 값/);
+  assert.throws(() => parseLandingReview(argv("v#1 --part 2 --head abc1234 --verdict pass -- ok")), /읽을 때만/);
+});
+
 test("mcc(docs/mcc.md): queue·packet은 읽기, inspect는 --head·--verdict·글, land는 --head만, 모델은 MCC guard가 붙인 환경에서", () => {
   assert.deepEqual(parseMccArgs(argv("queue")), { method: "GET", path: "/api/mcc/queue" });
   const saved = process.env.ATC_MCC_MODEL;
