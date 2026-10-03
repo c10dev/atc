@@ -29,6 +29,7 @@ test("brief: 큐 수(0은 뺀다)·가장 오래 기다린 줄부터·알림·FL
   assert.equal(b.chars, b.text.length);
   const t = b.text.split("\n");
   assert.match(t[0], /^DUTY BRIEF 2026-09-30T12:00:00.000Z/);
+  assert.match(t[1], /^LANGUAGE: .*Korean or English only.*Japanese or Chinese \(ATC-150\)/, "교대 뒤 새 대화도 언어 규칙을 받는다(ATC-510)");
   assert.ok(t.includes("QUEUE 3 · PROPOSAL 2 · LANDING 1"));
   assert.ok(t.indexOf("  PROPOSAL D-0007 — ASSIGN ATC-9 → TEAM_A (waiting 3h)") < t.indexOf("  LANDING r#12 — PR #12 ATC-5 (waiting 1h)"));
   assert.ok(t.some((l) => l === "  WARNING alert|x TEAM_B ATC-3 — NORDO for 40 min"), "알림 문구는 한 줄로");

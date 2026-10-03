@@ -20,6 +20,7 @@ import { type DutyConfig, loadDutyConfig, saveDutyConfig } from "./duty-config.t
 import { imageCheck, logLineOf, pageOf, TEXT_MAX, type DutyLogLine } from "./duty-log.ts";
 import { type DutyAction, type DutyEventIn, type DutyMsg, type DutyState, initialState, step } from "./duty-machine.ts";
 import type { DraftLine } from "./duty-drafts.ts";
+import { checkDutyText } from "./duty-language.ts";
 import { createDutyParser, type DutyEvent, type DutyRate, type DutyTurnUsage } from "./duty-stream.ts";
 import { fromThisApp } from "./origin.ts";
 
@@ -325,6 +326,19 @@ export class DutyRuntime {
     this.emit({ type: "user", text: m.text, ...(m.image ? { image: m.image.file } : {}) });
   }
 
+  // DUTY 글의 언어 검사(ATC-510): 경고만 센다. 글은 그대로 SUPERVISOR에게 간다. 기록에 실패해도 턴은 돈다
+  private checkLanguage(text: string, t: string) {
+    try {
+      const { checked, flagged } = checkDutyText(text);
+      if (!checked) return;
+      const session = this.s.sessionId ? this.s.sessionId.slice(0, 8) : null;
+      record({ t, kind: "duty", op: "lang", by: "DUTY", ok: true, session, checked, flagged });
+      for (let i = 0; i < flagged; i++) record({ t, kind: "duty", op: "lang-flag", by: "DUTY", ok: false, session });
+    } catch {
+      /* 기록 실패는 무시 */
+    }
+  }
+
   private onLine(line: string) {
     for (const e of this.parser.feed(line)) {
       if (e.type === "init") {
@@ -344,6 +358,7 @@ export class DutyRuntime {
         if (e.rates.length) this.last.rates = e.rates;
       }
       const t = new Date(this.now()).toISOString();
+      if (e.type === "text" && e.final) this.checkLanguage(e.text, t);
       const l = logLineOf(e, t);
       if (l) this.append(l);
       this.emit(e);

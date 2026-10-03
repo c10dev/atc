@@ -155,6 +155,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
             </div>
           )}
           <Daily data={data} />
+          <DutyLanguage data={data} />
         </>
       )}
     </>
@@ -330,6 +331,42 @@ function Trend({ code, label, points, field }: { code: string; label?: string; p
         <span>{stamp(points.at(-1)!.t, clock, multiDay)}</span>
       </div>
     </figure>
+  );
+}
+
+// DUTY 글의 언어 검사(ATC-510): 가나·한자만 있고 한글이 없는 줄을 센다. 경고일 뿐 글은 막지 않는다
+function DutyLanguage({ data }: { data: MetricsData }) {
+  const rows = [...data.dutyLanguage].reverse().filter((d) => d.checked > 0);
+  return (
+    <>
+      <h2 className="label">
+        DUTY LANGUAGE <em>UTC 날짜 · 가나·한자만 있는 줄(경고, 글은 막지 않음)</em>
+      </h2>
+      {rows.length === 0 ? (
+        <Empty>이 기간에 검사한 DUTY 글이 없습니다</Empty>
+      ) : (
+        <TableScroll label="DUTY 언어 검사 표">
+          <table className="kit-table">
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th className="num">검사한 줄</th>
+                <th className="num">걸린 줄</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((d) => (
+                <tr key={d.date}>
+                  <td className="mono">{d.date}</td>
+                  <td className="num">{d.checked}</td>
+                  <td className="num">{d.flagged ? <b>{d.flagged}</b> : 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      )}
+    </>
   );
 }
 

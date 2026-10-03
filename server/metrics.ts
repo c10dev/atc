@@ -45,6 +45,12 @@ export interface DailyRow {
   towerActive: boolean;
 }
 
+export interface DutyLanguageDay {
+  date: string;
+  checked: number;
+  flagged: number;
+}
+
 export interface SeriesPoint extends Sample {
   t: string;
 }
@@ -172,6 +178,12 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
     });
   }
 
+  // DUTY 글의 언어 검사(ATC-510): UTC 날짜별로 본 줄과 걸린 줄
+  const dutyLanguage: DutyLanguageDay[] = daily.map((d) => {
+    const rows = records.filter((r): r is Extract<RecordLine, { kind: "duty"; op: "lang" }> => r.kind === "duty" && r.op === "lang" && day(r.t) === d.date);
+    return { date: d.date, checked: rows.reduce((n, r) => n + r.checked, 0), flagged: rows.reduce((n, r) => n + r.flagged, 0) };
+  });
+
   const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
   const minutes = (ms: number | null) => (ms === null ? "—" : `${round1(ms / MIN)}분`);
   const readbackMedian = median(readbackMs);
@@ -240,6 +252,7 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
     towerDays: towerDays.size,
     readiness,
     daily,
+    dutyLanguage,
     series,
   };
 }

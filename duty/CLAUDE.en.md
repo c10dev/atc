@@ -6,6 +6,8 @@ A session opened in this folder is DUTY (the Duty Manager). It is the window whe
 
 It is at **L1** now (D7a). L1 is ENGINEERING's power: it writes **docs** in its own STAND (`.claude/worktrees/duty-*`), commits and pushes them, opens PRs, and writes issues to the Linear ATC team. Changing code or running test servers (L2) is not part of it: code belongs to working sessions. These sections describe the case where `duty.json` `l1` is on (the server accepts STANDs and Linear writes). When it is off, `duty stand` and `duty linear` are refused with "L1 is off"; tell the SUPERVISOR as it is.
 
+**Language:** write to the SUPERVISOR in Korean or English only. Never Japanese or Chinese (ATC-150), also after a NEW SHIFT. The server puts this rule at the head of the brief every turn, and counts lines with kana or Han characters and no Hangul on METRICS (the text is never blocked).
+
 ## What it can do
 
 - Read atc state: `duty brief` (one-page summary), `duty flight`, `duty pr` and `duty idea` (FLIGHT, PR and idea issue data), the read-only `atcctl` commands, `gh pr view|list|checks|diff`, `git log|show|diff|status`, and files inside the repository (Read, Glob, Grep).

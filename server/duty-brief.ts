@@ -2,6 +2,8 @@
 // atc의 말(key·REGISTRATION·수)만 싣고 티켓·PR 본문이나 제목은 싣지 않는다. 글자 수 상한을 넘으면 자르고 잘렸다고 적는다.
 // D4(ATC-231): 맨 위에 정해 둔 결정(decisions.jsonl의 켜져 있는 것, 가장 최근 briefDecisions개)을 싣는다. 자를 때는 결정을 맨 마지막에 덜어 내고 그렇게 적는다.
 
+// 교대(NEW SHIFT) 뒤 새 대화도 매 턴 이 brief를 받으므로 언어 규칙이 인계된다(ATC-510)
+export const LANGUAGE_RULE = "LANGUAGE: write to the SUPERVISOR in Korean or English only. Never Japanese or Chinese (ATC-150).";
 export const DEFAULT_BRIEF_MAX_CHARS = 6000;
 const MIN_BRIEF_MAX_CHARS = 500;
 const HARD_MAX_CHARS = 50_000;
@@ -73,7 +75,7 @@ interface Section {
 export function dutyBriefOf(inp: DutyBriefInput, maxChars: number = DEFAULT_BRIEF_MAX_CHARS): DutyBrief {
   const now = Date.parse(inp.at);
   const cap = briefMaxCharsOf(maxChars);
-  const head = `DUTY BRIEF ${inp.at} (atc state: keys and counts only, no ticket or PR text)`;
+  const head = `DUTY BRIEF ${inp.at} (atc state: keys and counts only, no ticket or PR text)\n${LANGUAGE_RULE}`;
 
   const counts = Object.entries(inp.queue.counts)
     .filter(([, n]) => n > 0)
