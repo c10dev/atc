@@ -86,6 +86,8 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
 - **끝점: merge-ready** = CI `check` 초록 + 블라인드 리뷰 통과. 머지 행동: solo = SUPERVISOR의 리뷰와 머지 시간, atc = 0(autoland), 상향(escalation) 시간은 센다.
 - **블라인드 리뷰, 리뷰어 둘, 두 팔 모두**: Claude(`/code-review high`)와 Codex. atc 팔은 이미 비슷한 MCC 리뷰를 지났으므로 두 팔에 같은 바깥 리뷰를 건다.
 - **리뷰 묶음에서 문체 단서를 지운다**: 브랜치 이름, PR 머리와 본문, `changelog.d/` 조각. 묶음과 팔의 대응은 이 호스트에만 두고 리뷰가 모두 들어올 때까지 열지 않는다.
+  - 묶음은 `server/blind-pack-run.ts`(순수 함수는 `server/blind-pack.ts`, 오프라인, GitHub 쓰기 없음)가 만든다: `node server/blind-pack-run.ts pack --base <sha> --atc-diff <file> --solo-diff <file> --out <묶음 폴더> --mapping <묶음 밖 파일> [--seed n] [--strip 경로] [--leak 낱말]`. `X.diff`, `Y.diff`, `PROMPT.md`, `FINDINGS-TEMPLATE.md`를 쓰고, 라벨→팔 대응(시드와 라벨별로 뺀 파일 목록 포함)은 묶음 밖 mapping 파일에만 쓴다. diff 파일은 팔마다 손으로 만든다(base 커밋에서 `git diff <base> <ref>`, PR은 `refs/pull/<n>/head`를 먼저 가져온다). `changelog.d/`와 `--strip` 경로를 빼고, diff 본문에 `--leak` 낱말이 남으면 거부한다(브랜치 이름과 PR 번호를 넘긴다).
+  - Claude(`/code-review high` 방식)와 Codex 실행은 손으로 한다. 각자 `FINDING <X|Y> <P0|P1|P2> <file>:<line> — <글>` 줄을 파일로 저장한다. `node server/blind-pack-run.ts merge --mapping <파일> --claude <파일> --codex <파일>`이 팔·리뷰어별 P0/P1/P2와 P1+, 그리고 합을 낸다.
 - **server 이슈는 인수 테스트를 먼저** 어느 팔이 시작하기 전에 써서, 어느 팔도 못 본 것으로 정확성을 가린다.
 - 지적은 리뷰어마다 P0~P2로 매긴다. **P1+**는 P0 또는 P1이다. 앞선 조사에서 리뷰어 잡음이 컸으므로, 판정에는 두 리뷰어의 합을 쓰고 리뷰어별 수도 함께 적어 한 리뷰어만의 현상이 보이게 한다.
 - atc의 PR은 평소대로 착륙한다. solo의 PR은 품질에서 분명히 이기지 않으면 리뷰 뒤 닫는다.
