@@ -1,0 +1,83 @@
+/* RELEASE의 발권 순서 나무(ATC-456): 상위 이슈마다 접는 그룹, 막는 이슈 밑에 막힌 이슈. 들여쓰기와 왼쪽 선 하나로 깊이를 보인다. 색은 :root 토큰만 */
+.rl-tree {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rl-tree:not(.rl-node > .rl-tree) {
+  padding: var(--space-1) var(--space-4);
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+}
+.rl-node > .rl-tree {
+  margin-left: var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line);
+}
+.rl-row {
+  display: grid;
+  grid-template-columns: 88px auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "key prio title kind btn"
+    ".   sub  sub   sub  sub";
+  align-items: baseline;
+  column-gap: var(--space-2);
+  row-gap: var(--space-0-5);
+  padding: var(--space-1-5) 0;
+  border-top: 1px solid var(--line);
+}
+.rl-tree > .rl-node:first-child > .rl-row {
+  border-top: 0;
+}
+.rl-row > b {
+  grid-area: key;
+}
+.rl-row > .prio {
+  grid-area: prio;
+}
+.rl-row > .rl-title {
+  grid-area: title;
+}
+.rl-row > .rl-kind {
+  grid-area: kind;
+}
+.rl-row > .rl-sub {
+  grid-area: sub;
+}
+.rl-row > .rl-acts {
+  grid-area: btn;
+}
+.rl-row.is-faint .rl-title,
+.rl-row.is-faint > b {
+  color: var(--faint);
+}
+.rl-state {
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.1em;
+}
+.rl-after,
+.rl-files {
+  color: var(--muted);
+}
+.rl-after b {
+  color: var(--text);
+}
+.rl-tree .btn {
+  white-space: nowrap;
+}
+.rl-tree .btn.is-link,
+.rl-tree .btn.is-quiet {
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .rl-row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "key prio title btn"
+      "kind sub sub sub";
+  }
+  .rl-node > .rl-tree {
+    margin-left: var(--space-2);
+    padding-left: var(--space-2);
+  }
+}

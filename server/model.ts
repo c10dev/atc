@@ -112,6 +112,7 @@ export interface Ticket {
   kEffects?: string | null; // 본문 `## K effects` 절의 글(앞 400자, 발권 화면이 클릭 전에 보인다, ATC-376). 절이 없으면 null
   k3Check?: { lines: number; unparsed: number; none: number }; // 본문 `## K effects`의 `K3` 줄 수·읽히지 않은 수·효과 없음으로 적은 수(ATC-398). K3 줄이 없으면 빈 칸
   k3?: { label: import("./k3-allow.ts").K3Label; control: string; files: string[] }[]; // 본문 `## K effects`의 읽힌 K3 선언(ATC-372, k3-allow.ts). 없으면 빈 칸
+  sequence?: { after: string | null; reason: string | null; problem: string | null }; // 본문 `## Release`의 `Sequence: after ATC-n — 이유` 줄(ATC-456). 순서만 정하고 막지 않는다. 줄이 없으면 빈 칸
   releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 

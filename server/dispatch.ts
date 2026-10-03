@@ -540,7 +540,7 @@ export function oldLaneOnly(t: Pick<Ticket, "labels">, now: number): string | nu
   const lanes = t.labels.map((l) => /^lane:\s*(\S+)$/i.exec(l.trim())?.[1]?.toUpperCase()).filter(Boolean);
   return lanes.length ? `옛 lane:${lanes.join(", lane:")} 라벨은 2026-10-10부터 읽지 않음 — tail:${lanes.join(", tail:")}로 바꿀 것` : null;
 }
-const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
+export const PRIORITY_VALUE: Record<number, number> = { 0: 1.5, 1: 4, 2: 3, 3: 2, 4: 1 };
 export const PRIORITY_NAME: Record<number, string> = { 0: "없음", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low" };
 const round1 = (x: number) => Math.round(x * 10) / 10;
 // 점수에 들어가지 않는 표시(weight 0). 왜 이 짝인지 카드에 보이게 한다.
