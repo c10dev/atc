@@ -6,7 +6,7 @@ import { flightTx, threadsOf } from "./radio-log.ts";
 import "./FlightRadio.css";
 
 // FLIGHT 서랍의 RADIO 스레드(ATC-379): RADIO 탭이 보이던 교신 가운데 이 FLIGHT의 것을 호출·답 묶음으로. 읽기만.
-// 기록이 없으면 아무것도 그리지 않는다(정상 상태에 빈 절을 두지 않는다). 전체 기록은 #flights/radio
+// 기록이 없으면 아무것도 그리지 않는다(정상 상태에 빈 절을 두지 않는다). 전체 기록은 #radio(이 FLIGHT의 AIRCRAFT로 거른 것)
 const WEEK_MS = 7 * 86_400_000;
 
 export function FlightRadio({ k }: { k: string }) {
@@ -24,6 +24,7 @@ export function FlightRadio({ k }: { k: string }) {
   }, [k]);
   if (!txs || txs.length === 0) return null;
   const threads = threadsOf(txs);
+  const aircraft = txs.find((t) => t.aircraft)?.aircraft;
   return (
     <>
       <h3 className="dr-h">RADIO {txs.length}</h3>
@@ -42,7 +43,7 @@ export function FlightRadio({ k }: { k: string }) {
         ))}
       </ul>
       <p className="dr-note">
-        <a href="#flights/radio">전체 RADIO 기록</a>
+        <a href={`#radio${aircraft ? `/${aircraft}` : ""}`}>전체 RADIO 기록</a>
       </p>
     </>
   );

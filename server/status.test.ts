@@ -63,7 +63,7 @@ test("?flight: 보드 줄이 없으면 OOOI의 마지막으로 단계를 정하�
 
 test("?flight: 막힌 글과 보드의 다음 칩이 다음 한 걸음이 된다", () => {
   const stuck = { stage: "sent" as const, code: "sent-no-readback" as const, text: "발송 뒤 READBACK 없음", since: null };
-  const s = statusOf(input({ rows: [row("ATC-3", "sent", { stuck, next: { kind: "look", label: "살펴보기", href: "#flights/radio" } })], query: { flight: "ATC-3" } }));
+  const s = statusOf(input({ rows: [row("ATC-3", "sent", { stuck, next: { kind: "look", label: "살펴보기", href: "#radio" } })], query: { flight: "ATC-3" } }));
   assert.equal(s.focus?.next, "살펴보기");
   assert.equal(s.focus?.stuck, "발송 뒤 READBACK 없음");
   assert.equal(statusOf(input({ rows: [row("ATC-3", "sent", { stuck })], query: { flight: "ATC-3" } })).focus?.next, "발송 뒤 READBACK 없음");

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Freq, Transmission } from "../../../server/radio.ts";
 import { resumeSound, radioQuietNow, speakRadio, stopRadioSpeech, useAlerts } from "../alerts-runtime.ts";
 import { enqueue, type ListenPrefs, LISTEN_MODES, loadListen, RATES, saveListen, wantsToHear, wavUrlOf } from "../radio-listen.ts";
-import { asOf, ageText, ALL_FILTER, type Filter, filterTx, FREQS, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, SPEEDS, type Speed, splitHead, threadsOf, WINDOW_MS } from "../radio-log.ts";
+import { asOf, ageText, ALL_FILTER, type Filter, filterByStation, filterTx, FREQS, linksOf, loadFilter, mergeTx, openState, optionsOf, saveFilter, SPEEDS, type Speed, splitHead, stationOfHash, threadsOf, WINDOW_MS } from "../radio-log.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { useNow } from "../useSnapshot.ts";
 import "./Radio.css";
@@ -71,7 +71,14 @@ export function Radio() {
   const listen = useListen();
   const { txs, loaded, error } = useRadio(listen.onFresh);
   const nowTick = useNow(5_000);
-  const [filter, setFilter] = useState<Filter>(() => loadFilter(storage()));
+  // AIRCRAFT·관제 거르기는 사이드바의 스테이션이 맡는다(ATC-446): 주소 #radio/<스테이션>. 예전에 저장된 AIRCRAFT 값은 쓰지 않는다
+  const [filter, setFilter] = useState<Filter>(() => ({ ...loadFilter(storage()), aircraft: null }));
+  const [station, setStation] = useState<string | null>(() => stationOfHash(location.hash));
+  useEffect(() => {
+    const f = () => setStation(stationOfHash(location.hash));
+    addEventListener("hashchange", f);
+    return () => removeEventListener("hashchange", f);
+  }, []);
   const [mode, setMode] = useState<Mode>({ kind: "live" });
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const change = (next: Filter) => {
@@ -97,10 +104,9 @@ export function Radio() {
   listen.replaying.current = mode.kind === "replay"; // 되감기 중에는 듣지 않는다
   const now = mode.kind === "replay" ? mode.cursor : nowTick;
   const shown = useMemo(() => (mode.kind === "replay" ? asOf(txs, mode.cursor) : txs), [txs, mode]);
-  const visible = useMemo(() => filterTx(shown, filter), [shown, filter]);
+  const visible = useMemo(() => filterByStation(filterTx(shown, filter), station), [shown, filter, station]);
   const threads = useMemo(() => threadsOf(visible), [visible]);
   const airports = useMemo(() => optionsOf(txs, "airport"), [txs]);
-  const aircraft = useMemo(() => optionsOf(txs, "aircraft"), [txs]);
   const allOn = FREQS.every((f) => filter.freqs.has(f));
 
   const toggleFreq = (f: Freq) => {
@@ -159,17 +165,6 @@ export function Radio() {
           <select value={filter.airport ?? ""} onChange={(e) => change({ ...filter, airport: e.target.value || null })}>
             <option value="">전체</option>
             {airports.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="rd-select">
-          <span>AIRCRAFT</span>
-          <select value={filter.aircraft ?? ""} onChange={(e) => change({ ...filter, aircraft: e.target.value || null })}>
-            <option value="">전체</option>
-            {aircraft.map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>

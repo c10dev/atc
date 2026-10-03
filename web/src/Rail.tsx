@@ -1,4 +1,4 @@
-import { ChartColumn, Globe, House, Plane, Rocket, UserRound, Users } from "lucide-react";
+import { ChartColumn, Globe, House, Plane, Radio, Rocket, UserRound, Users } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { apiGet } from "./api.ts";
@@ -17,6 +17,7 @@ export const RAIL_SCREENS = [
   { id: "home", code: "HOME", icon: House, note: "지금 할 일" },
   { id: "release", code: "RELEASE", icon: Rocket, note: "발권 후보" },
   { id: "flights", code: "FLIGHTS", icon: Plane, note: "FLIGHT 목록·레이더" },
+  { id: "radio", code: "RADIO", icon: Radio, note: "교신 기록" },
   { id: "fleet", code: "FLEET", icon: Users, note: "AIRCRAFT" },
   { id: "metrics", code: "METRICS", icon: ChartColumn, note: "지표" },
 ] as const satisfies readonly RailScreen[];

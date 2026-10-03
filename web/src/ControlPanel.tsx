@@ -110,7 +110,7 @@ function Radio({ name }: { name: string | null }) {
         </ul>
       )}
       <p className="faint cp-radio-all">
-        <a href="#flights/radio">전체 RADIO 기록</a>
+        <a href="#radio">전체 RADIO 기록</a>
       </p>
     </aside>
   );
