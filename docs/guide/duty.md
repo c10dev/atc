@@ -74,7 +74,7 @@ DUTY 서랍 위쪽의 **IDEAS**(또는 주소 `#ideas`)는 atc 저장소에서 �
 
 ## 설계 문서와 작업 지시서
 
-**L1**은 ENGINEERING이 하던 일상 업무를 DUTY가 직접 하게 하는 단계입니다. 기본은 **꺼짐**이고, 상태 폴더의 `duty.json`에 `"l1": true`를 써야 켜집니다(설정 화면 항목은 아직 없습니다). 꺼져 있으면 DUTY가 STAND를 열거나 Linear에 쓰려 할 때 "L1이 꺼져 있음"으로 거절되고, 그대로 당신에게 전합니다.
+**L1**은 ENGINEERING이 하던 일상 업무를 DUTY가 직접 하게 하는 단계입니다. 기본은 **꺼짐**이고, **설정 → OPERATIONS → DUTY**의 **DUTY L1** 스위치로 켭니다(⚠ 확인 한 번, 이 화면에서만 바뀝니다. `atcctl`이나 관제 세션, DUTY 자신은 바꿀 수 없습니다). 켜는 값은 상태 폴더 `duty.json`의 `"l1": true`이고 다른 칸은 그대로 둡니다. L1은 **DUTY가 켜져 있을 때만** 효과가 있습니다. 꺼져 있으면 DUTY가 STAND를 열거나 Linear에 쓰려 할 때 "L1이 꺼져 있음"으로 거절되고, 그대로 당신에게 전합니다.
 
 - **설계 문서.** DUTY가 자기 STAND(`.claude/worktrees/duty-<이름>`, 브랜치 `claude/duty-<이름>`)를 열고, 거기에 `docs/<주제>.md`를 영어로 써서 커밋·푸시하고 PR을 엽니다. 당신이 채팅에서 하자고 한 것만 씁니다. **머지는 하지 않습니다.** 문서만 바꾼 PR은 등급이 `auto`라서 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시키고, 그 전에 당신이 먼저 머지해도 됩니다. PR은 Draft로 올리지 않습니다.
 - **작업 지시서.** DUTY가 Linear **ATC 팀**에 이슈를 만들고 고치고 댓글을 답니다(atc 서버가 자기 키로 씁니다). 새 이슈에는 **우선순위**가 늘 붙고(없으면 DISPATCH가 후보에서 뺍니다), 상태는 Backlog(기본)나 Todo까지입니다. Todo에 두면 DISPATCH가 팀에 배정합니다. 이슈를 지우거나 닫지 않고, Started 이후는 PR과 `Fixes`가 옮깁니다.
