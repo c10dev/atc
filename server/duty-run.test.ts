@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { Hono } from "hono";
 import { config } from "./config.ts";
+import { readRecords } from "./recorder.ts";
 import { DutyRuntime, mountDutyRun } from "./duty-run.ts";
 import { parseDutyConfig, type DutyConfig } from "./duty-config.ts";
 
@@ -388,4 +389,23 @@ test("sendReview: DUTY가 꺼져 있으면 시작하지 않는다", async () => 
   assert.deepEqual(await r.rt.sendReview("x", "y"), { verdict: "refused", reason: "off" });
   assert.ok(!existsSync(join(r.state, "duty-session.json")));
   r.rt.dispose();
+});
+
+test("ATC-510: 가나·한자만 있는 DUTY 글은 세고 기록하되(글은 그대로 나간다), 한국어·영어는 세기만 한다", async () => {
+  const r = rig();
+  const since = Date.now() - 60_000;
+  await r.rt.send("안녕하세요");
+  await until(() => r.log().some((l) => l.kind === "usage"));
+  await r.rt.send("これは日本語です");
+  await until(() => r.log().filter((l) => l.kind === "usage").length === 2);
+  assert.equal(r.log().filter((l) => l.kind === "text")[1]!.text, "re:これは日本語です", "글은 막지 않고 그대로 간다");
+  r.rt.dispose();
+  const duty = readRecords(since).filter((x) => x.kind === "duty" && (x.op === "lang" || x.op === "lang-flag")) as { op: string; checked?: number; flagged?: number; session: string | null }[];
+  const lang = duty.filter((x) => x.op === "lang"); // 같은 파일의 앞선 시험이 쓴 줄(걸리지 않음)도 섞여 있다
+  assert.ok(lang.some((x) => x.checked === 1 && x.flagged === 1));
+  assert.ok(lang.some((x) => x.flagged === 0), "한국어·영어 글은 검사만 하고 걸리지 않는다");
+  const flags = duty.filter((x) => x.op === "lang-flag");
+  assert.equal(flags.length, lang.reduce((n, x) => n + (x.flagged ?? 0), 0), "걸린 줄마다 한 줄");
+  assert.match(String(flags[0]!.session), /^[0-9a-f]{8}$/);
+  assert.ok(!JSON.stringify(duty).includes("日本語"), "기록에 글을 싣지 않는다");
 });

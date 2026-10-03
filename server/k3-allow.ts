@@ -208,6 +208,20 @@ export function k3LaunchOf(input: { flight: string; declared: readonly K3Declara
   return { flight: input.flight, release, stand, entries, settings: settingsOf(entries) };
 }
 
+// LAUNCH 직전 재확인(ATC-506): launch 카드가 승인된 뒤 발권·선언이 바뀌었을 수 있다. K3 FLIGHT인데 entries를 못 만들면 사유(기다린다), 아니면 null.
+// 티켓이 스냅샷에 없으면 K3인지 알 수 없으므로 기다린다. mode가 off(k3Hold)면 전과 같다(null)
+export const K3_LAUNCH_WAIT_WHY = "K3 entries not ready — waiting";
+export function k3LaunchWaitOf(s: { tickets: readonly { key: string; k3?: readonly K3Declaration[] | undefined; k3Check?: K3Check | undefined; releaseHash?: string | null | undefined }[]; releases?: ReleaseView | null | undefined }, flight: string, mode: "on" | "off" | undefined): string | null {
+  if (mode === "off") return null;
+  const t = s.tickets.find((x) => x.key === flight);
+  if (!t) return `${K3_LAUNCH_WAIT_WHY} (${flight} is not in the snapshot)`;
+  const isK3 = (t.k3Check?.lines ?? 0) > 0 || (t.k3 ?? []).length > 0;
+  if (!isK3) return null;
+  if (k3LaunchOf({ flight, declared: t.k3, hash: t.releaseHash, releases: s.releases, repo: "" })) return null;
+  const hold = k3HoldOf({ check: t.k3Check, declared: t.k3, flight, hash: t.releaseHash, releases: s.releases });
+  return `${K3_LAUNCH_WAIT_WHY} (${hold ? hold.why : "no allow entry can be built"})`;
+}
+
 // ── K3 hold(ATC-398): `## K effects`에 `K3` 줄이 있는데 allow 없이 떠날 FLIGHT는 보내지 않는다 ──
 // 줄 수·읽히지 않은 줄 수·"효과 없음"으로 적은 줄 수. Linear 원천이 이슈 본문에서 읽는다(줄이 없으면 칸이 없다)
 export interface K3Check {

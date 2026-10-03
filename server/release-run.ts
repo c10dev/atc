@@ -69,7 +69,7 @@ export interface ReleaseDeps {
   duplicateCounts?: () => { refused: number; overrides: number; bothFired: number }; // 시험이 채운다(없으면 기록에서 센다)
   recordLine?: typeof record; // 시험이 채운다(없으면 recorder)
   k3RelaunchMisfires?: () => K3RelaunchMisfires; // 시험이 채운다(없으면 FLEET PLAN 카드와 기록에서 센다)
-  k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
+  k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[]; waits?: { flight: string; id: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
 type MoveOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
 export const DISCARD_REASON_MAX = 500;
@@ -202,7 +202,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     : { on: false, rows: [], fired: 0, misfires: [], duplicate: { on: false, refused: 0, overrides: 0, bothFired: 0 } };
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
-    k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
+    k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss, waits: m.waits ?? [] }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
     k3Relaunch: { mode: loadDispatchConfig().k3Relaunch ?? "off", ...(d.k3RelaunchMisfires ? d.k3RelaunchMisfires() : k3RelaunchMisfiresNow(d.now().getTime())) },
     gate: { mode: d.gateMode(), on: releaseGateOn(d.gateMode(), view.armedAt), armedAt: view.armedAt },
     tree: tree.groups,

@@ -83,6 +83,7 @@ import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
+import { mountStopCheck } from "./control-stop-check-run.ts";
 import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
 import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
@@ -287,6 +288,7 @@ mountDutyReview(app, getSnapshot); // DUTY REVIEW(ATC-396): 주기·트리거로
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountStatus(app, getSnapshot, currentAlerts); // STATUS(ATC-384): "현재 상태"·"ATC-n 어디까지"에 한 번에 답하는 읽기 전용 요약
 provideService("flowDeps", { updateStatus: () => update.status(), alerts: currentAlerts });
+mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountHomeFlow(app, getSnapshot, () => update.status(), currentAlerts); // HOME 흐름판(ATC-499): 판정·칸·주체·묶은 할 일(읽기만, 새 GitHub·Linear 호출 없음)

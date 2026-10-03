@@ -19,6 +19,7 @@ import {
   NO_AIRPORT,
   partitionRelease,
   RELEASE_SECTIONS,
+  treeSize,
   releaseSectionCounts,
   releaseSectionOf,
 } from "../web/src/sidebar-rows.ts";
@@ -126,7 +127,7 @@ test("AIRCRAFT 묶음: 퇴역은 빼고, 비행 중 → 쉬는 중 → NORDO →
 });
 
 test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 가르고 수를 센다", () => {
-  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["후보", "Todo 발권 전", "최근 발권"]);
+  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["발권 순서", "Todo 발권 전", "최근 발권"]);
   interface R {
     key: string;
     fire: "fire" | "release" | null;
@@ -138,9 +139,14 @@ test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 �
   assert.deepEqual(p.candidates.map((r) => r.key), ["A-1", "B-1"]);
   assert.deepEqual(p.unreleased.map((r) => r.key), ["A-3", "A-4"]);
   assert.deepEqual(p.rest.map((r) => r.key), ["A-2"]);
-  // 후보 수에는 SCHEDULE NEW 제안이 더해지고, 최근 발권은 기록 수
-  assert.deepEqual(releaseSectionCounts({ tree, proposals: [{}, {}], recent: [{}] }).map((x) => x.count), [4, 2, 1]);
+  // 발권 순서의 수는 나무가 그리는 줄 전부(중첩 포함)에 SCHEDULE NEW 제안을 더한 것, 최근 발권은 기록 수(ATC-494)
+  assert.equal(treeSize(tree), 5);
+  assert.equal(treeSize([]), 0);
+  assert.deepEqual(releaseSectionCounts({ tree, proposals: [{}, {}], recent: [{}] }).map((x) => x.count), [7, 2, 1]);
+  assert.deepEqual(releaseSectionCounts({ tree: [{ rows: [row("A-1", null, [row("A-2", null, [row("A-3", null)])])] }] }).map((x) => x.count), [3, 0, 0]);
   assert.deepEqual(releaseSectionCounts(null).map((x) => x.count), [0, 0, 0]);
+  assert.equal(releaseSectionOf("#release/order"), "order");
+  assert.equal(releaseSectionOf("#release/candidates"), null, "옛 구역 이름은 화면만 연다");
   assert.equal(releaseSectionOf("#release/unreleased"), "unreleased");
   assert.equal(releaseSectionOf("#release"), null);
   assert.equal(releaseSectionOf("#release/x"), null);

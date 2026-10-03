@@ -6,12 +6,12 @@ import { Empty } from "../kit/Empty.tsx";
 import { Fold } from "../kit/Fold.tsx";
 import { Loading } from "../kit/Loading.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
-import { partitionRelease, RELEASE_SECTIONS } from "../sidebar-rows.ts";
+import { partitionRelease, RELEASE_SECTIONS, treeSize } from "../sidebar-rows.ts";
 
 // RELEASE 화면(ATC-376, docs/layout.md Y1): SUPERVISOR가 화살을 쏘는 한 곳(`#release`).
-// 후보(READY Backlog, 에이전트 제안) · 발권 없는 Todo · 최근 발권. 발권 기록은 ATC-362의 길 그대로이고, 이 화면의 클릭만 screen 발권을 만든다(서버가 Origin을 검사한다).
+// 발권 순서(상위 이슈마다 나무: 막는 이슈 밑에 막힌 이슈, ATC-456 → ATC-494) · 발권 없는 Todo · 최근 발권. 발권 기록은 ATC-362의 길 그대로이고, 이 화면의 클릭만 screen 발권을 만든다(서버가 Origin을 검사한다).
 // 줄은 한 줄이다(design-language 4.1): 상태 태그 · FLIGHT · 제목(선언한 K 효과가 있으면 K 태그, 문제가 있으면 그 말) · 우선순위 · 단추. 줄을 열면 줄이 말하지 않은 것(K 효과 전문, 순서, 파일 겹침, 버리기)이 보인다.
-// 사이드바는 구역 색인이다(후보 · Todo 발권 전 · 최근 발권): 고르면 `#release/<구역>`이 되고 이 화면이 그 구역으로 스크롤한다(ATC-423).
+// 사이드바는 구역 색인이다(발권 순서 · Todo 발권 전 · 최근 발권): 고르면 `#release/<구역>`이 되고 이 화면이 그 구역으로 스크롤한다(ATC-423).
 
 // K3 줄이 있는 FLIGHT의 상태(ATC-398, server/k3-allow.ts K3Status): 선언이 읽히나, 지금 발권이 allow를 주나
 interface K3Status {
@@ -118,7 +118,7 @@ interface TreeGroup {
 interface ReleaseData {
   tree?: TreeGroup[];
   k3Relaunch?: { mode: "on" | "off"; approved: number; expired: number; rejected: number; stopOnly: { aircraft: string; proposal: string; t: string }[] };
-  k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] };
+  k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[]; waits?: { flight: string; id: string; t: string }[] };
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
   filed: Filed[];
@@ -177,7 +177,9 @@ const PRIO_CODE = ["—", "URG", "HIGH", "MED", "LOW"];
 const prioOf = (p: number) => PRIO_CODE[p] ?? "—";
 
 const STATE_TAG = { ready: "READY", parked: "PARKED", todo: "TODO", waiting: "대기" } as const;
-const tagOf = (r: TreeRow) => (r.state.kind === "stage" ? r.state.word : STATE_TAG[r.state.kind]);
+// 나무에서는 기다리는 줄의 태그가 무엇을 기다리는지 말한다(`대기: ATC-451`, 막는 이슈가 여럿이면 `+n`, 전체는 상세에)
+const tagOf = (r: TreeRow, tree = false) =>
+  r.state.kind === "stage" ? r.state.word : r.state.kind === "waiting" && tree ? `대기: ${r.state.on[0]}${r.state.on.length > 1 ? ` +${r.state.on.length - 1}` : ""}` : STATE_TAG[r.state.kind];
 
 // 줄에서 한 마디로 말하는 문제("괜찮은가"에 아니오인 것). 없으면 null
 function problemOf(r: TreeRow): string | null {
@@ -216,8 +218,8 @@ interface Acts {
   discard: (r: TreeRow) => void;
 }
 
-// FLIGHT 줄 하나: 한 줄과 펼침. 단추는 발권할 수 있는 줄에만
-function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean; toggle: () => void; acts: Acts }) {
+// FLIGHT 줄 하나: 한 줄과 펼침. 단추는 발권할 수 있는 줄에만. tree: 나무의 줄이다(`대기: ATC-n` 태그, 기다림·진행 중은 옅게, Sequence·같은 파일을 줄에서 말하고, 막힌 이슈는 children으로 그 밑에)
+function FlightRow({ row: r, open, toggle, acts, tree = false, children }: { row: FlatRow; open: boolean; toggle: () => void; acts: Acts; tree?: boolean; children?: ReactNode }) {
   const { busy, discarding, reason, setReason, setDiscarding, fire, discard } = acts;
   const problem = problemOf(r);
   const noPriority = r.fire === "fire" && r.priority <= 0;
@@ -234,8 +236,9 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
   ) : null;
   return (
     <TodoRow
-      tag={tagOf(r)}
+      tag={tagOf(r, tree)}
       tone={problem ? "caution" : null}
+      quiet={tree && (r.state.kind === "waiting" || r.state.kind === "stage")}
       subject={r.key}
       need={
         <>
@@ -246,6 +249,16 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
           )}
           {r.title}
           {problem && <span className="rls-problem"> — {problem}</span>}
+          {/* 나무의 줄: 순서 선호(Sequence)와 같은 파일을 줄에서 말한다. 전문은 상세에 */}
+          {tree && r.after && (
+            <span>
+              {" "}
+              · after <span className="mono">{r.after.key}</span>: {r.after.reason}
+              {!r.after.known && " (알 수 없는 이슈, 순서에 쓰지 않음)"}
+            </span>
+          )}
+          {tree && r.sequenceProblem && !r.after && <span> · {r.sequenceProblem}</span>}
+          {tree && r.sameFiles.length > 0 && <span> · 같은 파일: {r.sameFiles.join(", ")}</span>}
           {/* 기다리는 줄: 막는 이슈가 이 화면의 줄이 아니면 왜 없고 어디 있는지(ATC-488) */}
           {r.missing?.map((m) => (
             <span key={m.key} className="rls-missing faint">
@@ -274,6 +287,7 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
       open={open}
       onToggle={toggle}
       action={action}
+      childrenLabel={`${r.key}가 막고 있는 이슈`}
       detail={
         <>
           <Fact name="상태">{stateText(r)}</Fact>
@@ -319,11 +333,24 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
           </div>
         </>
       }
-    />
+    >
+      {children}
+    </TodoRow>
   );
 }
 
-// 지금 주소의 구역으로 스크롤한다(#release/candidates …). 사이드바가 주소를 정한다
+// 나무의 줄 하나와 그 밑의 막힌 이슈들(진짜 중첩 목록). 상위 이슈는 그룹 머리가 말하므로 줄에는 따로 적지 않는다
+function TreeNode({ row: r, openKey, setOpenKey, acts }: { row: TreeRow; openKey: string | null; setOpenKey: (k: string | null) => void; acts: Acts }) {
+  const id = `order/${r.key}`;
+  const open = openKey === id;
+  return (
+    <FlightRow row={{ ...r, group: null }} open={open} toggle={() => setOpenKey(open ? null : id)} acts={acts} tree>
+      {r.children.length > 0 ? r.children.map((c) => <TreeNode key={c.key} row={c} openKey={openKey} setOpenKey={setOpenKey} acts={acts} />) : undefined}
+    </FlightRow>
+  );
+}
+
+// 지금 주소의 구역으로 스크롤한다(#release/order …). 사이드바가 주소를 정한다
 function useScrollToSection(ready: boolean) {
   useEffect(() => {
     if (!ready) return;
@@ -410,7 +437,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       ? "발권 gate 꺼짐(dispatch.json releaseGate) — 발권 없이도 배정합니다"
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
   // K3 HOLD는 꺼졌거나 오작동이 센 때만 보인다(켜져 있고 0이면 보통 상태)
-  const k3Hold = data.k3Hold && (data.k3Hold.mode !== "on" || data.k3Hold.nuisance.length > 0 || data.k3Hold.miss.length > 0) ? data.k3Hold : null;
+  const k3Hold = data.k3Hold && (data.k3Hold.mode !== "on" || data.k3Hold.nuisance.length > 0 || data.k3Hold.miss.length > 0 || (data.k3Hold.waits?.length ?? 0) > 0) ? data.k3Hold : null;
   // K3 RELAUNCH(ATC-509)는 켜졌거나 센 기록이 있는 때만 보인다(꺼져 있고 0이면 보통 상태)
   const k3Re = data.k3Relaunch && (data.k3Relaunch.mode === "on" || data.k3Relaunch.approved + data.k3Relaunch.expired + data.k3Relaunch.rejected + data.k3Relaunch.stopOnly.length > 0) ? data.k3Relaunch : null;
   const attested = Object.entries(data.attested);
@@ -419,9 +446,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
   const groupOf = new Map<string, string | null>();
   for (const g of data.tree ?? []) for (const r of flatten(g.rows, g.key ? `${g.key} ${g.title}` : null)) groupOf.set(r.key, r.group);
   const withGroup = (r: TreeRow): FlatRow => ({ ...r, group: groupOf.get(r.key) ?? null });
-  const candidates = part.candidates.map(withGroup);
   const unreleased = part.unreleased.map(withGroup);
-  const rest = part.rest.map(withGroup);
   const row = (section: string, r: FlatRow) => {
     const id = `${section}/${r.key}`;
     const open = openKey === id;
@@ -450,15 +475,15 @@ export function Release({ refreshKey }: { refreshKey: string }) {
   }));
   const kPending = data.kPending ?? [];
   const now = Date.now();
-  const candidateCount = candidates.length + data.proposals.length;
+  const orderCount = treeSize(data.tree ?? []) + data.proposals.length;
 
   return (
     <div className="rls-screen">
       {!data.gate.on && <p className="rls-note faint">{gateNote}</p>}
       {error && <p className="rls-error" role="alert">{error}</p>}
       {k3Hold && (
-        <p className="rls-note faint" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤">
-          K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length}
+        <p className="rls-note faint" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤, wait = LAUNCH 직전에 K3 entries를 못 만들어 기다린 launch 카드(ATC-506)">
+          K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length} · wait {k3Hold.waits?.length ?? 0}
           {k3Hold.miss.length > 0 && ` (${k3Hold.miss.map((m) => `${m.flight}@${m.aircraft}`).join(", ")})`}
         </p>
       )}
@@ -470,13 +495,11 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
 
-      <section id="rls-candidates" className="rls-section" aria-label="후보">
-        <SectionHead count={candidateCount}>후보</SectionHead>
-        {candidateCount === 0 ? (
-          <Empty>발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안, 막는 FLIGHT가 모두 끝난 Backlog 이슈가 여기 옵니다</Empty>
-        ) : (
-          <ul className="rls-rows" aria-label="후보">
-            {candidates.map((r) => row("candidates", r))}
+      <section id="rls-order" className="rls-section" aria-label="발권 순서">
+        <SectionHead count={orderCount}>발권 순서</SectionHead>
+        {orderCount === 0 && <Empty>발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안, 막는 FLIGHT가 모두 끝난 Backlog 이슈가 여기 옵니다</Empty>}
+        {data.proposals.length > 0 && (
+          <ul className="rls-rows" aria-label="제안">
             {data.proposals.map((p) => {
               const id = `proposal/${p.id}`;
               const open = openKey === id;
@@ -511,6 +534,16 @@ export function Release({ refreshKey }: { refreshKey: string }) {
             })}
           </ul>
         )}
+        {/* 상위 이슈마다 한 그룹(없으면 기타): 머리에 끝남 d/t와 다음 발권. 그룹 안에서 막힌 이슈는 막는 이슈 밑에 중첩된다. 끝난 이슈는 줄이 아니라 끝남 수에 든다 */}
+        {(data.tree ?? []).map((g) => (
+          <Fold key={g.key ?? "other"} level={3} title={g.key ? `${g.key} ${g.title}` : g.title} label={g.key ? `${g.key} 그룹` : "상위 이슈 없는 이슈"} summary={`끝남 ${g.done}/${g.total}${g.next ? ` · 다음 발권: ${g.next}` : ""}`}>
+            <ul className="rls-rows" aria-label={g.key ? `${g.key} 아래 이슈` : "상위 이슈 없는 이슈"}>
+              {g.rows.map((r) => (
+                <TreeNode key={r.key} row={r} openKey={openKey} setOpenKey={setOpenKey} acts={acts} />
+              ))}
+            </ul>
+          </Fold>
+        ))}
       </section>
 
       <section id="rls-unreleased" className="rls-section" aria-label="Todo 발권 전">
@@ -656,14 +689,6 @@ export function Release({ refreshKey }: { refreshKey: string }) {
           )}
         </Fold>
         </div>
-      )}
-
-      {rest.length > 0 && (
-        <Fold title="대기·진행 중" count={rest.length} defaultOpen={false}>
-          <ul className="rls-rows" aria-label="대기·진행 중">
-            {rest.map((r) => row("rest", r))}
-          </ul>
-        </Fold>
       )}
     </div>
   );

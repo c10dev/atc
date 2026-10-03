@@ -131,7 +131,7 @@ export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> 
 
 // ── 행동 ──
 export interface ActDeps {
-  stop: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  stop: (name: string) => Promise<{ ok: boolean; error?: string; unverified?: boolean }>;
   rowsOf: () => Promise<AgentRow[]>; // 새로 읽는다
   pidAlive: (pid: number) => boolean;
   launch: (name: string, account: string | undefined) => Promise<{ ok: boolean; jobId?: string; account?: string | null; error?: string }>;
@@ -152,7 +152,8 @@ export const pidAliveOf = (pid: number): boolean => {
 export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid" | "account">, name: string, contextBefore: number, reason: string): Promise<RecycleRecord> {
   const base = { t: new Date().toISOString(), session: name, contextBefore, reason, mode: "on" as const, ...(row.account ? { account: row.account } : {}) };
   const st = await d.stop(name);
-  if (!st.ok) return { ...base, ok: false, result: "stop-failed", error: st.error };
+  // ATC-521: claude stop은 성공했지만 job이 stopped가 되지 않았다. 종료 코드만 믿고 새 세션을 띄우지 않는다(옛 세션이 계속 돌 수 있다)
+  if (!st.ok) return { ...base, ok: false, result: st.unverified ? "stop-unverified" : "stop-failed", error: st.error };
   // ATC-165 1.5: 저장한 pid가 사라지고 줄에 pid·status가 없을 때만 안 것으로 본다. done에서 STOP한 job은 줄이 유령으로 남는다(STALE, LAUNCH는 무시한다)
   const deadline = Date.now() + (d.confirmMs ?? 15_000);
   let ghost = false;
@@ -352,7 +353,7 @@ export async function applyNowControl(d: ActDeps, name: string, to: string | nul
 export const defaultActDeps = (fuelAccounts: () => Snapshot["fuelAccounts"], by = "RECYCLE"): ActDeps => ({
   stop: async (name) => {
     const r = await stopControl(name, by);
-    return { ok: r.ok, error: r.error };
+    return { ok: r.ok, error: r.error, ...(r.unverified ? { unverified: true } : {}) };
   },
   rowsOf: () => agentRows(),
   pidAlive: pidAliveOf,

@@ -79,6 +79,7 @@ import { allClearances } from "./clearances.ts";
 import { holderLines, holderPlansOf, type PrHolder } from "./pr-holder.ts";
 import { setHolderRoutes } from "./pr-holder-state.ts";
 import { ticketKeyFromBranch } from "./sources/git.ts";
+import { k3LaunchWaits, k3WaitOf } from "./k3-launch-wait.ts";
 import {
   approveLaunch,
   LAUNCH_FAILED_WHY,
@@ -804,7 +805,7 @@ export function syncOps(
       if (age(p) > PROPOSAL_TTL_MS) ops.push({ op: "expire", id: p.id, at, reason: "승인 뒤 24시간 동안 전달되지 않음" });
       // LAUNCH했는데 유예가 지나도 세션이 없다(계획에 아직 absent)
       else if (acOf(p)?.launch && launchTimedOut(p, now, cfg.launchCardTimeoutMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchTimeoutWhy(cfg.launchCardTimeoutMin) });
-      else if (acOf(p)?.launch && launchMissing(p, now, cfg.launchCardTimeoutMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.launchCardTimeoutMin) });
+      else if (acOf(p)?.launch && launchMissing(p, now, cfg.launchCardTimeoutMin)) ops.push({ op: "supersede", id: p.id, at, reason: launchMissingWhy(cfg.launchCardTimeoutMin, k3WaitOf(p.id)) });
       else if (p.prHolder) {
         const reason = holderWhy(p);
         if (reason && !waits(p, reason)) ops.push({ op: "supersede", id: p.id, at, reason });
@@ -1285,7 +1286,7 @@ export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Pro
 // index.ts가 session-control.ts를 넘긴다. 이 승인 말고는 카드로 세션을 띄우는 길이 없다
 export interface DispatchLauncher {
   max: number;
-  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string; wait?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
 }
 
 // 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
@@ -1333,7 +1334,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       unsettled, // 열린·HELD 중 아직 SETTLED가 아닌 수(메모가 있어도 센다). CROSSCHECK 브리핑의 unsettledMarks와 다르다
       waiting,
       // launch 카드(proposal.launch)마다 "LAUNCH on approve", 상한이 찬 열린 카드는 기다린다는 글(ATC-129)
-      launch: launchViewOf([...open, ...held, ...inFlight], launchCap),
+      launch: launchViewOf([...open, ...held, ...inFlight], launchCap, k3LaunchWaits()),
       launchCap,
       approvedNoSession: approvedNoSessionOf(proposals, s, now, cfg.approvedWaitMin, cfg.teamPattern), // ATC-388
       briefs: await cardBriefsOf([...open, ...held], s, proposals, logbook, now, fuel, routesOf),
@@ -1500,7 +1501,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
             now: () => new Date().toISOString(),
           });
           if (!r.ok) return c.json({ error: r.error, proposal: allProposals().find((x) => x.id === id) }, r.status as 409);
-          return c.json({ proposal: allProposals().find((x) => x.id === id) });
+          return c.json({ proposal: allProposals().find((x) => x.id === id), ...(r.wait ? { wait: r.wait } : {}) });
         }
         append([
           name === "approve"
