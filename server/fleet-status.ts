@@ -24,7 +24,7 @@ export const fleetStatusOf = (a: Pick<AircraftView, "retired" | "aog" | "status"
       : a.status === "busy"
         ? "AIRBORNE"
         : a.status === "idle"
-          ? (a.flights?.length ?? a.flying.length)
+          ? (a.flights ? a.flights.filter((x) => !x.canceled).length : a.flying.length)
             ? "HOLDING"
             : "PARKED"
           : a.status === "dead"
@@ -41,7 +41,7 @@ export interface FleetRow {
   callsign: string;
   airport: string | null;
   status: FleetStatus;
-  flight: { key: string; title: string | null; kept?: true; detail?: FlightDetail } | null; // 첫 FLYING FLIGHT. kept: 점유는 지났지만 멈춘 AIRCRAFT가 쥔 FLIGHT(ATC-86)
+  flight: { key: string; title: string | null; kept?: true; canceled?: true; detail?: FlightDetail } | null; // 첫 FLYING FLIGHT(없으면 취소된 FLIGHT, ATC-460). kept: 점유는 지났지만 멈춘 AIRCRAFT가 쥔 FLIGHT(ATC-86)
   more: number; // 그 밖의 FLYING FLIGHT 수
   elapsedMin: number | null; // 지금 쥔 STAND를 잡은 뒤 흐른 분(FLYING일 때만)
   lastActiveAt: string | null;
@@ -77,7 +77,10 @@ export interface FleetRow {
 // 목록 줄: 상태 순서, 같은 상태 안에서는 AIRPORT(없으면 뒤), 그다음 REGISTRATION
 export function fleetRows(aircraft: readonly AircraftView[], now: number): FleetRow[] {
   const rows = aircraft.map((a): FleetRow => {
-    const flights = a.flights ?? a.flying.map((key) => ({ key, title: null }));
+    // 취소된 FLIGHT(ATC-460)는 날고 있는 것이 아니다: 날고 있는 FLIGHT가 먼저, 취소된 것은 뒤에 "취소됨"으로만 보인다
+    const all: NonNullable<FleetRow["flight"]>[] = a.flights ?? a.flying.map((key) => ({ key, title: null }));
+    const live = all.filter((x) => !x.canceled);
+    const flights = [...live, ...all.filter((x) => x.canceled)];
     const since = a.flyingSince ? Date.parse(a.flyingSince) : NaN;
     return {
       registration: a.registration,
@@ -86,7 +89,7 @@ export function fleetRows(aircraft: readonly AircraftView[], now: number): Fleet
       status: fleetStatusOf(a),
       flight: flights[0] ?? null,
       more: Math.max(0, flights.length - 1),
-      elapsedMin: flights.length && Number.isFinite(since) ? Math.max(0, Math.floor((now - since) / 60_000)) : null,
+      elapsedMin: live.length && Number.isFinite(since) ? Math.max(0, Math.floor((now - since) / 60_000)) : null,
       lastActiveAt: a.lastActiveAt ?? null,
       week: a.actuals.week,
       weekOnTime: a.actuals.weekOnTime?.rate ?? null,
