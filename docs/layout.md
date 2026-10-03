@@ -92,7 +92,7 @@ The tab row is then five: HOME, RELEASE, FLIGHTS, FLEET, METRICS.
 
 ## 4. Implementation order
 
-Each step is one work order (filed 2026-10-02, linked below) and one PR. The tier is `auto` unless a step touches a `user` path. Each step updates `docs/guide/` (at least `screens.md`), adds a changelog fragment, and follows the design-language checklist. Its Playwright pass runs at the SUPERVISOR's real width (about 1000 px), as well as at 1280 and 390 px, with seeded data.
+Each step is one work order (filed 2026-10-02, linked below) and one PR. The tier is `auto` unless a step touches a `user` path. Each step updates `docs/guide/` (at least `screens.md`), adds a changelog fragment, and follows the design-language checklist. Its Playwright pass runs at the SUPERVISOR's real width (about 1000 px), as well as at 1280 and 390 px, with seeded data. It also runs **with the FLIGHT drawer open**: at 1000 px (the sidebar folds) and at 1280 px with the sidebar and the drawer both open, the narrowest case (about 330 px for a list column, [flights-list.md](flights-list.md)).
 
 | Step | What | Needs |
 |---|---|---|
@@ -275,7 +275,7 @@ The breakpoint is the 860 px of decision Q2 in [ui-refactor-plan.md](ui-refactor
 Each step is one work order and one PR, filed under [ATC-404](https://linear.app/vocado/issue/ATC-404) on 2026-10-02. They are in Backlog, and each shows as READY on the RELEASE screen once its blockers are done; Z1 waits for ATC-435 (`web/src/kit/`). A step moves a part and removes the old copy in the same PR (principle 5). Each step:
 - uses the `web/src/kit/` primitives where they exist ([design-system.md](design-system.md));
 - updates `docs/guide/screens.md`;
-- is checked at about 1000, 1280 and 390 px in the three themes, described in words.
+- is checked at about 1000, 1280 and 390 px in the three themes, and at 1000 and 1280 px with the FLIGHT drawer open, described in words.
 
 | Step | What | Needs |
 |---|---|---|
