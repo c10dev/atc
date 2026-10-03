@@ -13,7 +13,7 @@ atc's server writes English to sessions: FLIGHT PLAN, RECALL, CLEARANCE, CREW CH
 5. **Use the same word for the same thing, every time.** STAND, not "worktree" in one place and "workspace" in another. The aviation terms stay (AIRCRAFT, FLIGHT, READBACK …).
 6. **Use the active voice and plain verbs.** "Merge origin/main", not "origin/main is to be merged".
 7. **No idiom and no figure of speech.** "Carry the work through to the end", not "see it through".
-8. **Say what to do, not only what is wrong.** "Behind base. Rebase it."
+8. **Say what to do, not only what is wrong.** "Behind base. Merge origin/main and push with a plain git push."
 
 ## 2. What must not change
 

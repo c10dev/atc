@@ -567,7 +567,7 @@ export function mergeBlocks(state: string, unresolvedThreads?: number): Block[] 
     case "DRAFT": // Draft 조건이 따로 잡는다
       return [];
     case "BEHIND":
-      return [block("behind", "base보다 뒤처짐: rebase 필요", behindEn())];
+      return [block("behind", "base보다 뒤처짐: origin/main 병합 필요", behindEn())];
     case "DIRTY":
       return [block("dirty", "base와 충돌: 충돌 해결 필요", dirtyEn())];
     case "BLOCKED":

@@ -120,7 +120,7 @@ BLOCKED none | <막힌 점 한 줄씩>
 - `gh pr edit --body-file`은 GraphQL "Projects (classic)" 오류로 실패한다. `gh api -X PATCH repos/chaehy5665/atc/pulls/<n> -F body=@<파일>`을 쓴다.
 - Playwright MCP는 스크린샷을 `/tmp/playwright-mcp/` 아래 절대 경로로만 저장한다(`~/.claude/playwright-mcp.json`의 `outputDir`). 상대 경로나 다른 경로를 쓰면 PNG가 STAND나 main 체크아웃(공개 저장소)에 떨어진다. 커밋 전에 두 곳의 `git status`에서 남은 PNG를 확인한다.
 - `cp -al node_modules`는 같은 파일시스템에서만 된다. `/tmp`(tmpfs)에는 안 된다.
-- `origin/main`은 FLIGHT 도중 여러 번 움직인다. 끝까지 확인(시험 서버·Playwright) 전에 한 번, PR 직전에 한 번 `git fetch`하고 rebase한다.
+- `origin/main`은 FLIGHT 도중 여러 번 움직인다. 끝까지 확인(시험 서버·Playwright) 전에 한 번, PR 직전에 한 번 `git fetch`·병합한다.
 - Playwright 루프에서 해시만 다른 같은 URL로 `page.goto`하면 다시 불러오지 않아 React 상태(열린 설정 창 등)가 남는다. `/?i=${n}#tab`처럼 쿼리를 바꾼다.
 
 ### 새 gotcha 제안

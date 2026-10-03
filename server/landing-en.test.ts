@@ -35,7 +35,7 @@ test("en: CI 코드 no-checks · checks-pending · checks-failed", () => {
 });
 
 test("en: 머지 상태 코드 behind · dirty · blocked · merge-unknown", () => {
-  assert.deepEqual(en(mergeBlocks("BEHIND")), ["behind base. Rebase it"]);
+  assert.deepEqual(en(mergeBlocks("BEHIND")), ["behind base. Merge origin/main and push with a plain git push"]);
   assert.deepEqual(en(mergeBlocks("DIRTY")), ["conflicts with base. Resolve the conflicts"]);
   assert.deepEqual(en(mergeBlocks("BLOCKED")), ["GitHub branch protection blocks the merge"]);
   assert.deepEqual(en(mergeBlocks("BLOCKED", 1)), ["GitHub branch protection blocks the merge. 1 review thread is not resolved. Resolve all threads before you merge"]);
