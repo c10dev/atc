@@ -5,24 +5,8 @@
   align-items: center;
   gap: var(--space-2) var(--space-3);
 }
-.mf-refresh,
-.mf-linkbtn {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-  color: var(--text);
-  font: 600 var(--text-sm) var(--sans);
-  cursor: pointer;
-}
-.mf-refresh:disabled {
-  color: var(--muted);
-  cursor: default;
-}
 .mf-linkbtn {
   margin-top: var(--space-2);
-  background: transparent;
-  color: var(--muted);
 }
 .mf-empty {
   margin-top: var(--space-4);
@@ -70,31 +54,10 @@
   font-size: var(--text-xs);
 }
 
-/* 표: 좁은 화면에서는 표 안에서만 가로로 민다(페이지는 넘치지 않는다) */
 .mf-sec {
   margin-top: var(--space-4);
 }
-.mf-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-}
-.mf-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-}
-.mf-table th {
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
-  color: var(--faint);
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
+/* 표의 바탕은 kit의 .kit-table(머리·줄·숫자 칸)이고 .kit-scroll이 넘침을 맡는다. 여기는 다른 점만: 정렬 머리 버튼, 묶음 줄 */
 /* 눌리는 칸 24×24 이상(ATC-417). 위아래 음수 마진으로 머리줄 높이는 그대로 */
 .mf-table th button {
   display: inline-flex;
@@ -117,22 +80,6 @@
 .mf-table th[aria-sort="ascending"],
 .mf-table th[aria-sort="descending"] {
   color: var(--text);
-}
-.mf-table td {
-  padding: var(--space-1-5) var(--space-3);
-  border-bottom: 1px solid var(--line);
-}
-.mf-table tr:last-child td {
-  border-bottom: 0;
-}
-.mf-table .num {
-  text-align: right;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.mf-table th.num {
-  text-align: right;
 }
 .mf-group th {
   background: var(--panel-3);
