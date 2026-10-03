@@ -93,6 +93,7 @@ export const READ_ONLY = [
   ["server/sources/supabase-migrations.ts", "Supabase Management API GET 하나: 호스티드 DB가 적용한 마이그레이션 버전만 읽음(SQL·적용·쓰기 없음, ATC-329)"],
   ["server/sources/linear-labels.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/sources/linear-projects.ts", "Linear GraphQL query만(mutation 없음)"],
+  ["server/browser-gate-cli.ts", "Playwright가 준 Chrome을 줄 세워 그대로 실행(호스트 밖에 쓰지 않음, 스크린샷 안 씀, ATC-520)"],
   ["server/judges/engines.ts", "판정 엔진에 묻기만 함(POST지만 상태를 바꾸지 않음)"],
 ];
 
