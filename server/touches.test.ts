@@ -26,10 +26,15 @@ test("범주마다 한 줄씩 센다: release·RELAY·FLEET·card(proposals·sch
       { op: "approve", via: "manual", at: "2026-10-03T04:00:00Z" },
       { op: "approve", via: "auto", at: "2026-10-03T04:00:00Z" },
       { op: "approve", via: "crosscheck", at: "2026-10-03T04:00:00Z" },
+      { op: "approve", via: "atfm", at: "2026-10-03T04:00:00Z" },
+      { op: "approve", at: "2026-10-03T04:00:00Z" },
     ],
     schedule: [
       { op: "verdict", via: "manual", at: "2026-10-03T05:00:00Z" },
       { op: "approve", via: "auto", at: "2026-10-03T05:00:00Z" },
+      { op: "approve", via: "crosscheck", at: "2026-10-03T05:00:00Z" },
+      { op: "verdict", at: "2026-10-03T05:00:00Z" },
+      { op: "approve", via: "atfm", at: "2026-10-03T05:00:00Z" },
     ],
     mcc: [{ op: "land", result: "ok", pr: 1, at: "2026-10-03T06:00:00Z" }],
   };
@@ -37,13 +42,13 @@ test("범주마다 한 줄씩 센다: release·RELAY·FLEET·card(proposals·sch
   assert.equal(r.counts.release, 1);
   assert.equal(r.counts.relay, 1);
   assert.equal(r.counts.fleet, 1);
-  assert.equal(r.counts.card, 2);
+  assert.equal(r.counts.card, 6); // proposals: manual, crosscheck, via 없음 / schedule: manual, crosscheck, via 없음
   assert.equal(r.gate, 1);
-  assert.equal(r.leaks, 4);
-  assert.equal(r.touches, 5);
+  assert.equal(r.leaks, 8);
+  assert.equal(r.touches, 9);
   assert.equal(r.landed, 1);
-  assert.equal(r.perPr, 5);
-  assert.equal(r.leaksPerPr, 4);
+  assert.equal(r.perPr, 9);
+  assert.equal(r.leaksPerPr, 8);
 });
 
 test("기록이 없는 범주는 0이 아니라 null", () => {
@@ -87,8 +92,9 @@ test("착륙: 같은 PR은 하루에 한 번, MCC와 AUTOLAND 합, 실패는 제
       { op: "would-land", result: "ok", pr: 7, at: "2026-10-03T02:00:00Z" },
     ],
     autoland: [
-      { op: "merge", result: "ok", slug: "a/b", number: 5, at: "2026-10-03T03:00:00Z" },
+      { op: "merge", result: "ok", slug: "c10dev/atc", number: 5, at: "2026-10-03T03:00:00Z" },
       { op: "update", result: "ok", slug: "a/b", number: 9, at: "2026-10-03T03:00:00Z" },
+      { op: "merge", result: "ok", slug: "c10dev/vocado", number: 5, at: "2026-10-03T03:00:00Z" },
     ],
     relays: [
       { op: "create", at: "2026-10-03T04:00:00Z" },
@@ -97,7 +103,7 @@ test("착륙: 같은 PR은 하루에 한 번, MCC와 AUTOLAND 합, 실패는 제
     ],
   };
   const r = row(inp, "2026-10-03");
-  assert.equal(r.landed, 2);
+  assert.equal(r.landed, 2); // atc#5는 MCC와 AUTOLAND가 같이 적어도 한 번, 다른 저장소의 5번은 따로
   assert.equal(r.perPr, 1.5);
 });
 

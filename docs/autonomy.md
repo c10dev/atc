@@ -194,9 +194,9 @@ Read-only. METRICS → TOUCHES (`#metrics/touches`, `GET /api/touches?days=14`; 
 | FLEET/CONTROL action | leak | `fleet-plan.jsonl`, `approve` by `SUPERVISOR` (FLEET PLAN cards only; CONTROL buttons leave no line) |
 | DUTY message | leak | not recorded |
 | RELAY | leak | `relays.jsonl`, each `create` line (the ATC-465 filter) |
-| card decision | leak | `proposals.jsonl` `approve` and `schedule.jsonl` `approve`/`verdict` whose `via` is not `auto` or `crosscheck` (ATC-465 counts `via` other than `auto`; this panel also leaves out `crosscheck`, a machine) |
+| card decision | leak | `proposals.jsonl` `approve` and `schedule.jsonl` `approve`/`verdict` whose `via` is not `auto` or `atfm` (a missing `via` on an old line counts; the same filter for both files, as `humanOf` in `server/schedule.ts`). `crosscheck` is the SUPERVISOR's one-click agreement with CROSSCHECK, so it counts; ATC-465 counts `via` other than `auto`, this panel also leaves out `atfm` |
 
-A category with no source shows `not recorded`, never 0, and is left out of the totals. **Landed PRs** are `mcc.jsonl` `land` with `result: ok` and `autoland.jsonl` `merge` with `result: ok`, one per PR per day; a PR merged by hand on GitHub is not counted, so on a day with hand merges the per-PR figure reads high. Days are UTC (`00:00:00Z` belongs to the new day). It reuses the ATC-465 records and filters and adds no second record. A record for the unrecorded categories (a DUTY message, a Linear hand edit, a GitHub merge) is a separate follow-up.
+A category with no source shows `not recorded`, never 0, and is left out of the totals. **Landed PRs** are `mcc.jsonl` `land` with `result: ok` and `autoland.jsonl` `merge` with `result: ok`, one per repository-and-number key per day, so a PR both records name counts once; a PR merged by hand on GitHub is not counted, so on a day with hand merges the per-PR figure reads high. Days are UTC (`00:00:00Z` belongs to the new day). It reuses the ATC-465 records and filters and adds no second record. A record for the unrecorded categories (a DUTY message, a Linear hand edit, a GitHub merge) is a separate follow-up.
 
 ### SCHEDULE and FLEET PLAN without a human (ATC-370)
 

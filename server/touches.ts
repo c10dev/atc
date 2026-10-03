@@ -22,7 +22,7 @@ export const CATEGORIES: readonly CategoryInfo[] = [
   { id: "fleet", label: "FLEET/CONTROL action", side: "leak", source: "fleet-plan.jsonl (approve by SUPERVISOR)", note: "FLEET PLAN 카드 승인만 센다. CONTROL 버튼은 기록이 없다" },
   { id: "duty", label: "DUTY message", side: "leak", source: null, note: null },
   { id: "relay", label: "RELAY", side: "leak", source: "relays.jsonl (op create)", note: null },
-  { id: "card", label: "card decision", side: "leak", source: "proposals.jsonl·schedule.jsonl (사람이 한 approve·verdict)", note: "auto·crosscheck 승인은 사람 손이 아니라 세지 않는다" },
+  { id: "card", label: "card decision", side: "leak", source: "proposals.jsonl·schedule.jsonl (사람이 한 approve·verdict)", note: "auto(서버)와 atfm(ATFM 자동)은 사람 손이 아니라 세지 않는다. crosscheck는 SUPERVISOR가 CROSSCHECK에 한 번에 동의한 것이라 센다" },
 ];
 
 export interface TouchInput {
@@ -59,7 +59,8 @@ export const utcDay = (t: string): string | null => {
   return Number.isFinite(n) ? new Date(n).toISOString().slice(0, 10) : null;
 };
 
-const humanVia = (via: string | undefined) => via !== "auto" && via !== "crosscheck";
+// 사람 손: via가 없는 옛 줄도 센다. 서버가 한 auto와 ATFM이 한 atfm만 뺀다(schedule.ts humanOf와 같다). crosscheck는 SUPERVISOR의 한 번 클릭 동의다
+const humanVia = (via: string | undefined) => via !== "auto" && via !== "atfm";
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
 export function touchesView(inp: TouchInput, nowMs: number, days: number): TouchesView {
@@ -78,14 +79,14 @@ export function touchesView(inp: TouchInput, nowMs: number, days: number): Touch
   for (const r of inp.relays) if (r.op === "create") bump(r.at, "relay");
   for (const r of inp.fleetPlan) if (r.op === "approve" && r.by === "SUPERVISOR") bump(r.at, "fleet");
   for (const r of inp.proposals) if (r.op === "approve" && humanVia(r.via)) bump(r.at, "card");
-  for (const r of inp.schedule) if ((r.op === "approve" || r.op === "verdict") && r.via === "manual") bump(r.at, "card");
-  // 착륙한 PR: MCC land ok, AUTOLAND merge ok. 같은 PR은 하루에 한 번만 센다
+  for (const r of inp.schedule) if ((r.op === "approve" || r.op === "verdict") && humanVia(r.via)) bump(r.at, "card");
+  // 착륙한 PR: MCC land ok, AUTOLAND merge ok. 키는 저장소 이름#번호 하나(MCC는 atc 저장소)라 두 기록이 같은 PR을 적어도 한 번만 센다
   const land = (at: string, key: string) => {
     const d = utcDay(at);
     if (d) rows.get(d)?.landed.add(key);
   };
-  for (const r of inp.mcc) if (r.op === "land" && r.result === "ok" && r.pr != null) land(r.at, `mcc#${r.pr}`);
-  for (const r of inp.autoland) if (r.op === "merge" && r.result === "ok" && r.number != null) land(r.at, `${r.slug ?? "?"}#${r.number}`);
+  for (const r of inp.mcc) if (r.op === "land" && r.result === "ok" && r.pr != null) land(r.at, `atc#${r.pr}`);
+  for (const r of inp.autoland) if (r.op === "merge" && r.result === "ok" && r.number != null) land(r.at, `${(r.slug ?? "?").split("/").pop()}#${r.number}`);
 
   const recorded = CATEGORIES.filter((c) => c.source);
   const out: DayRow[] = dayList.map((day) => {

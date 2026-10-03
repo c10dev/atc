@@ -4,6 +4,7 @@ import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { Loading } from "../kit/Loading.tsx";
 import { TableScroll } from "../kit/TableScroll.tsx";
+import "./MetricsTouches.css";
 
 // METRICS → TOUCHES(ATC-512, docs/autonomy.md 원칙 1): UTC 하루마다 머지된 PR 하나당 SUPERVISOR가 손댄 횟수. 읽기만 한다.
 // 어느 범주가 gate인지는 서버(touches.ts)가 autonomy.md에서 옮겨 보낸다. 기록이 없는 범주는 0이 아니라 "not recorded".
@@ -53,16 +54,20 @@ export function MetricsTouches({ refreshKey }: { refreshKey: string }) {
               <table className="kit-table" aria-label="날짜별 TOUCHES">
                 <thead>
                   <tr>
-                    <th scope="col">DAY</th>
-                    <th scope="col" className="num">LANDED</th>
-                    {data.categories.map((c) => (
-                      <th key={c.id} scope="col" className="num" title={c.side === "gate" ? "gate" : "leak"}>
+                    <th scope="col" rowSpan={2}>DAY</th>
+                    <th scope="col" rowSpan={2} className="num">LANDED</th>
+                    <th scope="colgroup" colSpan={gates.length} className="mt-group">GATE</th>
+                    <th scope="colgroup" colSpan={leaks.length} className="mt-group mt-split">LEAKS</th>
+                    <th scope="col" rowSpan={2} className="num mt-split">TOUCHES</th>
+                    <th scope="col" rowSpan={2} className="num">PER PR</th>
+                    <th scope="col" rowSpan={2} className="num">LEAKS PER PR</th>
+                  </tr>
+                  <tr>
+                    {[...gates, ...leaks].map((c) => (
+                      <th key={c.id} scope="col" className={c.id === leaks[0]?.id ? "num mt-split" : "num"}>
                         {c.label}
                       </th>
                     ))}
-                    <th scope="col" className="num">TOUCHES</th>
-                    <th scope="col" className="num">PER PR</th>
-                    <th scope="col" className="num">LEAKS PER PR</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -70,12 +75,12 @@ export function MetricsTouches({ refreshKey }: { refreshKey: string }) {
                     <tr key={r.day}>
                       <td className="mono">{r.day}</td>
                       <td className="num">{r.landed}</td>
-                      {data.categories.map((c) => (
-                        <td key={c.id} className="num">
+                      {[...gates, ...leaks].map((c) => (
+                        <td key={c.id} className={c.id === leaks[0]?.id ? "num mt-split" : "num"}>
                           {c.source ? cell(r, c.id) : <span className="faint">not recorded</span>}
                         </td>
                       ))}
-                      <td className="num">{r.touches}</td>
+                      <td className="num mt-split">{r.touches}</td>
                       <td className="num">{num(r.perPr)}</td>
                       <td className="num">{num(r.leaksPerPr)}</td>
                     </tr>

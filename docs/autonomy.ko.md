@@ -194,9 +194,9 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | FLEET/CONTROL action | leak | `fleet-plan.jsonl`에서 `SUPERVISOR`의 `approve`(FLEET PLAN 카드만. CONTROL 버튼은 줄이 남지 않는다) |
 | DUTY message | leak | 기록 없음 |
 | RELAY | leak | `relays.jsonl`의 `create` 줄(ATC-465와 같은 거름) |
-| card decision | leak | `proposals.jsonl`의 `approve`와 `schedule.jsonl`의 `approve`·`verdict` 가운데 `via`가 `auto`·`crosscheck`가 아닌 것(ATC-465는 `auto`가 아닌 것을 센다. 이 화면은 기계인 `crosscheck`도 뺀다) |
+| card decision | leak | `proposals.jsonl`의 `approve`와 `schedule.jsonl`의 `approve`·`verdict` 가운데 `via`가 `auto`·`atfm`이 아닌 것(옛 줄의 빈 `via`도 센다. 두 파일에 같은 거름이고 `server/schedule.ts`의 `humanOf`와 같다). `crosscheck`는 SUPERVISOR가 CROSSCHECK에 한 번에 동의한 것이라 센다. ATC-465는 `auto`가 아닌 것을 세고, 이 화면은 `atfm`도 뺀다 |
 
-소스가 없는 범주는 0이 아니라 `not recorded`로 보이고 합계에서 빠진다. **착륙 PR**은 `mcc.jsonl`의 `land`(`result: ok`)와 `autoland.jsonl`의 `merge`(`result: ok`)를 PR당 하루 한 번 센 것이다. GitHub에서 손으로 머지한 PR은 세지 않으므로, 손 머지가 있던 날은 PR당 값이 높게 보인다. 날은 UTC(`00:00:00Z`는 새 날)이다. ATC-465의 기록과 거름을 다시 쓰고 둘째 기록을 만들지 않는다. 기록이 없는 범주(DUTY 메시지, Linear 손 편집, GitHub 머지)에 줄을 더하는 일은 따로 잇는 후속 작업이다.
+소스가 없는 범주는 0이 아니라 `not recorded`로 보이고 합계에서 빠진다. **착륙 PR**은 `mcc.jsonl`의 `land`(`result: ok`)와 `autoland.jsonl`의 `merge`(`result: ok`)를 저장소#번호 하나당 하루 한 번 센 것이다(두 기록이 같은 PR을 적어도 한 번). GitHub에서 손으로 머지한 PR은 세지 않으므로, 손 머지가 있던 날은 PR당 값이 높게 보인다. 날은 UTC(`00:00:00Z`는 새 날)이다. ATC-465의 기록과 거름을 다시 쓰고 둘째 기록을 만들지 않는다. 기록이 없는 범주(DUTY 메시지, Linear 손 편집, GitHub 머지)에 줄을 더하는 일은 따로 잇는 후속 작업이다.
 
 ### 사람 없는 SCHEDULE·FLEET PLAN (ATC-370)
 
