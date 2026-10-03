@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const settings = JSON.parse(readFileSync(new URL("../.claude/settings.json", import.meta.url), "utf8"));
 const HOOK = fileURLToPath(new URL("./rules-drift.mjs", import.meta.url));
 const MAIN_PATH = "/home/c10/projects/atc/hooks/rules-drift.mjs";
-const NODE_RE = /"[^"]*\/bin\/node"/;
+const PINNED = "/home/c10/.nvm/versions/node/v24.19.0/bin/node";
 const FILES = "CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md";
 const commandOf = (event) => settings.hooks[event][0].hooks[0].command;
 
@@ -37,7 +37,7 @@ test("kill-guard는 그대로 fail-closed(|| exit 2)", () => {
 
 // 설정의 명령을 그대로 bash로 돌린다(node 경로와 main 체크아웃 폴백 경로만 시험용으로 바꾼다)
 const runHook = (event, { projectDir, fallback = HOOK, stdin, stateDir }) => {
-  const cmd = commandOf(event).replace(MAIN_PATH, fallback).replace(NODE_RE, `"${process.execPath}"`);
+  const cmd = commandOf(event).replace(MAIN_PATH, fallback).replace(PINNED, process.execPath);
   return spawnSync("bash", ["-c", cmd], { input: stdin, encoding: "utf8", env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, ATC_STATE_DIR: stateDir }, timeout: 8000 });
 };
 
