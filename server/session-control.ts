@@ -18,7 +18,8 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
-import { type K3Declaration, type K3Launch, k3LaunchOf } from "./k3-allow.ts";
+import { type K3Declaration, type K3Launch, k3LaunchOf, k3LaunchWaitOf } from "./k3-allow.ts";
+import { k3WaitClear, k3WaitMark } from "./k3-launch-wait.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
 import { memoryArgsOf, type ScopeMemory, scopeOomTextOf } from "./scope-memory.ts";
@@ -854,7 +855,14 @@ export const k3OfFlight = (s: Pick<Snapshot, "tickets" | "releases">, flight: st
   const t = s.tickets.find((x) => x.key === flight);
   return t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
 };
-export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
+// ATC-506: LAUNCH 직전에 K3 FLIGHT인지 지금 스냅샷에서 다시 보고, entries를 못 만들면 띄우지 않고 wait를 돌려준다(카드는 approved로 남아 다음 tick에 다시 시도)
+export const launchForCard = async (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string): Promise<ControlResult | { ok: false; wait: string }> => {
+  const wait = k3LaunchWaitOf(s, flight, loadDispatchConfig().k3Hold);
+  if (wait) {
+    k3WaitMark(proposal, flight, wait);
+    return { ok: false, wait };
+  }
+  k3WaitClear(proposal);
   const a = s.absent?.find((x) => x.registration === reg);
   const k3 = k3OfFlight(s, flight);
   return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
