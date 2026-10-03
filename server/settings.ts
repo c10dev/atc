@@ -37,6 +37,7 @@ export interface ServerSettings {
     codex: { sessionsDir: string; present: boolean };
     claimTtlMin: number;
     handoffGraceMin: number;
+    orphanGraceMin: number;
     projectsDir: string;
   };
   // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 REVIEW 세션(Claude Sonnet)에 보낼까(dispatch.json externalReview.security)
@@ -72,6 +73,7 @@ export interface SettingsPatch {
   teamKeys?: string; // 쉼표로 구분한 팀 key. 비우면 주 팀만
   claimTtlMin?: number;
   handoffGraceMin?: number;
+  orphanGraceMin?: number;
   projectsDir?: string;
   ttsEngine?: string; // none·piper·espeak·kokoro·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
   ttsVoice?: string; // 고른 목소리 이름. 비우면 첫 번째. ATC_TTS_VOICE
@@ -106,6 +108,7 @@ export function readServerSettings(registry: SwitchRegistry = switchRegistry): S
       codex: { sessionsDir: codexSessions, present: existsSync(codexSessions) },
       claimTtlMin: Math.round(config.claimTtlMs / 60_000),
       handoffGraceMin: Math.round(config.handoffGraceMs / 60_000),
+      orphanGraceMin: config.orphanGraceMin,
       projectsDir: config.projectsDir,
     },
     review: { security: loadDispatchConfig().externalReview.security },
@@ -158,6 +161,10 @@ export function validatePatch(patch: Record<string, unknown>): { env: Record<str
       case "claimTtlMin":
         if (intIn(raw, 5, 1440)) env.ATC_CLAIM_TTL_MIN = String(raw);
         else errors.claimTtlMin = "5–1440분 사이의 정수";
+        break;
+      case "orphanGraceMin":
+        if (intIn(raw, 1, 1440)) env.ATC_ORPHAN_GRACE_MIN = String(raw);
+        else errors.orphanGraceMin = "1–1440분 사이의 정수";
         break;
       case "handoffGraceMin":
         if (intIn(raw, 0, 120)) env.ATC_HANDOFF_GRACE_MIN = String(raw);
@@ -218,6 +225,7 @@ function applyToConfig(env: Record<string, string | null>) {
   const keysChanged = Boolean(env.LINEAR_TEAM_KEY) || "LINEAR_TEAM_KEYS" in env;
   if (keysChanged) config.linearTeamKeys = parseTeamKeys(config.linearTeamKey, "LINEAR_TEAM_KEYS" in env ? (env.LINEAR_TEAM_KEYS ?? "") : config.linearTeamKeys.slice(1).join(","));
   if (env.ATC_CLAIM_TTL_MIN) config.claimTtlMs = Number(env.ATC_CLAIM_TTL_MIN) * 60_000;
+  if (env.ATC_ORPHAN_GRACE_MIN) config.orphanGraceMin = Math.max(1, Number(env.ATC_ORPHAN_GRACE_MIN));
   if (env.ATC_HANDOFF_GRACE_MIN) config.handoffGraceMs = Number(env.ATC_HANDOFF_GRACE_MIN) * 60_000;
   if (env.ATC_PROJECTS_DIR) config.projectsDir = env.ATC_PROJECTS_DIR;
   if (env.ATC_TTS_ENGINE) config.ttsEngine = env.ATC_TTS_ENGINE;

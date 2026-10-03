@@ -157,6 +157,15 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
                 onSave={(v) => save({ handoffGraceMin: Number(v) })}
               />
               <EditRow
+                label="ORPHAN FLIGHT 유예"
+                env="ATC_ORPHAN_GRACE_MIN"
+                value={String(s.agents.orphanGraceMin)}
+                unit="분"
+                note="출발한 FLIGHT의 세션이 멈춘 뒤 이 시간이 지나도 아무도 쥐지 않으면 ALERT·HOME 줄이 나옴(1–1440). DISPATCH 셈은 기다리지 않음"
+                input={{ kind: "number", min: 1, max: 1440 }}
+                onSave={(v) => save({ orphanGraceMin: Number(v) })}
+              />
+              <EditRow
                 label="AIRPORT 폴더"
                 env="ATC_PROJECTS_DIR"
                 value={s.agents.projectsDir}

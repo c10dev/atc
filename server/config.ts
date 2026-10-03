@@ -26,6 +26,8 @@ export const config = {
   claimTtlMs: Number(env.ATC_CLAIM_TTL_MIN || 180) * 60_000,
   // 앞 세션이 이만큼 안에서 손을 떼면 HANDOFF, 둘이 이보다 오래 겹치면 충돌.
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
+  // ORPHAN FLIGHT(ATC-516): 앞 세션이 멈춘 뒤 이만큼 비어 있어야 ALERT·HOME 줄이 나온다(DISPATCH 셈은 기다리지 않는다). 최소 1분
+  orphanGraceMin: Math.max(1, Number(env.ATC_ORPHAN_GRACE_MIN || 15)),
   linearApiKey: env.LINEAR_API_KEY || "",
   // AUTOLAND 마이그레이션 게이트(ATC-329): 호스티드 DB 적용 버전을 읽는 토큰. 읽기에만 쓰고 로그·기록·화면에 쓰지 않는다
   supabaseAccessToken: env.SUPABASE_ACCESS_TOKEN || "",

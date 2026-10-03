@@ -30,7 +30,15 @@ export interface GapView {
   share: number | null;
 }
 
-export type LaneName = "DISPATCH" | "SCHEDULE" | "FLEET PLAN" | "LANDING GAP";
+// `/api/orphan-flight`(ATC-516): ORPHAN FLIGHT 알림·DISPATCH 셈의 에피소드와 소음(MISFIRE) 수
+export interface OrphanView {
+  switch: string;
+  episodes: number;
+  closed: number;
+  misfires: { alert: number; hold: number; total: number };
+}
+
+export type LaneName = "DISPATCH" | "SCHEDULE" | "FLEET PLAN" | "LANDING GAP" | "ORPHAN FLIGHT";
 export interface LaneRow {
   lane: LaneName;
   switch: string | null; // on·off, DISPATCH는 서버의 자동 운항 스위치가 따로라 모른다
@@ -43,7 +51,7 @@ export interface LaneRow {
 const share = (m: number, a: number) => (a > 0 ? m / a : null);
 
 // 레인마다 한 줄. 읽지 못한 레인은 줄을 내지 않는다(0으로 지어내지 않는다)
-export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | null, gap: GapView | null = null): LaneRow[] {
+export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | null, gap: GapView | null = null, orphan: OrphanView | null = null): LaneRow[] {
   const out: LaneRow[] = [];
   if (dispatch) out.push({ lane: "DISPATCH", switch: null, applied: dispatch.total.approvals, misfires: dispatch.total.misfires, share: dispatch.total.share, failed: 0 });
   if (auto) {
@@ -53,6 +61,8 @@ export function laneRowsOf(dispatch: DispatchMisfire | null, auto: AutoView | nu
   }
   // 한 일 = 간격 규칙이 낸 막힘 에피소드, 몫은 닫힌 에피소드 중 스스로 풀린 것
   if (gap) out.push({ lane: "LANDING GAP", switch: gap.switch, applied: gap.episodes, misfires: gap.misfires, share: gap.share, failed: 0 });
+  // 한 일 = ORPHAN FLIGHT 에피소드, MISFIRE = 알림이 소음이었거나 DISPATCH가 헛되이 막은 것, 몫은 닫힌 에피소드 중 그 몫
+  if (orphan) out.push({ lane: "ORPHAN FLIGHT", switch: orphan.switch, applied: orphan.episodes, misfires: orphan.misfires.total, share: share(orphan.misfires.total, orphan.closed), failed: 0 });
   return out;
 }
 

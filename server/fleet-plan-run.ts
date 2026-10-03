@@ -47,6 +47,7 @@ import { fleetKeyOf, regKey } from "./registration.ts";
 import { activeWaypointsOf } from "./routes.ts";
 import { type AgentRow, agentRows, launchAccountRefusal, k3OfFlight, launchAircraft, liveRowsOf, MAX_LAUNCHED, PERMISSION_MODES, rowOriginOf, stopAircraft } from "./session-control.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
+import { orphanCountsNow } from "./orphan-flight-run.ts";
 
 // FLEET PLAN 실행부(docs/fleet.md 8.6): DISPATCH 주기(5분)마다 제안을 계산해 fleet-plan.jsonl에 적고,
 // /api/fleet/plan으로 보여 준다. 그림자(1·2단계): 읽기만 하고, 세션을 띄우거나 멈추지 않는다.
@@ -157,7 +158,7 @@ export function inputsOf(s: Snapshot, rows: AgentRow[], now: number, accountLogi
   // SUPERVISOR 결정(2026-09-28): ATC FLIGHT도 수요로 센다 — candidateTeams가 아니라 모든 Linear 팀으로 planner를 돌린다
   const plan = planDispatch(
     s, readFlightHistory(), { ...cfg, candidateTeams: config.linearTeamKeys }, now, reservedOf(proposals, now), fleet,
-    landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), undefined, undefined, undefined, accountFolders(),
+    landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), undefined, undefined, undefined, accountFolders(), undefined, orphanCountsNow(s, now, proposals, landedOf(logbook), cfg.teamPattern),
   );
   const aircraft = fleetView(s, fleet, cfg.teamPattern, logbook, now);
   const live = s.sessions.filter((x) => team.test(x.name) && x.status !== "dead");

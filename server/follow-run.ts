@@ -22,6 +22,7 @@ import { allProposals, crossAccountCardWaitsOf, reservedOf } from "./proposals.t
 import { activeWaypointsOf } from "./routes.ts";
 import { readLinearProjects } from "./sources/linear-projects.ts";
 import { accountFolders } from "./accounts.ts";
+import { orphanCountsNow } from "./orphan-flight-run.ts";
 
 const FILE = () => join(config.stateDir, "follow.json");
 
@@ -58,7 +59,7 @@ export function followInputOf(s: Snapshot, now = Date.now()): Omit<FollowInput, 
   let plan = null;
   try {
     const cfg = loadDispatchConfig();
-    plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), undefined, mccAirportNow(), accountFolders()), s.atfm?.groundStops ?? []);
+    plan = applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reservedOf(proposals, now), loadFleet(), landedOf(logbook), logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), undefined, mccAirportNow(), accountFolders(), undefined, orphanCountsNow(s, now, proposals, landedOf(logbook), cfg.teamPattern)), s.atfm?.groundStops ?? []);
   } catch {
     plan = null; // 계획을 못 만들어도 보드는 그린다(Todo 사유만 비운다)
   }

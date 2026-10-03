@@ -53,6 +53,7 @@ export interface QueueItem {
   decision?: Pick<Decision, "id" | "role" | "ask" | "options" | "pr">; // DECISION: 관제 세션이 올린 결정 하나(ATC-352)
   detail?: string; // SCHEDULE: OCC의 근거 한 줄. 탭이 없어 큐 줄이 판정 화면이라, 무엇을 승인하는지 보이게 한다(ATC-378)
   card?: { kind: Proposal["kind"]; launch: boolean }; // PROPOSAL: 승인하면 무슨 일이 일어나는지 가르는 것(ASSIGN은 FLIGHT PLAN, launch는 LAUNCH 먼저, RELEASE는 FLIGHT PLAN 없음, ATC-377)
+  orphan?: { to: string; flight: string; text: string }; // ALERT(ORPHAN FLIGHT, ATC-516): 줄에 붙는 RELAY 초안(RESUME 글, kind instruction). SUPERVISOR가 한 번 눌러 보낸다
   offer?: RelayOffer; // RELAY: STAND를 쥔 세션이 없는 GO AROUND·FIX를 SUPERVISOR가 전하는 카드(ATC-308)
 }
 
@@ -83,6 +84,7 @@ export interface QueueInput {
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
   autoDispatch?: boolean; // 자동 운항(ATC-367): 서버가 ASSIGN 카드를 승인하므로 SUPERVISOR 큐에 올리지 않는다
+  orphans?: { flight: string; registration: string; text: string }[]; // ORPHAN FLIGHT(ATC-516)의 RESUME 글. ALERT 줄에 RELAY 초안으로 붙는다
   relayOffers?: RelayOffer[]; // relay-offer.ts의 결과(없으면 RELAY 카드가 없다)
   decisions?: Pick<Decision, "id" | "key" | "role" | "at" | "ask" | "options" | "pr" | "status">[]; // decision-card.ts(열린 카드만 줄이 된다)
   // 제안(ATC-401): atc가 Backlog에 올렸고 SUPERVISOR가 아직 쏘거나 버리지 않은 이슈(release-proposals.ts의 filedProposalsOf). 없으면 BACKLOG 줄이 없다
@@ -112,6 +114,11 @@ export function stuckRowsOf(bundles: readonly Pick<FollowBundle, "rows">[]): Fol
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
 // PR의 저장소는 경로일 수 있다: 마지막 마디만 쓴다
 const repoName = (repo: string) => repo.replace(/\/+$/, "").split("/").pop() || repo;
+
+const orphanOf = (inp: QueueInput, a: Pick<SupervisorAlert, "key" | "flight">): { orphan?: QueueItem["orphan"] } => {
+  const o = a.key.startsWith("alert|orphan-flight|") ? inp.orphans?.find((x) => x.flight === a.flight) : undefined;
+  return o ? { orphan: { to: o.registration, flight: o.flight, text: o.text } } : {};
+};
 
 export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   const out: QueueItem[] = [];
@@ -200,7 +207,7 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
 
   for (const a of actionableAlertsOf(inp.alerts ?? [])) {
     if (a.flight && held.has(a.flight)) continue;
-    out.push({ kind: "ALERT", key: a.key, since: a.since, title: [a.aircraft, a.flight].filter(Boolean).join(" · ") || a.group.toUpperCase(), hash: a.link, primary: open("열기", a.link), detail: a.text, need: a.next || "확인", level: a.level === "warning" ? "warning" : "caution", ...(a.flight ? { flight: a.flight } : {}) });
+    out.push({ kind: "ALERT", key: a.key, since: a.since, title: [a.aircraft, a.flight].filter(Boolean).join(" · ") || a.group.toUpperCase(), hash: a.link, primary: open("열기", a.link), detail: a.text, need: a.next || "확인", level: a.level === "warning" ? "warning" : "caution", ...(a.flight ? { flight: a.flight } : {}), ...orphanOf(inp, a) });
   }
 
   // DECISION(ATC-352): 관제 세션이 올린 결정. 답이 오거나 세션이 거두면 사라진다

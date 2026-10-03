@@ -207,6 +207,7 @@ export interface AlertsInput {
   controlChecks?: { unverified: Unverified[]; duplicates: readonly Duplicate[] };
   hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
+  orphans?: { flight: string; registration: string; line: string; since: string }[]; // ORPHAN FLIGHT(ATC-516): grace가 지난 것. 쥔 세션이 생기거나 PR이 머지되거나 취소되면 사라진다
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
@@ -609,6 +610,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "어느 프로세스가 죽었나: journalctl -k | grep -i oom, 가용 메모리는 FUEL·health 화면",
       link: "#metrics/fuel",
       since: null,
+    });
+  }
+  // ORPHAN FLIGHT(ATC-516): 출발한 FLIGHT의 세션이 멈췄고 같은 REGISTRATION의 어느 살아 있는 세션도 쥐지 않았다. 하나당 한 줄, HOME 할 일에도 이 줄이 나온다(dest alerts)
+  for (const o of inp.orphans ?? []) {
+    out.push({
+      key: `alert|orphan-flight|${o.flight}`,
+      group: "alert",
+      level: "caution",
+      cue: null,
+      aircraft: o.registration,
+      flight: o.flight,
+      text: `ORPHAN FLIGHT — ${o.line}`,
+      next: "RELAY 초안(RESUME 글)을 읽고 보내거나, FLIGHT를 CANCEL한다",
+      link: `#flight/${o.flight}`,
+      since: o.since,
     });
   }
   for (const r of inp.repositionStuck ?? []) {

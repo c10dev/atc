@@ -11,7 +11,9 @@ import { landByOf, type LandBy } from "./land-by.ts";
 import { handoffResolver } from "./autoland-handoff-run.ts";
 import { type ControlName, controlNameOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { landedOf, loadDispatchConfig } from "./dispatch.ts";
+import { loadLogbook } from "./logbook.ts";
+import { orphanViewsNow } from "./orphan-flight-run.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
 import { readReleaseView } from "./release-store.ts";
@@ -190,6 +192,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     controlChecks: { unverified: unverifiedOf(rs.flatMap((r) => (r.kind === "control" && r.op === "stop-check" ? [r as unknown as StopCheckLine] : [])), (id) => jobStateOf(id), now), duplicates: duplicatesNow() },
     hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
+    orphans: orphanViewsNow(s, now, proposals, landedOf(loadLogbook()), teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, line: o.line, since: o.since })),
     landBy: landByMap(s),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(rs, now),

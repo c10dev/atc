@@ -118,6 +118,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "JUDGES", "판정 계열", "jev typesafe replay shadow judges.jev"],
     ["operations", "LANDING GAP", "착륙 없음 막힘 규칙(HOME)", "landing gap 착륙 없음 막힘 p90 기준 landingGap"],
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],
+    ["operations", "ORPHAN FLIGHT", "주인 잃은 FLIGHT 감지", "orphan flight 주인 잃은 세션 끊김 한도 limit resume 새 세션 orphanFlight"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);

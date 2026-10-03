@@ -12,6 +12,7 @@ atc가 이미 찾아내는 것을 알릴 뿐, 새로 찾아내지는 않습니�
 |---|---|---|
 | AIRCRAFT health | LIMIT(끊김), `RESUME 필요`, `STALLED`, NETWORK | 등급에 따름 |
 | ALERT | CONTACT가 끊긴 STAND, STAND 충돌, 머지됐는데 main에 안 닿음 | 등급에 따름 |
+| ORPHAN FLIGHT | 출발한 FLIGHT의 세션이 멈췄는데(예: 사용 한도로 끊김) 같은 AIRCRAFT의 새 세션이 그 FLIGHT를 쥐지 않고 15분(설정)이 지남. HOME 할 일에도 한 줄로 나오고, 줄에 RESUME 글이 RELAY 초안으로 붙어 한 번 눌러 보낸다(atc는 스스로 보내지 않는다). 그동안 DISPATCH는 그 AIRCRAFT에게 다른 FLIGHT를 주지 않는다 | CAUTION. 쥐는 세션이 생기거나 PR이 머지되거나 FLIGHT가 취소되면 사라진다 |
 | FLIGHT FOLLOWING | CAPTAIN이 SUPERVISOR의 go를 기다림, UNABLE, LAUNCH 실패 | 등급에 따름 |
 | SUPERVISOR 대기 | 도구 승인을 기다리는 PENDING(10분이 지나면 **CAUTION**으로 오른다. 그 AIRCRAFT에게 가는 FLIGHT PLAN·CLEARANCE 같은 호출이 답을 못 받고 있으면 바로 CAUTION이고 글에 그 호출이 든다. 10분 전이고 기다리는 호출이 없으면 ADVISORY 그대로. 글에는 세션이 청하는 것(`approve Write: …`)과 붙는 명령이 함께 나온다), 판정할 DISPATCH 제안, HUMAN CHECK, 그리고 SCHEDULE이 **approval 모드**일 때 판정을 기다리는 SCHEDULE 작업(초안·동의·반대 상태). shadow 모드의 SCHEDULE은 게이트 판정이라 알리지 않습니다 | CALL |
 | PR 착륙 가능 | CLEARED TO LAND가 된 PR | 조용함 |
