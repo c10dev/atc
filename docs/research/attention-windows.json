@@ -1,0 +1,14 @@
+{
+  "rules": [
+    { "id": "annunciator", "app": "annunciator" },
+    { "id": "claude-code-web", "app": "chrome|safari|firefox|arc|edge|brave", "title": "claude code|claude\\.ai/code" },
+    { "id": "atc-screen", "app": "chrome|safari|firefox|arc|edge|brave", "title": "\\batc\\b|fleet|tower" },
+    { "id": "github", "app": "chrome|safari|firefox|arc|edge|brave", "title": "github" },
+    { "id": "linear", "title": "linear" },
+    { "id": "claude-app", "app": "^claude$" },
+    { "id": "terminal", "app": "terminal|iterm|ghostty|kitty|wezterm|alacritty" }
+  ],
+  "inputHoldSec": 10,
+  "timerFlagRatio": 0.25,
+  "timerFlagMinMin": 5
+}

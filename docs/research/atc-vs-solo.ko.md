@@ -70,7 +70,11 @@ sha256sum <solo STAND>/CLAUDE.md        # 해시를 실행 기록에 적는다
   - **tethered**: 창을 보고 있으나 입력은 없다.
   - **away**: 자리 비움 기준을 넘겨 입력이 없다.
   판정에는 **active**만 센다. tethered와 away는 옆에 같이 적는다.
-- 세는 창은 두 팔이 같은 목록이다: atc 화면, ANNUNCIATOR, Claude 앱, 터미널, GitHub, Linear. 팔은 실험 시간대로 정하고, 시간대 안에서는 관계없는 Claude 세션을 돌리지 않는다.
+- 세는 창은 두 팔이 같은 목록이다: atc 화면, ANNUNCIATOR, Claude 앱, claude.ai/code 브라우저 탭(solo 팔은 Claude Code 클라우드 세션에서 돈다), 터미널, GitHub, Linear. 팔은 실험 시간대로 정하고, 시간대 안에서는 관계없는 Claude 세션을 돌리지 않는다.
+- `server/attention-run.ts`(순수 함수는 `server/attention.ts`, 오프라인, 로컬 파일만 읽고 아무것도 올리지 않는다)가 계산한다: `node server/attention-run.ts --export <aw.json> --windows <windows.json> [--config <파일>] [--host <이름>] [--json]`.
+  - 세는 창 규칙(app·title 정규식, 먼저 맞는 규칙 우선)은 `docs/research/attention-windows.json` 한 곳에만 둔다. 지금 값은 자리표시이고, 파일럿에서 실제 창 제목으로 확인한 파일을 본 실험 전에 커밋한다. 어느 규칙에도 안 맞으면 excluded다.
+  - 실험 창을 조각으로 나눠 조각마다 한 상태다: AFK는 **away**, 아니면 센 창 + 입력(입력 이벤트, 10초 유지)은 **active**, 입력 없으면 **tethered**, 안 세는 창은 **excluded**, AFK 기록이 없는 시간은 **no data**로 따로 낸다. 내보내기에 입력 버킷이 없으면 not-afk를 입력 있음으로 본다(tethered가 0이고, 보고서가 그렇게 적는다).
+  - 창 파일은 `{start, end, arm, batch, issues, subWindows?: [{start, end, issue}], timer?: [{start, end}]}`의 JSON 목록이다. 분은 창·팔·배치별로 내고, 이슈별은 준 `subWindows`에 한해서만 낸다. 수동 타이머 합계는 active와 나란히 보이고, 차가 5분 이상이면서 25%를 넘으면 표시한다.
 
 ### 보조 지표
 

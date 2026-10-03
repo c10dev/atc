@@ -70,7 +70,11 @@ Summed per batch and per issue, from the Mac that the SUPERVISOR uses:
   - **tethered**: the window is watched, no input;
   - **away**: the keyboard is idle past the away threshold.
   Only **active** counts for the verdict. Tethered and away are reported next to it.
-- Counted windows, the same list in both arms: atc screen, ANNUNCIATOR, Claude app, terminal, GitHub, Linear. The arm is decided by the experiment window; no unrelated Claude sessions run in a window.
+- Counted windows, the same list in both arms: atc screen, ANNUNCIATOR, Claude app, the claude.ai/code browser tab (the solo arm runs in a Claude Code cloud session), terminal, GitHub, Linear. The arm is decided by the experiment window; no unrelated Claude sessions run in a window.
+- Computed by `server/attention-run.ts` (pure functions in `server/attention.ts`; offline, reads local files, uploads nothing): `node server/attention-run.ts --export <aw.json> --windows <windows.json> [--config <file>] [--host <name>] [--json]`.
+  - The counted-window rules (app and title regexes, first match wins) live only in `docs/research/attention-windows.json`; they are placeholders to confirm in the pilot against the real window titles, and the confirmed file is committed before the main run. Everything that matches no rule is excluded.
+  - Each slice of an experiment window is one state: AFK is **away**; otherwise a counted window with input (an input event, held 10 s) is **active**, without input **tethered**; an uncounted window is **excluded**; time with no AFK record is reported as **no data**. If the export has no input bucket, not-afk counts as input present (tethered is then 0, and the report says so).
+  - The windows file is a JSON list of `{start, end, arm, batch, issues, subWindows?: [{start, end, issue}], timer?: [{start, end}]}`. Minutes are per window, arm and batch; per issue only for the `subWindows` given. The manual timer total is shown against active, flagged when the difference is at least 5 min and over 25%.
 
 ### Secondary
 
