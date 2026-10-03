@@ -107,6 +107,9 @@ export function isParkedAtGate(w: Workspace, idx: Index): boolean {
   return !(idx.claimsByWorkspace.get(w.path) ?? []).some((c) => c.state === "active" && idx.sessionById.get(c.sessionId)?.status === "busy");
 }
 
+// AIRCRAFT STRIPS가 PARKED 포함을 끈 채 보이는 세션: busy, 쥔 STAND가 있음, 또는 blocked job(NEEDS YOU, ATC-99). Teams의 목록과 FLIGHTS 접기 머리글의 개수가 같은 조건을 쓴다
+export const isStripVisible = (s: Session, idx: Index): boolean => s.status === "busy" || idx.claimsBySession.has(s.id) || s.job?.state === "blocked";
+
 // busy가 아니고, 쥔 STAND가 하나 이상이며 모두 parked-at-gate인 AIRCRAFT. 미완 FLIGHT의 STAND를 쥔 NORDO는 진짜 문제라 여기 들지 않는다
 export function isGateCleanup(s: Session, idx: Index): boolean {
   if (s.status === "busy") return false;

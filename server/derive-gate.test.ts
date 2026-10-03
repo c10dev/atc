@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Claim, Session, Snapshot, Ticket, Workspace } from "./model.ts";
-import { buildIndex, isGateCleanup, isParkedAtGate } from "../web/src/derive.ts";
+import { buildIndex, isGateCleanup, isParkedAtGate, isStripVisible } from "../web/src/derive.ts";
 
 const WT = "/home/c10/projects/worktrees";
 const session = (id: string, status: Session["status"]): Session => ({
@@ -56,4 +56,13 @@ test("isGateCleanup: 모든 STAND가 끝난 FLIGHT의 것이고 busy가 아닐 �
   assert.equal(isGateCleanup(session("s1", "dead"), at("dead", [live])), false); // 진짜 문제인 NORDO
   assert.equal(isGateCleanup(session("s1", "dead"), at("dead", [done, live])), false);
   assert.equal(isGateCleanup(session("s1", "dead"), at("dead", [])), false); // 쥔 STAND 없음
+});
+
+test("isStripVisible: busy, 쥔 STAND가 있음, blocked job만 보이고 PARKED는 숨긴다", () => {
+  const w = ws("a-6", "ATC-6");
+  const idx = idxOf({ sessions: [session("s1", "idle"), session("s2", "idle"), session("s3", "idle"), session("s4", "busy")], workspaces: [w], tickets: [ticket("ATC-6", "started")], claims: [claim("s1", w)] });
+  assert.equal(isStripVisible(session("s1", "idle"), idx), true); // 쥔 STAND
+  assert.equal(isStripVisible(session("s2", "idle"), idx), false); // PARKED
+  assert.equal(isStripVisible({ ...session("s3", "idle"), job: { state: "blocked" } } as Session, idx), true); // NEEDS YOU
+  assert.equal(isStripVisible(session("s4", "busy"), idx), true);
 });
