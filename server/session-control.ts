@@ -549,14 +549,14 @@ export async function launchAircraft(s: Snapshot, registration: string, options:
 }
 
 // STOP: 백그라운드 세션만 멈춘다
-export async function stopAircraft(registration: string, by: string): Promise<ControlResult> {
+export async function stopAircraft(registration: string, by: string, proposal?: string): Promise<ControlResult> {
   const reg = regKey(registration);
   const t = new Date().toISOString();
   try {
     const row = stopTargetOf(reg, await agentRows(), rowOriginOf);
     const r = await claude(["stop", row.id as string], undefined, { configDir: configDirOfRow(row) }); // 그 세션의 폴더(ATC-147)
     const error = r.ok ? undefined : r.out.slice(0, 300) || "claude stop 실패";
-    record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error });
+    record({ t, kind: "fleet", op: "stop", aircraft: reg, by, ok: r.ok, jobId: row.id, cwd: row.cwd, ...(row.account ? { account: row.account } : {}), error, ...(proposal ? { proposal } : {}) });
     return r.ok ? { ok: true, status: 200, jobId: row.id } : { ok: false, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
@@ -823,7 +823,9 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       }
     }
     const { promptOf: _p, flight: _f, settings: _s, k3: _k, ...opts } = body; // 본문의 promptOf·flight·settings·k3는 옵션으로 넘기지 않는다(함수와 allow 항목은 서버만 만든다)
-    const r = await launchAircraft(await getSnapshot(), reg, { ...opts, ...(withFlight ?? {}) }, "SUPERVISOR");
+    // ATC-509: FLIGHT를 적어 띄우면 launch 카드와 같은 K3 entries(같은 k3LaunchOf, 같은 해시 검사)를 준다. 발권이 없거나 본문이 바뀌었으면 entries 없이 전과 같다
+    const snap = await getSnapshot();
+    const r = await launchAircraft(snap, reg, { ...opts, ...(withFlight ?? {}) }, "SUPERVISOR", undefined, withFlight ? k3OfFlight(snap, withFlight.flight) : undefined);
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);
     return c.json({ ok: true, registration: reg, jobId: r.jobId, cwd: r.cwd, permissionMode: r.permissionMode, model: r.model, modelFrom: r.modelFrom, account: r.account });
   });
@@ -846,11 +848,14 @@ export function controlAccountsView(fleet: Pick<FleetFile, "aircraft" | "control
 }
 
 // launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다, ATC-393에서 index.ts에서 옮김). by는 FLIGHT RECORDER에 남는 주체. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게
+// K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다(본문 해시가 같아야 한다)
+// STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다. launch 카드·K3 RELAUNCH 카드·FLEET LAUNCH 버튼(ATC-509)이 같은 함수를 쓴다
+export const k3OfFlight = (s: Pick<Snapshot, "tickets" | "releases">, flight: string): ((repo: string) => K3Launch | null) | undefined => {
+  const t = s.tickets.find((x) => x.key === flight);
+  return t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+};
 export const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string, flight: string) => {
   const a = s.absent?.find((x) => x.registration === reg);
-  // K3 발권(ATC-372): 화면·DUTY 채팅 발권이 선언한 K3 효과면 새 세션에 그 선언만큼의 autoMode.allow를 준다. 서버가 발권 기록에서만 만든다
-  // STAND는 그 AIRCRAFT의 base 저장소 아래에 생기므로 저장소는 launchAircraft가 정한 뒤에 넘겨받는다
-  const t = s.tickets.find((x) => x.key === flight);
-  const k3 = t ? (repo: string) => k3LaunchOf({ flight, declared: t.k3 as K3Declaration[] | undefined, hash: t.releaseHash, releases: s.releases, repo }) : undefined;
+  const k3 = k3OfFlight(s, flight);
   return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal, k3);
 };

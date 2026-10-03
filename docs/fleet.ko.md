@@ -1034,6 +1034,15 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 - **Step 0, 데스크톱 대화 기록이 창에 대해 말하는 다른 것.** 이 기계의 대화 기록 207개로 확인했다(2026-09-29). `compactMetadata`에는 `trigger`, `preTokens`, `postTokens`, `durationMs`뿐이고 창은 없다. 200k 세션의 자동 compaction은 167k–178k, 1M 세션은 968k–974k에서 일어나 창의 신호처럼 보이지만 정확하지 않아 **쓰지 않는다**. TEAM_J가 바꾼 직후의 compaction은 324,404에서 일어났고(앞 모델의 대화), 프록시 모델은 다른 곳에서 일어난다(394k, 796k). `usage`에도 창 필드가 없다(`context_management`는 비어 있고 `iterations`는 `[]`). CLI의 모델 선택창은 `Opus 5.5 (1M context)` 같은 표시 이름(`Kept model as …`)을 적는데, id가 아니라 손대지 않는다. statusline 입력에는 `context_window.context_window_size`와 `model.id`가 있다(Claude Code 2.1.284 바이너리에서 읽음).
 - **등급.** hook과 상태 폴더의 기록 형식(`fuel/<sessionId>.jsonl`, 여전히 숫자와 모델 id뿐)은 `user` 등급이다. 옛 줄(`rate_limits`만)은 전처럼 읽는다.
 
+### K3 RELAUNCH, 만든 것(ATC-509)
+
+쉬는 AIRCRAFT를 멈추고 K3 FLIGHT 하나로 다시 띄우는 FLEET PLAN 종류. 이유와 규칙은 [autonomy.ko.md](autonomy.ko.md) "C9, 만든 것: K3 RELAUNCH". 카드 문구: "STOP <REGISTRATION> and LAUNCH it for <FLIGHT>".
+
+- **언제**(`k3RelaunchOf`, 순수, `server/fleet-plan.ts`). 스위치 `k3Relaunch`가 켜짐, `k3`가 붙은 받을 곳 없는 FLIGHT(이유 `no-aircraft`, 화면·DUTY 채팅 발권의 K3 entries), 그 AIRPORT에 그 FLIGHT를 받을 ABSENT AIRCRAFT가 없음, GROUND STOP 아님. AIRCRAFT: 그 AIRPORT 소속, 백그라운드 세션, `idle`, NORDO 아님, STAND·FLIGHT 없음, 열린 PR 없음, LIMIT 아님, ACCOUNT가 FUEL hold 아님, TYPE RATING·CREW가 맞음. FLIGHT마다 카드 하나, AIRCRAFT 하나: 가장 오래 쉰 것, 같으면 REGISTRATION.
+- **승인**은 스위치 자체로 한다(`approvalModeOf`: `k3Relaunch`가 켜짐이면 approval). FLEET PLAN의 `mode`와 무관하고 `auto`는 없다. 단계: `stop`, `launch`(`flight`가 있어 entries는 `k3OfFlight`에서 온다), 둘 다 카드 id를 `proposal`로 싣는다. STOP 전에 서버가 발권이 아직 allow를 주는지 확인하고, 아니면 아무것도 멈추지 않는다.
+- **만료.** FUEL hold 만료는 LAUNCH와 같다. 조건이 사라지면(스위치를 끈 것 포함) 카드가 닫힌다.
+- **LAUNCH 패널.** `flight`를 적은 `POST /api/fleet/:registration/launch`도 K3 entries를 만든다(launch 카드와 같은 `k3OfFlight`). 패널에 친 K3 FLIGHT도 발권이 화면이나 DUTY 채팅에 있으면 allow와 함께 뜬다.
+
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 
 상태: 만듦(2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.6에서 그림자를 만들었다. atc가 제안하고 SUPERVISOR는 동의·반대만 하며, 아무것도 움직이지 않는다. 3단계에서는 SUPERVISOR가 승인하면 그 제안이 실행된다. 제안마다 여전히 사람이 하나씩 승인한다. 자동 STOP은 그대로 4단계이고 기본으로 꺼져 있다.

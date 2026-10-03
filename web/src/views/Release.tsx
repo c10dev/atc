@@ -115,6 +115,7 @@ interface TreeGroup {
 }
 interface ReleaseData {
   tree?: TreeGroup[];
+  k3Relaunch?: { mode: "on" | "off"; approved: number; expired: number; rejected: number; stopOnly: { aircraft: string; proposal: string; t: string }[] };
   k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] };
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
@@ -374,6 +375,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
   // K3 HOLD는 꺼졌거나 오작동이 센 때만 보인다(켜져 있고 0이면 보통 상태)
   const k3Hold = data.k3Hold && (data.k3Hold.mode !== "on" || data.k3Hold.nuisance.length > 0 || data.k3Hold.miss.length > 0) ? data.k3Hold : null;
+  // K3 RELAUNCH(ATC-509)는 켜졌거나 센 기록이 있는 때만 보인다(꺼져 있고 0이면 보통 상태)
+  const k3Re = data.k3Relaunch && (data.k3Relaunch.mode === "on" || data.k3Relaunch.approved + data.k3Relaunch.expired + data.k3Relaunch.rejected + data.k3Relaunch.stopOnly.length > 0) ? data.k3Relaunch : null;
   const attested = Object.entries(data.attested);
   // 나무를 구역으로 가른다(사이드바 색인과 같은 함수). 나무의 그룹 이름은 줄의 펼침에서 말한다
   const part = partitionRelease((data.tree ?? []).map((g) => ({ rows: g.rows })));
@@ -421,6 +424,13 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         <p className="rls-note faint" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤">
           K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length}
           {k3Hold.miss.length > 0 && ` (${k3Hold.miss.map((m) => `${m.flight}@${m.aircraft}`).join(", ")})`}
+        </p>
+      )}
+
+      {k3Re && (
+        <p className="rls-note faint" title="K3 FLIGHT를 받을 ABSENT AIRCRAFT가 없을 때 쉬는 AIRCRAFT를 멈추고 새로 띄우는 FLEET PLAN 카드(설정 창 K3 RELAUNCH). 7일: 승인 = 승인한 카드, 만료·반대 = 아무도 쓰지 않고 닫힌·반대한 카드, STOP만 = 멈췄는데 launch 카드 시한 안에 LAUNCH가 없음">
+          K3 RELAUNCH {k3Re.mode} · 7일 승인 {k3Re.approved} · 만료 {k3Re.expired} · 반대 {k3Re.rejected} · STOP만 {k3Re.stopOnly.length}
+          {k3Re.stopOnly.length > 0 && ` (${k3Re.stopOnly.map((m) => `${m.aircraft}·${m.proposal}`).join(", ")})`}
         </p>
       )}
 

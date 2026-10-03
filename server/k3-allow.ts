@@ -220,6 +220,10 @@ export const k3CheckOf = (description: string | null | undefined): { check?: K3C
   return { declared: r.declared, ...(r.lines ? { check: { lines: r.lines, unparsed: r.unparsed, none: r.none } } : {}) };
 };
 
+// K3 RELAUNCH(ATC-509): K3 FLIGHT는 새로 띄운 AIRCRAFT만 받는다. 그런 AIRCRAFT(ABSENT)가 없을 때 DISPATCH가 보이는 이유와 고치는 길
+export const K3_FRESH_WHY = "K3: needs a fresh LAUNCH";
+export const K3_FRESH_FIX = "쉬는 AIRCRAFT를 STOP해 ABSENT로 만들거나, 설정 창에서 `k3Relaunch`를 켠다(FLEET PLAN이 STOP·LAUNCH 카드를 낸다)";
+
 export type K3HoldCode = "not-declaration" | "release-on-screen";
 export interface K3Hold {
   code: K3HoldCode;

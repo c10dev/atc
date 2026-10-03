@@ -1,5 +1,6 @@
 import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, DEFAULT_ACCOUNT, type FleetFile, type Rating } from "./crew.ts";
 import type { Plan, Unserved } from "./dispatch.ts";
+import { K3_FRESH_WHY } from "./k3-allow.ts";
 import type { AircraftView } from "./fleet.ts";
 import { type ContextSize, contextLabel, type RefreshSaving, refreshSavingOf, tokensShort } from "./fuel-context.ts";
 import type { PriceTable } from "./fuel-cost.ts";
@@ -29,7 +30,7 @@ export interface FleetPlanConfig {
 // SUPERVISOR 결정(2026-09-28): 제안한 기본값 그대로. REFRESH는 ATC-69 명세의 기본값(300k 또는 창의 40%)
 export const FLEET_PLAN_DEFAULTS: FleetPlanConfig = { reserve: 1, waitMin: 120, idleHours: 12, restartDays: 3, retireDays: 30, minDwellMin: 120, refreshTokens: 300_000, refreshPct: 0.4, accountChangeLimitMin: 60 };
 
-export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "ACCOUNT CHANGE", "REPOSITION", "AOG", "RETIRE", "RETURN"] as const;
+export const FLEET_PLAN_KINDS = ["LAUNCH", "ENTRY", "STOP", "RESTART", "REFRESH", "ACCOUNT CHANGE", "REPOSITION", "K3 RELAUNCH", "AOG", "RETIRE", "RETURN"] as const;
 export type FleetPlanKind = (typeof FLEET_PLAN_KINDS)[number];
 
 export interface PlanReason {
@@ -97,6 +98,9 @@ export interface FleetInputs {
   prices?: PriceTable | null;
   // REPOSITION(ATC-179): 최근 24시간의 옮김(FLIGHT RECORDER `fleet` `reposition`). 없으면 옮긴 적 없음
   repositions?: (RepositionEvent & { baseChanged?: boolean })[];
+  // K3 RELAUNCH(ATC-509): dispatch.json k3Relaunch가 "on"이면 true. 없거나 false면 카드를 내지 않는다
+  k3Relaunch?: boolean;
+  k3Relaunched?: ReadonlySet<string>; // 최근 minDwell 안에 K3 RELAUNCH를 승인한 FLIGHT. 같은 FLIGHT로 되풀이해 멈추지 않는다
 }
 
 const MIN = 60_000;
@@ -312,6 +316,62 @@ export function repositionOf(
   return { candidates: out, flaps };
 }
 
+// ── K3 RELAUNCH(ATC-509, docs/autonomy.md K3): K3 FLIGHT를 받을 새 세션이 없을 때 쉬는 AIRCRAFT를 멈추고 그 FLIGHT로 다시 띄우자는 제안(순수) ──
+// 돌고 있는 세션은 새 `--settings`(autoMode.allow)를 받지 못하므로 K3 FLIGHT는 새로 띄운 AIRCRAFT만 받는다. 그 AIRPORT에 쓸 수 있는 ABSENT AIRCRAFT가 있으면 DISPATCH가 launch 카드로 보내니 이 카드는 없다.
+// 고르는 AIRCRAFT: 그 AIRPORT 소속, 백그라운드 세션이 쉼(idle·NORDO 아님), 열린 PR·STAND·FLIGHT 없음, LIMIT 아님, ACCOUNT가 FUEL hold 아님, 그 FLIGHT를 날 수 있음. 하나만: 가장 오래 쉰 것, 같으면 REGISTRATION
+export const K3_RELAUNCH_KEY = (flight: string) => `K3 RELAUNCH|${flight}`;
+export function k3RelaunchExcludedOf(
+  i: Pick<FleetInputs, "aircraft" | "sessions" | "nordo" | "openPrs" | "fuelAccounts" | "launchAccount">,
+  a: AircraftView,
+  assigned: ReadonlySet<string>,
+): string | null {
+  const session = i.sessions.find((x) => regKey(x.registration) === a.registration) ?? null;
+  if (a.retired || a.aog) return "RETIRED·AOG";
+  if (!isBgFact(session)) return "백그라운드 세션이 아님";
+  if (a.status !== "idle" || a.restarting || i.nordo.has(a.registration)) return "쉬는 중이 아님";
+  if (a.flying.length || a.flights.length || assigned.has(a.registration)) return "STAND·FLIGHT가 있음";
+  if (i.openPrs.has(a.registration)) return "열린 PR이 있음";
+  if (a.health?.code === "LIMIT") return "LIMIT";
+  const fuel = a.fuel ?? (a.account ? ((i.fuelAccounts ?? []).find((f) => f.account === a.account) ?? null) : null);
+  if (fuel?.level === "hold") return "FUEL hold";
+  return null;
+}
+export function k3RelaunchOf(
+  i: Pick<FleetInputs, "aircraft" | "plan" | "sessions" | "lastActive" | "nordo" | "openPrs" | "groundStops" | "fuelAccounts" | "launchAccount" | "now" | "k3Relaunch" | "k3Relaunched">,
+  assigned: ReadonlySet<string>,
+  skip: ReadonlySet<string> = new Set(),
+): FleetCandidate[] {
+  if (!i.k3Relaunch) return [];
+  const waiting = (i.plan.unserved ?? []).filter((u) => u.why === "no-aircraft" && u.k3);
+  const out: FleetCandidate[] = [];
+  const taken = new Set<string>(skip);
+  const usable = (a: AircraftView) => !a.retired && !a.aog;
+  for (const u of [...waiting].sort((a, b) => a.flight.localeCompare(b.flight))) {
+    if (i.groundStops.has(u.airport) || i.k3Relaunched?.has(u.flight)) continue;
+    // 그 AIRPORT에 이 FLIGHT를 받을 수 있는 ABSENT AIRCRAFT(DISPATCH가 launch 카드로 쓰는 것)가 있으면 그쪽이 먼저다
+    const absent = i.aircraft.some((a) => a.base === u.airport && usable(a) && a.status === "absent" && !a.restarting && !i.nordo.has(a.registration) && canServe(a.registration, a.ratings, a.complement, u));
+    if (absent) continue;
+    const pool = i.aircraft
+      .filter((a) => a.base === u.airport && !taken.has(a.registration) && canServe(a.registration, a.ratings, a.complement, u) && k3RelaunchExcludedOf(i, a, assigned) === null)
+      .sort((x, y) => (Date.parse(i.lastActive.get(x.registration) ?? "") || 0) - (Date.parse(i.lastActive.get(y.registration) ?? "") || 0) || compareRegistration(x.registration, y.registration));
+    const a = pool[0];
+    if (!a) continue;
+    taken.add(a.registration);
+    const session = i.sessions.find((x) => regKey(x.registration) === a.registration)!;
+    const idleMs = i.lastActive.has(a.registration) ? i.now - Date.parse(i.lastActive.get(a.registration)!) : null;
+    out.push({
+      key: K3_RELAUNCH_KEY(u.flight), kind: "K3 RELAUNCH", aircraft: a.registration, airport: u.airport,
+      reasons: [
+        { code: "flight", detail: `${u.flight}: ${K3_FRESH_WHY} — 그 AIRPORT에 쓸 수 있는 ABSENT AIRCRAFT가 없음`, value: u.flight },
+        { code: "between", detail: `${a.registration}: HOLDING·PARKED${idleMs !== null ? ` ${spanText(idleMs / MIN)}` : ""}, 열린 PR·STAND·FLIGHT 없음, LIMIT·FUEL hold 아님` },
+        { code: "fits", detail: `${a.registration}: TYPE RATING ${a.ratings.join("·") || "없음"}, CREW가 ${u.type}를 날 수 있음` },
+        { code: "session", detail: `BG ${session.id ?? "?"} — 멈춘 뒤 ${u.flight}의 K3 allow를 --settings로 받아 새로 띄움(대화는 남지만 캐시는 새로 시작)` },
+      ],
+    });
+  }
+  return out;
+}
+
 // 열린 LAUNCH·ENTRY 제안의 ACCOUNT가 hold 수준이 됐으면 그 사유(syncFleetPlan이 expire한다)
 export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | "now">, p: Pick<FleetProposal, "kind" | "aircraft"> & { account?: string }): string | null {
   // ACCOUNT CHANGE(ATC-148)의 옮길 ACCOUNT가 infoPct 이상이 됐으면 여유가 없다
@@ -319,7 +379,7 @@ export function fuelExpiryOf(i: Pick<FleetInputs, "aircraft" | "fuelAccounts" | 
     const t = p.account ? ((i.fuelAccounts ?? []).find((x) => x.account === p.account) ?? null) : null;
     return t && t.level !== "ok" ? `${fuelHoldText(t, i.now)} — 옮길 ACCOUNT에 여유가 없음` : null;
   }
-  if (p.kind !== "LAUNCH" && p.kind !== "ENTRY") return null;
+  if (p.kind !== "LAUNCH" && p.kind !== "ENTRY" && p.kind !== "K3 RELAUNCH") return null;
   const f = p.kind === "ENTRY" && p.account ? ((i.fuelAccounts ?? []).find((x) => x.account === p.account) ?? null) : fuelOfPlan(i, p.kind, p.aircraft); // ENTRY가 ACCOUNT를 정했으면 그 ACCOUNT(ATC-147)
   return f?.level === "hold" ? `${fuelHoldText(f, i.now)} — ACCOUNT가 FUEL hold 수준` : null;
 }
@@ -532,6 +592,9 @@ export function fleetPlanOf(i: FleetInputs): { candidates: FleetCandidate[]; dem
   out.push(...rep.candidates);
   for (const c of rep.candidates) if (c.aircraft) moving.add(c.aircraft);
 
+  // ── K3 RELAUNCH(ATC-509): 스위치 k3Relaunch가 on일 때만. ACCOUNT CHANGE·REPOSITION이 쥔 AIRCRAFT는 뺀다 ──
+  out.push(...k3RelaunchOf(i, assigned, moving));
+
   // ── AOG: NORDO, 최근 LOS, AIRCRAFT health의 MODEL·주간 LIMIT(ATC-48) ──
   for (const a of i.aircraft) {
     if (a.retired || a.aog) continue;
@@ -683,8 +746,8 @@ export interface ApproveOptions {
 }
 export type ExecStep =
   | { action: "entry"; registration: string; configuration: ConfigurationId; base: string; account?: string }
-  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; lastModel?: string | null; account?: string } // model: 양식에 적은 것만. lastModel: 마지막 LAUNCH의 모델(설정이 하나도 안 맞을 때만 쓴다, ATC-279)
-  | { action: "stop"; registration: string }
+  | { action: "launch"; registration: string; permissionMode: PermissionMode; model: string | null; lastModel?: string | null; account?: string; flight?: string; proposal?: string } // flight·proposal: K3 RELAUNCH(ATC-509) — 그 FLIGHT의 K3 entries로 띄우고 카드 id를 기록에 남긴다. model: 양식에 적은 것만. lastModel: 마지막 LAUNCH의 모델(설정이 하나도 안 맞을 때만 쓴다, ATC-279)
+  | { action: "stop"; registration: string; proposal?: string }
   | { action: "base"; registration: string; base: string } // REPOSITION(ATC-179): fleet.json의 base를 바꾼다
   | { action: "aog"; registration: string; reason: string; until: string | null }
   | { action: "return"; registration: string }
@@ -958,6 +1021,18 @@ export function executionOf(p: FleetProposal, input: Record<string, unknown>, ct
       if (ctx.airports && !ctx.airports.find((a) => a.code === p.airport)?.repo) throw new PlanError(`${p.airport}의 저장소를 모름 — ${reg}는 멈추지 않았다`);
       const o = launchOptions(ctx.lastLaunch.get(reg));
       return { steps: [{ action: "stop", registration: reg }, { action: "base", registration: reg, base: p.airport }, { action: "launch", registration: reg, ...o }], options: o };
+    }
+    case "K3 RELAUNCH": {
+      // 실행할 때 다시 본다(승인까지 시간이 걸렸을 수 있다): 쉬는 AIRCRAFT만 멈춘다. STOP 전에 거절해 STOP만 되고 LAUNCH가 안 되는 일을 줄인다
+      const x = needAircraft();
+      const flight = String(p.reasons.find((r) => r.code === "flight")?.value ?? "");
+      if (!flight) throw new PlanError("K3 RELAUNCH에 FLIGHT가 없음");
+      if (x.retired) throw new PlanError(`${reg}는 RETIRED`);
+      needBase(x);
+      needBackground();
+      if (x.status !== "idle" || x.flying.length || x.flights.length) throw new PlanError(`${reg}가 FLIGHT 중(${[...x.flying, ...x.flights.map((f) => f.key)].join(", ") || x.status}) — 살아 있는 FLIGHT는 멈추지 않는다`);
+      const o = launchOptions(ctx.lastLaunch.get(reg));
+      return { steps: [{ action: "stop", registration: reg, proposal: p.id }, { action: "launch", registration: reg, ...o, flight, proposal: p.id }], options: o };
     }
     case "AOG": {
       const x = needAircraft();
