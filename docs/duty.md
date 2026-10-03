@@ -243,6 +243,7 @@ The Linear state button in the FLIGHT drawer, and READY. The first place the atc
   - It shows the chat log, cards inline, an input (Enter sends, Shift+Enter adds a line, paste an image) and a stop button while DUTY is thinking.
   - The head line shows `DUTY · acct-2 · context <k>/<CAP>k` and **NEW SHIFT**.
 - **The queue in the drawer.** Above the chat, a folded `QUEUE nn` row lists what waits, even when DUTY has not mentioned it. It replaces ui-visibility's own drawer (section 7).
+- **DUTY screen (design, not built).** `#duty/screen` is the same chat in a three-column screen (find, talk, decide), with the drawer kept for the other tabs. Design, work units and done-when: [duty-screen.md](duty-screen.md).
 - **ANNUNCIATOR (later).** The Mac app gets a DUTY window: the same events, sending with the same Origin rules through the forward. That is a separate atc-app issue.
 
 ## 5. Implementation order
