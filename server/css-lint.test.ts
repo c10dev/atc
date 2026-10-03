@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BASELINE, type Counts, countsOf, type Finding, lintCss, lintTsx, lintWeb, ratchetOf } from "./css-lint.ts";
+import { BASELINE, type Counts, countsOf, type Finding, lintCss, lintTsx, lintWeb, PROP_FAMILIES, ratchetOf, SIGNAL_FILL_OK, TOKEN_FAMILIES } from "./css-lint.ts";
 
 const rules = (fs: Finding[]) => fs.map((f) => f.rule);
 const css = (text: string, file = "web/src/views/X.css") => lintCss(text, file);
@@ -13,7 +13,7 @@ test("color-literal: hex, rgb(·hsl(·oklch( 리터럴은 걸리고 var()·trans
   assert.deepEqual(rules(css(".a { color: hsl(10 20% 30%); border-color: oklch(0.7 0.1 200); }")), ["color-literal", "color-literal"]);
   assert.deepEqual(rules(css(".a { background: linear-gradient(0deg, #000, #fff); }")), ["color-literal"]); // 선언마다 한 번
   assert.deepEqual(css(".a { color: var(--text); background: transparent; border-color: currentColor; outline-color: inherit; }"), []);
-  assert.deepEqual(css(".a { background: color-mix(in srgb, var(--alert) 20%, transparent); }"), []);
+  assert.deepEqual(css(".dot { background: color-mix(in srgb, var(--alert) 20%, transparent); }"), []);
   assert.deepEqual(css('.a::after { content: "#fff"; background: url(data:image/svg+xml;utf8,<svg fill=\'%23fff\'/>); }'), []); // 문자열·url 안은 아니다
   assert.deepEqual(css("/* color: #fff; */ .a { color: var(--text); }"), []); // 주석
 });
@@ -26,14 +26,78 @@ test("color-literal: styles.css의 :root·테마 블록 토큰 정의는 허용,
   assert.deepEqual(rules(css(":root { color: #fff; }", "web/src/styles.css")), ["color-literal"]); // 토큰 정의가 아니라 선언
 });
 
-test("font-size-px: px·rem 리터럴은 걸리고 var(--text-…)·em·%는 통과, font 약식은 크기 칸만 본다", () => {
+test("font-size-px: px·rem 리터럴은 걸리고 var(--text-…)·%는 통과, font 약식은 크기 칸만 본다", () => {
   assert.deepEqual(rules(css(".a { font-size: 12px; }")), ["font-size-px"]);
   assert.deepEqual(rules(css(".a { font-size: 0.75rem; }")), ["font-size-px"]);
   assert.deepEqual(rules(css(".a { font: 700 11px var(--mono); }")), ["font-size-px"]);
   assert.deepEqual(css(".a { font-size: var(--text-sm); }"), []);
-  assert.deepEqual(css(".a { font-size: 1.2em; } .b { font-size: 90%; } .c { font-size: calc(var(--text-sm) * 1.1); }"), []);
+  assert.deepEqual(css(".b { font-size: 90%; } .c { font-size: calc(var(--text-sm) * 1.1); }"), []);
   assert.deepEqual(css(".a { font: 700 var(--text-2xs)/15px var(--mono); }"), []); // line-height의 px는 font-size가 아니다
   assert.deepEqual(css(".a { line-height: 16px; letter-spacing: 1px; }"), []);
+});
+
+test("font-size-em(ATC-410): font-size와 font 약식의 em은 걸리고 var·%·line-height의 em은 통과", () => {
+  assert.deepEqual(rules(css(".a { font-size: 1.2em; }")), ["font-size-em"]);
+  assert.deepEqual(rules(css(".a { font: 700 0.9em var(--mono); }")), ["font-size-em"]);
+  assert.deepEqual(css(".a { font-size: var(--text-sm); } .b { font-size: 90%; } .c { font: 700 var(--text-xs)/1.4em var(--mono); } .d { padding: 1em; }"), []);
+  assert.deepEqual(rules(css(".a { font-size: 1.5rem; }")), ["font-size-px"]); // rem은 em 규칙이 아니라 font-size-px
+});
+
+test("spacing-literal(ATC-410): 간격 속성의 0이 아닌 px는 걸리고 0·var(--space-…)·em·%는 통과, 토큰 정의는 허용", () => {
+  assert.deepEqual(rules(css(".a { padding: 8px; margin: 0 12px; gap: 4px; }")), ["spacing-literal", "spacing-literal", "spacing-literal"]);
+  assert.equal(rules(css(".a { padding-top: 6px; margin-inline: 2px; row-gap: 3px; column-gap: 3px; inset: 4px; top: -2px; left: 1px; }")).length, 7);
+  assert.deepEqual(rules(css(".a { padding: calc(var(--space-2) + 3px); }")), ["spacing-literal"]);
+  assert.deepEqual(css(".a { padding: 0; margin: 0px auto; gap: var(--space-2); inset: 0; top: 50%; left: 1em; padding: var(--space-1) var(--space-3, 12px); }"), []);
+  assert.deepEqual(css(".a { width: 12px; height: 4px; border: 1px solid var(--line); line-height: 16px; transform: translateX(8px); }"), []); // 간격 속성이 아니다
+  assert.deepEqual(css(":root { --space-3: 12px; --gutter: 24px; }", "web/src/styles.css"), []); // 토큰 정의
+  assert.deepEqual(css(':root[data-theme="night"] { --space-3: 12px; }', "web/src/styles.css"), []);
+});
+
+test("radius-literal(ATC-410): var(--radius-…)·50%·0이 아닌 border-radius는 걸린다, 세부 속성도", () => {
+  assert.deepEqual(rules(css(".a { border-radius: 4px; }")), ["radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: 999px; } .b { border-top-left-radius: 6px; }")), ["radius-literal", "radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: var(--radius-md) 4px; }")), ["radius-literal"]);
+  assert.deepEqual(rules(css(".a { border-radius: 0.5rem; }")), ["radius-literal"]);
+  assert.deepEqual(css(".a { border-radius: var(--radius-md); } .b { border-radius: 50%; } .c { border-radius: var(--radius-sm) var(--radius-sm) 0 0; } .d { border-radius: 0; }"), []);
+  assert.deepEqual(css(":root { --radius-md: 8px; --radius-sm: 4px; }", "web/src/styles.css"), []); // 토큰 정의
+});
+
+test("token-family(ATC-437): 색 속성은 자기 계열의 토큰만 받는다", () => {
+  // 통과: 속성마다 맞는 계열
+  assert.deepEqual(css(".a { color: var(--text); } .b { color: var(--muted); } .c { color: var(--faint); }"), []);
+  assert.deepEqual(css(".a { color: var(--alert); } .b { color: var(--blue); }"), []); // 신호색은 글자에 쓴다
+  assert.deepEqual(css(".a { color: var(--paper-ink); } .b { color: var(--flap-ink); } .c { color: var(--stamp-red); }"), []); // 도메인 글자색
+  assert.deepEqual(css(".a { background: var(--panel); } .b { background-color: var(--bg); } .c { background: linear-gradient(var(--chrome), var(--panel-2)); }"), []);
+  assert.deepEqual(css(".a { background: var(--paper); } .b { background: var(--fids-card); }"), []); // 도메인 면
+  assert.deepEqual(css(".a { border: 1px solid var(--line); } .b { border-color: var(--line-strong); } .c { border-top: 1px solid var(--bracket); }"), []);
+  assert.deepEqual(css(".a { border: 1px solid var(--alert); } .b { border-color: color-mix(in srgb, var(--cyan) 45%, transparent); }"), []); // 신호색 테두리
+  assert.deepEqual(css(".a { outline: 2px solid var(--cyan); } .b { outline-color: var(--ring); }"), []);
+  // 걸림: 계열이 어긋난다
+  assert.deepEqual(rules(css(".a { color: var(--panel); }")), ["token-family"]); // 글자에 면
+  assert.deepEqual(rules(css(".a { color: var(--line); }")), ["token-family"]); // 글자에 선
+  assert.deepEqual(rules(css(".a { background: var(--text); }")), ["token-family"]); // 면에 글자
+  assert.deepEqual(rules(css(".a { background: var(--line); }")), ["token-family"]);
+  assert.deepEqual(rules(css(".a { border: 1px solid var(--panel-2); }")), ["token-family"]); // 선에 면
+  assert.deepEqual(rules(css(".a { border-left-color: var(--muted); }")), ["token-family"]); // 선에 글자
+  assert.deepEqual(rules(css(".a { outline: 2px solid var(--text); }")), ["token-family"]); // 포커스 링에 글자
+  assert.deepEqual(rules(css(".a { outline-color: var(--line); }")), ["token-family"]);
+  assert.match(css(".a { color: var(--panel); }")[0]!.text, /--panel/);
+  // 항상 통과: var()가 아닌 값, 모르는 토큰, 토큰 정의
+  assert.deepEqual(css(".a { color: inherit; background: transparent; border-color: currentColor; border: none; background: none; }"), []);
+  assert.deepEqual(css(".a { color: var(--my-local); background: var(--x-bg); }"), []); // 계열표에 없는 이름은 판단하지 않는다
+  assert.deepEqual(css(":root { --foo: var(--panel); }"), []);
+  assert.deepEqual(css(".a { width: var(--panel); }"), []); // 색 속성이 아니다
+});
+
+test("token-family(ATC-437): 신호색 배경은 SIGNAL_FILL_OK 표의 선택자에서만 통과한다", () => {
+  assert.deepEqual(rules(css(".card { background: var(--amber); }")), ["token-family"]); // 표에 없다
+  assert.deepEqual(rules(css(".card { background: color-mix(in srgb, var(--cyan) 10%, var(--chrome)); }")), ["token-family"]); // 옅은 면도 같다
+  assert.deepEqual(css(".dot { background: var(--amber); } .dot-busy { background: var(--radar); }"), []); // 점
+  assert.deepEqual(css(".pr-badge.is-cleared { background: var(--phase-cleared); } .atfm-tag.t-on { background: var(--alert); } .status-chip { background: var(--cyan); }"), []); // 배지·태그·칩
+  assert.deepEqual(css(".update-bar { background: color-mix(in srgb, var(--update-tone) 10%, var(--chrome)); }"), []); // 막대
+  assert.deepEqual(rules(css(".dot { background: var(--text); }")), ["token-family"]); // 허용은 신호색 배경만: 글자 토큰은 점이어도 걸린다
+  assert.deepEqual(rules(css(".dot { color: var(--panel); }")), ["token-family"]); // 허용은 background에만
+  assert.ok(SIGNAL_FILL_OK.length > 0 && Object.keys(TOKEN_FAMILIES).length === 5 && PROP_FAMILIES.length === 4); // 표 모양이 바뀌면 이 테스트도 같이 본다
 });
 
 test("z-index-literal: var(--z-…)만 통과(auto 포함), 숫자는 걸린다", () => {
@@ -63,7 +127,7 @@ test("outline-none: :focus-visible 규칙이 없으면 걸리고, 같은 선택�
   assert.deepEqual(css(".a:focus:not(:focus-visible) { outline: none; } .a:focus-visible { outline: 2px solid var(--cyan); }"), []);
   assert.deepEqual(css(".a { outline: none; }\n.a:focus-visible .hit { stroke: var(--cyan); }"), []); // 눈에 보이는 대체(자손)
   assert.deepEqual(rules(css(".a { outline: none; } .b:focus-visible { outline: 2px solid red; }")), ["outline-none"]); // 다른 선택자
-  assert.deepEqual(css(".a { outline: 1px solid var(--line); }"), []);
+  assert.deepEqual(css(".a { outline: 1px solid var(--cyan); }"), []);
 });
 
 test("css: 줄 번호, @media 안, 여러 선언, 마지막 ;없는 선언", () => {
@@ -87,6 +151,13 @@ test("tsx: style={{…}}의 색·font-size 리터럴과 SVG 색 속성은 걸리
   assert.deepEqual(tsx('<div style={{ color: "var(--a)" }} /> // style={{ color: "#fff" }}'), []);
   // 줄 번호
   assert.equal(tsx('const a = 1;\n<div style={{ color: "#fff" }} />')[0].line, 2);
+});
+
+test("tsx(ATC-410): style의 간격·둥근 모서리·em 글자 크기도 같은 규칙", () => {
+  assert.deepEqual(rules(tsx("<div style={{ padding: 8, marginTop: 4 }} />")), ["spacing-literal", "spacing-literal"]);
+  assert.deepEqual(rules(tsx('<div style={{ gap: "6px", borderRadius: 4, fontSize: "1.1em" }} />')), ["font-size-em", "spacing-literal", "radius-literal"]);
+  assert.deepEqual(tsx('<div style={{ padding: 0, gap: "var(--space-2)", borderRadius: "var(--radius-md)", top: "50%", width: 12 }} />'), []);
+  assert.deepEqual(tsx("<div style={{ borderRadius: '50%' }} />"), []);
 });
 
 test("ratchetOf: 늘었거나 기준선에 없는 칸은 added, 줄어든 칸은 dropped, 같으면 비어 있다", () => {
@@ -114,7 +185,7 @@ test("ratchet: web/src의 위반은 web/css-lint-baseline.json보다 늘지 않�
     r.added,
     [],
     `새 CSS 토큰 위반(docs/design-language.md 5절 13번):\n${r.added.map((a) => `${a.file} ${a.rule}: ${a.was} → ${a.now}\n${where(a.file, a.rule)}`).join("\n")}\n` +
-      "색은 var(--…) 토큰, 글자 크기는 var(--text-…), z-index는 var(--z-…), transition은 속성 이름, outline: none에는 :focus-visible 규칙을 쓴다.",
+      "색은 var(--…) 토큰, 글자 크기는 var(--text-…), 간격은 var(--space-…), 둥근 모서리는 var(--radius-…), z-index는 var(--z-…), transition은 속성 이름, outline: none에는 :focus-visible 규칙을 쓴다.",
   );
   assert.deepEqual(r.dropped, [], `위반이 줄었다. 기준선을 낮춘다: node server/css-lint.ts --update\n${r.dropped.map((d) => `${d.file} ${d.rule}: ${d.was} → ${d.now}`).join("\n")}`);
 });

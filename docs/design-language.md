@@ -19,7 +19,7 @@ Related: [ui-visibility.md](ui-visibility.md) (visibility review, draft), [alert
 
 ### What is built and follows a rule
 
-- **Tokens and themes.** `web/src/styles.css` `:root` defines surfaces (`--bg` < `--chrome` < `--panel` < `--panel-2` < `--panel-3`), text (`--text`, `--muted`, `--faint`), signals (`--radar`, `--amber`, `--cyan`, `--alert`, `--blue`), a type scale (`--text-2xs` 10 px to `--text-2xl` 24 px), a 4 px spacing scale, radii and two font stacks (`--mono` JetBrains Mono, `--sans` Pretendard). Three themes (Radar Console, Glass Cockpit, Night Sky) change only values. Settings add `density` (comfortable, compact), `motion` (off follows the OS by default) and `clock` (UTC, local).
+- **Tokens and themes.** `web/src/styles.css` `:root` defines surfaces (`--bg` < `--chrome` < `--panel` < `--panel-2` < `--panel-3`), text (`--text`, `--muted`, `--faint`), signals (`--radar`, `--amber`, `--cyan`, `--alert`, `--blue`), a type scale (`--text-2xs` 11 px to `--text-2xl` 24 px), a 4 px spacing scale, radii and two font stacks (`--mono` JetBrains Mono, `--sans` Pretendard). Three themes (Radar Console, Glass Cockpit, Night Sky) change only values. Settings add `density` (comfortable, compact), `motion` (on by default; the OS's reduced-motion request always wins, live, ATC-409) and `clock` (UTC, local).
 - **Alert levels** (ATC-110): WARNING red, CAUTION amber, ADVISORY grey; only WARNING and CAUTION count. ANNUNCIATOR shows the same levels with a letter (`W`, `C`, `A`), so a row does not depend on colour alone, and keeps NEEDS YOU in its own accent colour so it is never read as a CAUTION.
 - **Dark cockpit** (ATC-111): RADAR and STRIPS fold finished STANDs into `GATE CLEANUP` by default. FIDS caps ARRIVED (ATC-112).
 - **Decisions first** (ATC-113): DISPATCH and SCHEDULE put "what I must do now" on top and fold READINESS into one line at the bottom.
@@ -52,9 +52,9 @@ Each principle has a check that a reviewer can apply to a PR.
    - **Show** anything abnormal, anything to act on, and the one or two numbers that answer the question of that place.
    - An empty optional field is **hidden** on a read screen and **shown** in its editor.
    - *Check:* no line on a read screen is the same for every item, and no fold is empty.
-8. **Use the width; collapse, never scroll sideways.** Layouts fill the space they get. Wide spaces use columns (a grid with `auto-fit` and a minimum column width). Narrow spaces collapse to one column. *Check:* no horizontal page scroll at 390 px, and no empty half at 1280 px.
+8. **Use the width; collapse, never scroll sideways.** Layouts fill the space they get. Wide spaces use columns (a grid with `auto-fit` and a minimum column width). Narrow spaces collapse to one column. *Check:* no horizontal page scroll at 390 px, and no empty half at 1280 px. **Rows and cards size from their container (`@container`), not from the viewport (`@media`), and a row's minimum column sum fits the column with the FLIGHT drawer open** (the drawer narrows the column without changing the viewport; [flights-list.md](flights-list.md)). *Exception (SUPERVISOR decision, 2026-10-03):* a screen that is read as one list (HOME) uses a **reading column**, centred in the screen, at most about 880 px, as the home screens of Codex and the Claude app do. The empty sides are intended there; the no-sideways-scroll check still holds.
 9. **Same words everywhere.** Aviation terms in English (AIRCRAFT, FLIGHT, STAND, READBACK, MASTER WARNING, LAMP …). The SUPERVISOR's explanatory text is in Korean. Labels are an English code with a Korean gloss. Times are UTC with `Z` unless the clock setting is local. Ages are one unit (`4m`, `3h`, `2d`). *Check:* a new term exists in [naming.md](naming.md) or is added there.
-10. **Static beats moving.** Status is chips, dots and counts. Motion is allowed only for liveness (a busy dot, the RADAR sweep, FIDS flaps) and for a new WARNING. Every motion stops with `data-motion="off"` and `prefers-reduced-motion`. *Check:* the screen is fully readable with motion off.
+10. **Static beats moving.** Status is chips, dots and counts. Motion is allowed only for liveness (a busy dot, the RADAR sweep, FIDS flaps), for a new WARNING, and for loading: a wait the SUPERVISOR started or the first load (ATC-453; the approach lights of `kit/Loading` and the first-load scene `ApproachScene`, shown only when the wait passes about 300 ms, neutral colour, `--radar` only for the moment the data arrives; the screen is never delayed for them). Every motion stops with `data-motion="off"` and `prefers-reduced-motion`; a stopped light stays dimly lit and the loading text stays. *Check:* the screen is fully readable with motion off, and with everything loaded nothing moves except liveness.
 11. **Tooltips explain, they never carry the only copy.** A tooltip may hold how a number was made, the full text of a cut line, or the IDs behind a count. It may not hold the only statement that something is wrong, the only way to act, or the only copy of a value the SUPERVISOR needs to decide. *Check:* with tooltips removed, every decision can still be made from the screen.
 12. **Rare and destructive actions go one step back.** The actions used every day are buttons. Rare actions (AOG) and destructive ones (퇴역, STOP ALL) sit in a `⋯` menu or behind a confirmation that says what will happen. *Check:* a card has at most five visible buttons.
 13. **Tokens only.** Colours, fonts, sizes, radii and spacing come from `:root` tokens (web) or system styles (app). Themes change values, never structure. *Check:* no literal colour or pixel font size in a component's CSS.
@@ -71,7 +71,7 @@ Each principle has a check that a reviewer can apply to a PR.
 | 2 | `--panel-2` | Cards, expanded details |
 | 3 | `--panel-3` | Hover, popovers, menus |
 
-Each layer is one step brighter and has a stronger border (`--line`, `--line-strong`). Text has three levels: `--text` (values, names), `--muted` (secondary values), `--faint` (labels, ages, captions). The faintest text keeps 4.5:1 on every layer in every theme.
+Each layer is one step brighter and has a stronger border (`--line`, `--line-strong`). Text has three levels: `--text` (values, names), `--muted` (secondary values), `--faint` (labels, ages, captions). The faintest text keeps 4.5:1 on every layer in every theme; `server/theme-contrast.test.ts` checks `--faint` and `--muted` on every layer and `--paper-muted` on a parked strip, compositing the translucent Night Sky layers (ATC-408). Text is never dimmed with `opacity`; a quieter state uses a quieter token.
 
 ### 3.2 Signal colours
 
@@ -89,7 +89,7 @@ Charts use the series tokens (`--series-captain`, `--series-crew`), not the sign
 
 ### 3.3 Type, space and shape
 
-- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions) to `--text-2xl` (headline numbers). Body is `--text-md` (14 px; 13 px in the compact density). Numbers that change or are compared in columns use tabular figures (the `.tn` utility and the list next to it in `styles.css`, see L5a as built).
+- **Type.** `--mono` for codes, IDs, numbers, times and aviation terms. `--sans` for Korean sentences and explanations. Sizes from `--text-2xs` (uppercase codes, captions; 11 px) to `--text-2xl` (headline numbers). No text is smaller than 11 px in either density (D8), and the weights in use are 400, 600 and 700 (no 500, no weight tokens). Body is `--text-md` (14 px; 13 px in the compact density). Numbers that change or are compared in columns use tabular figures (the `.tn` utility and the list next to it in `styles.css`, see L5a as built).
 - **Space.** The 4 px scale (`--space-*`). Inside a block `--gap-item` (8 px), between columns `--gap-column` (16 px), between sections `--gap-section` (32 px).
 - **Shape.** Radius 2 px for chips and tags, 4 px for controls, 8 px for panels and cards, pill for toggles and counts. A level or state shape (dot, triangle, dashed border) is never only a colour change.
 
@@ -107,14 +107,14 @@ Sections 2 to 3.4 decide *what* a screen shows. This section decides how calm an
    - *Check:* in the normal state, the coloured pixels in a card are a dot or a word, not a block.
 2. **Font roles.** `--mono` for things a person might copy or compare character by character: IDs, codes, keys, numbers, times, model names, commands. `--sans` for names, sentences and labels a person reads. Uppercase letter-spaced codes (`.label`, `.fl-sub`) only for section headings, at most one level of them per card.
    - *Check:* no Korean sentence and no list of names is set in mono; no card has more than one level of uppercase headings.
-3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise).
+3. **Three sizes per block.** Each card or panel uses at most three text sizes: the **title** (`--text-lg`, 600), the **value** (`--text-md`), and the **caption** (`--text-xs`, `--faint`). Weight adds contrast inside the same size (600 for names and values that matter, 400 otherwise; 700 stays for uppercase codes and headings; 500 is not used, D8).
    - *Decided (DL7):* raise body text from 13 px to 14 px and captions from 11 px to 12 px in the default density. `compact` keeps today's sizes.
    - *Check:* a card uses three sizes or fewer.
 4. **Border budget.** Group by space and by surface step (section 3.1), not by lines. A card has one outer border or one surface step, not both plus inner rules. Lines are for tables, inputs and the one divider between a header and its body.
    - *Check:* no border inside a card except table rows, inputs and the header divider.
 5. **Spacing rhythm.** Inside a block, related lines sit `--space-1` to `--space-2` apart; blocks inside a card `--space-4`; cards `--space-3` to `--space-4`; sections `--gap-section`. Padding inside a card is at least `--space-4` on every side. Things that line up (labels, values, numbers) share one left edge.
    - *Check:* the label column and the value column of a card each have one left edge.
-6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
+6. **One icon set.** Web: one outline set, **Lucide** (MIT, DL8; `Icon` and `IconButton` in `web/src/kit/Icon.tsx`) at 14 and 16 px with a 1.5 px stroke. App: SF Symbols. Text glyphs (`▸ ▾ ✓ ⋯ ✈`) are replaced where an icon exists. An icon-only control has an accessible name (principle 14).
    - *Check:* the PR adds no new text glyph used as an icon.
 7. **Numbers.** `font-variant-numeric: tabular-nums` on every number that changes or sits in a column. Numbers in tables align right; units stay with the number (`32%`, `$4.34`, `287k`).
    - *Check:* changing numbers do not shift their neighbours.
@@ -150,6 +150,8 @@ A fold header always says what it holds: `ADVISORY 13`, `ARRIVED 42 more · 전�
 - **Tag** (2 px radius, mono, uppercase): a fixed state or kind (`BG auto`, `STALE`, `AOG`).
 - **Dot**: liveness or a level next to a name. A dot never stands alone without a text or an accessible name.
 
+As built (ATC-412): the three bases are `.chip`, `.tag` and `.dot` in `web/src/kit/chips.css`, loaded before the screen CSS. A screen adds only what differs (`.code-chip`, `.dr-chip` are hook classes next to the base; FLEET uses `.chip` and `.btn` as they are, ATC-428). A tag's colour is `data-tone` (`alert`, `amber`, `radar`, `cyan`, `inherit`), a selectable chip is `aria-pressed`, adjustable values are local properties (`--chip-ink`, `--tag-ink`, `--dot-ink`, `--dot-size`). A dot carries its meaning in its shape as well as its colour: filled (default), ring (`data-shape="ring"`) or dash (`data-shape="dash"`). The activity line uses filled for a running tool, ring for waiting on the model and dash for idle, and a screen-reader-only word names the phase. `server/chips-kit.test.ts` checks that every `.dot` has an accessible name or is hidden.
+
 ### 4.5 Status row group (ANNUNCIATOR)
 
 Secondary status lines (DUTY, GitHub, Linear, RADIO) share one group under the LAMP list. When none of them needs attention, they collapse into one line (`DUTY · GitHub 3 · RADIO TOWER`). A new source joins the group; it does not get its own row in the fixed strip. [ATC-222](https://linear.app/vocado/issue/ATC-222) applies this.
@@ -157,6 +159,10 @@ Secondary status lines (DUTY, GitHub, Linear, RADIO) share one group under the L
 ### 4.6 Empty and unreachable states
 
 An empty list says what would be there in one faint line (`LOGBOOK에 ARRIVED 기록 없음`), and only when the list is the main content of its place. Otherwise the block is hidden. "Unreachable" is its own state: grey, with what to do (`atc 연결 안 됨 — SSH 포워딩` and its repair button), never an empty screen.
+
+### 4.7 Buttons
+
+One button style: `.btn` (`web/src/kit/Button.css`, a CSS class, not a component, ATC-411). Add `.is-primary` for the one emphasised action and `.is-danger` for a destructive one; both change only the border and text colour. Fill, border, radius, size, hover, disabled and focus ring are defined once on `.btn` (height `--btn-h`, 30 px; the fill reads the contextual `--layer` / `--layer-hover`). A screen does not restyle the base; it adds a layout rule or a screen-only variant (`.btn.is-link`) next to its own classes. A new screen button is `.btn`, never a new `xx-btn` class.
 
 ## 5. Review checklist
 
@@ -172,11 +178,12 @@ Running atc sessions get the diff of this file on their next turn when it change
 - [ ] Detail does not repeat its row (6).
 - [ ] Each removed line is constant, empty or a normal-state confirmation; each fold shows a count (7).
 - [ ] No horizontal scroll at 390 px, no empty half at 1280 px (8).
+- [ ] 1000 px with the FLIGHT drawer open (and 1280 px with sidebar and drawer open): no row overflows or wraps per character; rows use `@container`, not `@media` (8).
 - [ ] Terms in [naming.md](naming.md); times in Z; ages in one unit (9).
 - [ ] Readable with motion off (10).
 - [ ] Nothing needed for a decision lives only in a tooltip (11).
 - [ ] At most five visible buttons per card; destructive actions confirmed (12).
-- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem font sizes, `z-index` that is not `var(--z-…)`, `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
+- [ ] Tokens only (13). `npm test` checks the web part (`server/css-lint.ts`, `server/css-lint.test.ts`): new literal colours, px/rem and `em` font sizes, non-zero px literals in `padding`, `margin`, `gap`, `inset` and `top`/`right`/`bottom`/`left` (use `var(--space-…)`), `border-radius` values other than `var(--radius-…)`, `50%` or `0`, `z-index` that is not `var(--z-…)`, a colour property that takes the wrong token family (`token-family`, ATC-437: `color` takes text, signal and domain ink tokens; `background` surface tokens, with signal fills only for the selectors in `SIGNAL_FILL_OK`; `border` line and signal tokens; `outline` signal tokens), `transition: all` and `outline: none` without a `:focus-visible` rule fail against the baseline `web/css-lint-baseline.json`. When a count drops, lower the baseline in the same PR with `node server/css-lint.ts --update`; never raise it to accept a new violation.
 - [ ] Keyboard path checked (14).
 - [ ] Craft (3.5): normal state has no coloured blocks; mono only for IDs, codes and numbers; three text sizes per card; no inner borders; one left edge per column; icons from the set; `tabular-nums` on changing numbers; motion from the tokens.
 
@@ -192,7 +199,7 @@ The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a s
 | L1 | Mark [ui-visibility.md](ui-visibility.md) section 2 and [alerting.md](alerting.md) section 2 as gathered here (a link, not a copy) ✅, and point atc-app `docs/design.md` section 3 here | docs | `auto` |
 | L2 | [ATC-280](https://linear.app/vocado/issue/ATC-280) (FLEET card) and [ATC-222](https://linear.app/vocado/issue/ATC-222) (menu bar) cite this document and use the section 5 checklist | the two work orders | — |
 | L3 | A one-line rule in root `CLAUDE.md` and atc-app `CLAUDE.md`: screen PRs follow `docs/design-language.md` and answer the checklist | `CLAUDE.md` | `user` |
-| L4 | An audit of each tab against the checklist, one work order per tab that fails, ordered by words per screen (DISPATCH, FIDS, SCHEDULE first) | Linear | — |
+| L4 | An audit of each tab against the checklist, one work order per tab that fails. Since 2026-10-02 the tabs themselves are regrouped by [layout.md](layout.md); the audit follows its order (Y1–Y6) and checks each new screen, not the retired tabs | Linear | — |
 | L5a | Craft tokens: `--dur-*`, `--ease`, `tabular-nums` utility, DL7 sizes, the icon set (3.5) | `web/src/styles.css`, one component | `auto` (`package.json` for the icon set: `user`) |
 | L5b | Craft pass on the FLEET card as the reference card, together with [ATC-280](https://linear.app/vocado/issue/ATC-280) | web | `auto` |
 | L6 | Tooltip pass: move tooltips that carry the only copy of a decision value onto the screen (principle 11) | web | `auto` |
@@ -201,7 +208,7 @@ The `ui-review` skill (`.claude/skills/ui-review/`, run by `atc-task` before a s
 
 CSS only, in `web/src/styles.css` (plus one cell width in `Dispatch.css`); no colour, layout or component structure changed.
 
-- **Sizes (DL7).** `--text-md` 13 → **14 px** and `--text-xs` 11 → **12 px** in the default density; `:root[data-density="compact"]` sets them back to 13 and 11. `--text-2xs`, `--text-sm` and `--text-lg` and up are unchanged (so `--text-sm` and `--text-xs` are both 12 px in the default density).
+- **Sizes (DL7).** `--text-md` 13 → **14 px** and `--text-xs` 11 → **12 px** in the default density; `:root[data-density="compact"]` sets them back to 13 and 11. `--text-2xs` is **11 px** (was 10, D8/Q12), so in the compact density `--text-2xs` and `--text-xs` are both 11 px and nothing is under 11 px; `--text-sm` and `--text-lg` and up are unchanged (so `--text-sm` and `--text-xs` are both 12 px in the default density).
 - **Motion tokens.** `--dur-fast: 120ms`, `--dur-base: 200ms`, `--ease: cubic-bezier(0.2, 0, 0, 1)`. The interaction transitions (settings gear, map line hover, block hover, the "found" highlight) use them; the repeating liveness animations (ping, sweep, flaps, ticker, twinkle, blink) keep their own durations. `data-motion="off"` still stops everything (no running infinite animation on RADAR, FLEET, FIDS or DISPATCH).
 - **Numbers.** A `.tn` utility and one selector list in `styles.css` apply `font-variant-numeric: tabular-nums` to the header readouts and clock, STRIPS values and ages, FLEET list cells and card actuals, DISPATCH score and age, SCHEDULE age and counts, FLEET PLAN age, DUTY since and the activity age. It is `!important` because a later `font:` shorthand resets the value. METRICS keeps its own rules.
 - **DISPATCH factor detail** cell: `max-width` 140 → 160 px so the larger caption size does not truncate more of it.

@@ -1,0 +1,204 @@
+/* DUTY 화면(ATC-477, docs/duty-screen.md 3.2·3.4). 색·글꼴은 :root 토큰만. 높이는 CSS 배치가 정한다(타이머·측정 없음):
+   화면이 열리면 셸을 한 화면 높이로 고정하고 가운데 열(상단 바·화면·아래 CONTROL 패널)이 flex로 나눠 가진다. 페이지는 스크롤하지 않고 로그와 양옆 열만 스크롤한다 */
+.shell[data-screen="duty"] {
+  height: 100dvh;
+  grid-template-rows: minmax(0, 1fr);
+}
+.shell[data-screen="duty"] > .shell-main {
+  min-height: 0;
+}
+/* 1279px 이하에서는 서랍처럼 셸 사이드바를 접어 세 열에 너비를 준다(DUTY의 왼쪽 열이 자기 찾기 목록이다) */
+@media (max-width: 1279px) {
+  .shell[data-screen="duty"] > .sidebar {
+    display: none;
+  }
+  .shell[data-screen="duty"] {
+    --sidebar-w: 0px;
+  }
+}
+.shell-main > .main.is-duty {
+  display: flex;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ds {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 72ch) minmax(240px, 1fr);
+  justify-content: center;
+}
+.ds > * {
+  min-width: 0;
+  min-height: 0;
+}
+.ds-left,
+.ds-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
+  overflow-y: auto;
+}
+.ds-left {
+  border-right: 1px solid var(--line);
+}
+.ds-right {
+  border-left: 1px solid var(--line);
+}
+.ds-search {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--scope);
+  color: var(--text);
+  font: var(--text-md) / 1.4 var(--sans);
+}
+.ds-search:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.ds-h {
+  margin: 0 0 var(--space-2);
+  font: 600 var(--text-xs) var(--sans);
+  color: var(--muted);
+}
+.ds-h em {
+  font-style: normal;
+  color: var(--faint);
+}
+.ds-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--faint);
+}
+.ds-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.ds-id,
+.ds-until {
+  color: var(--faint);
+}
+.ds-shift {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.ds-shift:hover {
+  background: var(--layer-hover);
+}
+.ds-shift:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.ds-shift span {
+  color: var(--muted);
+}
+
+.ds-centre {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid transparent;
+}
+.ds-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+.ds-title {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ds-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.ds-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 1000px 미만: 한 열. 가운데 대화가 먼저, 기다리는 카드와 찾기가 아래로 이어진다(탭으로 나누는 것은 U7). 이 폭에서는 페이지가 스크롤한다 */
+@media (max-width: 999px) {
+  .shell-main > .main.is-duty {
+    overflow-y: auto;
+  }
+  .ds {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    width: 100%;
+  }
+  .ds > * {
+    flex: none;
+    min-height: auto;
+  }
+  .ds-centre {
+    order: 1;
+    height: calc(100dvh - var(--console-h) - var(--space-12));
+    min-height: 420px;
+  }
+  .ds-right {
+    order: 2;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+  .ds-left {
+    order: 3;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+}
+
+/* 오른쪽 패널의 카드: chip을 눌러 올 때 포커스를 받는다(ATC-478). 결정 기록의 gone 줄은 회색 */
+.ds-card:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+.ds-shift.is-gone,
+.ds-shift.is-gone span {
+  color: var(--faint);
+}
+.ds-shift > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-align: left;
+}
+.ds-shift > :last-child {
+  flex: none;
+}

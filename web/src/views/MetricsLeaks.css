@@ -1,0 +1,39 @@
+/* LEAKS(ATC-363). 색·글꼴은 styles.css의 :root 토큰만 쓴다 */
+.ml-list {
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.ml-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.ml-row:last-child {
+  border-bottom: 0;
+}
+.ml-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+.ml-kind {
+  color: var(--text);
+}
+.ml-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ml-work {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+}

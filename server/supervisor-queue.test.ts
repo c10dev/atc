@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type QueueInput, queueCountsOf, supervisorQueueOf, supervisorQueueView } from "./supervisor-queue.ts";
+import { type AlertsInput, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { summaryOf, type SummaryInput } from "./supervisor-summary.ts";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
@@ -21,11 +23,16 @@ const proposal = (o: Partial<QueueInput["proposals"][number]> = {}): QueueInput[
 const pull = (o: Partial<QueueInput["pulls"][number]> = {}): QueueInput["pulls"][number] =>
   ({ repo: "/x/atc", number: 7, head: "abc1234def", draft: false, landing: "APPROACH", humanCheck: null, ticketKey: "ATC-7", landBy: "mcc", ...o }) as QueueInput["pulls"][number];
 
+test("UNDELIVERED (ATC-353): the hand-delivery card shows at once, as before (no stage holds it back)", () => {
+  const p = proposal({ id: "D-0001", status: "approved", aircraftName: "TEAM_A", undelivered: { at: ago(1), reason: "no live session", n: 1, cause: "absent" } });
+  assert.equal(supervisorQueueOf({ ...empty(), proposals: [p] }, NOW).filter((i) => i.kind === "UNDELIVERED").length, 1);
+});
+
 test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);
   assert.deepEqual(v.items, []);
-  assert.equal(Object.keys(v.counts).length, 11);
+  assert.equal(Object.keys(v.counts).length, 17);
   assert.ok(Object.values(v.counts).every((n) => n === 0));
 });
 
@@ -43,7 +50,7 @@ test("PROPOSAL: only proposed and not held; judged, sent and held proposals stay
   assert.deepEqual(q.map((i) => i.key).sort(), ["D-1", "D-5"]);
   assert.equal(q.find((i) => i.key === "D-1")!.title, "ASSIGN ATC1 → TEAM_A");
   assert.equal(q.find((i) => i.key === "D-5")!.title, "RELEASE ATC1");
-  assert.ok(q.every((i) => i.hash === "#dispatch"));
+  assert.ok(q.every((i) => i.hash === "#home"));
 });
 
 test("SCHEDULE: draft ops in approval mode only", () => {
@@ -53,6 +60,20 @@ test("SCHEDULE: draft ops in approval mode only", () => {
   ] as QueueInput["schedule"]["ops"];
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops } }, NOW).map((i) => i.key), ["S-1"]);
   assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "shadow", ops } }, NOW), []);
+});
+
+test("SCHEDULE(ATC-378): 줄은 HOME을 가리키고, OCC의 근거 한 줄(240자까지)을 detail로 싣는다", () => {
+  const long = "근거 ".repeat(200);
+  const ops = [
+    { id: "S-1", kind: "NEW", flight: null, status: "draft", statusAt: ago(3), reason: "중복 아님: 요청이 새 화면" },
+    { id: "S-2", kind: "TAIL", flight: "ATC2", status: "draft", statusAt: ago(3), reason: long },
+    { id: "S-3", kind: "TAIL", flight: "ATC3", status: "draft", statusAt: ago(3) },
+  ] as QueueInput["schedule"]["ops"];
+  const out = supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops } }, NOW);
+  assert.deepEqual(out.map((i) => i.hash), ["#home", "#home", "#home"]);
+  assert.equal(out[0].detail, "중복 아님: 요청이 새 화면");
+  assert.equal(out[1].detail!.length, 240);
+  assert.equal(out[2].detail, undefined, "근거가 없으면 칸도 없다");
 });
 
 test("FLEET PLAN: open and not stale", () => {
@@ -114,14 +135,14 @@ test("GO: a CAPTAIN waits for the SUPERVISOR's go", () => {
   assert.deepEqual(q.map((i) => [i.kind, i.key, i.title, i.since]), [["GO", "D-9", "ATC1 TEAM_A", ago(7)]]);
 });
 
-test("sorted oldest first; unknown since goes last; ties break by kind", () => {
+test("sorted by group (team holders first), then oldest first; unknown since goes last; ties break by kind", () => {
   const q = supervisorQueueOf({
     ...empty(),
     proposals: [proposal({ id: "D-new", statusAt: ago(1) }), proposal({ id: "D-old", statusAt: ago(60) })],
     schedule: { mode: "approval", ops: [{ id: "S-mid", kind: "TAIL", flight: null, status: "draft", statusAt: ago(30) }] as never },
     pulls: [pull({ landing: "CLEARED", landBy: "supervisor" })],
   }, NOW);
-  assert.deepEqual(q.map((i) => i.key), ["D-old", "S-mid", "D-new", "atc#7@abc1234def"]);
+  assert.deepEqual(q.map((i) => i.key), ["D-old", "D-new", "S-mid", "atc#7@abc1234def"]); // PROPOSAL holds a team, so both cards come before the older SCHEDULE draft (ATC-454)
 });
 
 test("titles carry atc terms only, never a ticket or PR title", () => {
@@ -137,4 +158,35 @@ test("view: count, per-kind counts and the timestamp", () => {
   assert.equal(v.counts.PROPOSAL, 2);
   assert.equal(v.counts.LANDING, 1);
   assert.equal(queueCountsOf(v.items).GO, 0);
+});
+
+test("auto dispatch (ATC-367): ASSIGN and launch cards stay off the queue, RELEASE still shows", () => {
+  const inp = { ...empty(), proposals: [proposal({ id: "D-1" }), proposal({ id: "D-2", kind: "RELEASE", aircraftName: null })] };
+  assert.deepEqual(supervisorQueueOf(inp, NOW).map((i) => i.key), ["D-1", "D-2"]);
+  assert.deepEqual(supervisorQueueOf({ ...inp, autoDispatch: true }, NOW).map((i) => i.key), ["D-2"]);
+});
+
+test("BACKLOG(ATC-401): 쏘거나 버리지 않은 제안이 RELEASE 화면을 가리키는 줄로 선다. 오래 기다린 것이 먼저", () => {
+  const items = supervisorQueueOf({ ...empty(), backlog: [{ key: "ATC-9", by: "SCHEDULE S-0004", at: ago(5) }, { key: "ATC-3", by: "DUTY REVIEW R-0007", at: ago(50) }] }, NOW);
+  assert.deepEqual(
+    items.map((i) => [i.kind, i.key, i.title, i.hash]),
+    [["BACKLOG", "ATC-3", "ATC-3 ← DUTY REVIEW R-0007", "#release"], ["BACKLOG", "ATC-9", "ATC-9 ← SCHEDULE S-0004", "#release"]],
+  );
+  assert.equal(items[0]!.since, ago(50));
+  assert.equal(queueCountsOf(items).BACKLOG, 2);
+  assert.equal(supervisorQueueOf(empty(), NOW).filter((i) => i.kind === "BACKLOG").length, 0, "제안이 없으면 줄이 없다");
+});
+
+// ATC-450: 알림 4b·QUEUE의 SCHEDULE 줄·SUMMARY의 pending.schedule은 같은 함수(schedule-waiting.ts)를 읽는다
+test("SCHEDULE waiting (ATC-450): shadow-era agreed/disagreed ops make no alert, no queue row and no summary count; a draft makes all three", () => {
+  const sop = (id: string, status: string, kind = "TAIL") => ({ id, kind, flight: "ATC-146", status, statusAt: ago(5) });
+  const ops = [sop("S-1", "draft"), sop("S-2", "agreed", "CLASSIFY"), sop("S-3", "disagreed", "NEW")];
+  const alerts = supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, schedule: { mode: "approval", ops: ops as never } } as AlertsInput);
+  assert.deepEqual(alerts.map((a) => a.key), ["pending|schedule|S-1"]);
+  const queue = supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops: ops as never } }, NOW);
+  assert.deepEqual(queue.filter((i) => i.kind === "SCHEDULE").map((i) => i.key), ["S-1"]);
+  assert.equal(summaryOf({ items: alerts, waiting: [], fuelAccounts: [], rts: null, working: 0, at: "2026-09-30T12:00:00Z" } as unknown as SummaryInput).pending.schedule, 1);
+  const none = [sop("S-2", "agreed"), sop("S-3", "disagreed")];
+  assert.deepEqual(supervisorAlertsOf({ sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [], rts: null, schedule: { mode: "approval", ops: none as never } } as AlertsInput), []);
+  assert.deepEqual(supervisorQueueOf({ ...empty(), schedule: { mode: "approval", ops: none as never } }, NOW), []);
 });

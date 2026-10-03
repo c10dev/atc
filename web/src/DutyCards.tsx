@@ -1,14 +1,17 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
-import { type CardAction, actionsOf, cardKey, cardViewOf, queueHeadOf } from "../../server/duty-card.ts";
+import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, scheduleAskOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
+import { chipText, type DecisionItem, keyOf, outcomeText, type StatusCtx, statusOf, waitingOf as waitingItems } from "../../server/duty-card-status.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
 import { timeAgo } from "./derive.ts";
 import { isManual, WILL_DO } from "./views/FleetPlan.tsx";
 import { RelayBox } from "./Relay.tsx";
 import "./Relay.css";
+import "./Drawer.css";
+import "./DutyDrawer.css";
 import { apiGet, apiSend } from "./api.ts";
 
 // DUTY 카드와 QUEUE 줄(ATC-230, docs/duty.md 3.2·4·5장 D3). 카드는 큐 줄 자체이고, 버튼은 이 화면이 기존 길을 부르는 것이다.
@@ -101,7 +104,7 @@ interface PlanBrief {
 }
 
 // FLEET PLAN 줄의 버튼. FLEET 탭과 같은 길(/verdict, /approve)을 부르고, 누르면 카드 안에서 한 번 확인한다
-function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
+function FleetPlanButtons({ id, onDone }: { id: string; onDone: (outcome: string) => void }) {
   const [brief, setBrief] = useState<PlanBrief | null | "error">(null);
   const [ask, setAsk] = useState<"agree" | "disagree" | "approve" | null>(null);
   const [reason, setReason] = useState("");
@@ -120,10 +123,10 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
 
   if (brief === null) return <span className="du-hint">불러오는 중…</span>;
   const row = brief === "error" ? undefined : brief.open.find((p) => p.id === id);
-  if (brief === "error" || !row) return <a className="dr-btn" href="#fleet">FLEET에서 보기</a>;
+  if (brief === "error" || !row) return <a className="btn" href="#fleet">FLEET에서 보기</a>;
   const approval = brief.mode === "approval";
   const manual = isManual(row);
-  if (approval && manual) return <a className="dr-btn" href="#fleet">FLEET에서 보기</a>; // atc가 실행하지 않는 제안: FLEET 탭의 "했음"
+  if (approval && manual) return <a className="btn" href="#fleet">FLEET에서 보기</a>; // atc가 실행하지 않는 제안: FLEET 탭의 "했음"
 
   const run = async () => {
     if (!ask) return;
@@ -136,7 +139,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "실패");
     setAsk(null);
-    onDone();
+    onDone(ask === "approve" ? "승인" : ask === "agree" ? "동의" : approval ? "거절" : "반대");
   };
 
   if (ask) {
@@ -151,10 +154,10 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
           <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />
         )}
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
             확인
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
             취소
           </button>
         </div>
@@ -165,18 +168,138 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
   return (
     <>
       <div className="du-actions">
-        <button type="button" className="dr-btn" onClick={() => setAsk("disagree")}>
+        <button type="button" className="btn" onClick={() => setAsk("disagree")}>
           {approval ? "거절" : "반대"}
         </button>
         {approval ? (
-          <button type="button" className="dr-btn is-primary" disabled={row.stale} title={row.stale ? "조건이 바뀜 — 다음 주기를 기다린다" : undefined} onClick={() => setAsk("approve")}>
+          <button type="button" className="btn is-primary" disabled={row.stale} onClick={() => setAsk("approve")}>
             승인(실행)
           </button>
         ) : (
-          <button type="button" className="dr-btn is-primary" onClick={() => setAsk("agree")}>
+          <button type="button" className="btn is-primary" onClick={() => setAsk("agree")}>
             동의
           </button>
         )}
+        {/* 승인 모드에서 stale이면 왜 못 누르는지를 화면에 둔다(ATC-418). 그림자 모드의 동작은 그대로 */}
+        {approval && row.stale && <span className="du-hint">조건이 바뀜 — 다음 주기를 기다린다</span>}
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </>
+  );
+}
+
+// DISPATCH 카드(ATC-377): 자동 운항이 꺼져 있을 때의 ASSIGN·launch 카드와 RELEASE 카드의 승인·거절. DISPATCH 탭이 하던 같은 길(/approve·/reject, 2a면 /verdict)을 부른다.
+// 누르면 카드 안에서 한 번 확인한다. 모드는 누를 때 서버에서 읽는다
+function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["card"]; onDone: (outcome: string) => void }) {
+  const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    if (!ask) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const got = await apiGet(`/api/dispatch/proposals/${encodeURIComponent(id)}`);
+      const info = (await got.json().catch(() => ({}))) as { mode?: string; error?: string };
+      if (!got.ok) throw new Error(info.error ?? `HTTP ${got.status}`);
+      const payload = { via: "manual", reason: ask === "reject" ? reason.trim() || null : null };
+      const base = `/api/dispatch/proposals/${encodeURIComponent(id)}`;
+      const r = info.mode === "approval" ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
+      if (!r.ok) throw new Error(r.error ?? "실패");
+      setAsk(null);
+      onDone(ask === "approve" ? "승인" : "거절");
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+    setBusy(false);
+  };
+  if (ask)
+    return (
+      <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
+        <p className="du-hint">
+          {proposalAskOf(id, ask, card)}
+        </p>
+        {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
+        <div className="du-actions">
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
+            확인
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+            취소
+          </button>
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </div>
+    );
+  return (
+    <>
+      <div className="du-actions">
+        <button type="button" className="btn" onClick={() => setAsk("reject")}>
+          거절
+        </button>
+        <button type="button" className="btn is-primary" onClick={() => setAsk("approve")}>
+          승인
+        </button>
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </>
+  );
+}
+
+// SCHEDULE 초안(ATC-378): 큐 줄에서 승인·거절. SCHEDULE 탭이 없으니 이 줄이 판정하는 유일한 곳이다.
+// 모드는 줄을 누를 때 읽는다: approval이고 TARGET·ROUTE가 아니면 승인·거절(approve·reject), 그 밖은 그림자 판정(verdict, 동의·거절)
+function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onDone: (outcome: string) => void }) {
+  const kind = title.split(" ")[0] ?? "";
+  const network = NETWORK_KINDS.has(kind);
+  const [ask, setAsk] = useState<"approve" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    if (!ask) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const base = `/api/schedule/ops/${encodeURIComponent(id)}`;
+      const got = await apiGet(base);
+      const info = (await got.json().catch(() => ({}))) as { mode?: string; error?: string };
+      if (!got.ok) throw new Error(info.error ?? `HTTP ${got.status}`);
+      const payload = { via: "manual", reason: ask === "reject" ? reason.trim() || null : null };
+      const r = info.mode === "approval" && !network ? await post(`${base}/${ask}`, payload) : await post(`${base}/verdict`, { verdict: ask === "approve" ? "agree" : "disagree", ...payload });
+      if (!r.ok) throw new Error(r.error ?? "실패");
+      setAsk(null);
+      onDone(ask === "approve" ? (network ? "동의" : "승인") : "거절");
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    }
+    setBusy(false);
+  };
+  if (ask)
+    return (
+      <div className="du-confirm" role="group" aria-label={`${id} 확인`}>
+        <p className="du-hint">{scheduleAskOf(id, ask, kind)}</p>
+        {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
+        <div className="du-actions">
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
+            확인
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+            취소
+          </button>
+        </div>
+        {err && <p className="du-err">{err}</p>}
+      </div>
+    );
+  return (
+    <>
+      <div className="du-actions">
+        <button type="button" className="btn" onClick={() => setAsk("reject")}>
+          거절
+        </button>
+        <button type="button" className="btn is-primary" onClick={() => setAsk("approve")}>
+          {network ? "동의" : "승인"}
+        </button>
       </div>
       {err && <p className="du-err">{err}</p>}
     </>
@@ -184,7 +307,7 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
 }
 
 // UPDATE: UPDATE 바와 같은 길(/api/update/start). 누르면 카드 안에서 한 번 확인한다
-function UpdateButton({ onDone }: { onDone: () => void }) {
+function UpdateButton({ onDone }: { onDone: (outcome: string) => void }) {
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -195,7 +318,7 @@ function UpdateButton({ onDone }: { onDone: () => void }) {
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "시작하지 못함");
     setAsk(false);
-    onDone();
+    onDone("업데이트 시작");
   };
   return (
     <>
@@ -203,17 +326,17 @@ function UpdateButton({ onDone }: { onDone: () => void }) {
         <div className="du-confirm" role="group" aria-label="업데이트 확인">
           <p className="du-hint">서비스를 새 버전으로 배포하고 재시작합니다.</p>
           <div className="du-actions">
-            <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+            <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
               확인
             </button>
-            <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(false), setErr(null))}>
+            <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(false), setErr(null))}>
               취소
             </button>
           </div>
         </div>
       ) : (
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" onClick={() => setAsk(true)}>
+          <button type="button" className="btn is-primary" onClick={() => setAsk(true)}>
             업데이트
           </button>
         </div>
@@ -230,7 +353,7 @@ function CopyButton({ value, label, what }: { value: string; label: string; what
   return (
     <button
       type="button"
-      className="dr-btn"
+      className="btn"
       aria-label={`${what} 복사`}
       onClick={async () => {
         try {
@@ -247,7 +370,7 @@ function CopyButton({ value, label, what }: { value: string; label: string; what
   );
 }
 
-function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void }) {
+function HandDelivery({ item, onDone }: { item: QueueItem; onDone: (outcome: string) => void }) {
   const h = item.hand;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -259,7 +382,7 @@ function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void })
     const r = await post(h.source === "RELAY" ? `/api/relay/${encodeURIComponent(h.id)}/hand` : `/api/clearances/${encodeURIComponent(h.id)}/hand`, {});
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "실패");
-    onDone();
+    onDone("손으로 전했음");
   };
   return (
     <div className="hd" role="group" aria-label={`${h.id} 손으로 전하기`}>
@@ -278,12 +401,12 @@ function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void })
         {h.card.command && <CopyButton value={h.card.command} label="명령 복사" what="attach 명령" />}
         {h.text && <CopyButton value={h.text} label="글 복사" what="글" />}
         {h.card.step === "launch" && (
-          <a className="dr-btn" href="#fleet">
+          <a className="btn" href="#fleet">
             FLEET에서 LAUNCH
           </a>
         )}
         {markable && (
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void mark()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void mark()}>
             손으로 전했음
           </button>
         )}
@@ -300,17 +423,18 @@ function RelayOffer({ item }: { item: QueueItem }) {
   return (
     <div className="hd" role="group" aria-label={`${o.type} PR #${o.pr} RELAY`}>
       <p className="hd-title">이 STAND{o.standName ? ` ${o.standName}` : ""}를 쥔 AIRCRAFT가 없다. TOWER가 보내지 못한다</p>
+      {o.noHolder && <p className="hd-how">맡을 AIRCRAFT가 없다: {o.noHolder}</p>}
       <p className="hd-how">{o.to ? `${o.to}가 이 FLIGHT를 날았다. 다른 AIRCRAFT를 고를 수 있다` : "이 FLIGHT를 난 AIRCRAFT를 모른다. REGISTRATION을 쓴다"}</p>
       <pre className="hd-cmd mono">{o.text}</pre>
       <div className="du-actions">
-        <RelayBox to={o.to} editableTo type={o.type} stand={o.stand} flight={o.flight} pr={o.pr} text={o.text} btnClass="dr-btn" />
+        <RelayBox to={o.to} editableTo type={o.type} stand={o.stand} flight={o.flight} pr={o.pr} text={o.text} btnClass="btn" />
       </div>
     </div>
   );
 }
 
 // DECISION(ATC-352): 관제 세션이 올린 결정 하나. 옵션 버튼 하나를 누르면 답이 되고(덧붙일 글은 선택), 답은 그 세션의 다음 tick 브리핑으로 간다
-function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: () => void }) {
+function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: (outcome: string) => void }) {
   const d = item.decision;
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -322,7 +446,7 @@ function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: () => void 
     const r = await post(`/api/decisions/${encodeURIComponent(d.id)}/answer`, { choice, ...(note.trim() ? { text: note.trim() } : {}) });
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? "실패");
-    onDone();
+    onDone("답함");
   };
   return (
     <div className="hd" role="group" aria-label={`${d.id} 결정`}>
@@ -344,7 +468,7 @@ function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: () => void 
 }
 
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
-function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: () => void }) {
+export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: (outcome: string) => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
@@ -353,12 +477,16 @@ function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardActi
       {actions.map((a, n) =>
         a.type === "link" ? (
           <div className="du-actions" key={n}>
-            <a className="dr-btn" href={a.hash}>
+            <a className="btn" href={a.hash}>
               {a.label}
             </a>
           </div>
         ) : a.op === "fleet-plan" ? (
           <FleetPlanButtons key={n} id={item.key} onDone={onDone} />
+        ) : a.op === "proposal" ? (
+          <ProposalButtons key={n} id={item.key} card={item.card} onDone={onDone} />
+        ) : a.op === "schedule" ? (
+          <ScheduleButtons key={n} id={item.key} title={item.title} onDone={onDone} />
         ) : (
           <UpdateButton key={n} onDone={onDone} />
         ),
@@ -370,8 +498,8 @@ function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardActi
 export interface CardCtx {
   items: readonly QueueItem[] | null;
   airports: Airports;
-  handled: ReadonlySet<string>;
-  markHandled: (key: string) => void;
+  status: StatusCtx; // 기다림·처리됨 판정의 입력(server/duty-card-status.ts). 패널·chip·결정 기록·서랍 "결정 n"이 같이 쓴다
+  markHandled: (key: string, outcome: string) => void;
   now: number;
   decisions: DecisionsData | null;
   reloadDecisions: () => void;
@@ -379,18 +507,37 @@ export interface CardCtx {
   reloadCharters: () => void;
 }
 
+// 카드의 한 줄 chip(화면의 대화 속, ATC-478): 기다리면 오른쪽 패널을 가리키고(누르면 그 카드로 간다), 처리됐으면 결과와 시각. gone은 회색
+export function DecisionChip({ it, ctx, onGo }: { it: DecisionItem; ctx: CardCtx; onGo: (id: string) => void }) {
+  const s = statusOf(it, ctx.status);
+  const text = chipText(it, s);
+  const gone = s.state === "handled" && s.outcome === "gone";
+  return (
+    <div className={`du-chip${s.state === "handled" ? " is-handled" : ""}${gone ? " is-gone" : ""}`} id={`du-${it.id}`} aria-label={text}>
+      {s.state === "waiting" ? (
+        <button type="button" className="du-chip-go mono" onClick={() => onGo(it.id)}>
+          {text}
+        </button>
+      ) : (
+        <span className="du-chip-text mono">{text}</span>
+      )}
+    </div>
+  );
+}
+
 export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>; ctx: CardCtx }) {
   const k = cardKey(it);
-  const v = cardViewOf(it, ctx.items, ctx.handled.has(k), ctx.airports);
+  const v = cardViewOf(it, ctx.items, k in ctx.status.handled, ctx.airports);
   if (v.state === "unknown") return <div className="du-card is-loading">큐를 읽는 중…</div>;
   if (v.state === "gone") {
+    const mine = ctx.status.handled[k];
     return (
-      <div className="du-card is-gone" aria-label={`${it.queueKind} ${it.key} ${v.reason}`}>
+      <div className="du-card is-gone" aria-label={`${it.queueKind} ${it.key} ${mine?.outcome ?? "gone"}`}>
         <div className="du-card-head">
           <span className="du-kind">{it.queueKind}</span>
           <span className="du-key mono">{it.key}</span>
         </div>
-        <p className="du-gone">{v.reason}</p>
+        <p className="du-gone">{mine ? outcomeText(mine.outcome, mine.at) : "gone"}</p>
       </div>
     );
   }
@@ -400,11 +547,14 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
         <span className="du-kind">{v.item.kind}</span>
         <span className="du-since">{timeAgo(v.item.since, ctx.now)}</span>
       </div>
-      <p className="du-card-title mono">{v.item.title}</p>
-      <Actions item={v.item} actions={v.actions} onDone={() => ctx.markHandled(k)} />
+      <p className="du-card-title">{v.item.title}</p>
+      <Actions item={v.item} actions={v.actions} onDone={(o) => ctx.markHandled(k, o)} />
     </div>
   );
 }
+
+// 아직 기다리는 카드와 초안, 최신이 먼저(오른쪽 패널, 서랍의 "결정 n"). 규칙은 server/duty-card-status.ts 한 곳
+export const waitingOf = (items: readonly ChatItem[], ctx: CardCtx): DecisionItem[] => waitingItems(items, ctx.status);
 
 // note·charter 초안. charter는 읽기만 하는 흐린 카드(확정은 D5). note는 SUPERVISOR가 확정하거나 버린다(D4): 확정은 decisions.jsonl에 적고,
 // 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 apiGet(Origin 검사)이고 DUTY가 누를 수 없다
@@ -418,16 +568,17 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
   const sd = isCharter ? queued?.id : ctx.decisions?.confirmedDrafts[it.draft];
   const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
   const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
-  const act = async (path: string, body: unknown) => {
+  const act = async (path: string, body: unknown, outcome: string) => {
     setBusy(true);
     setErr(null);
     const r = await post(path, body);
     setBusy(false);
     if (!r.ok) setErr(r.error ?? "실패");
+    else ctx.markHandled(keyOf(it), outcome);
     ctx.reloadDecisions();
     ctx.reloadCharters();
   };
-  const pending = (it.draftKind === "note" ? ctx.decisions !== null : ctx.decisions !== null && ctx.charters !== null) && !sd && !dismissed && !expired;
+  const pending = statusOf(it, ctx.status).state === "waiting";
   const confirmPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/confirm` : "/api/duty/decisions";
   const dismissPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/dismiss` : `/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`;
   return (
@@ -444,10 +595,10 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
       {!sd && !dismissed && expired && <p className="du-hint">until이 지났습니다</p>}
       {pending && (
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft })}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft }, "확정")}>
             확정
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => void act(dismissPath, {})}>
+          <button type="button" className="btn" disabled={busy} onClick={() => void act(dismissPath, {}, "버림")}>
             버림
           </button>
         </div>
@@ -485,7 +636,7 @@ function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; 
             </p>
             {d.until && <p className="du-hint mono">until {d.until}</p>}
             <div className="du-actions">
-              <button type="button" className="dr-btn" disabled={busy === d.id} onClick={() => void retire(d.id)}>
+              <button type="button" className="btn" disabled={busy === d.id} onClick={() => void retire(d.id)}>
                 해제
               </button>
             </div>
@@ -497,31 +648,16 @@ function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; 
   );
 }
 
-// 채팅 위의 접힌 QUEUE 줄. 펼치면 큐 전체를 보여 주고, 줄마다 카드와 같은 버튼이나 링크가 있다(DUTY가 말하지 않은 것도)
+// 채팅 위의 QUEUE 한 줄(ATC-422): 큐 목록은 HOME 한 곳에만 있다(같은 사실을 두 곳에 그리지 않는다). 여기는 수와 HOME 링크뿐이다.
+// 카드의 "처리됨"은 이 서랍에서 누른 결정만 센다(handled).
 export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: CardCtx }) {
-  const [open, setOpen] = useState(false);
-  if (!queue) return <div className="du-queue"><p className="du-queue-head mono">QUEUE …</p></div>;
-  const items = queue.items.filter((i) => !ctx.handled.has(cardKey({ queueKind: i.kind, key: i.key })));
+  if (!queue) return <div className="du-queue"><p className="du-queue-head">할 일 …</p></div>;
+  const n = queue.items.filter((i) => !(cardKey({ queueKind: i.kind, key: i.key }) in ctx.status.handled)).length;
   return (
-    <section className="du-queue" aria-label="SUPERVISOR QUEUE">
-      <button type="button" className="du-queue-head mono" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <Icon icon={open ? ChevronDown : ChevronRight} /> {queueHeadOf(queue.counts, items.length)}
-      </button>
-      {open && (
-        <ul className="du-queue-list">
-          {items.length === 0 && <li className="du-hint">기다리는 결정이 없습니다</li>}
-          {items.map((i) => (
-            <li key={`${i.kind}/${i.key}`} className="du-qrow">
-              <div className="du-card-head">
-                <span className="du-kind">{i.kind}</span>
-                <span className="du-since">{timeAgo(i.since, ctx.now)}</span>
-              </div>
-              <p className="du-card-title mono">{i.title}</p>
-              <Actions item={i} actions={actionsOf(i, ctx.airports)} onDone={() => ctx.markHandled(cardKey({ queueKind: i.kind, key: i.key }))} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="du-queue">
+      <a className="du-queue-head" href="#home">
+        할 일 {n} — HOME에서
+      </a>
+    </div>
   );
 }

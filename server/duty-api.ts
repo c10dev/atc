@@ -8,6 +8,7 @@ import { config } from "./config.ts";
 import { allDecisions } from "./decision-card-run.ts";
 import { answerLineOf, unackedAnswers } from "./decision-card.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
+import { holderRoutes } from "./pr-holder-state.ts";
 import { briefDecisionsOf, briefMaxCharsOf, dutyBriefOf, type DutyBriefInput } from "./duty-brief.ts";
 import { appendCharterLine, charterModeNow, readCharterLines } from "./duty-charters-run.ts";
 import { charterStateOf, chartersOf, confirmCharterOf, seenOf, shadowRecordOf } from "./duty-charters.ts";
@@ -22,6 +23,7 @@ import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { collectQueueInput } from "./supervisor-queue-run.ts";
 import { supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
+import { dutyLineOf, readAutoRevertLines } from "./auto-revert.ts";
 
 const DRAFTS_FILE = () => join(config.stateDir, "duty-drafts.jsonl");
 const DUTY_CONFIG_FILE = () => join(config.stateDir, "duty.json");
@@ -129,8 +131,10 @@ export function mountDuty(app: Hono, getSnapshot: () => Promise<Snapshot>, updat
       flights: s.tickets.filter((t) => t.stateType === "started").map((t) => ({ key: t.key, state: t.state })),
       fuel: (s.fuelAccounts ?? []).map((f) => ({ account: f.account ?? f.group, window: f.top.name, pct: f.top.pct, resetsAt: f.top.resetsAt, level: f.level })),
     };
+    input.orphanPrs = [...(holderRoutes()?.values() ?? [])].filter((r) => r.kind === "duty").map((r) => ({ repo: r.repo, pr: r.pr }));
     input.decisions = decisionsOf(decisionLines(), now).active.map((d) => ({ id: d.id, text: d.text, until: d.until }));
     input.decisionsMax = loadBriefDecisions();
+    input.revert = readAutoRevertLines().filter((l) => now - Date.parse(l.at) < 24 * 3_600_000).flatMap((l) => dutyLineOf(l) ?? []).slice(-8);
     const brief = dutyBriefOf(input, loadBriefMaxChars());
     // SUPERVISOR가 DECISION 카드에 답했다(ATC-352): DUTY는 tick이 없어 brief 끝에 붙인다(읽고 `atcctl decision ack`)
     const answers = unackedAnswers(allDecisions(), "duty").map(answerLineOf);

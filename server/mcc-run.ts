@@ -6,6 +6,7 @@ import type { Hono } from "hono";
 import { writeResultOf } from "./autoland.ts";
 import { config } from "./config.ts";
 import { loadRecycle } from "./control-recycle.ts";
+import { corePathOf, type KLanded, kApprovalOf, kLandDaysOf, type KVerdict } from "./k-approval.ts";
 import { slugOfUrl } from "./landing.ts";
 import { capText, sectionsOf } from "./landing-review.ts";
 import {
@@ -13,7 +14,7 @@ import {
   type CiState,
   escalationOf,
   inspectionComment,
-  inspectionOf,
+  reviewOfHead,
   landBlocksOf,
   loadMcc,
   mccGateLine,
@@ -40,6 +41,7 @@ import {
 import type { MccLandInfo } from "./land-by.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
+import { isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.ts";
 import { fromThisApp } from "./origin.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
@@ -66,7 +68,7 @@ const QUEUE_MAX = 10; // 한 번에 보는 PR 수(오래된 순)
 const INSPECT_GUIDE =
   "CI(테스트·타입·빌드)는 이미 돈다. CI가 못 보는 것을 본다: 순수 함수와 입출력 분리, 새 동작의 테스트, erasableSyntaxOnly, 화면 색·글꼴은 styles.css 토큰만, 항공 용어는 영어, " +
   "바뀐 동작은 CHANGELOG 조각 한 쌍(changelog.d/*.md·*.ko.md, CHANGELOG.md를 직접 고치면 P2), 설계 문서의 상태 표시(✅·Status 줄·Not built yet)는 ENGINEERING 몫(팀 PR이 고치면 P2), 짝 문서는 두 언어, 사용법이 바뀌면 docs/guide, 공개 저장소라 vocado 내부 사항·비밀·스크린샷 없음, 기록은 추가만 하는 JSONL·설정은 원자적 JSON. " +
-  "diff가 잘렸으면(diffTruncated) 본 범위를 적고 pass하지 않는다. 운영 상태 형식을 바꾸거나 되돌리기 어려우면 ESCALATE. 지적은 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에). P0·P1이 없으면 pass.";
+  "user 등급이거나 ESCALATE할 PR은 본문에 Behavior change 절(글자 그림 하나, 또는 `Behavior change: none`)이 있어야 하고, 없거나 diff와 어긋나면 P1. diff가 잘렸으면(diffTruncated) 본 범위를 적고 pass하지 않는다. 운영 상태 형식을 바꾸거나 되돌리기 어려우면 ESCALATE. 지적은 P0(머지하면 안 됨)·P1(머지 전에 고칠 것)·P2(나중에). P0·P1이 없으면 pass.";
 
 interface RestPull {
   number: number;
@@ -88,6 +90,14 @@ export function setMccMode(mode: MccMode) {
   appendMccRecord({ op: "mode", at: new Date().toISOString(), mode, detail: `${cfg.mode} → ${mode}` });
 }
 
+// K 승인 착륙 스위치(ATC-391): 설정 창에서 SUPERVISOR만(PUT /api/settings의 mccKApproval, fromThisApp). 바꾼 것은 mcc.jsonl에 mode 줄로 남긴다
+export function setKApproval(mode: "on" | "off") {
+  const cfg = loadMcc();
+  if (cfg.kApproval === mode) return;
+  saveMcc({ ...cfg, kApproval: mode });
+  appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, kApproval: mode, detail: `kApproval ${cfg.kApproval} → ${mode}` });
+}
+
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
 export function airportOf(s: Snapshot) {
   const cfg = loadMcc();
@@ -98,20 +108,36 @@ export function airportOf(s: Snapshot) {
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
   const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
-  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null };
+  return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null, groundStopTrigger: stop ? stop.trigger : null };
 }
 
 // 등급 캐시(PR 번호 + head → 등급). 등급은 바뀐 파일로만 정하므로 head가 같으면 같다. judge()와 landBy(ATC-151)가 함께 쓴다 — 등급을 두 갈래로 재지 않는다
-const tierCache = new Map<string, "auto" | "flagged" | "user">();
+// ATC-391: K 승인 판정에 바뀐 파일과 user 등급 파일도 필요해서 함께 둔다(같은 head면 같다)
+interface TierEntry {
+  tier: "auto" | "flagged" | "user";
+  files: string[];
+  userFiles: string[];
+  checkPath: string | null; // k-approval.ts CHECK_CORE에 든 파일(ATC-391): 등급과 상관없이 SUPERVISOR 몫
+}
+const tierCache = new Map<string, TierEntry>();
 const tierKey = (slug: string, n: number, head: string) => `${slug}#${n}@${head}`;
-async function tierCached(slug: string, n: number, head: string) {
+const tierEntryOf = (tier: { tier: "auto" | "flagged" | "user"; reasons: { file: string; tier: string }[] }, files: string[]): TierEntry => ({ tier: tier.tier, files, userFiles: tier.reasons.filter((r) => r.tier === "user").map((r) => r.file), checkPath: corePathOf(files) });
+async function tierEntryCached(slug: string, n: number, head: string): Promise<TierEntry> {
   const k = tierKey(slug, n, head);
   const hit = tierCache.get(k);
   if (hit) return hit;
-  const { tier } = await tierOfFiles(await fetchFiles(slug, n));
+  const files = await fetchFiles(slug, n);
+  const entry = tierEntryOf(await tierOfFiles(files), files);
   if (tierCache.size > 500) tierCache.clear();
-  tierCache.set(k, tier);
-  return tier;
+  tierCache.set(k, entry);
+  return entry;
+}
+const tierCached = async (slug: string, n: number, head: string) => (await tierEntryCached(slug, n, head)).tier;
+
+// K 승인 판정(ATC-391, k-approval.ts): 이 PR의 FLIGHT 발권과 선언, 바뀐 파일로. 티켓·발권은 스냅샷에서 읽는다(GitHub 호출 없음)
+export function kVerdictOf(s: Pick<Snapshot, "tickets" | "releases">, flight: string | null, e: TierEntry, mode: "on" | "off"): KVerdict {
+  const t = flight ? s.tickets.find((x) => x.key === flight) : undefined;
+  return kApprovalOf({ mode, flight, files: e.files, userFiles: e.userFiles, declared: t?.k3, unparsed: t?.k3Check?.unparsed ?? 0, stateType: t?.stateType, hash: t?.releaseHash, releases: s.releases });
 }
 
 // TOWER 브리핑의 landBy 자료(ATC-151): MCC AIRPORT의 저장소·모드·HOLD·ESCALATE와 열린 PR의 등급.
@@ -122,7 +148,7 @@ export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
   if (!a?.repo) return null;
   const records = readMccRecords();
   const escalated = [...new Set(records.filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
-  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user" }>();
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true; check?: true }>();
   let slug: string | null = null;
   try {
     slug = airportOf(s).slug;
@@ -130,7 +156,8 @@ export async function mccLandInfo(s: Snapshot): Promise<MccLandInfo | null> {
   if (slug) {
     for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
       try {
-        tiers.set(p.number, { head: p.head, tier: await tierCached(slug, p.number, p.head) });
+        const e = await tierEntryCached(slug, p.number, p.head);
+        tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.checkPath ? { check: true as const } : e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
       } catch {}
     }
   }
@@ -144,23 +171,24 @@ export function mccLandInfoCached(s: Snapshot): MccLandInfo | null {
   const a = s.airports.find((x) => x.code === cfg.airport);
   if (!a?.repo) return null;
   const escalated = [...new Set(readMccRecords().filter((r) => r.op === "escalate").map((r) => (r as { pr: number }).pr))];
-  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user" }>();
+  const tiers = new Map<number, { head: string; tier: "auto" | "flagged" | "user"; k?: true; check?: true }>();
   let slug: string | null = null;
   try {
     slug = airportOf(s).slug;
   } catch {}
   if (slug) {
     for (const p of s.pulls.filter((x) => x.repo === a.repo && !x.draft)) {
-      const tier = tierCache.get(tierKey(slug, p.number, p.head));
-      if (tier) tiers.set(p.number, { head: p.head, tier });
+      const e = tierCache.get(tierKey(slug, p.number, p.head));
+      if (e) tiers.set(p.number, { head: p.head, tier: e.tier, ...(e.checkPath ? { check: true as const } : e.tier === "user" && kVerdictOf(s, p.ticketKey, e, cfg.kApproval).ok ? { k: true as const } : {}) });
     }
   }
   return { repo: a.repo, mode: cfg.mode, holds: cfg.holds, escalated, tiers };
 }
 
 const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api", `repos/${slug}/pulls/${n}`])) as RestPull;
+// 바뀐 파일 이름. 이름을 바꾼 파일은 옛 이름도 함께 준다(previous_filename): 목록에 든 파일을 옮겨도 옛 이름이 보인다. 지운 파일은 filename에 그대로 있다
 const fetchFiles = async (slug: string, n: number) =>
-  (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[].filename"])).split("\n").filter(Boolean);
+  (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[] | .filename, (.previous_filename // empty)"])).split("\n").filter(Boolean);
 // 이 커밋의 CI 체크(이름이 ciCheck인 check run). 다시 돌았으면 마지막 것
 async function fetchCi(slug: string, sha: string, name: string): Promise<CiState> {
   const rows = (await gh(["api", `repos/${slug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}&per_page=20`, "--jq", ".check_runs[] | [.status, (.conclusion // \"\"), (.started_at // \"\")] | @tsv"]))
@@ -199,11 +227,16 @@ async function judge(s: Snapshot, number: number, head?: string) {
   const pr = await fetchPull(ap.slug, number);
   const want = head ?? pr.head.sha;
   const files = await fetchFiles(ap.slug, number);
-  const { tier, reasons } = await tierOfFiles(files);
-  tierCache.set(tierKey(ap.slug, number, pr.head.sha), tier); // landBy가 같은 등급을 쓴다(ATC-151)
+  const tierResult = await tierOfFiles(files);
+  const { tier, reasons } = tierResult;
+  const entry = tierEntryOf(tierResult, files);
+  tierCache.set(tierKey(ap.slug, number, pr.head.sha), entry); // landBy가 같은 등급을 쓴다(ATC-151)
+  // K 승인(ATC-391): 같은 head의 user 등급 PR이 발권 때 승인한 K 효과 안에서 만들어졌나. ESCALATE(의심)는 landBlocksOf가 따로 막는다
+  const flight = s.pulls.find((p) => p.repo === ap.repo && p.number === number)?.ticketKey ?? null;
+  const kApproval = tier === "user" ? kVerdictOf(s, flight, entry, ap.cfg.kApproval) : null;
   const ci = await fetchCi(ap.slug, pr.head.sha, ap.cfg.ciCheck);
   const records = readMccRecords();
-  const inspection = inspectionOf(records, number, pr.head.sha);
+  const inspection = reviewOfHead(records, number, pr.head.sha); // ESCALATE한 head도 본 것으로 센다(ATC-390)
   const escalated = escalationOf(records, number);
   const rts = rtsState(records);
   const blocks = landBlocksOf({
@@ -213,14 +246,17 @@ async function judge(s: Snapshot, number: number, head?: string) {
     tier,
     tierReasons: [...new Set(reasons.map((r) => r.why))],
     escalated,
+    checkPath: entry.checkPath,
+    kApproval,
     ci,
     ciCheck: ap.cfg.ciCheck,
     inspection,
     held: ap.cfg.holds.includes(number),
-    groundStop: ap.groundStop,
+    // 자동 되돌림(ATC-351)이 연 revert PR은 main 깨짐 stop을 푸는 길이라 그 stop에는 막히지 않는다(다른 stop·리뷰·CI는 그대로)
+    groundStop: ap.groundStopTrigger === "main-broken" && loadAutoRevert().mode === "on" && isRevertPr(readAutoRevertLines(), ap.cfg.airport, number, pr.head.ref) ? null : ap.groundStop,
     rtsBlocked: rts.stop,
   });
-  return { ap, pr, files, tier, reasons, ci, inspection, escalated, blocks };
+  return { ap, pr, files, tier, reasons, ci, inspection, escalated, kApproval, blocks };
 }
 
 // ── SHADOW GATE(docs/mcc.md 9장) ──
@@ -302,6 +338,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
             flight: p.ticketKey,
             tier: j.escalated ? "user" : j.tier,
             tierReasons: j.reasons.map((r) => `${r.tier} ${r.file} (${r.why})`),
+            // K 승인 착륙(ATC-391): user 등급 PR이 발권 때 승인한 K 효과 안이면 ok(blocks에 L3가 없다). 아니면 이유. MCC는 이것이 ok가 아니어도 tier만으로 ESCALATE하지 않는다
+            kApproval: j.kApproval ? (j.kApproval.ok ? { ok: true, release: j.kApproval.release, flight: j.kApproval.flight, channel: j.kApproval.channel } : { ok: false, code: j.kApproval.code, why: j.kApproval.why }) : null,
             escalated: j.escalated?.reason ?? null,
             ci: j.ci,
             mergeState: j.pr.mergeable_state,
@@ -367,6 +405,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         body: capText(pr.body ?? "", BODY_MAX),
         tier,
         tierReasons: reasons,
+        // K 승인(ATC-391): user 등급이면 이 PR이 발권 때 승인한 K 효과 안에서 만들어졌는지. ok면 tier만으로 ESCALATE하지 않는다
+        kApproval: tier === "user" ? (() => { const v = kVerdictOf(s, key, tierEntryOf({ tier, reasons }, files), airportOf(s).cfg.kApproval); return v.ok ? { ok: true, release: v.release, flight: v.flight, channel: v.channel } : { ok: false, code: v.code, why: v.why }; })() : null,
         files,
         flight,
         diff: diff.text,
@@ -446,8 +486,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       try {
         // 정확한 head만 머지한다(sha). atc는 merge 커밋을 쓴다. auto-merge를 켜지 않는다
         await gh(["api", "-X", "PUT", `repos/${j.ap.slug}/pulls/${n}/merge`, "-f", `sha=${j.pr.head.sha}`, "-f", "merge_method=merge"]);
-        appendMccRecord({ op: "land", ...base, result: "ok" });
-        return c.json({ landed: true, tier: j.tier, flagged: j.tier === "flagged" ? j.reasons.filter((r) => r.tier === "flagged").map((r) => r.file) : [] });
+        appendMccRecord({ op: "land", ...base, result: "ok", ...(j.tier === "user" && j.kApproval?.ok ? { k: { release: j.kApproval.release, flight: j.kApproval.flight, channel: j.kApproval.channel } } : {}) });
+        return c.json({ landed: true, tier: j.tier, ...(j.tier === "user" && j.kApproval?.ok ? { kApproval: { release: j.kApproval.release, flight: j.kApproval.flight } } : {}), flagged: j.tier === "flagged" ? j.reasons.filter((r) => r.tier === "flagged").map((r) => r.file) : [] });
       } catch (e) {
         const r = writeResultOf(errText(e));
         appendMccRecord({ op: "land", ...base, ...r });
@@ -521,4 +561,11 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
     appendMccRecord({ op: b.hold ? "hold" : "unhold", at: new Date().toISOString(), pr });
     return c.json({ holds });
   });
+}
+
+// K 승인으로 착륙한 PR의 날짜별 수(ATC-391): 설정 창 MCC 줄 아래. 기록만 읽는다
+export function kLandDays(days = 7, now = Date.now()) {
+  const lands: KLanded[] = [];
+  for (const r of readMccRecords()) if (r.op === "land" && r.result === "ok" && r.k) lands.push({ at: r.at, pr: r.pr, release: r.k.release });
+  return kLandDaysOf(lands, readAutoRevertLines(), readJsonl<RtsRecord>(RTS_FILE()), days, now);
 }

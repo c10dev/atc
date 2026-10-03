@@ -1,6 +1,9 @@
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
-import { followingNow } from "./following.ts";
+import { k3HoldOf } from "./k3-allow.ts";
+import { type EndedKey, followingNow } from "./following.ts";
+import { endsTrackable, endsView, type EndsView, firstSeenOf, trackEnds } from "./alert-ends.ts";
+import { appendReappeared, loadEnds, readReappeared, saveEnds } from "./alert-ends-run.ts";
 import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
 import { landByOf, type LandBy } from "./land-by.ts";
@@ -9,15 +12,21 @@ import type { Snapshot } from "./model.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
 import { followNow, loadFollow } from "./follow-run.ts";
+import { readReleaseView } from "./release-store.ts";
 import { config } from "./config.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
 import { pendingSinceByAircraft, waitingCallsByAircraft } from "./pending.ts";
+import { waitingOnPersonOf } from "./waiting-person.ts";
 import { readRadio, setRadioPendingSource } from "./radio-run.ts";
 import { registrationOf } from "./registration.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
-import { type AlertEvent, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { stoppedAirports } from "./auto-revert-run.ts";
+import { type AlertEvent, alertKeyOf, type ControlOp, controlDownOf, controlGoneOf, diffAlerts, mergeControlDown, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
+import { hostMemoryNow } from "./host-memory-run.ts";
+import { sinceLookNow } from "./since-look-run.ts";
+import { todoNow } from "./queue-todo.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
 // SUPERVISOR alerts(ATC-87)의 읽기와 상태. 계산은 supervisor-alerts.ts(순수). 여기는 파일을 읽어 입력을 모으고 지난 key 집합을 든다.
@@ -46,6 +55,31 @@ const repositionAlertInputs = (rs: ReturnType<typeof readRecords>, now: number) 
   };
 };
 
+// 관제 세션마다 마지막으로 겪은 일(ATC-203): FLIGHT RECORDER의 control launch·stop·recycle 기록에서. SUPERVISOR의 STOP인지 가르는 데 쓴다.
+// 새 상태 파일은 없다: 처음 한 번 CONTROL_STOP_LOOKBACK_MS만큼 읽고, 그 뒤로는 지난번 읽은 시각부터만 읽어 메모리에 든다(서버를 다시 켜면 다시 읽는다)
+export const CONTROL_STOP_LOOKBACK_MS = 14 * 24 * 3_600_000;
+// 다음에 읽을 때 이만큼 겹쳐 읽는다. launchControl·stopControl은 t를 먼저 정하고 claude 호출(시간 제한 60초)을 한 뒤에 기록을 붙이므로, 늦게 붙은 줄은 t가 옛날이다.
+// 가장 긴 동작보다 훨씬 길게 겹쳐야 그 줄을 놓치지 않는다(같은 줄을 두 번 읽어도 해가 없다: 세션마다 가장 늦은 t만 남긴다). 못 보면 옛 STOP이 남아 죽은 세션을 SUPERVISOR의 뜻으로 오해한다
+export const CONTROL_READ_OVERLAP_MS = 5 * 60_000;
+const controlLast = new Map<string, ControlOp>();
+let controlReadFrom = 0;
+export function controlOpsNow(now: number, read: (sinceMs: number) => ReturnType<typeof readRecords> = readRecords): ReadonlyMap<string, ControlOp> {
+  const from = controlReadFrom || now - CONTROL_STOP_LOOKBACK_MS;
+  controlReadFrom = now - CONTROL_READ_OVERLAP_MS;
+  for (const r of read(from)) {
+    if (r.kind !== "control" || (r.op !== "launch" && r.op !== "stop" && r.op !== "recycle")) continue;
+    if (r.op === "recycle" && (r.result === "would" || r.result === "would-wait")) continue; // 그림자 판정은 일어난 일이 아니다
+    const prev = controlLast.get(r.session);
+    if (!prev || prev.t <= r.t) controlLast.set(r.session, { t: r.t, op: r.op, by: r.by, ok: r.ok });
+  }
+  return controlLast;
+}
+// 시험이 기억을 비운다
+export const resetControlOps = () => {
+  controlLast.clear();
+  controlReadFrom = 0;
+};
+
 // 지금 돌고 있는 관제 세션 이름과 AIRCRAFT REGISTRATION(조건 항목 control|down, reposition|stuck이 "다시 떴나"를 볼 때 쓴다)
 function runningNames(s: Snapshot, teamPattern: string): { control: Set<string>; aircraft: Set<string> } {
   const dirs: Partial<Record<ControlName, string>> = {};
@@ -63,7 +97,57 @@ function landByMap(s: Snapshot): Map<string, LandBy> {
   return new Map((s.pulls ?? []).map((p) => [`${p.repo}#${p.number}`, landByOf(p, info, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false)] as const));
 }
 
+// 끝 규칙의 상태(ATC-385): 처음 본 시각과 끝 규칙이 뺀 알림. 처음 쓸 때 파일에서 읽는다
+let ends: ReturnType<typeof loadEnds> | null = null;
+
+// 알림 목록과 끝 규칙이 뺀 알림. endRules를 끄면 규칙 없이 센 옛 목록(전후 비교용)이다
+function collectWith(s: Snapshot, now: number, endRules: boolean): { items: SupervisorAlert[]; ended: EndedKey[] } {
+  ends ??= loadEnds();
+  const ended: EndedKey[] = [];
+  const following = followingNow(s, now, endRules ? ended : undefined, endRules);
+  const ownerless = s.alerts.filter((a) => UNOWNED_KINDS.has(a.kind)).map(alertKeyOf);
+  const items = collectItems(s, now, following, endRules ? { now, since: new Map(Object.entries(firstSeenOf(ends.firstSeen, ownerless, now))), ended } : undefined);
+  // following 문제의 key는 알림 key로 바꾼다(supervisorAlertsOf가 `following|`을 붙인다)
+  // 알림이 아니었던 문제(다른 경로가 알리는 health·stranded·landing-wait)는 뺀 것으로 세지 않는다
+  return { items, ended: ended.filter((e) => e.key.startsWith("alert|") || !DUPLICATED.has(e.key.split("|")[1] ?? "")).map((e) => (e.key.startsWith("alert|") ? e : { ...e, key: `following|${e.key}` })) };
+}
+
 export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
+  const { items, ended } = collectWith(s, now, true);
+  if (!endsTrackable(s)) return items; // Linear를 아직 못 읽은 주기는 기록하지 않는다(ATC-385)
+  try {
+    const prev = ends!;
+    const t = trackEnds(prev, ended, new Set(items.map((a) => a.key)), now);
+    const next = { firstSeen: firstSeenOf(prev.firstSeen, s.alerts.filter((a) => UNOWNED_KINDS.has(a.kind)).map(alertKeyOf), now), cleared: t.state.cleared };
+    appendReappeared(t.reappeared);
+    if (JSON.stringify(next) !== JSON.stringify(prev)) saveEnds(next);
+    ends = next;
+  } catch (e) {
+    console.warn(`[atc] alert-ends: ${e instanceof Error ? e.message : e}`); // 기록을 못 써도 알림은 그대로
+  }
+  return items;
+}
+
+// 끝 규칙 24시간 요약과, 같은 상태에서 규칙 없이/있이 센 CAUTION 수(ATC-385)
+export function endsNow(s: Snapshot, now = Date.now()): EndsView {
+  const cautions = (r: { items: SupervisorAlert[] }) => r.items.filter((a) => a.level === "caution").length;
+  ends ??= loadEnds();
+  return { ...endsView(ends, readReappeared(), now), caution: { before: cautions(collectWith(s, now, false)), after: cautions(collectWith(s, now, true)) } };
+}
+
+// DISPATCH가 K3 hold로 보내지 않는 Todo FLIGHT(ATC-398). 스위치가 꺼져 있으면 없다.
+// 발권 전의 FLIGHT는 RELEASE 화면이 K3 상태를 보이므로(발권하면 allow를 준다) 읽히지 않는 줄과, 이미 allow를 못 주는 채널로 발권된 FLIGHT만 알린다
+function k3HoldsOf(s: Snapshot): { flight: string; text: string; fix: string }[] {
+  if (loadDispatchConfig().k3Hold === "off") return [];
+  return s.tickets.flatMap((t) => {
+    if (!t.k3Check || t.stateType !== "unstarted") return [];
+    const h = k3HoldOf({ check: t.k3Check, declared: t.k3, flight: t.key, hash: t.releaseHash, releases: s.releases });
+    if (!h || (h.code === "release-on-screen" && !s.releases?.records[t.key])) return [];
+    return [{ flight: t.key, text: h.why, fix: h.fix }];
+  });
+}
+
+function collectItems(s: Snapshot, now: number, following: ReturnType<typeof followingNow>, unowned: Parameters<typeof supervisorAlertsOf>[0]["unowned"]): SupervisorAlert[] {
   const proposals = allProposals();
   const teamPattern = loadDispatchConfig().teamPattern;
   const rs = readRecords(now - CONDITION_WINDOW_MS);
@@ -76,13 +160,22 @@ export function collectAlerts(s: Snapshot, now: number): SupervisorAlert[] {
     alerts: s.alerts,
     workspaces: s.workspaces,
     tickets: s.tickets,
-    following: followingNow(s, now),
+    following,
+    ...(unowned ? { unowned } : {}),
     proposals,
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
     capIdle: capIdleNow(s.sessions, proposals, MAX_LAUNCHED, teamPattern, now),
     pulls: s.pulls ?? [],
     rts: rtsNow.last,
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
-    controlDown: controlDownOf(recyclesAll, running.control),
+    revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
+    k3Holds: k3HoldsOf(s),
+    // RECYCLE이 멈춘 채인 것(이유가 분명)과 이유 불문 없는 것(ATC-203)을 세션마다 하나로
+    controlDown: mergeControlDown(
+      controlDownOf(recyclesAll, running.control),
+      controlGoneOf({ sessions: CONTROL_SESSIONS.filter((c) => c.launch === "bg" && !c.retired).map((c) => c.name), running: running.control, last: controlOpsNow(now), now }),
+    ),
+    hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     landBy: landByMap(s),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
@@ -106,9 +199,9 @@ function pendingInput(s: Snapshot, now: number, teamPattern: string) {
   }
 }
 
-// FOLLOW(ATC-278): follow.json에 든 번들의 줄. 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
+// FOLLOW(ATC-278): follow.json에 든 번들의 줄과, 발권한 FLIGHT의 줄(ATC-382, SUPERVISOR의 화살표). 접힌 번들은 뺀다. 따라가는 것이 없으면 보드를 셈하지 않는다
 function followAlertInput(s: Snapshot, now: number) {
-  if (!loadFollow().parents.length) return { rows: [], now };
+  if (!loadFollow().parents.length && !Object.keys(readReleaseView().records).length) return { rows: [], now };
   try {
     return { rows: followNow(s, now).bundles.filter((b) => !b.folded).flatMap((b) => b.rows), now };
   } catch {
@@ -134,16 +227,20 @@ export function runSupervisorAlerts(s: Snapshot, now = Date.now()): AlertEvent |
   return d.raised.length || d.cleared.length ? { ...d, initial: false, items } : null;
 }
 
-// SUPERVISOR SUMMARY(ATC-153): 지금 있는 알림 목록(currentAlerts)과 스냅샷의 FUEL·세션에서 센다. 파일을 더 읽지 않는다
+// SUPERVISOR SUMMARY(ATC-153): 지금 있는 알림 목록(currentAlerts)과 스냅샷의 FUEL·세션에서 센다. 파일은 sinceLook 칸만 읽는다(5초 캐시)
 export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
   const teamPattern = loadDispatchConfig().teamPattern;
-  return summaryOf({
-    items: currentAlerts(),
+  const items = currentAlerts();
+  const base = summaryOf({
+    items,
+    waiting: waitingOnPersonOf({ sessions: s.sessions.filter((x) => x.status !== "dead"), proposals: allProposals(), now, blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!, teamPattern }),
     fuelAccounts: s.fuelAccounts ?? [],
     rts: rtsState(readMccRecords()).last,
     working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),
     at: new Date(now).toISOString(),
   });
+  const todo = todoNow();
+  return { ...base, ...(todo === null ? {} : { todo }), sinceLook: sinceLookNow(s, items, now) }; // ATC-383: 발권 기록·OOOI는 5초 캐시 안에서만 읽는다
 }
 
 // 스냅샷이 새로 나올 때 부른다(runSupervisorAlerts 뒤에). 내용이 바뀌었을 때만 새 요약을 돌려준다(첫 번은 늘 돌려준다)

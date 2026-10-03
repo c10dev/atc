@@ -1,12 +1,12 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useEffect, useState } from "react";
 import type { HumanCheckStatus } from "../../../server/human-check.ts";
 import type { PullRequest } from "../../../server/model.ts";
 import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
 import type { Index } from "../derive.ts";
-import { AirportCode } from "../ui.tsx";
+import { AirportCode } from "../badges.tsx";
 import "./HumanCheck.css";
 import { apiGet, apiSend } from "../api.ts";
 
@@ -51,7 +51,7 @@ export function HumanCheckQueue({ pulls, idx, nameOf }: { pulls: PullRequest[]; 
   );
 }
 
-function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (id: string) => string }) {
+export function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (id: string) => string }) {
   const slug = slugOf(pr.url);
   const ui = pr.uiChange!;
   const hc = pr.humanCheck!;
@@ -121,9 +121,10 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
             {c}
           </span>
         ))}
-        <span className="hc-state" title={hc.sha ? `Human check 줄의 SHA ${hc.sha} · head ${sha7(pr.head)}` : undefined}>
+        <span className="hc-state">
           {STATE[hc.state]}
           {hc.state === "stale" && hc.sha ? ` (${hc.sha})` : ""}
+          {hc.state === "pending" && hc.sha ? ` · SHA ${sha7(hc.sha)} (head ${sha7(pr.head)})` : ""}
         </span>
         <span className="hc-title" title={pr.title}>
           {pr.title}
@@ -212,10 +213,12 @@ function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nameOf: (i
               placeholder="본 것(FAIL은 필수)"
               aria-label={`#${pr.number} 메모`}
             />
-            <button className="hc-btn is-pass" onClick={() => void record("pass")} disabled={busy} title={`head ${sha7(pr.head)}에 done을 기록`}>
+            <button className="btn is-primary" onClick={() => void record("pass")} disabled={busy}>
               PASS
             </button>
-            <button className="hc-btn is-fail" onClick={() => void record("fail")} disabled={busy || !note.trim()} title={note.trim() ? `head ${sha7(pr.head)}에 failed를 기록` : "FAIL은 메모가 필요함"}>
+            {/* 왜 못 누르는지(FAIL은 메모가 필요함)를 화면에 보인다 — title에만 두지 않는다(원칙 11) */}
+            {!note.trim() && <span className="hc-why faint">FAIL은 메모가 필요함</span>}
+            <button className="btn is-danger" onClick={() => void record("fail")} disabled={busy || !note.trim()}>
               FAIL
             </button>
           </>

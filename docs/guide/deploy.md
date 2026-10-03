@@ -4,7 +4,7 @@ atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법�
 
 ## user 등급 PR 머지하기
 
-`auto`·`flagged` 등급 PR은 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시킨다. **`user` 등급 PR**(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`를 바꾸거나 MCC가 ESCALATE한 PR)은 사용자가 머지한다. 이제 GitHub로 가지 않고 atc 안에서 할 수 있다.
+`auto`·`flagged` 등급 PR은 CI와 MCC INSPECTION이 통과하면 MCC가 착륙시킨다. **`user` 등급 PR**(guard, `.claude/` 설정, 루트 `CLAUDE.md`, `.github/`, `package*.json`, `hooks/`, `deploy/`를 바꾸거나 MCC가 ESCALATE한 PR)은 사용자가 머지한다. MCC가 PR을 ESCALATE하면 그 head를 본 것으로 세므로(P0·P1이 있으면 지적도 남긴다), PR은 "MCC INSPECTION 대기"가 아니라 사용자가 머지할 CLEARED로 보이고 SUPERVISOR QUEUE의 LANDING과 PR 서랍의 MERGE에 오른다. head가 바뀌면 MCC가 새 head를 다시 본다. ESCALATE는 PR에 남는다. 이제 GitHub로 가지 않고 atc 안에서 할 수 있다.
 
 1. STRIPS의 LANDING SEQUENCE 등에서 PR 번호(`#300`)를 눌러 **PR 서랍**을 연다([화면 안내](screens.md)).
 2. `착륙`이 CLEARED이고 등급이 user이면 `MERGE` 줄에 `MERGE…` 버튼이 있다. 등급, 체크, 본문, 바뀐 파일을 서랍에서 확인한다(diff 검토는 GitHub에서 한다).
@@ -12,6 +12,18 @@ atc를 고친 PR을 머지한 뒤 운영 서비스(7700)에 반영하는 방법�
 4. 머지한 뒤에는 아래 UPDATE 막대로 배포한다(MCC가 `land+rts`이면 MCC가 시작할 수도 있다).
 
 이 버튼은 user 등급 PR만 머지한다. auto-merge는 켜지 않고, 머지 방식은 AIRPORT의 것(atc 저장소는 merge 커밋)이다. GitHub 화면에서 머지해도 전과 같다.
+
+### 발권 때 승인한 K 효과 안의 user 등급 PR은 MCC가 착륙시킵니다
+
+K3 효과(guard, hook, `.claude/` …)를 고치는 FLIGHT는 **발권할 때 한 번** 승인합니다([RELEASE 화면](screens.md)). 이슈 본문 `## K effects`에 `K3[Security Weaken]: <바꾸는 통제> | files: <경로, …>` 줄로 선언해 두고, RELEASE 화면에서 그 선언을 보고 발권(화면 클릭·DUTY 채팅 `RELEASE ATC-n`)하면, 그 선언한 파일 안에서 만든 `user` 등급 PR은 **머지 때 사람 단계 없이** INSPECTION `pass`와 CI 뒤 MCC가 착륙시킵니다(ATC-391). 그 PR에는 위 `MERGE…` 버튼을 누를 필요가 없습니다. 반대로 이런 PR은 계속 사용자 몫이고, PR 서랍과 MCC의 `blocks`에 이유가 보입니다:
+
+- 선언하지 않은 `user` 등급 파일을 바꿨다(새 화살: 선언을 고쳐 다시 발권), 마이그레이션·비밀 경로를 바꿨다.
+- MCC가 의심으로 ESCALATE했거나 P0·P1 지적이 있다.
+- 이 검사 자체(`server/mcc*.ts`, `k-approval.ts`, `release*.ts`, `deploy/`, `mcc/` …)를 바꾸는 PR.
+- 발권이 없거나, 발권 뒤에 이슈 본문이 바뀌었다.
+- 발권이 **attested뿐**이다(다른 세션이 "SUPERVISOR가 말했다"고 증언한 것): RELEASE 화면의 **K 효과 확인**에 뜨고, 클릭 한 번으로 K 권한을 줍니다. 이 클릭도 발권 때의 일입니다.
+
+설정 창 AUTOMATION → MCC의 **K APPROVAL**이 이 길의 스위치입니다(기본 `on`, `off`면 전처럼 모든 `user` PR을 사용자가 머지). 그 아래에 최근 7일 날짜별로 이렇게 착륙한 PR 수와, 그 가운데 자동 되돌림 PR이 열린 수·ROLLBACK이 난 수가 보입니다. 이렇게 착륙한 PR은 `mcc.jsonl`의 `land` 줄에 발권 id(`<FLIGHT>@<해시>`)가 남습니다.
 
 ## UPDATE 막대
 
@@ -36,6 +48,17 @@ MCC 모드가 `rts`나 `land+rts`이면 서버가 할 때(main CI 통과, 5분 �
 | 업데이트 거절됨 · 사유 | 유닛이 시작하지 않았다(예: 본 체크아웃에 커밋하지 않은 변경). 사유를 고치고 **다시 시도** |
 | 업데이트 실패 · 사유 | 재시작 뒤 상태 확인을 통과하지 못했다. 유닛이 ROLLBACK을 했으면 아래 |
 | **RTS 중지 — ROLLBACK 뒤** | 직전 커밋으로 되돌렸다. 원인을 본 뒤 설정 창 AUTOMATION → LANDING의 MCC 줄에서 모드를 다시 고르면 풀린다 |
+
+## main이 빨개지면: 자동 되돌림(AUTO REVERT)
+
+MCC나 AUTOLAND가 머지한 PR 때문에 main의 CI가 빨개지면 atc가 그 머지의 **revert PR을 스스로 연다**(ATC-351·394, [autonomy.md](../autonomy.md) "C4 구현 결과"). 처음부터 켜져 있다. 사람이 할 일은 보통 없다.
+
+- **flake는 되돌리지 않는다.** 되돌리기 전에 실패한 GitHub Actions run을 같은 head에서 **한 번 다시 돌린다.** 다시 돌려 초록이면 flake라서 아무것도 하지 않고 "flake 잡음"으로만 센다. 다시 빨갛고 그 PR 자신의 head가 머지 전에 초록이었을 때만 revert PR을 연다. 다시 돌릴 수 없는 체크(Actions가 아님)나 45분 안에 안 끝나는 재실행은 짐작하지 않고 DUTY에게 알린다(`hold`).
+- **revert PR은 보통 PR처럼 리뷰와 CI를 거쳐** 착륙한다(GROUND STOP이 걸려 있어도 이 PR만은 막지 않는다). 다음 초록 head가 GROUND STOP을 푼다. 되돌린 PR의 FLIGHT를 난 AIRCRAFT에게 FIX가 간다.
+- **하지 않는 것.** 사람이 머지한 커밋이 범위에 있거나, 마이그레이션(K1)이나 user 등급 경로(K3)를 고친 PR이면 되돌리지 않고 DUTY brief에 `AUTO-REVERT HOLD` 줄을 남긴다.
+- **멈춤(breaker).** 1시간 안에 새 빨간 head가 둘째로 나오면 레인이 멈추고 AUTOLAND `merge`는 `update`로, MCC 착륙은 끔으로 내려간다. 알림(ALERTS)에 `revert|stop`이 뜬다. 설정 창 AUTOMATION → LANDING의 **AUTO REVERT**에서 스위치를 다시 고르면(같은 값을 다시 골라도) 풀린다. AUTOLAND와 MCC를 다시 올리는 것은 SUPERVISOR의 스위치다.
+- **끄기.** 같은 줄의 스위치를 `off`로 두면 atc는 되돌리지 않고 GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.
+- **결과 읽기.** AUTO REVERT 줄 아래에 최근 7일의 날짜별 `revert`·`flake 잡음`·`misfire`가 보인다. misfire는 되돌린 PR이 24시간 안에 그대로 다시 머지된 것이다(revert의 revert, 또는 같은 파일): 되돌림이 틀렸다는 신호이니 DUTY brief의 `AUTO-REVERT misfire` 줄을 본다.
 
 ## 사람이 배포할 때
 

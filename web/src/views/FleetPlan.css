@@ -4,7 +4,7 @@
   padding: var(--space-3);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .fp-title em {
   margin-left: var(--space-2);
@@ -38,7 +38,7 @@
 .fp-demand {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
@@ -51,7 +51,7 @@
 .fp-fuel {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: var(--space-2) 0 0;
   padding: 0;
   list-style: none;
@@ -89,7 +89,7 @@
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-left: 3px solid transparent; /* 평소엔 막대가 없고 AOG·RETIRE만 색(ATC-317) */
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .fp-row.k-AOG {
   border-left-color: var(--amber);
@@ -122,7 +122,7 @@
 .fp-reasons {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -152,7 +152,7 @@
 .fp-recent ul {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: var(--space-1) 0 0;
   padding: 0;
   list-style: none;

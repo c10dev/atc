@@ -1,14 +1,16 @@
 import { X } from "lucide-react";
-import { IconButton } from "./Icon.tsx";
+import { IconButton } from "./kit/Icon.tsx";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Snapshot } from "../../server/model.ts";
-import { formatClock, type Settings, THEMES, updateSettings } from "./settings.ts";
+import { formatClock, type SettingsView, THEMES, updateSettings } from "./settings.ts";
 import { type SettingsEntry, type SettingsTab, settingsSearch, settingsTabOf } from "../../server/settings-policy.ts";
+import { Airports } from "./views/Airports.tsx";
 import { AccountsBlock } from "./SettingsAccounts.tsx";
 import { AlertsSettings } from "./SettingsAlerts.tsx";
 import { LandingSettings, OperationsSettings } from "./SettingsAutomation.tsx";
 import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
+import { Segmented } from "./kit/Segmented.tsx";
 
 // 왼쪽 메뉴. group이 있는 분류는 그 묶음 제목 아래에 모인다(AUTOMATION = SUPERVISOR 정책 스위치)
 const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: string }[] = [
@@ -16,6 +18,7 @@ const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: stri
   { id: "linear", label: "LINEAR", sub: "연결 · 팀" },
   { id: "agents", label: "AGENTS", sub: "SOURCES · STANDS · 콜사인" },
   { id: "accounts", label: "ACCOUNTS", sub: "설정 폴더 · LOGIN · 요금제" },
+  { id: "airports", label: "AIRPORTS", sub: "등록부 · 개설 · 팀 머지 스위치" },
   { id: "alerts", label: "알림", sub: "알림 · 소리 · 음성" },
   { id: "landing", label: "LANDING", sub: "AUTOLAND · MCC · REVIEW", group: "AUTOMATION" },
   { id: "operations", label: "OPERATIONS", sub: "FUEL · REPOSITION · RECYCLE · JEV", group: "AUTOMATION" },
@@ -46,14 +49,16 @@ export function SettingsPanel({
   settings,
   snapshot,
   onClose,
+  openTab,
 }: {
-  settings: Settings;
+  settings: SettingsView;
   snapshot: Snapshot | null;
   onClose: () => void;
+  openTab?: SettingsTab | null; // 주소(#airports)가 이 분류로 연다(ATC-381)
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<SettingsTab>(loadTab);
+  const [tab, setTab] = useState<SettingsTab>(() => openTab ?? loadTab());
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState<string | null>(null);
   const chooseTab = (t: SettingsTab) => {
@@ -190,6 +195,8 @@ export function SettingsPanel({
               <AgentSettings snapshot={snapshot} server={server} save={save} onNavigate={onClose} />
             ) : tab === "accounts" ? (
               <AccountsBlock />
+            ) : tab === "airports" ? (
+              snapshot ? <Airports snapshot={snapshot} /> : <p className="settings-hint">불러오는 중…</p>
             ) : tab === "alerts" ? (
               <AlertsSettings save={save} />
             ) : tab === "landing" ? (
@@ -205,7 +212,7 @@ export function SettingsPanel({
   );
 }
 
-function DisplaySettings({ settings }: { settings: Settings }) {
+function DisplaySettings({ settings }: { settings: SettingsView }) {
   const now = Date.now();
   return (
     <>
@@ -234,10 +241,10 @@ function DisplaySettings({ settings }: { settings: Settings }) {
         </div>
       </Section>
 
-      <Section code="MOTION" label="애니메이션" hint="RADAR 스위프, 별, 깜빡임">
+      <Section code="MOTION" label="애니메이션" hint={settings.osReduceMotion ? "운영체제가 움직임 줄이기를 요청해 지금은 꺼져 있다. 그 요청이 이 설정보다 우선한다" : "RADAR 스위프, 별, 깜빡임. 운영체제가 움직임 줄이기를 요청하면 이 설정과 상관없이 꺼진다"}>
         <Segmented
           label="애니메이션"
-          value={settings.motion}
+          value={settings.motionSaved}
           options={[
             [true, "켜기"],
             [false, "끄기"],
@@ -298,27 +305,5 @@ function Section({ code, label, hint, children }: { code: string; label: string;
       {children}
       {hint && <p className="settings-hint">{hint}</p>}
     </section>
-  );
-}
-
-function Segmented<T extends string | boolean>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: [T, string][];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)}>
-          {text}
-        </button>
-      ))}
-    </div>
   );
 }

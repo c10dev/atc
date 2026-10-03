@@ -1,0 +1,81 @@
+/* RELEASE(ATC-362, ATC-376, ATC-423): 읽는 칸. 줄은 kit/TodoRow.css, 구역 머리는 kit SectionHead, 칩·태그·단추는 kit 기본이다. 여기는 칸과 구역 자리, 펼침 안쪽의 항목만 정한다. 색·글꼴은 :root 토큰만 */
+.rls-screen {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+.rls-section {
+  display: grid;
+  gap: var(--space-1);
+  scroll-margin-top: var(--space-4); /* 사이드바에서 구역을 고르면 머리가 위에 붙지 않는다 */
+}
+.rls-section > .kit-head {
+  margin-bottom: 0;
+}
+.rls-rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rls-note {
+  margin: 0;
+  font: var(--text-sm) var(--sans);
+}
+.rls-error {
+  margin: 0;
+  color: var(--alert);
+}
+/* Todo 발권 전 구역의 한 줄: 설명과 모두 발권. 확인 단계는 같은 자리에서 문장과 단추로 바뀐다 */
+.rls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  font: var(--text-sm) var(--sans);
+}
+.rls-confirm {
+  flex: 1 1 20rem;
+  color: var(--text);
+}
+/* 제목 앞의 K 태그와 제목 뒤의 문제 한 마디 */
+.rls-k {
+  margin-right: var(--space-2);
+}
+.rls-problem {
+  color: var(--text);
+}
+/* 펼침 안쪽: 이름 · 값 항목이 줄마다 하나 */
+.rls-fact {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rls-name {
+  color: var(--faint);
+}
+.rls-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rls-reason {
+  min-height: 30px;
+  min-width: 0;
+  width: 220px;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: var(--text-sm) var(--sans);
+}

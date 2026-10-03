@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>atc intro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* Colours and type come from the radar theme in web/src/styles.css (:root) and docs/assets/banner.svg. */
+:root {
+  --bg: #05080c; --chrome: #0b1118; --panel: #0f1720; --panel-2: #182330; --panel-3: #212e3d;
+  --line: #2a3a4c; --line-strong: #3d5470;
+  --text: #dde6ee; --muted: #a3b0bf; --faint: #8494a6;
+  --radar: #3ef08f; --amber: #ffb627; --amber-soft: #ffd36b; --cyan: #5cd0ff; --alert: #ff4a4a; --blue: #8aa8ff;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: var(--bg); overflow: hidden; }
+body { font-family: var(--mono); color: var(--text); }
+
+/* Stage: a 1920x1080 canvas. The 1:1 cut scales it down and centres it (render.mjs sets ?aspect=1x1). */
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden;
+  background:
+    linear-gradient(var(--bg), var(--bg)),
+    var(--bg);
+}
+#grid { position: absolute; inset: 0; opacity: 1;
+  background-image: linear-gradient(to right, #0f1822 1px, transparent 1px), linear-gradient(to bottom, #0f1822 1px, transparent 1px);
+  background-size: 64px 64px; }
+#vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(0,0,0,.55) 100%); }
+
+/* Header: brand and the seven steps of one FLIGHT */
+#top { position: absolute; left: 96px; right: 96px; top: 56px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+#brand { display: flex; align-items: center; gap: 16px; }
+#brand svg { width: 40px; height: 40px; fill: var(--radar); }
+#brand b { font-size: 34px; letter-spacing: 8px; color: var(--radar); font-weight: 800; }
+#steps { display: flex; gap: 10px; }
+.step { font-size: 15px; letter-spacing: 2px; padding: 8px 14px; border: 1px solid var(--line); color: var(--faint); border-radius: 3px; }
+.step.done { color: var(--muted); border-color: var(--line-strong); }
+.step.now { color: var(--bg); background: var(--radar); border-color: var(--radar); font-weight: 700; }
+
+#bottom { position: absolute; left: 96px; right: 96px; bottom: 56px; display: flex; justify-content: space-between; color: var(--faint); font-size: 15px; letter-spacing: 2px; }
+
+/* Scenes */
+/* 1:1 cut (?aspect=1x1): a 1200x1200 stage with stacked columns */
+body.sq #stage { width: 1200px; height: 1200px; }
+body.sq #top, body.sq #bottom { left: 56px; right: 56px; }
+body.sq #top { top: 40px; flex-direction: column; align-items: flex-start; gap: 14px; height: auto; }
+body.sq .step { font-size: 12px; padding: 6px 9px; letter-spacing: 1px; }
+body.sq .scene { left: 56px; right: 56px; top: 190px; bottom: 100px; }
+body.sq .row { flex-direction: column; gap: 28px; }
+body.sq .row > .panel { width: auto !important; }
+body.sq .big { font-size: 36px; } body.sq .headline { font-size: 52px; } body.sq .mid { font-size: 26px; }
+body.sq .check { font-size: 25px; } body.sq .term { font-size: 21px; white-space: pre-wrap; min-height: 0 !important; padding: 22px 24px; }
+body.sq .stamp { font-size: 60px; } body.sq #end .big { font-size: 40px; } body.sq #end .url { font-size: 28px; }
+body.sq .chip { font-size: 14px; margin-bottom: 8px; }
+.scene { position: absolute; left: 96px; right: 96px; top: 168px; bottom: 120px; opacity: 0; display: flex; flex-direction: column; justify-content: center; }
+.kicker { font-size: 20px; letter-spacing: 6px; color: var(--radar); margin-bottom: 18px; }
+.headline { font-size: 64px; font-weight: 800; letter-spacing: 1px; line-height: 1.12; margin-bottom: 44px; }
+.headline small { display: block; font-size: 26px; font-weight: 400; color: var(--muted); letter-spacing: 2px; margin-top: 16px; }
+.row { display: flex; gap: 48px; align-items: stretch; }
+.col { flex: 1; min-width: 0; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 30px 34px; }
+.panel h4 { font-size: 15px; letter-spacing: 4px; color: var(--faint); font-weight: 600; margin-bottom: 20px; }
+.chip { display: inline-block; font-size: 17px; letter-spacing: 2px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--muted); margin-right: 10px; }
+.chip.radar { color: var(--radar); border-color: var(--radar); }
+.chip.amber { color: var(--amber); border-color: var(--amber); }
+.chip.cyan { color: var(--cyan); border-color: var(--cyan); }
+.id { color: var(--cyan); font-weight: 700; }
+.dim { color: var(--muted); }
+.ok { color: var(--radar); }
+.big { font-size: 44px; font-weight: 700; line-height: 1.2; }
+.mid { font-size: 30px; line-height: 1.5; }
+.sm { font-size: 22px; line-height: 1.6; }
+
+/* Checklist */
+.check { display: flex; align-items: baseline; gap: 18px; font-size: 30px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.check:last-child { border-bottom: 0; }
+.check .mark { width: 32px; color: var(--faint); }
+.check.on .mark { color: var(--radar); }
+.check .t { flex: 1; }
+.check .r { color: var(--faint); font-size: 20px; letter-spacing: 2px; }
+
+/* Terminal */
+.term { background: #070c0f; border: 1px solid var(--line); border-radius: 4px; padding: 28px 34px; font-size: 26px; line-height: 1.7; min-height: 360px; white-space: pre-wrap; word-break: break-all; overflow: hidden; }
+.term .p { color: var(--radar); }
+.term .c { color: var(--faint); }
+.term .g { color: var(--radar); }
+.cursor { display: inline-block; width: 14px; height: 26px; background: var(--amber-soft); vertical-align: -4px; }
+
+/* Landing strip: APPROACH -> CLEARED */
+.runway { position: relative; height: 150px; margin: 12px 0 8px; }
+.runway .line { position: absolute; left: 0; right: 0; top: 74px; height: 2px; background: repeating-linear-gradient(to right, var(--line-strong) 0 18px, transparent 18px 34px); }
+.runway .tag { position: absolute; top: 112px; font-size: 18px; letter-spacing: 3px; color: var(--faint); }
+.dot { position: absolute; top: 56px; width: 38px; height: 38px; margin-left: -19px; border-radius: 50%; border: 3px solid var(--cyan); background: var(--panel); }
+
+/* Status line */
+.status { display: inline-flex; align-items: center; gap: 12px; font-size: 24px; letter-spacing: 3px; font-weight: 700; }
+.status i { width: 14px; height: 14px; border-radius: 50%; background: var(--faint); display: inline-block; }
+
+.stamp { display: inline-block; border: 4px solid var(--radar); color: var(--radar); font-size: 76px; font-weight: 800; letter-spacing: 12px; padding: 12px 40px; border-radius: 6px; transform-origin: center; }
+
+#end { text-align: center; align-items: center; }
+#end .big { font-size: 56px; line-height: 1.3; }
+#end .url { margin-top: 34px; font-size: 38px; color: var(--radar); letter-spacing: 3px; }
+#end .logo { width: 120px; height: 120px; fill: var(--radar); margin-bottom: 28px; }
+#intro { align-items: flex-start; }
+#intro .logo { width: 92px; height: 92px; fill: var(--radar); margin-bottom: 26px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid"></div>
+  <div id="vignette"></div>
+
+  <div id="top">
+    <div id="brand">
+      <svg viewBox="0 0 24 24"><path d="M12 1.5c.9 0 1.5 1.2 1.5 2.6v5.6l8.5 5v2.1l-8.5-2.6v4.6l2.4 1.8v1.7L12 21.2l-3.9 1.1v-1.7l2.4-1.8v-4.6L2 16.8v-2.1l8.5-5V4.1c0-1.4.6-2.6 1.5-2.6z"/></svg>
+      <b>ATC</b>
+    </div>
+    <div id="steps"></div>
+  </div>
+
+  <!-- 0. cold open -->
+  <section class="scene" id="intro" data-s="0" data-e="2.5">
+    <svg class="logo" viewBox="0 0 24 24" data-at="0.1"><path d="M12 1.5c.9 0 1.5 1.2 1.5 2.6v5.6l8.5 5v2.1l-8.5-2.6v4.6l2.4 1.8v1.7L12 21.2l-3.9 1.1v-1.7l2.4-1.8v-4.6L2 16.8v-2.1l8.5-5V4.1c0-1.4.6-2.6 1.5-2.6z"/></svg>
+    <div class="kicker" data-at="0.3">ONE FLIGHT</div>
+    <div class="headline" data-type="0.4" data-cps="34" data-text="From ticket to deploy."></div>
+  </section>
+
+  <!-- 1. ticket -->
+  <section class="scene" data-s="2.5" data-e="6" data-step="0">
+    <div class="kicker" data-at="0.1">1 · A LINEAR TICKET IS A FLIGHT</div>
+    <div class="panel" data-at="0.3" style="max-width:1100px">
+      <h4>LINEAR</h4>
+      <div class="big"><span class="id">ATC-42</span> Add dark mode toggle</div>
+      <div style="margin-top:28px">
+        <span class="chip">Todo</span><span class="chip amber">Priority Medium</span><span class="chip">type:BUILD</span><span class="chip">wake:M</span>
+      </div>
+      <div class="sm dim" style="margin-top:26px" data-at="1.4">A settings switch that follows the system theme. Done when the toggle persists.</div>
+    </div>
+  </section>
+
+  <!-- 2. dispatch -->
+  <section class="scene" data-s="6" data-e="11" data-step="1">
+    <div class="kicker" data-at="0.1">2 · DISPATCH PROPOSES, THE SUPERVISOR DECIDES</div>
+    <div class="row">
+      <div class="panel col" data-at="0.3">
+        <h4>DISPATCH · PROPOSAL</h4>
+        <div class="big"><span class="id">D-0001</span> ASSIGN</div>
+        <div class="mid" style="margin-top:14px"><span class="id">ATC-42</span> → TEAM_A</div>
+        <div class="sm dim" style="margin-top:14px">Priority, wait time, affinity, no file overlap.</div>
+      </div>
+      <div class="panel col" data-at="0.5">
+        <h4>VERDICT</h4>
+        <div class="check" data-flip="1.2"><span class="mark">○</span><span class="t">CROSSCHECK agrees</span></div>
+        <div class="check" data-flip="2.2"><span class="mark">○</span><span class="t">SUPERVISOR approves</span></div>
+        <div class="check" data-flip="3.0"><span class="mark">○</span><span class="t">FLIGHT PLAN sent</span></div>
+        <div class="check" data-flip="3.8"><span class="mark">○</span><span class="t">READBACK D-0001</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. stand -->
+  <section class="scene" data-s="11" data-e="15" data-step="2">
+    <div class="kicker" data-at="0.1">3 · THE AIRCRAFT GETS A STAND</div>
+    <div class="row">
+      <div class="col">
+        <div class="term"><span class="p">$ </span><span data-type="0.5" data-cps="46" data-text="git worktree add .claude/worktrees/atc-42-dark-mode -b worktree-atc-42-dark-mode origin/main"></span></div>
+      </div>
+      <div class="panel" style="width:560px" data-at="0.4">
+        <h4>FLEET</h4>
+        <div class="big">TEAM_A</div>
+        <div class="sm dim" style="margin:10px 0 26px">STAND atc-42-dark-mode</div>
+        <div class="status" data-flip="2.3" data-flipclass="air"><i></i><span class="lbl" data-a="HOLDING" data-b="AIRBORNE">HOLDING</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. flight -->
+  <section class="scene" data-s="15" data-e="20" data-step="3">
+    <div class="kicker" data-at="0.1">4 · FLIGHT: COMMITS AND TESTS</div>
+    <div class="term" style="min-height:430px"><span class="p">$ </span><span class="c" data-at="0.3">git commit -m "Add dark mode toggle (ATC-42)"</span>
+<span data-at="0.9">[worktree-atc-42-dark-mode 3f2a9c1] Add dark mode toggle (ATC-42)</span>
+<span data-at="1.3">  4 files changed, 61 insertions(+), 3 deletions(-)</span>
+<span class="p" data-at="1.9">$ </span><span class="c" data-at="1.9">npm test</span>
+<span data-at="2.4">  ✔ theme follows the system setting</span>
+<span data-at="2.7">  ✔ toggle persists across reloads</span>
+<span class="g" data-at="3.0">  214 passed · 0 failed</span>
+<span class="p" data-at="3.4">$ </span><span class="c" data-at="3.4">npx tsc --noEmit -p . &amp;&amp; npx vite build</span>
+<span class="g" data-at="3.9">  ✓ types · ✓ build</span></div>
+  </section>
+
+  <!-- 5. pr -->
+  <section class="scene" data-s="20" data-e="23.5" data-step="4">
+    <div class="kicker" data-at="0.1">5 · PULL REQUEST, LANDING SEQUENCE</div>
+    <div class="panel" data-at="0.3">
+      <h4>PR #7</h4>
+      <div class="big">Add dark mode toggle (<span class="id">ATC-42</span>)</div>
+      <div style="margin-top:18px"><span class="chip radar" data-at="0.8">CI check ✓</span><span class="chip" data-at="1.0">TIER auto</span></div>
+      <div class="runway">
+        <div class="line"></div>
+        <div class="dot" data-slide="1.0,2.4" data-from="8" data-to="86"></div>
+        <div class="tag" style="left:0">APPROACH</div>
+        <div class="tag" style="right:0;color:var(--amber)">CLEARED TO LAND</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. inspection -->
+  <section class="scene" data-s="23.5" data-e="26.5" data-step="5">
+    <div class="kicker" data-at="0.1">6 · MCC INSPECTION AND LANDING</div>
+    <div class="row" style="align-items:center">
+      <div class="panel col" data-at="0.2">
+        <h4>MCC · INSPECTION</h4>
+        <div class="mid">PR #7 · head <span class="id">3f2a9c1</span></div>
+        <div class="sm dim" style="margin-top:12px">The review is pinned to the head it read.</div>
+      </div>
+      <div class="col" style="text-align:center"><div class="stamp" data-stamp="1.0">PASS</div>
+        <div class="mid" style="margin-top:30px" data-at="1.7">Landing: <span class="ok">merged</span> into main</div></div>
+    </div>
+  </section>
+
+  <!-- 7. rts -->
+  <section class="scene" data-s="26.5" data-e="29.5" data-step="6">
+    <div class="kicker" data-at="0.1">7 · RETURN TO SERVICE</div>
+    <div class="panel" style="max-width:1100px" data-at="0.2">
+      <div class="check" data-flip="0.6"><span class="mark">○</span><span class="t">Fast-forward the main checkout</span></div>
+      <div class="check" data-flip="1.2"><span class="mark">○</span><span class="t">Restart the service</span></div>
+      <div class="check" data-flip="1.8"><span class="mark">○</span><span class="t">Health check</span><span class="r">ROLLBACK if it fails</span></div>
+      <div class="check" data-flip="2.4"><span class="mark">○</span><span class="t"><span class="ok">ATC-42 is in service</span></span></div>
+    </div>
+  </section>
+
+  <!-- 8. end -->
+  <section class="scene" id="end" data-s="29.5" data-e="33.5">
+    <svg class="logo" viewBox="0 0 24 24" data-at="0.1"><path d="M12 1.5c.9 0 1.5 1.2 1.5 2.6v5.6l8.5 5v2.1l-8.5-2.6v4.6l2.4 1.8v1.7L12 21.2l-3.9 1.1v-1.7l2.4-1.8v-4.6L2 16.8v-2.1l8.5-5V4.1c0-1.4.6-2.6 1.5-2.6z"/></svg>
+    <div class="big" data-at="0.4">atc — air traffic control<br>for your AI coding sessions</div>
+    <div class="url" data-at="1.2">github.com/chaehy5665/atc</div>
+  </section>
+
+  <div id="bottom"><span>ATC · AIR TRAFFIC CONTROL</span><span id="clock">FLIGHT ATC-42 · AIRPORT DEMO</span></div>
+</div>
+
+<script>
+// Deterministic timeline: seek(t) sets every element from t (seconds). No timers, no CSS animation, so frames render identically.
+const DURATION = 33.5;
+const STEPS = ["TICKET", "DISPATCH", "STAND", "FLIGHT", "PR", "INSPECTION", "RTS"];
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = (x) => 1 - Math.pow(1 - clamp(x), 3); // calm ease-out
+const FADE = 0.4;
+
+const stage = document.getElementById("stage");
+const stepsEl = document.getElementById("steps");
+stepsEl.innerHTML = STEPS.map((s) => `<span class="step">${s}</span>`).join("");
+const stepEls = [...stepsEl.children];
+const scenes = [...document.querySelectorAll(".scene")].map((el) => ({ el, s: +el.dataset.s, e: +el.dataset.e, step: el.dataset.step === undefined ? null : +el.dataset.step }));
+
+const params = new URLSearchParams(location.search);
+if (params.get("aspect") === "1x1") {
+  document.body.classList.add("sq");
+  const k = Math.min(innerWidth, innerHeight) / 1200;
+  stage.style.transform = `scale(${k})`;
+}
+
+function seek(t) {
+  let cur = null;
+  for (const sc of scenes) {
+    const rel = t - sc.s;
+    const inT = ease(rel / FADE);
+    const outT = sc.e >= DURATION ? 1 : 1 - ease((rel - (sc.e - sc.s - FADE)) / FADE);
+    const vis = rel >= 0 && t < sc.e;
+    sc.el.style.opacity = vis ? String(Math.min(inT, outT)) : "0";
+    sc.el.style.visibility = vis ? "visible" : "hidden";
+    if (!vis) continue;
+    if (sc.step !== null) cur = sc.step;
+    for (const n of sc.el.querySelectorAll("[data-at]")) {
+      const p = ease((rel - +n.dataset.at) / 0.45);
+      n.style.opacity = String(p);
+      n.style.transform = `translateY(${(1 - p) * 14}px)`;
+    }
+    for (const n of sc.el.querySelectorAll("[data-type]")) {
+      const text = n.dataset.text, cps = +n.dataset.cps || 40;
+      const k = clamp(Math.floor((rel - +n.dataset.type) * cps), 0, text.length);
+      const done = k >= text.length;
+      n.innerHTML = text.slice(0, k).replace(/&/g, "&amp;").replace(/</g, "&lt;") + (done && Math.floor(t * 2) % 2 ? "" : '<span class="cursor"></span>');
+    }
+    for (const n of sc.el.querySelectorAll("[data-flip]")) {
+      const on = rel >= +n.dataset.flip;
+      n.classList.toggle("on", on);
+      const m = n.querySelector(".mark");
+      if (m) m.textContent = on ? "✓" : "○";
+      const lbl = n.querySelector(".lbl");
+      if (lbl) {
+        lbl.textContent = on ? lbl.dataset.b : lbl.dataset.a;
+        n.style.color = on ? "var(--radar)" : "var(--amber)";
+        n.querySelector("i").style.background = on ? "var(--radar)" : "var(--amber)";
+      }
+    }
+    for (const n of sc.el.querySelectorAll("[data-slide]")) {
+      const [a, b] = n.dataset.slide.split(",").map(Number);
+      const p = ease((rel - a) / (b - a));
+      n.style.left = `${+n.dataset.from + (+n.dataset.to - +n.dataset.from) * p}%`;
+      const done = p >= 1;
+      n.style.borderColor = done ? "var(--amber)" : "var(--cyan)";
+      n.style.background = done ? "var(--amber)" : "var(--panel)";
+    }
+    for (const n of sc.el.querySelectorAll("[data-stamp]")) {
+      const p = clamp((rel - +n.dataset.stamp) / 0.3);
+      n.style.opacity = String(p);
+      n.style.transform = `scale(${1.5 - 0.5 * ease(p)}) rotate(-4deg)`;
+    }
+  }
+  stepEls.forEach((el, i) => { el.className = "step" + (cur === null ? "" : i < cur ? " done" : i === cur ? " now" : ""); });
+  document.getElementById("top").style.opacity = t < 2.5 || t >= 29.5 ? "0" : "1";
+  document.getElementById("bottom").style.opacity = t < 2.5 || t >= 29.5 ? "0" : "1";
+}
+window.seek = seek;
+window.DURATION = DURATION;
+seek(0);
+</script>
+</body>
+</html>

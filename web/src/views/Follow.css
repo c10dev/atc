@@ -35,31 +35,14 @@
   margin-left: auto;
   font-size: var(--text-xs);
 }
-.fw-btn {
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  cursor: pointer;
-}
-.fw-btn.is-primary {
-  border-color: var(--radar);
-  color: var(--radar);
-}
-.fw-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .fw-error {
   margin: 0;
   color: var(--alert);
 }
 
+/* 번들은 한 단 올린 면(테두리 없이, 면 단차 ATC-320) */
 .fw-bundle {
   background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--radius-md);
 }
 .fw-bundle > summary {
@@ -96,6 +79,8 @@
   gap: var(--space-1) var(--space-3);
   align-items: center;
   padding: var(--space-2) 0;
+}
+.fw-row + .fw-row {
   border-top: 1px solid var(--line);
 }
 .fw-row.is-finished .fw-title,
@@ -117,85 +102,59 @@
   font-size: var(--text-2xs);
 }
 
-/* 단계 점: 지난 것 채움, 지금 것 굵은 테두리, 해당 없음은 — */
+/* 단계 점: 공용 .dot(kit/chips.css). 지난 것 찬 원(radar), 지금 amber, 앞은 빈 원(모양이 색 없이도 다르다). 해당 없음은 — */
 .fw-dots {
   display: inline-flex;
   gap: var(--space-1);
 }
 .fw-dot {
+  --dot-size: 10px;
+  --dot-ink: var(--line-strong);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: var(--space-0-5);
   min-width: 26px;
 }
-.fw-dot i {
-  display: block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  font-style: normal;
-  font-size: var(--text-2xs);
-  line-height: 8px;
-  text-align: center;
-  color: var(--faint);
-}
 .fw-dot small {
-  font-size: 8px;
+  font-size: var(--text-2xs);
   color: var(--faint);
   letter-spacing: 0.02em;
 }
-.fw-dot.is-done i {
-  background: var(--radar);
-  border-color: var(--radar);
+.fw-dot.is-done {
+  --dot-ink: var(--radar);
 }
-.fw-dot.is-now i {
-  border-color: var(--amber);
-  background: var(--amber);
+.fw-dot.is-now {
+  --dot-ink: var(--amber);
 }
-.fw-dot.is-done.is-now i {
-  background: var(--radar);
-  border-color: var(--radar);
+.fw-dot.is-done.is-now {
+  --dot-ink: var(--radar);
 }
-.fw-dot.is-na i {
-  border-color: transparent;
+.fw-na {
+  height: var(--dot-size);
+  font-style: normal;
+  font-size: var(--text-2xs);
+  line-height: var(--dot-size);
+  color: var(--faint);
 }
 /* F2: 막힌 점·글(amber)과 다음 할 일 칩. 막힘은 색만이 아니라 "막힘" 글자로도 보인다 */
-.fw-dot.is-stuck i {
-  border-color: var(--amber);
+.fw-dot.is-stuck .dot {
   box-shadow: 0 0 0 2px var(--amber);
 }
 .fw-stuck {
   color: var(--amber);
 }
-.fw-chip {
+/* .tag는 대문자로 바꾸므로 한글 섞인 글은 원래 글자대로 둔다 */
+.tag.fw-moved {
+  text-transform: none;
+}
+/* 다음 할 일: 공용 .btn(링크도 같다). 줄 높이에 맞춰 키만 줄인다 */
+.btn.fw-next {
+  --btn-h: 22px;
   margin-left: auto;
   padding: 0 var(--space-2);
-  border: 1px solid var(--cyan);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--cyan);
-  font: inherit;
   font-size: var(--text-xs);
   text-decoration: none;
-  cursor: pointer;
-}
-.fw-chip.is-write {
-  background: var(--panel-2);
-}
-.fw-chip:hover:not(:disabled),
-.fw-chip:focus-visible {
-  background: var(--panel-3);
-}
-.fw-chip.is-moved {
-  border-color: var(--line-strong);
-  color: var(--muted);
-  cursor: default;
-}
-.fw-chip:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .fw-row-error {
   grid-column: 1 / -1;
@@ -212,16 +171,28 @@
   align-items: baseline;
   color: var(--text);
 }
-.fw-issue {
-  font-size: var(--text-2xs);
-  padding: 0 var(--space-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  color: var(--cyan);
+/* title에만 있던 issue·막힘 설명을 한 번의 클릭으로 편다(ATC-418, 원칙 11) */
+.fw-issue-det {
+  flex: 0 0 auto;
 }
-.fw-issue.is-warn {
+.fw-issue-det[open] {
+  flex: 1 1 100%;
+}
+.fw-issue-det summary {
+  cursor: pointer;
+  list-style: none;
+}
+.fw-issue-det summary::-webkit-details-marker {
+  display: none;
+}
+.fw-issue-text {
+  display: block;
+  margin-top: var(--space-0-5);
+  font: var(--text-xs) var(--sans);
+  color: var(--muted);
+}
+.fw-issue-text.is-warn {
   color: var(--amber);
-  border-color: var(--amber);
 }
 .fw-hist {
   grid-column: 1 / -1;

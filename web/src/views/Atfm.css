@@ -3,7 +3,7 @@
   margin-top: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-2);
   background: var(--panel);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
 }
 .atfm-head {
@@ -14,7 +14,10 @@
 .dispatch .atfm .label {
   margin: 0;
 }
-.atfm .dp-btn.atfm-off {
+.atfm .dp-error {
+  color: var(--alert);
+}
+.atfm .btn.atfm-off {
   flex: none;
   margin-left: auto;
   padding: 0 var(--space-3);
@@ -41,12 +44,12 @@
 }
 .atfm-sec > summary em {
   margin-left: var(--space-1);
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
 }
-.atfm-sec .empty {
+.atfm-sec .kit-empty {
   margin: var(--space-1) 0;
 }
 
@@ -168,14 +171,10 @@
 .atfm-form .atfm-reason {
   flex: 1 1 14em;
 }
-.atfm .dp-btn.atfm-mini {
+.atfm .btn.atfm-mini {
   flex: none;
   min-height: 26px;
   padding: 0 var(--space-3);
-}
-.atfm .dp-btn.t-stop {
-  border-color: var(--alert);
-  color: var(--alert);
 }
 .atfm-manual {
   margin-top: var(--space-2);

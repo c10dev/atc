@@ -16,7 +16,7 @@
 .bell-list {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--space-1-5));
   z-index: var(--z-popover);
   width: min(420px, calc(100vw - 2 * var(--gutter)));
   max-height: min(70vh, 520px);
@@ -25,7 +25,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
-  padding: 8px;
+  padding: var(--space-2);
   color: var(--text);
 }
 .bell-list header {
@@ -35,7 +35,7 @@
   font-family: var(--mono);
   font-size: var(--text-sm);
   color: var(--muted);
-  padding: 2px 4px 8px;
+  padding: var(--space-0-5) var(--space-1) var(--space-2);
 }
 .bell-list header em {
   font-style: normal;
@@ -51,7 +51,7 @@
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
 }
 .bell-list ul {
@@ -59,12 +59,12 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 .bell-item {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: start;
   border: 1px solid var(--line);
   border-left-width: 3px;
@@ -81,18 +81,20 @@
 .bell-item.lv-none {
   border-left-color: var(--line-strong);
 }
+/* 확인한 항목: 투명도 대신 한 층 낮은 바탕과 흐린 글자(ATC-408). ACK 버튼이 없는 것으로도 구별된다 */
 .bell-item.is-acked {
-  opacity: 0.6;
+  background: var(--panel);
+  color: var(--muted);
 }
 .bell-open {
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   text-align: left;
   background: none;
   border: 0;
   color: inherit;
   font: inherit;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   cursor: pointer;
   min-width: 0;
 }
@@ -103,30 +105,30 @@
   overflow-wrap: anywhere;
 }
 .bell-ack {
-  margin: 6px 6px 0 0;
+  margin: var(--space-1-5) var(--space-1-5) 0 0;
 }
 .bell-empty {
   color: var(--muted);
-  margin: 8px 4px;
+  margin: var(--space-2) var(--space-1);
 }
 .alert-checks {
   border: 0;
   padding: 0;
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .alert-checks legend {
   font-family: var(--mono);
   font-size: var(--text-sm);
   color: var(--muted);
-  padding: 0 0 4px;
+  padding: 0 0 var(--space-1);
 }
 .alert-checks label,
 .alert-range {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .alert-checks:disabled {
   opacity: 0.55;
@@ -135,10 +137,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .alert-range {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .alert-range input {
   flex: 1;
@@ -151,14 +153,14 @@
   color: var(--text);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-family: var(--mono);
   font-size: var(--text-sm);
 }
 .alert-quiet {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .alert-msg {
   color: var(--amber);
@@ -170,7 +172,7 @@
   background: var(--panel-2);
   border: 1px solid var(--amber);
   border-radius: var(--radius-md);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -179,7 +181,7 @@
   color: var(--text);
 }
 .alert-unlock {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   color: var(--amber);
   border-color: var(--amber);
 }
@@ -188,7 +190,35 @@
     position: fixed;
     left: var(--gutter);
     right: var(--gutter);
-    top: 64px;
+    top: calc(var(--space-8) * 2);
     width: auto;
   }
+}
+
+/* 도움말 메뉴(ATC-381): BELL 목록과 같은 팝오버, 줄은 제목과 한 줄 설명 */
+.help-list {
+  width: min(280px, calc(100vw - 2 * var(--gutter)));
+  margin: 0;
+  list-style: none;
+}
+.help-item {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-decoration: none;
+}
+.help-item:hover,
+.help-item:focus-visible {
+  background: var(--panel-2);
+}
+.help-item .muted {
+  font-size: var(--text-xs);
+}
+
+/* 헤더의 보기 모드·도움말 버튼이 열려 있을 때(ATC-381): 색이 아니라 굵기와 밑선 대신 글자색으로만 */
+.readout.is-on b,
+.readout.is-on span {
+  color: var(--tab-on);
 }

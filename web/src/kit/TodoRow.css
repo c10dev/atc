@@ -1,0 +1,144 @@
+/* 할 일 줄(TodoRow)과 목록 머리(SectionHead). 면은 화면 그대로, 줄 사이는 여백만, 올린 줄과 열린 줄만 --layer-hover. 색은 :root 토큰만 */
+.kit-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--faint);
+  font: 600 var(--text-xs) var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.kit-head em {
+  color: var(--muted);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.kit-todo {
+  position: relative;
+  container-type: inline-size; /* 줄 폭이 좁으면(아래 @container) 필요한 것이 둘째 줄로 내려온다: 화면 폭이 아니라 이 줄이 놓인 폭을 본다 */
+  border-radius: var(--radius-md);
+}
+.kit-todo:hover,
+.kit-todo.is-open {
+  background: var(--layer-hover);
+}
+.kit-todo-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--alert);
+}
+/* 칸 위치는 고정: 태그 · 대상 · 필요한 것(남는 폭) · 나이 · 단추. 나이와 단추는 모든 줄에서 오른쪽 끝에 맞는다 */
+.kit-todo-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 12rem) minmax(0, 1fr) 4rem 9rem;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: var(--space-12);
+  padding: var(--space-1) var(--space-3);
+}
+.kit-todo-main {
+  /* 줄 전체로 늘린다: 단추 칸(z-index)만 위에 둔다 */
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: var(--text-sm) var(--mono);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.kit-todo-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+.kit-todo-main:focus-visible {
+  outline-color: transparent; /* 윤곽은 줄 전체(아래 ::after)가 그린다 */
+}
+.kit-todo-main:focus-visible::after {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.kit-todo-need {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kit-todo-age {
+  font: var(--text-xs) var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.kit-todo-act {
+  position: relative;
+  z-index: var(--z-raised);
+  display: flex;
+  justify-content: flex-end;
+}
+.kit-todo-act .btn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kit-todo-detail {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-3) calc(7rem + var(--space-3) * 2);
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+}
+.kit-todo-detail[hidden] {
+  display: none;
+}
+@container (max-width: 720px) {
+  .kit-todo-line {
+    grid-template-columns: auto minmax(0, 1fr) 4rem 9rem;
+    grid-template-areas:
+      "tag main age act"
+      "need need need need";
+    row-gap: var(--space-1);
+  }
+  .kit-todo-tag {
+    grid-area: tag;
+  }
+  .kit-todo-main {
+    grid-area: main;
+  }
+  .kit-todo-age {
+    grid-area: age;
+  }
+  .kit-todo-act {
+    grid-area: act;
+  }
+  .kit-todo-need {
+    grid-area: need;
+    white-space: normal;
+  }
+  .kit-todo-detail {
+    padding-left: var(--space-3);
+  }
+}
+/* 폰 폭: 첫 줄은 태그 · 대상 · 나이, 둘째 줄은 필요한 것과 단추. 나이와 단추는 같은 칸이라 오른쪽 끝이 맞는다 */
+@container (max-width: 520px) {
+  .kit-todo-line {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tag main age"
+      "need need act";
+    align-items: center;
+  }
+}

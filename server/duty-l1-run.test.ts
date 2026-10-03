@@ -217,11 +217,11 @@ test("길: Linear create — priority 필수·상태 Backlog/Todo·없는 라벨
     const { calls, o } = fake();
     const { d, lines } = deps(s.repo, o);
     mountDutyL1(app, d);
-    const good = { action: "create", title: "Work order", body: "Secret body text", priority: 2, state: "Todo", parent: "ATC-7", project: "DUTY", labels: ["RATING:SEC"] };
+    const good = { action: "create", title: "Work order", body: "## Goal\nSecret body text\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 2, state: "Todo", parent: "ATC-7", project: "DUTY", labels: ["RATING:SEC"] };
     const r = await post(app, "/api/duty/linear", good);
     assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
     assert.deepEqual(await r.json(), { ok: true, key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Todo" });
-    assert.deepEqual(calls[0], ["create", { teamId: "T", title: "Work order", description: "Secret body text", priority: 2, stateId: "st", labelIds: ["L1"], parentId: "i1", projectId: "P1" }]);
+    assert.deepEqual(calls[0], ["create", { teamId: "T", title: "Work order", description: "## Goal\nSecret body text\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 2, stateId: "st", labelIds: ["L1"], parentId: "i1", projectId: "P1" }]);
     assert.deepEqual(lines.at(-1), { t: "2026-10-01T00:00:00.000Z", kind: "duty", op: "linear", by: "DUTY", ok: true, action: "create", key: "ATC-99", state: "Todo" });
     assert.ok(!JSON.stringify(lines).includes("Secret body text"), "본문은 기록하지 않는다");
     const n = calls.length;
@@ -313,6 +313,131 @@ test("길: STAND 만들기·치우기는 기록되고(by DUTY), 잘못된 이름
       lines.map((l) => (l.kind === "duty" ? [l.op, l.ok] : null)),
       [["stand", true], ["stand", false], ["stand", false], ["stand-done", true]],
     );
+  } finally {
+    s.done();
+  }
+});
+
+// ── 본문 모양 점검(ATC-469) ──
+const okBody = "## Goal\nx\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone";
+
+test("본문 모양: 빠진 절·읽히지 않는 K3 줄은 400이고 Linear에 아무것도 쓰지 않는다. create와 본문을 싣는 update만 본다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const { d } = deps(s.repo, o);
+    mountDutyL1(app, d);
+    const n = calls.length;
+    for (const [body, re] of [["## Goal\nx", /Done when.*K effects/], [`${okBody.replace("None\n\n## Measure", "K3: none\n\n## Measure")}`, /K3/], ["one line body", /Goal.*Done when.*K effects/]] as const) {
+      for (const req of [{ action: "create", title: "T", priority: 3, body }, { action: "update", key: "ATC-7", body }]) {
+        const r = await post(app, "/api/duty/linear", req);
+        assert.equal(r.status, 400, body);
+        assert.match(((await r.json()) as { error: string }).error, re);
+      }
+    }
+    assert.equal(calls.length, n, "거절이면 create·update를 부르지 않는다");
+    // 본문이 없는 update와 comment는 보지 않는다
+    assert.equal((await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", priority: 2 })).status, 200);
+    assert.equal((await post(app, "/api/duty/linear", { action: "comment", key: "ATC-7", body: "x" })).status, 200);
+  } finally {
+    s.done();
+  }
+});
+
+test("본문 모양: Measure가 없으면 만들고 warning을 싣는다. REVIEW 턴 제안과 update에도 같다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => true });
+    mountDutyL1(app, d);
+    const noMeasure = okBody.replace("\n\n## Measure\nNone", "");
+    const r = (await (await post(app, "/api/duty/linear", { action: "create", title: "T", priority: 3, body: noMeasure })).json()) as { ok: boolean; warning?: string };
+    assert.ok(r.ok && /Measure.*None/.test(r.warning ?? ""));
+    assert.ok(calls.some((c) => c[0] === "create"));
+    const u = (await (await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", body: noMeasure })).json()) as { ok: boolean; warning?: string };
+    assert.ok(u.ok && /Measure/.test(u.warning ?? ""));
+    const clean = (await (await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", body: okBody })).json()) as { warning?: string };
+    assert.equal(clean.warning, undefined);
+  } finally {
+    s.done();
+  }
+});
+
+// ── REVIEW 턴과 --blocked-by (ATC-396) ──
+const createBody = { action: "create", title: "Speed up the thing", body: "## Goal\nx\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 3 };
+
+test("REVIEW 턴: 제안은 Backlog만(Todo는 만들기도 올리기도 403), 비슷한 열린 이슈가 있으면 409, 만든 제안은 알린다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const proposed: [string, string][] = [];
+    let similar: string | null = null;
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => true, openSimilar: async () => similar, onProposal: (k, t) => void proposed.push([k, t]) });
+    mountDutyL1(app, d);
+    const todo = await post(app, "/api/duty/linear", { ...createBody, state: "Todo" });
+    assert.equal(todo.status, 403);
+    assert.match(((await todo.json()) as { error: string }).error, /Backlog/);
+    assert.equal((await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", state: "Todo" })).status, 403);
+    assert.equal(calls.length, 0);
+    similar = "ATC-55";
+    const dup = await post(app, "/api/duty/linear", { ...createBody, state: "Backlog" });
+    assert.equal(dup.status, 409);
+    assert.match(((await dup.json()) as { error: string }).error, /ATC-55/);
+    assert.equal(calls.length, 0);
+    similar = null;
+    const ok = await post(app, "/api/duty/linear", { ...createBody, state: "Backlog" });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(proposed, [["ATC-99", "Speed up the thing"]]);
+    assert.equal((calls[0]![1] as { stateId: string }).stateId, "sb");
+  } finally {
+    s.done();
+  }
+});
+
+test("REVIEW 턴이 아니면(SUPERVISOR의 글에 답하는 중) Todo도 만들 수 있고 중복 검사·제안 알림은 없다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const proposed: string[] = [];
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => false, openSimilar: async () => "ATC-55", onProposal: (k) => void proposed.push(k) });
+    mountDutyL1(app, d);
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, state: "Todo" })).status, 200);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(proposed, []);
+  } finally {
+    s.done();
+  }
+});
+
+test("blockedBy: 막는 FLIGHT를 먼저 읽고, 이슈를 만든 뒤 막는 관계를 건다. 없는 FLIGHT면 이슈를 만들지 않는다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const rels: [string, string][] = [];
+    const { d } = deps(s.repo, {
+      ...o,
+      issue: async (k) => (k === "ATC-7" ? { id: "i7", key: "ATC-7", team: "ATC", state: { name: "Todo", type: "unstarted" }, labels: [], states: [] } : k === "ATC-99" ? { id: "i99", key: "ATC-99", team: "ATC", state: { name: "Backlog", type: "backlog" }, labels: [], states: [] } : null),
+      blocks: async (blocker, blocked) => void rels.push([blocker, blocked]),
+    });
+    mountDutyL1(app, d);
+    const missing = await post(app, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-12"] });
+    assert.equal(missing.status, 404);
+    assert.equal(calls.length, 0);
+    const ok = await post(app, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-7"] });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Backlog", blockedBy: ["ATC-7"] });
+    assert.deepEqual(rels, [["i7", "i99"]]);
+    // 관계가 실패하면 이슈는 남고 경고가 온다
+    const { d: d2 } = deps(s.repo, { ...o, issue: d.issue, blocks: async () => Promise.reject(new Error("relation refused")) });
+    const app2 = new Hono();
+    mountDutyL1(app2, d2);
+    const warn = (await (await post(app2, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-7"] })).json()) as { ok: boolean; key: string; warning?: string };
+    assert.ok(warn.ok && warn.key === "ATC-99" && /relation refused/.test(warn.warning ?? ""));
   } finally {
     s.done();
   }

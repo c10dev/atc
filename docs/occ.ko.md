@@ -323,7 +323,7 @@ OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣�
   - LOS가 없다.
 
   지금 President가 손으로 확인하는 것의 기계적인 절반이다. 옛 커밋에서만 초록인 CI, 옛 커밋에 남은 리뷰, main에서 벌어진 것을 잡는다.
-- **GO AROUND**(구현됨, ATC-128): LANDING SEQUENCE의 PR이 `dirty`나 `behind`가 되거나 LAND 문구에 적힌 앞 PR이 머지되면, TOWER가 그 STAND를 쥔 세션에 `GO AROUND` CLEARANCE(W/U)를 보낸다: origin/main을 합치고, 풀고, 검사를 돌리고, `--force-with-lease`로 push하거나 UNABLE로 답한다. `server/go-around.ts`가 문구(어느 머지가 원인인지, 두 PR이 함께 고친 파일 — ATC-71 변경 파일 목록에서, 모르면 빈 칸)를 만들고, `landingQueue[].goAround`가 `action`(`send`, 이 head에는 이미 보낸 `sent`, holder가 없거나 한 시간 안 두 번째면 `supervisor`)과 함께 싣는다. 상태에서 다시 만들어서 서버가 재시작돼도(`reset: true`) 잃지 않는다. 이벤트 `landing.conflict`(PR head마다 한 번)와 `landing.prevMerged`가 원인을 싣는다. atc는 충돌을 스스로 풀지 않고, 머지하는 쪽도 그대로다: push한 새 head는 MCC가 다시 INSPECTION한다.
+- **GO AROUND**(구현됨, ATC-128): LANDING SEQUENCE의 PR이 `dirty`나 `behind`가 되거나 LAND 문구에 적힌 앞 PR이 머지되면, TOWER가 그 STAND를 쥔 세션에 `GO AROUND` CLEARANCE(W/U)를 보낸다: origin/main을 합치고, 풀고, 검사를 돌리고, 평범한 `git push`(rebase·force 없이, 그래서 팀이 SUPERVISOR 승인 없이 할 수 있다)로 push하거나 UNABLE로 답한다. `server/go-around.ts`가 문구(어느 머지가 원인인지, 두 PR이 함께 고친 파일 — ATC-71 변경 파일 목록에서, 모르면 빈 칸)를 만들고, `landingQueue[].goAround`가 `action`(`send`, 이 head에는 이미 보낸 `sent`, holder가 없거나 한 시간 안 두 번째면 `supervisor`)과 함께 싣는다. 상태에서 다시 만들어서 서버가 재시작돼도(`reset: true`) 잃지 않는다. 이벤트 `landing.conflict`(PR head마다 한 번)와 `landing.prevMerged`가 원인을 싣는다. atc는 충돌을 스스로 풀지 않고, 머지하는 쪽도 그대로다: push한 새 head는 MCC가 다시 INSPECTION한다.
 - **FIX**(구현됨, ATC-270): APPROACH PR의 현재 head에 `review-findings` 막힘(MCC INSPECTION, 착륙 리뷰, Codex, 이어받은 리뷰)이 있으면 TOWER가 그 STAND를 쥔 세션에 `FIX` CLEARANCE(W/U)를 보낸다: 같은 브랜치에서 고치거나 안 고칠 것은 PR 본문에 이유를 적고, 검사를 돌리고, push하거나 UNABLE로 답한다. 막힘이 지적을 자료로 들고(`blocks[].findings`), `server/fix.ts`가 문구를 만들고(P0·P1 줄은 전부, P2는 개수와 PR 주소, `head <7자리>` 표지), `landingQueue[].fix`가 `action`(`send`, 이 head에는 `sent`, holder 없음이나 한 시간 안 세 번째 FIX면 `supervisor`)과 함께 싣는다. GO AROUND처럼 상태에서 만들어서 서버가 재시작돼도 남는다. 까닭: 2026-10-01에 한 PR의 지적(TOWER의 INFO 몇 초 뒤 MCC INSPECTION)이 이벤트로 나갔는데 다음 TOWER 바퀴 전에 서버가 RTS로 재시작했고, `reset: true` 바퀴는 INFO를 보내지 않아 팀이 기다렸다. 지적은 INFO(ROGER만 하고 대기)로, 400자로 잘려 나갔다. 둘 다 고쳤다. APPROACH INFO도 이제 상태로 정한다(`landingQueue[].info`: 알릴 막힘 코드가 새로 생길 때만, 그 PR 마지막 INFO의 `[blocks: …]` 표지와 견준다). INFO에는 지적이 들어가지 않는다.
   - 2026-09-29에 PR 194의 INFO가 늦은 까닭: 04:30:26에 서버가 막 재시작한 직후 이미 `dirty`인 채 LANDING SEQUENCE에 들어왔다. 그 `landing.requested` 이벤트 하나가 `reset: true`인 TOWER 바퀴에 닿았는데 매뉴얼은 그 바퀴에 APPROACH INFO를 보내지 않고, 04:39:30에 새 막힘 코드가 생기기 전까지 다른 이벤트가 없었다. 상태로 만드는 `goAround`와 진입 때의 `landing.conflict`가 이 틈을 메운다.
 - **흐름 관리(3단계)**: CI가 밀릴 때 merge slot과 ground stop. [atfm.ko.md](atfm.ko.md)에 설계돼 있고 일부는 구현됐다(그림자 운용, 그 문서의 상태 줄 참고).
@@ -370,7 +370,7 @@ OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣�
   - PR 제목·본문이나 FLIGHT 제목(자료를 줄 때는 FLIGHT 본문도)에 security, privilege(s), RLS, grant, revoke, definer, admission, auth, authentication, authorization, ACL, exposure/exposed, "use server", 대문자 `EXECUTE`가 있음(`securityWordOf`).
 
   atc는 PR 목록과 함께 PR 본문을 읽고, head에 Codex 리뷰가 없는 PR마다 바뀐 경로를 읽어 둔다(`gh api …/pulls/N/files`, head별 캐시). 자료를 주기 직전에 실제 diff와 FLIGHT 본문으로 다시 본다(제외면 403, FLIGHT를 못 읽으면 409). 스트립에 사유가 보인다: "외부 리뷰 제외 — migrations", "— 키워드 revoke" 같은 식이고, 막힘 글은 "Codex 한도 — 외부 리뷰 제외(migrations) — Codex나 SUPERVISOR 리뷰 필요"다.
-- **리뷰 자료**: `GET /api/landing/review/:repo/:pr`(`:repo`는 저장소 이름이나 `owner/name`)가 PR 제목·본문(8,000자), FLIGHT의 완료 기준과 금지 사항(Linear 본문에서 완료 기준/Acceptance/Exit criteria/Done when, 금지/Forbidden/Do not/Out of scope 머리글 아래, 본문은 6,000자까지), head SHA, 바뀐 파일, diff(80,000자, 넘으면 줄 경계에서 자르고 `diffTruncated`)를 읽기 전용 `gh pr view`·`gh pr diff`로 읽어 준다. 제외된 PR은 403, Draft·Codex를 쓸 수 있는 PR·head가 바뀐 PR·FLIGHT를 못 읽은 PR은 409. `GET /api/landing/reviews`는 `pending`, `excluded`(사유), 최근 리뷰를 준다(`atcctl landing queue`).
+- **리뷰 자료**: `GET /api/landing/review/:repo/:pr`(`:repo`는 저장소 이름이나 `owner/name`)가 PR 제목·본문(8,000자), FLIGHT의 완료 기준과 금지 사항(Linear 본문에서 완료 기준/Acceptance/Exit criteria/Done when, 금지/Forbidden/Do not/Out of scope 머리글 아래, 본문은 6,000자까지), head SHA, 바뀐 파일, diff(80,000자, 넘으면 줄 경계에서 자르고 `diffTruncated`)를 읽기 전용 `gh pr view`·`gh pr diff`로 읽어 준다. GitHub가 20,000줄이 넘는 diff를 거절하면 files API로 자료를 만들고(`diffSource: "files-api"`, 파일별 patch, 지워진 파일은 `removedFiles`에 이름만, `diffTruncated`는 늘 true) 제외 게이트는 이름을 바꾼 파일까지 모든 파일 이름을 그대로 읽는다(ATC-449). 그 밖의 GitHub 읽기 실패는 500이 아니라 502와 stderr 첫 줄이다. 제외된 PR은 403, Draft·Codex를 쓸 수 있는 PR·head가 바뀐 PR·FLIGHT를 못 읽은 PR은 409. `GET /api/landing/reviews`는 `pending`, `excluded`(사유), 최근 리뷰를 준다(`atcctl landing queue`).
 - **리뷰 기록**: `POST /api/landing/review/:repo/:pr {head, verdict, text, model}`이 `landing-reviews.jsonl`에 추가한다(`at, repo, number, head, verdict, text, by, model, family, p0, p1, p2`). head는 지금 head여야 한다(7자 이상 앞부분도 된다). `pass`에는 P2만 적을 수 있고 P0·P1은 안 되며, `findings`에는 P0·P1·P2가 하나 이상 있어야 한다. model은 필수이고 DeepSeek V4.1 Flash여야 한다. REVIEW guard가 세션 기록에서 읽어 `ATC_REVIEW_MODEL`로 붙이고, 계열은 `modelFamily`로 남긴다.
 - **착륙 규칙**(`reviewBlocks`): **제외되지 않은** CODEX UNAVAILABLE PR에서, 현재 head의 P0·P1 없는 `pass`는 head 리뷰로 쳐서 CLEARED TO LAND가 될 수 있다. 스트립에는 "REVIEW: DEEPSEEK (Codex 한도)"(또는 "Codex 무응답". 이름은 기록의 계열)로 보인다. 제외된 PR에는 기록이 무엇이든 외부 pass가 근거가 되지 않는다: Muse pass로 CLEARED였던 PR은 APPROACH로 돌아갔다. `findings`는 등급과 리뷰 글이 든 `review-findings` 막힘이 되어("DEEPSEEK 지적(Codex 한도, head abc1234, P0 0 · P1 1 · P2 0): …") TOWER가 Codex 지적처럼 CAPTAIN에게 전한다. 새 head는 새 리뷰가 필요하다. Codex가 돌아와 head를 리뷰하면(👍나 지적) Codex가 이긴다. `changes-requested`는 그대로 막는다.
 - guard와 settings를 바꾸므로 이 PR들은 `user` 등급이다.
@@ -384,6 +384,20 @@ Codex 한도 안내는 그것이 달린 PR의, 그 PR의 현재 head 뒤에 달�
 - **그대로.** 외부 리뷰 제외(FLIGHT 없음, rating:SEC·Risk, 비밀 경로, 보안 스위치)가 우선이다: 그런 PR은 `extReview: excluded`로 SUPERVISOR에게 간다. 리뷰 잇기(ATC-31)와 AUTOLAND의 재리뷰 요청(ATC-38)은 건드리지 않고, REVIEW와 그 guard도 그대로다.
 - **보이는 것.** 스트립과 블록 글에 "Codex 한도(저장소, 06:29Z~)"가 보이고, TOWER brief의 `landingQueue[].codex`에 `scope: "repo"`, `since`, `label`("Codex limit (repository, 06:29Z~)")이 실린다.
 - **만들지 않은 것:** 창보다 오래된 안내는 무시한다. 저장소별 스위치는 없다.
+
+### 조용한 리뷰 레인이 PR을 붙잡지 않는다 구현 내용 (ATC-386)
+
+착륙의 리뷰 레인은 둘이다: Codex(댓글·리뷰·👍)와 REVIEW(착륙 리뷰 세션). Codex가 저장소 전체에서 조용해도 PR마다 자기 head부터 6시간(`ATC_CODEX_SILENT_HOURS`)을 기다린 뒤에야 REVIEW가 맡았다. 이제 atc가 저장소마다 Codex가 조용한지 판단해서, 기다리는 PR과 새 head를 곧바로 REVIEW로 보낸다.
+
+- **규칙**(`laneStepOf`, 순수, `server/codex-lane.ts`). 저장소는 이럴 때 조용하다: 어떤 PR이 head(또는 생성) 뒤로 `ATC_CODEX_LANE_SILENT_MIN`분(기본 30)을 기다렸는데(Codex 신호를 읽은 열린 비 Draft PR) 그 PR에 Codex 신호가 없고, **또한** 그 PR이 기다리기 시작한 뒤로 저장소의 어느 PR에도 Codex 신호(리뷰·지적·👍·댓글, 한도 안내 포함)가 없다. 그 동안 다른 PR에 Codex가 말했다면 이 PR만 조용한 것이라 PR별 6시간 규칙이 맡는다. 열린 PR이 없는 저장소는 조용하다고 보지 않는다: 기다린 PR이 있어야 한다.
+- **효과**(`buildPulls`, `ext.lane`). 조용한 저장소에서 head 뒤에 Codex 신호가 없는 PR은 곧바로 `codexUnavailable: {why: "lane", since, scope: "repo"}`가 된다. REVIEW 대기열·AUTOLAND·스트립은 전처럼 `codexUnavailable`을 읽으므로 REVIEW가 리뷰하고 그 pass가 head의 리뷰다. Codex가 이미 답한 head는 보내지 않는다.
+- **유지와 복귀.** 상태는 `codex-lane.jsonl`에 추가만 하는 전이로 남는다(`silent`: 기다리던 PR 번호와 `since`, `speaks`). 저장소의 마지막 줄이 상태다. `since` 뒤 저장소 어디에든 Codex 신호가 오기 전까지 새 head도 조용한 채로 REVIEW로 가고, 신호가 오면 `speaks`를 적고 새 head는 다시 Codex로 간다. 이미 REVIEW가 있는 head는 REVIEW에 남는다(기존 규칙).
+- **제외는 그대로.** `codexUnavailable`은 "Codex를 쓸 수 없다"만 뜻하고, REVIEW가 받지 않는 것은 기존 gate가 정한다. 비밀·키 경로, FLIGHT 없음, `rating:SEC`·Risk 라벨은 `excluded`로 남고, 보안 경로·키워드는 `externalReview.security`가 꺼져 있는 동안 제외다. 그런 PR은 전처럼 SUPERVISOR에게 간다.
+- **센다.** REVIEW 한 레인만으로 CLEARED가 되면(`codexUnavailable`이 있고 REVIEW의 pass가 그 head의 리뷰) `lanes.jsonl`에 한 줄(`repo`, `number`, `head`, `cause`: `lane`·`silent`·`limit`·`autoland`), PR·head마다 한 번. `GET /api/landing/lanes?days=N`이 착륙한 PR(MCC `land`, AUTOLAND `merge`, PR 서랍의 MERGE 버튼. 성공 기록만)과 이어 UTC 날짜별 `{landed, single, causes}`와 지금 조용한 저장소를 준다. DISPATCH 탭의 MISFIRE 옆 "한 레인 착륙"이 단일 레인 착륙이 있는 날을 보인다. GitHub에서 손으로 머지한 PR은 착륙 수에 들지 않는다.
+- **자율 규칙.** 한 리뷰 레인이 PR을 착륙시켜도 되는 때를 느슨하게 한다(K3, 원칙 5). SUPERVISOR가 릴리스 때 승인했다. REVIEW의 판정을 낮추지 않고(P0·P1은 그대로 막는다) 제외를 넓히지도 않는다.
+- **스위치**(ATC-393). `codex-lane.json`의 `auto`, 기본 `on`, SUPERVISOR 전용(설정 창 LANDING의 CODEX LANE, 선언은 `server/switches/codex-lane.ts`, [switches.md](switches.md)). `off`면 저장소 판단과 기록을 쉬고 지난 silent 상태도 쓰지 않아 PR마다 6시간 규칙만 남는다.
+- **범위**(ATC-393). 레인은 Codex를 쓰는 저장소에만 돈다. MCC AIRPORT의 저장소는 INSPECTION이 리뷰라서 뺀다. 한 레인 착륙 수는 AIRPORT·번호·head로 짝을 지어서, 다른 저장소의 같은 PR 번호가 한 레인 착륙으로 세어지지 않는다.
+- **만들지 않은 것:** 기다리는 시간은 고정 설정이고 배우지 않는다. 저장소가 조용해져도 DISPATCH 줄과 서버 로그(`[atc] codex lane`) 말고는 알리지 않는다.
 
 ### 9.3 Codex 지적의 등급: P3만 남은 head는 막지 않는다 (2026-09-27, ATC-28)
 
@@ -448,6 +462,8 @@ vocado `main`의 `strict` 때문에 머지가 있을 때마다 다른 열린 PR�
   - **Codex가 한도이거나 30분 안에 답이 없으면**(`escalateOf`): 그 head를 곧바로 REVIEW(DeepSeek) 대기열로 넘긴다(`buildPulls`의 `fastTrack`, `codexUnavailable.why = "autoland"`, "AUTOLAND 재리뷰 — Codex 30분 무응답"). head 뒤에 Codex가 이미 답했으면 넘기지 않는다.
   - ATC-27·30은 그대로다: `buildPulls`가 지금 스위치로 외부 리뷰 제외를 다시 본다. 제외 PR은 대기열에 넣지 않고, 스트립에 "AUTOLAND: SUPERVISOR 리뷰 필요 — 외부 리뷰 제외(migrations)"로 보인다.
   - head마다 한 번(`autoland-state.json`의 `reviewRequests`). 기록은 `op: "review-request"`에 `via`(`codex`, `deepseek`, `supervisor`). 리뷰가 붙을 때까지 스트립에 "AUTOLAND: review requested (codex|deepseek)"가 보인다. AUTOLAND가 `update`나 `merge`이고 그 AIRPORT가 GROUND STOP이 아닐 때만 한다.
+
+- **자동 revert (ATC-351)**: `autoRevert` 스위치가 `on`이고(설정 창, **기본 on**, ATC-394) 실패한 체크를 같은 head에서 다시 돌려도 빨갛고 그 PR 자신의 head가 초록이었으면 AUTOLAND가 머지해 `main`을 빨갛게 만든 머지의 revert PR이 열리고, AUTOLAND는 GROUND STOP이 걸린 중에도 그 PR을 머지한다(나가는 길이라서. 리뷰·CI·제외 목록은 그대로고 FLIGHT는 없어도 된다). 걸린 stop은 다음 head가 초록이면 atc가 푼다. 마이그레이션·`user` 등급 경로를 고친 PR과 사람의 머지는 자동으로 되돌리지 않는다(`hold` 줄, DUTY가 본다). 1시간 안에 새 빨간 head가 둘이면 AUTOLAND `merge`를 `update`로 내리고 SUPERVISOR가 스위치를 다시 고를 때까지 레인이 멈춘다. 규칙 전체: [autonomy.ko.md](autonomy.ko.md) "C4 구현 결과".
 
 #### 머지 리뷰: atc에 기록한 리뷰가 착륙 리뷰다 (ATC-328)
 
@@ -546,6 +562,8 @@ S2는 구현돼 있고 SCHEDULE `mode`(`~/.local/state/atc/schedule.json`, 기�
 승인되거나 release됐는데 3일 안에 적용되지 않은 작업은 만료된다. 호출은 계획 필드만 건드린다: 라벨, 우선순위, 새 이슈의 제목·본문·프로젝트·관계, 댓글. 상태나 담당자는 절대 아니다.
 
 ## CROSSCHECK
+
+> **은퇴(ATC-371).** CROSSCHECK 세션은 더 띄우거나 살려 두거나 재시작하지 않고, 서버의 어떤 규칙도 그 mark를 기다리지 않는다. 이 절은 있던 그대로의 역할을 기록으로 남긴 것이고, 옛 mark는 읽힌다.
 
 그림자 판정(DISPATCH 제안과 SCHEDULE 초안)은 SUPERVISOR가 하나씩 정하므로 부담이 크다. 판정을 모델에 넘기면 게이트(판정 20건, 80%)가 모델 둘이 서로 맞는지를 재게 되고, 그건 아무 뜻이 없다. 그래서 일을 나눈다.
 

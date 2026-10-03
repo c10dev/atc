@@ -1,6 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { Snapshot } from "../../server/model.ts";
-import type { ServerSettings, SettingsErrors, SettingsPatch } from "../../server/settings.ts";
+import type { ServerSettings, SettingsErrors, SettingsPatch, SwitchPatchBody } from "../../server/settings.ts";
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import { apiGet, apiSend } from "./api.ts";
@@ -10,7 +10,7 @@ import { apiGet, apiSend } from "./api.ts";
 
 export type Loaded = { state: "loading" } | { state: "error" } | { state: "ready"; data: ServerSettings };
 export type SaveResult = { ok: true } | { ok: false; error: string };
-export type Save = (patch: SettingsPatch) => Promise<SaveResult>;
+export type Save = (patch: SettingsPatch | SwitchPatchBody) => Promise<SaveResult>;
 
 export function useServerSettings(): { server: Loaded; save: Save } {
   const [server, setServer] = useState<Loaded>({ state: "loading" });
@@ -130,7 +130,7 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
 
       <Block code="CONTROL" label="관제 세션(ATC-130)">
         <p className="settings-hint">
-          관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>FLEET 탭 CONTROL SESSIONS</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
+          관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>아래 CONTROL 패널</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
         </p>
       </Block>
 

@@ -33,14 +33,6 @@
   min-width: 96px;
   color: var(--muted);
 }
-.fl-chip {
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font: 600 var(--text-xs) var(--mono);
-  letter-spacing: 0.08em;
-}
 
 .fl-line,
 .fl-note {
@@ -58,22 +50,13 @@
   margin-top: auto;
   padding-top: var(--space-2);
 }
-.fl-btn {
-  height: 28px;
-  padding: 0 var(--space-3);
-  background: transparent; /* 카드와 같다: 투명 바탕, 1px line-strong 테두리(ATC-317) */
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font: 600 var(--text-sm) var(--sans);
-  cursor: pointer;
-}
-.fl-btn:hover {
-  background: var(--panel-3);
-}
-.fl-btn.primary {
-  border-color: var(--radar);
-  color: var(--radar);
+/* 공용 .btn(30px)을 FLEET 화면 안에서는 옆의 입력(.fl-input 28px)과 같은 키로 둔다 */
+.fleet .btn,
+.fp .btn,
+.cr .btn,
+.fc-change .btn,
+.fl-control .btn {
+  --btn-h: 28px;
 }
 .fl-check {
   display: flex;
@@ -112,7 +95,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--amber);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .fl-entry .label,
 .fl-briefing .label,
@@ -159,9 +142,6 @@
   font: var(--text-sm) / 1.5 var(--mono);
   resize: vertical;
 }
-.fl-btn.danger {
-  color: var(--alert);
-}
 .fl-actions {
   flex-wrap: wrap;
 }
@@ -195,7 +175,7 @@
 }
 .fl-layout-btn {
   height: 26px;
-  padding: 0 var(--space-2-5, var(--space-3));
+  padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -354,6 +334,26 @@
   border-radius: var(--radius-sm);
   color: var(--muted);
   font: 400 var(--text-xs) var(--sans);
+}
+/* AIRCRAFT POLICY(ATC-369): PENDING 수(0이 정상)와 policy hook이 거절한 class. PENDING은 사람의 결정을 기다림이라 --alert가 아니라 --blue */
+.fl-policy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+.fl-la-chip.is-warn {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.fl-policy-class {
+  color: var(--muted);
+}
+.fl-policy-class b {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* CONTROL SESSIONS 일괄 동작(ATC-255). 색·글꼴·간격은 :root 토큰만 */

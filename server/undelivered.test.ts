@@ -56,14 +56,14 @@ test("undelivered: sent를 approved로 돌린다. 승인 시각은 지키고 SUP
   assert.equal(p!.timeline.approved, iso("06:01:00")); // 승인 시각은 그대로
   assert.equal(p!.timeline.sent, undefined);
   assert.equal(p!.message, null);
-  assert.deepEqual(p!.undelivered, { at: iso("06:03:00"), reason: "no such session", n: 1 });
+  assert.deepEqual(p!.undelivered, { at: iso("06:03:00"), reason: "no such session", n: 1, cause: "absent" });
   assert.deepEqual(humanOf(p!), decided); // 사람 판정(승인)은 그대로, 새 판정이 아니다
   assert.equal(p!.decidedAt, before.decidedAt);
   // 다음 release가 다시 send할 수 있다
   assert.equal(canApply(p!, "send"), true);
   const [again] = fold([...sentOps, undelivered("06:03:00"), { op: "send", id: "D-0001", at: iso("06:10:00"), message: "m2" }, undelivered("06:11:00", "again")]);
   assert.equal(again!.status, "approved");
-  assert.deepEqual(again!.undelivered, { at: iso("06:11:00"), reason: "again", n: 2 });
+  assert.deepEqual(again!.undelivered, { at: iso("06:11:00"), reason: "again", n: 2, cause: "other" });
 });
 
 test("undelivered: sent가 아니면 아무것도 바꾸지 않는다", () => {

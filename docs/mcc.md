@@ -27,7 +27,7 @@ Read on 2026-09-28 from GitHub (read-only REST), the running atc (`/api/snapshot
 ## 2. Principles
 
 1. **Mechanics in the server, judgment in the session.** As with TOWER and OCC, the server decides what is allowed and does every write (merge, RETURN TO SERVICE). The MCC session reads, judges, and asks the server through `atcctl`. It never gets a raw `gh pr merge`, `git` or `systemctl`.
-2. **The tiers don't move.** MCC lands only `auto` and `flagged` PRs, exactly what `structure` may land today. `user` PRs stay with the user. MCC can raise a PR to `user` (a doubt, a change to the operating-state format, something hard to revert); it can never lower one.
+2. **The tiers don't move.** MCC lands `auto` and `flagged` PRs, exactly what `structure` may land today. `user` PRs stay with the user, except one built within the K3 effects the SUPERVISOR approved at release (ATC-391: the server checks the release record, its channel and the declared files; switch `mcc.json` `kApproval`, on by default). MCC can raise a PR to `user` (a doubt, a change to the operating-state format, something hard to revert); it can never lower one.
 3. **Head-pinned.** A review, a landing and a RETURN TO SERVICE each name a commit. If the head or `origin/main` moved, the step is refused and redone on the next pass.
 4. **Shadow before action** ([atfm.md](atfm.md) principle 1). MCC starts by recording what it would do next to what `structure` and the user actually do. The SUPERVISOR switches it on after the shadow record meets the gate.
 5. **Service first.** A RETURN TO SERVICE that fails its health check rolls back to the previous commit by itself and turns RETURN TO SERVICE off until the SUPERVISOR turns it back on.
@@ -50,6 +50,7 @@ Landing itself keeps the existing words: CLEARED TO LAND, LANDING, ARRIVED.
 1. `atcctl manual check`: reread the manual if it changed.
 2. `atcctl mcc queue`: open atc PRs with head, tier and its reasons, CI `check` on the head, merge state, INSPECTION on the head, holds; plus the commit in service against `origin/main`.
 3. For each PR without an INSPECTION on its head (oldest first, at most 3 a pass): call the `inspector` sub-agent with the PR number and head (section 8.2). It reads the packet (`atcctl mcc packet <PR>`: PR body, changed files, diff, tier reasons, the ATC issue's goal and exit criteria when the branch or body names one) in a fresh context and returns the verdict. MCC copies it into `atcctl mcc inspect <PR> --head <sha> --verdict pass|findings -- '<text>'`, or `atcctl mcc escalate <PR> -- '<reason>'`. MCC reads no packet or diff itself.
+   An ESCALATE also stands for the INSPECTION of the head it was recorded on (ATC-390). When `COUNTS` has no P0 or P1, the server counts that head as a `pass` (`reviewOfHead`, `server/mcc.ts`), so the PR is no longer "waiting for the MCC INSPECTION": it becomes CLEARED, shows as LANDING in the SUPERVISOR QUEUE and as a MERGE button in the PR drawer, and the leak counter counts it (`landWhy: escalate`). When there is a P0 or P1, MCC also records a `findings` INSPECTION on the same head; it comes first, so the PR shows its findings and gets a FIX like any other PR. The ESCALATE stays on the PR when the head moves, but the new head is not inspected until MCC does it: the `mcc queue` shows no INSPECTION for it, and the next pass calls the inspector again. Nothing changes in who merges: the SUPERVISOR still merges an escalated PR.
 4. For each PR the server reports as landable: `atcctl mcc land <PR> --head <sha>`.
 5. If `origin/main` is ahead of the commit in service and its CI passed: `atcctl mcc rts`.
 6. Report to the SUPERVISOR in its own session: each LANDED PR with its tier (for `flagged`, the control rules that changed), each RTS with the commit, each ROLLBACK and ESCALATE with the reason.
@@ -68,6 +69,7 @@ CI already runs tests, types and the build. The INSPECTION is what CI can't see,
 - Nothing from vocado's internals, no secrets, no screenshots (public repository).
 - Records stay append-only JSONL and settings stay atomically written JSON. A change to an operating-state format → ESCALATE.
 - The change does what the PR body and the ATC issue say, and nothing else.
+- A PR the SUPERVISOR approves (tier `user` or ESCALATE) has a "Behavior change" section: one text before/after diagram, or `Behavior change: none` (ATC-360). A missing section, a diagram that contradicts the diff, or `none` on a PR whose diff changes behaviour is P1.
 
 `findings` blocks the landing until a new head passes. The server also posts them as a PR comment (`**MCC INSPECTION — findings** …`), in every mode including shadow, so the author sees them on the PR as well as on the atc screen. A comment is information; it merges and deploys nothing. MCC doesn't message team sessions.
 
@@ -81,7 +83,7 @@ If the packet's diff was cut (`diffTruncated`), MCC writes what it read and does
 |---|---|
 | L1 | MCC mode is `land` or `land+rts` (in `shadow` and `rts` the server records `would-land` instead) |
 | L2 | The PR is open, not a Draft, based on `main`, its head is `head`, and it comes from a branch of this repository, not a fork (atc is public) |
-| L3 | Tier from the changed files (`deploy/landing-tier.mjs` `tierOf`) is `auto` or `flagged`, and MCC has not ESCALATEd it |
+| L3 | Tier from the changed files (`deploy/landing-tier.mjs` `tierOf`) is `auto` or `flagged`, and MCC has not ESCALATEd it. A `user`-tier PR passes L3 when it is within the K3 effects the SUPERVISOR approved at release (`kApproval.ok`, [autonomy.md](autonomy.md) "K approval reaches landing"); an ESCALATE is never lifted |
 | L4 | CI `check` on `head` succeeded |
 | L5 | GitHub merge state is clean (no conflict, not behind a required check) |
 | L6 | An INSPECTION `pass` on `head` |
@@ -224,10 +226,14 @@ A fourth MCC mode, `rts`: the SUPERVISOR merges atc PRs by hand, and the atc ser
 - **ROLLBACK** stops the server's RTS like MCC's, until the SUPERVISOR picks the MCC mode again.
 - PILOT'S DISCRETION: the pass runs every 30 s (the snapshot refreshes about every 20 s); after a `refused` RTS the server does not retry the same `main` (the refusal needs a person); `rts` mode's `would-land` records use `detail: "rts"`; root `CLAUDE.md` is `user` tier and is not changed here (it describes `land+rts`, the mode in use).
 
+### Auto-revert and the MCC AIRPORT as built (ATC-351)
+
+When a merge MCC made turns the default branch red, the auto-revert lane ([autonomy.md](autonomy.md), "C4 as built") may open a revert PR (switch `autoRevert`, on by default since ATC-394; the failing check is re-run once first, see "C4 as built"). The revert PR is judged like any PR (L2 to L8). The one change: `landBlocksOf` gets `groundStop: null` for it when the stop is the ATFM `main-broken` trigger, the lane is `on` and the PR is a revert PR atc opened (branch `revert-<n>-...` and a line in `auto-revert.jsonl`); every other GROUND STOP trigger and every other condition still blocks it. A revert PR that changes a `user`-tier path is never opened (K3 `hold`), so the `user` tier still means the SUPERVISOR merges. The breaker lowers MCC landing (`land` to `shadow`, `land+rts` to `rts`) through `setMccMode`, which writes the usual `mode` record, and only the SUPERVISOR raises it again.
+
 ## 7. Records and switches
 
-- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers). It is changed only from the settings window (AUTOMATION tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
-- `~/.local/state/atc/mcc.jsonl` (append-only): `inspect` (PR, head, verdict, text, model), `escalate`, `land` / `would-land` (PR, head, tier, result), `mode`.
+- `~/.local/state/atc/mcc.json` (atomic): `mode` `shadow` (default) | `land` | `land+rts` | `rts`, `holds` (PR numbers), `kApproval` `on` (default) | `off` (ATC-391: whether MCC lands a `user`-tier PR built within the K3 effects approved at release). It is changed only from the settings window (AUTOMATION tab, MCC row), like AUTOLAND. `atcctl` has no command for it.
+- `~/.local/state/atc/mcc.jsonl` (append-only): `inspect` (PR, head, verdict, text, model), `escalate`, `land` / `would-land` (PR, head, tier, result, and for a K-approved `user` landing `k: {release, flight, channel}`), `mode`.
 - `~/.local/state/atc/rts.jsonl` (append-only), written by `deploy/rts.mjs`.
 - Every MCC write (`inspect`, `escalate`, `land`, `rts`) must carry a model named in `MCC_MODELS`. As with CROSSCHECK, the MCC guard reads the model from the session transcript and passes it as `ATC_MCC_MODEL`; `atcctl mcc` sends it. The TOWER and OCC guards let any `atcctl` command through but never set it, so an `atcctl mcc` write from those sessions is refused by the server.
 

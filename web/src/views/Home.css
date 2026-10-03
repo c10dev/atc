@@ -1,0 +1,27 @@
+/* HOME(ATC-377, ATC-422): 읽는 칸. 폭 880px쯤을 화면 가운데에 둔다(design-language 원칙 8의 예외, SUPERVISOR 결정 2026-10-03).
+   할 일 줄 자체의 모양은 kit/TodoRow.css 몫이고, 여기는 칸과 목록 자리만 정한다. 색·글꼴은 :root 토큰만 */
+.home {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+.home-list {
+  display: grid;
+  gap: var(--space-1);
+}
+.home-rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-empty {
+  margin: 0;
+}
+.home-need {
+  margin: 0;
+  color: var(--text);
+}

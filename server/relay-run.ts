@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { accountFolders, folderOfAccount } from "./accounts.ts";
+import { causeOf } from "./address.ts";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { loadFleet } from "./fleet.ts";
@@ -37,7 +38,7 @@ export function readRelayOps(file = FILE()): RelayOp[] {
   return ops;
 }
 
-function append(op: RelayOp, file = FILE()) {
+export function append(op: RelayOp, file = FILE()) {
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, JSON.stringify(op) + "\n");
   bustQueue(); // 손으로 전하는 카드가 곧바로 뜨고 사라진다
@@ -78,11 +79,11 @@ export function mountRelay(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     const id = nextRelayId(ops);
     const target = liveSessionOf(s.sessions, input.to);
     const tower = liveSessionOf(s.sessions, "TOWER");
-    append({ op: "create", id, at, ...input });
+    append({ op: "create", id, at, ...input, ...(target ? { toSessionId: target.id, ...(target.jobId ? { toJobId: target.jobId } : {}), ...(target.account ? { toAccount: target.account } : {}) } : {}) });
     record({ t: at, kind: "relay", op: "create", id, by: "supervisor", to: input.to, relayKind: input.kind, flight: input.flight, ...(input.type ? { type: input.type, stand: input.stand ?? null } : {}) });
     const why = unreachableWhy(target, tower);
     if (why) {
-      append({ op: "undeliverable", id, at, reason: why });
+      append({ op: "undeliverable", id, at, reason: why, cause: causeOf(why) });
       record({ t: at, kind: "relay", op: "undeliverable", id, by: "atc", reason: why });
     }
     return c.json({ relay: allRelays().find((r) => r.id === id) });
@@ -120,7 +121,7 @@ export function mountRelay(app: Hono, getSnapshot: () => Promise<Snapshot>) {
     if (!reason) return c.json({ error: "undeliverable에는 사유(reason)가 필요함" }, 400);
     if (reason.length > 300) return c.json({ error: "사유는 300자 이내" }, 400);
     const at = new Date().toISOString();
-    append({ op: "undeliverable", id, at, reason });
+    append({ op: "undeliverable", id, at, reason, cause: causeOf(reason, typeof body.cause === "string" ? body.cause : null) });
     record({ t: at, kind: "relay", op: "undeliverable", id, by: "TOWER", reason });
     return c.json({ relay: allRelays().find((x) => x.id === id) });
   });

@@ -1,0 +1,42 @@
+/* 마지막으로 본 뒤 한 줄(ATC-383). 중립 색만 쓴다: 숫자는 굵기로만 눈에 띈다(원칙 1·3) */
+.since-look {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.since-look-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.since-look-label {
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.since-look-chip b {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.since-look-chip.is-waiting b {
+  text-decoration: underline;
+}
+.since-look-seen {
+  margin-left: auto;
+  color: var(--faint);
+}
+.since-look-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  font-family: var(--mono);
+}
+.since-look-list.is-wide {
+  flex-direction: column;
+  font-family: var(--sans);
+}

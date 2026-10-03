@@ -16,7 +16,11 @@ import { type Index, occupantsOf, timeAgo } from "../derive.ts";
 import { formatClock, type Settings, updateSettings, useSettings } from "../settings.ts";
 import { SplitFlap } from "../SplitFlap.tsx";
 import { useMilestones } from "../useMilestones.ts";
-import { AirportCode, PriorityMark, SessionBadge } from "../ui.tsx";
+import { AirportCode, PriorityMark, SessionBadge } from "../badges.tsx";
+import { Empty } from "../kit/Empty.tsx";
+import { Segmented } from "../kit/Segmented.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
+import "./Tickets.css";
 
 // DEPARTURES 순서: 곧 LANDING할 FLIGHT가 위로
 const LIST_ORDER: PhaseTone[] = ["cleared", "approach", "enroute", "filed", "triage", "scheduled", "arrived", "canceled"];
@@ -116,7 +120,7 @@ function ViewOptions({ settings }: { settings: Settings }) {
   return (
     <div className="view-options" ref={ref}>
       <button
-        className="icon-button"
+        className="btn icon-button"
         aria-label="표시 옵션"
         title="표시 옵션"
         aria-expanded={open}
@@ -127,19 +131,16 @@ function ViewOptions({ settings }: { settings: Settings }) {
       </button>
       {open && (
         <div className="view-menu" role="dialog" aria-label="표시 옵션">
-          <div className="view-switch" role="radiogroup" aria-label="보기">
-            {(
-              [
-                ["list", "List", <ListIcon key="i" />],
-                ["board", "Board", <BoardIcon key="i" />],
-              ] as const
-            ).map(([id, label, icon]) => (
-              <button key={id} role="radio" aria-checked={settings.fidsView === id} onClick={() => updateSettings({ fidsView: id })}>
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            className="view-switch"
+            label="보기"
+            value={settings.fidsView}
+            options={[
+              ["list", <><ListIcon />List</>],
+              ["board", <><BoardIcon />Board</>],
+            ]}
+            onChange={(fidsView) => updateSettings({ fidsView })}
+          />
           <p className="view-menu-hint">
             {settings.fidsView === "list" ? "DEPARTURES 안내판처럼 한 줄에 FLIGHT 하나, 곧 LANDING할 FLIGHT부터" : "비행 단계별 열"}
           </p>
@@ -172,8 +173,8 @@ function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups
           <SplitFlap bare text={formatClock(now, clock)} />
         </span>
       </header>
-      <div className="fids-table-wrap">
-        <table className="fids-table">
+      <TableScroll label="FIDS 표">
+        <table className="kit-table fids-table">
           <thead>
             <tr>
               <th className="col-time">
@@ -218,8 +219,8 @@ function DepartureBoard({ groups, total, idx, clock, now, milestones }: { groups
             </tbody>
           ))}
         </table>
-        {total === 0 && <p className="empty fids-empty">표시할 편이 없음</p>}
-      </div>
+        {total === 0 && <Empty className="fids-empty">표시할 편이 없음</Empty>}
+      </TableScroll>
     </div>
   );
 }
@@ -232,6 +233,8 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
   const noContact = alerts.some((a) => a.kind === "no-workspace");
   const tone = phaseTone(t);
   const stand = workspaces[0];
+  // OOOI는 title에만 두지 않는다(원칙 11): OUT 시각과 되돌림을 REMARKS에 보인다
+  const reverted = milestones?.reverted ? ` #${milestones.reverted.number}` : "";
   return (
     <tr className={`fids-row tone-${tone}${occupants.length ? " is-occupied" : ""}`} title={latest ? milestoneTitle(milestones, (iso) => formatClock(iso, clock)) : undefined}>
       <td className="col-time mono">
@@ -266,7 +269,7 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
         <PriorityMark priority={t.priority} />
       </td>
       <td className="col-age mono">{shortAge(t.updatedAt, now)}</td>
-      <td className={`fids-remark${latest || noContact ? " has-extra" : ""}`}>
+      <td className={`fids-remark${latest || noContact || milestones?.reverted ? " has-extra" : ""}`}>
         <span className="remark">
           <SplitFlap bare text={flightPhase(t)} />
         </span>
@@ -275,8 +278,10 @@ function DepartureRow({ ticket: t, idx, clock, now, milestones }: { ticket: Tick
             {latest.name.toUpperCase()} {formatClock(latest.at, clock)}
           </span>
         )}
+        {latest?.name !== "out" && milestones?.out && <span className="remark-ms mono">OUT {formatClock(milestones.out, clock)}</span>}
+        {milestones?.reverted && <span className="remark-rev">PR 되돌림{reverted}</span>}
         {noContact && (
-          <span className="code-chip alert-no-workspace" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
+          <span className="tag code-chip alert-no-workspace" data-tone="inherit" title={alertMessage(alerts.find((a) => a.kind === "no-workspace")!, (id) => id)}>
             NO CONTACT
           </span>
         )}
@@ -329,7 +334,7 @@ function TicketCard({ ticket: t, idx }: { ticket: Ticket; idx: Index }) {
       )}
       {alerts.map((a) => (
         <div key={a.kind} className={`ticket-alert alert-${a.kind}`}>
-          <span className="code-chip">{alertCode[a.kind]}</span>
+          <span className="tag code-chip" data-tone="inherit">{alertCode[a.kind]}</span>
           {alertLabel[a.kind]} · {alertMessage(a, (id) => callsign(idx.sessionById.get(id) ?? { name: id }))}
         </div>
       ))}

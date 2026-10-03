@@ -40,6 +40,7 @@ CI (`check`) already runs tests, types and the build. Look for what CI cannot se
 - Public repository: no vocado internals, secrets or screenshots.
 - Records stay append-only JSONL and settings/registries atomically written JSON. A change to an operating-state format, or anything hard to revert, is ESCALATE. A doubt that review leaves is also ESCALATE. So is a change that turns on a new automatic action over the deploy path or operating state the moment it deploys, under the switch settings already in use (for example a server timer that starts RTS when `mcc.json` is already `land+rts`): the SUPERVISOR should choose when that goes live.
 - The PR does what its body and the ATC issue say, and nothing else.
+- Behavior diagram (ATC-360). If the PR needs the SUPERVISOR's approval (the packet says a changed file is tier `user`, or you are about to ESCALATE), its body must have a "Behavior change" section with one text before/after diagram (a code block with `BEFORE` and `AFTER` lines, or a mermaid `flowchart`), or the line `Behavior change: none`. A missing section is P1. A diagram that contradicts the diff is P1: say what the diff does that the diagram does not show or shows differently. `Behavior change: none` on a PR whose diff changes atc's behaviour is also P1. A PR of tier `auto` or `flagged` that is not escalated does not need one.
 
 Severity: P0 (must not merge), P1 (fix before merge), P2 (can wait). No P0 and no P1 means `pass`; otherwise `findings`. One line per finding: `P1 path:line — what is wrong and why`.
 
@@ -58,4 +59,4 @@ TEXT:
 <the INSPECTION text, at most 4000 characters, no single quote characters: PASS or FINDINGS, then the P lines, then "Scope read: ..." (which files you read line by line, which only by title) and the P2s>
 ```
 
-`escalate` means the PR should go to the user (tier `user`); fill `ESCALATE`. Use the head sha from the packet you read, not the one MCC gave you if they differ, and say so in TEXT.
+`escalate` means the PR should go to the user because of doubt (a state format, something hard to revert, a change that seems to go beyond what the FLIGHT declared); fill `ESCALATE`. Do not escalate for tier `user` alone: the packet's `kApproval` says whether the SUPERVISOR already approved these K effects at release (`ok: true`), and the server, not you, decides who lands (ATC-391). Use the head sha from the packet you read, not the one MCC gave you if they differ, and say so in TEXT.

@@ -38,6 +38,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - `approve Entering worktree`로 멈추면 `STAND outside .claude/worktrees — attach and approve; see CREW BRIEFING`이 같이 보인다. 팀이 `.claude/worktrees/` 밖으로 워크트리를 열려 한 것이다. `claude attach`로 붙어 승인하면 이어 간다. atc가 띄운 팀의 CREW BRIEFING에는 STAND를 `EnterWorktree name=…`으로 열라는 규칙이 들어 있어 보통은 멈추지 않는다.
 - 답을 받으면 세션이 `working`이 되어 표시와 경보가 저절로 사라진다. 이때는 흐린 글씨로 세션이 하는 일이 보인다.
 - **승인 프롬프트에 서 있는 세션**은 Claude Code가 `working`으로 적고 `needs`에 `approve Write: …`를 함께 적는다(`blocked`가 아니다). 이때는 `NEEDS YOU`가 아니라 `PENDING · approve Write: …`(파란색)가 줄·카드(경보 띠)에 붙고, 10분이 지나면 SUPERVISOR 알림이 CAUTION으로 오른다. 그 세션에게 가는 호출이 답을 못 받고 있으면 바로 오르고 글에 `1 call waiting (FLIGHT PLAN D-0336)`처럼 적힌다. 승인은 늘 SUPERVISOR가 그 세션에서 한다. atc는 아무것도 보내지 않는다.
+- **AIRCRAFT는 사람에게 도구 승인을 묻지 않는다**(ATC-369). atc가 띄우는 AIRCRAFT에는 policy hook이 실려, 프롬프트가 뜰 호출을 hook이 정한다: STAND 안의 알려진 안전한 동작은 허용, 나머지(Claude 설정 폴더 쓰기, STAND 밖 쓰기, 운영 상태 …)는 거절하고 class별로 센다. FLEET 머리에 `PENDING 0 · DENIED 24h n · STALE STOP on`이 보이고, PENDING이 0이 아니면 파랗게 바뀐다. 또 FLIGHT가 머지·ARRIVED인데 PENDING·HUNG으로 30분 남은 AIRCRAFT는 서버가 멈춘다(기본 on, 끄는 곳은 설정 → OPERATIONS → STALE STOP, 당신만). 카드의 job 한 줄은 `… · last known, 17 h ago`처럼 나이와 함께 보인다.
 
 **관제 세션은 이 상태로 끝나면 안 됩니다.** TOWER·OCC·MCC·CROSSCHECK·DUTY는 사람의 결정이 필요하면 `blocked`로 멈추지 않고 SUPERVISOR QUEUE에 **DECISION 카드**를 올린 뒤 하던 일을 계속합니다(카드는 아래 QUEUE에서 선택지를 눌러 답합니다. 답은 그 세션의 다음 tick으로 갑니다). 그래도 `blocked`로 기다리는 관제 세션이 있으면 NEEDS YOU가 아니라 ALERTS의 **WARNING** `RULE BREACH — 관제 세션 …`으로 뜹니다. 규칙을 어긴 것이니, 세션을 다시 돌려 규칙을 읽히면 됩니다.
 
@@ -87,6 +88,7 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **LOGIN: 화면에서 로그인.** NOT LOGGED IN인 등록 폴더 줄에 **LOGIN** 버튼이 있다. 누르면 atc가 그 폴더로 `claude auth login`을 띄우고 로그인 링크를 보인다. 링크를 열어 그 계정으로 로그인하고, 페이지에 나온 코드를 칸에 붙여 넣고 **확인**을 누른다(10분 안). 로그인되면 atc가 그 폴더의 첫 실행 화면과 AIRPORT 폴더 신뢰도 표시해 두므로 터미널에서 할 일이 없다. 코드는 atc가 그 프로세스에만 넘기고 남기지 않는다. `~/.claude`와 이미 로그인된 폴더에는 버튼이 없다. 터미널로 로그인했다면(`CLAUDE_CONFIG_DIR=… claude auth login --claudeai`) 그 폴더로 `claude`를 한 번 열어 첫 화면을 끝낸다.
 - **MEMORY: 계정 폴더끼리 memory 공유.** Claude Code의 memory는 폴더마다 따로라서, 새 계정 폴더의 세션은 `~/.claude` 세션이 쌓은 규칙과 교훈을 모른다. 폴더 줄의 `MEMORY shared ✓`·`MEMORY separate`·`MEMORY conflict`가 상태이고, **SHARE MEMORY**를 누르면 atc 체크아웃과 열린 AIRPORT의 memory 폴더를 `~/.claude` 것으로 잇는다(ADD ACCOUNT도 새 폴더에 같은 일을 한다). 빈 폴더만 바꾼다. 이미 파일이 든 폴더는 건드리지 않고 충돌로 두며 파일 이름만 보인다. 직접 합친 뒤 그 폴더를 치우고 다시 누른다. 내용은 atc가 열지 않는다.
 - **세션의 ACCOUNT는 찾은 곳으로 정한다.** 세션 파일이 `~/.claude-acct-1`에 있으면 그 세션은 `acct-1`이다. FUEL도 그 ACCOUNT의 한도로 센다.
+- **OCC와 ACCOUNT가 다른 AIRCRAFT는 DISPATCH가 고르지 않는다.** OCC의 FLIGHT PLAN은 같은 ACCOUNT의 세션에만 닿는다. 살아 있는 AIRCRAFT의 ACCOUNT가 OCC와 다르면(둘 다 알 때만) 계획에서 `ACCOUNT 불일치 — …`로 빠지고, 그 AIRCRAFT에 열려 있던 카드는 닫혀 FLIGHT가 다른 AIRCRAFT를 찾는다. 고치는 길은 사유에 있다: AIRCRAFT를 OCC의 ACCOUNT로 옮기거나(ACCOUNT CHANGE·APPLY NOW) OCC를 옮긴다. 카드를 닫는 것만 설정 → OPERATIONS의 **ACCOUNT RELEASE**로 끌 수 있다(끄면 카드는 이유를 보이며 기다린다). 닫은 수는 METRICS → MISFIRE에 있다.
 - **home과 다를 때.** AIRCRAFT 프로필의 ACCOUNT는 home으로 남는다. 세션이 다른 폴더에서 돌면 FLEET 줄과 카드에 `acct-1 (home acct-2)`로 보인다. 오류가 아니다.
 - **폴더마다 건강 표시.** 로그인했는지(`LOGGED IN`·방식만), settings에 atc statusline과 `claim`·`health` hook이 있는지 보인다. 빠진 것은 경고로만 나온다(`FUEL blind on acct-1`). 막지는 않는다.
 - **LAUNCH·STOP도 ACCOUNT별로.** LAUNCH의 ▾ 옵션에 **ACCOUNT** 고르개가 있다(기본은 그 AIRCRAFT의 home ACCOUNT). 로그인이 안 됐거나 FUEL이 hold 수준이거나 그 ACCOUNT의 세션 상한에 닿은 ACCOUNT는 사유와 함께 흐리게 보이고 고를 수 없다. STOP은 그 세션이 있는 폴더로 한다. 세션 상한은 기계 전체(`ATC_MAX_LAUNCHED`)에 더해 ACCOUNT마다 `상한` 칸에 정할 수 있다(비우면 없음).
@@ -106,9 +108,9 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **FUEL 블록과 카드**: `사용 82% · resets 21:00Z`(카드에서는 얇은 회색 막대와 `82%`, `resets 21:00Z`). 가장 많이 쓴 창(5시간·주간)에서 **쓴** 몫과 그 창이 풀리는 시각이다. 남은 몫이 아니다. 80 % 아래는 회색, 80 %부터 노랑, 95 %부터 빨강(카드의 막대도 같다). 마우스를 올리면 창마다의 값과, 어느 AIRCRAFT가 언제 적은 값인지 나온다.
 - **FLEET 줄**에는 이 숫자를 싣지 않는다(위 FOB가 줄의 연료다). 95 %(hold 수준)를 넘은 ACCOUNT의 AIRCRAFT에만 FLYING 칸에 `HOLD · FUEL (account pro-2) until 21:00Z` 표시가 붙는다. 배정이 막힌다는 표시다.
 - 같은 ACCOUNT의 AIRCRAFT는 같은 값을 보인다(가장 새로 적힌 값). ACCOUNT 라벨이 없으면 AIRCRAFT마다 자기 세션의 값만 보인다.
-- **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. FLEET 탭 CONTROL SESSIONS 구역에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
-- FLEET 탭의 **CONTROL** 그룹(AIRCRAFT 목록 아래 같은 표에 이어지는 둘째 그룹, 주소 `#fleet/control`)은 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)을 AIRCRAFT와 같은 줄로 보인다: STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`), FLYING(job이 적은 한 줄이나 NEEDS YOU), 경과(loop 주기), 마지막 활동, FOB, FUEL 14일. 모든 세션이 같은 사실(띄운 방식 `claude --bg`, permission mode, ACCOUNT, 모델)은 그룹 머리에 한 번만 적히고, 다른 세션 줄에만 칩이 붙는다. 줄을 누르면(키보드로도) LAUNCH·STOP, 폴더와 첫 메시지, `STALE n`, ACCOUNT 편집이 펼쳐지고, NEEDS YOU인 줄은 펼친 채 시작한다. FLEET가 보이는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다.
-- CONTROL 그룹 아래 **OTHER BACKGROUND SESSIONS** 그룹은 AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: `ENGINEERING-NIGHT`)을 보인다. 이 세션들도 백그라운드 세션 상한(`ATC_MAX_LAUNCHED`)의 자리를 쥐고, 세션마다 이름·폴더·상태·논 시간·job 한 줄과 **STOP**이 있다. 비어 있으면 그룹이 없다. STOP은 누를 때만 하고 atc가 스스로 멈추지 않는다. 상한 때문에 LAUNCH가 막히면 거절 글이 `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`처럼 누가 자리를 쥐었는지 적고, 그 밖의 세션이 120분 넘게 놀고 있으면 ADVISORY 알림 하나가 뜬다.
+- **관제 세션도 센다**: TOWER, OCC, CROSSCHECK, MCC, ENGINEERING도 같은 계정의 한도를 쓴다. 화면 아래 CONTROL 패널의 표에서 세션마다 **ACCOUNT**를 적어 둔다(AIRCRAFT와 같은 라벨 형식). 적지 않으면 라벨이 하나라도 있을 때 `default`로 센다. 관제 세션이 한도를 많이 써도 붙들리는 것은 같은 ACCOUNT의 AIRCRAFT뿐이고, 관제 세션은 멈추지 않는다.
+- 화면 아래 **CONTROL 패널**(접힌 한 줄 머리, 열면 표. 주소 `#fleet/control`이나 `#control`로도 열린다. FLEET에는 더 이상 없다)의 표는 관제 세션(TOWER·OCC·MCC·CROSSCHECK·REVIEW·ENGINEERING)을 AIRCRAFT와 같은 줄로 보인다: STATUS(`BUSY`·`IDLE`·`NEEDS YOU`·`NOT RUNNING`), FLYING(job이 적은 한 줄이나 NEEDS YOU), 경과(loop 주기), 마지막 활동, FOB, FUEL 14일. 모든 세션이 같은 사실(띄운 방식 `claude --bg`, permission mode, ACCOUNT, 모델)은 그룹 머리에 한 번만 적히고, 다른 세션 줄에만 칩이 붙는다. 줄을 누르면(키보드로도) LAUNCH·STOP, 폴더와 첫 메시지, `STALE n`, ACCOUNT 편집이 펼쳐지고, NEEDS YOU인 줄은 펼친 채 시작한다. 패널이 열려 있는 동안 1분에 한 번 다시 읽고, LAUNCH·STOP 뒤에는 곧장 읽는다. 백그라운드 세션 daemon이 atc 서비스 안에서 돌면 맨 위에 경고가 붙는다. 설정 창 AGENTS 탭에는 이리로 가는 안내 한 줄만 있다. 고른 세션의 최근 교신은 표 오른쪽(좁은 화면은 아래)에 보인다.
+- CONTROL 패널 표 아래 **OTHER BACKGROUND SESSIONS** 그룹은 AIRCRAFT도 관제 세션도 아닌 백그라운드 세션(예: `ENGINEERING-NIGHT`)을 보인다. 이 세션들도 백그라운드 세션 상한(`ATC_MAX_LAUNCHED`)의 자리를 쥐고, 세션마다 이름·폴더·상태·논 시간·job 한 줄과 **STOP**이 있다. 비어 있으면 그룹이 없다. STOP은 누를 때만 하고 atc가 스스로 멈추지 않는다. 상한 때문에 LAUNCH가 막히면 거절 글이 `AIRCRAFT 6 · 그 밖 1 (ENGINEERING-NIGHT, 6h idle)`처럼 누가 자리를 쥐었는지 적고, 그 밖의 세션이 120분 넘게 놀고 있으면 ADVISORY 알림 하나가 뜬다.
 - FLEET의 ACCOUNT 보기는 이 **FUEL** 블록 하나다(FLEET PLAN에는 같은 줄이 없다). hold 수준이 되면 그 옆에 `LAUNCH·ENTRY 제안 안 함`이 붙는다.
 - FLEET 탭의 **FUEL** 블록(AIRCRAFT 목록 아래)은 ACCOUNT마다 한 줄로 쓴 몫, AIRCRAFT, 그리고 따로 관제 세션을 보인다. 누가 그 계정을 쓰고 있는지 여기서 본다.
 - 80 %를 넘으면 TOWER가 SUPERVISOR에게 한 번 알리고(창마다 한 번), OCC는 그 AIRCRAFT가 쥔 FLIGHT의 FLIGHT FOLLOWING에 적는다. 팀에는 보내지 않는다.
@@ -150,11 +152,11 @@ LOGBOOK은 AIRCRAFT가 끝낸(ARRIVED) FLIGHT의 기록이다. atc가 10분마�
 
 | 줄 | 뜻 |
 |---|---|
-| 이번 주 `3` 목표 5 | 이번 주(월요일 0시부터) ARRIVED 수, 목표는 옆에. 목표보다 적으면 노란색 |
+| 이번 주 `3` 목표 5 · 14일 12 · 착륙 대기 중앙값 2h | 이번 주(월요일 0시부터) ARRIVED 수, 옆에 목표·최근 14일 ARRIVED 합·착륙 대기 중앙값(PR을 연 뒤 머지될 때까지, 정시율에는 넣지 않음). 목표보다 적으면 노란색 |
 | 정시 `67%` 목표 80% | 최근 14일 FLIGHT 중 팀 소요 시간이 기대치 안인 비율. 목표보다 낮으면 노란색 |
 | 되돌림 · LOS | 0보다 클 때만 줄로 나오고 빨간색이다 |
-| (마우스를 올리면) | 최근 14일 ARRIVED 수, 되돌림, LOS, 착륙 대기 중앙값 |
-| LOGBOOK | 접힌 줄에는 최근 14 FLIGHT의 띠. 펼치면 작은 표, 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 소요(모르면 `—`, 늦으면 노란색이고 마우스를 올리면 DELAYED, `+`착륙 대기), NET, 날짜. 숫자 칸은 오른쪽 맞춤. REVERTED·LOS는 빨간색. ON TIME 글자는 없다(툴팁에만). FLIGHT를 누르면 PR이 열린다 |
+| 이번 주·정시·되돌림·LOS 줄 | 세 줄이 같은 14일 글(`14일 12`, 되돌림, LOS)을 한 곳에 나눠 쓴다. FLIGHT 하나의 착륙 대기는 LOGBOOK 줄의 `+2h 대기`로 보인다 |
+| LOGBOOK | 접힌 줄에는 최근 14 FLIGHT의 띠. 펼치면 작은 표, 최근 FLIGHT 5건(더 있으면 `더 보기`): FLIGHT(AD HOC), PR 번호, 소요(모르면 `—`, 늦으면 노란색이고 `지연`이 붙고, 착륙 대기는 `+2h 대기`), NET, 날짜. 숫자 칸은 오른쪽 맞춤. REVERTED·LOS는 빨간색. ON TIME 글자는 없다(툴팁에만). FLIGHT를 누르면 PR이 열린다 |
 
 기대 block time은 `wake` 라벨이 있으면 L 60분 · M 4시간 · H 2일이다. 라벨이 없거나 J거나 AD HOC이면 같은 FLIGHT TYPE·WAKE로 끝난 다른 FLIGHT(3건 이상)의 중앙값과 비교하고, 모자라면 정시율에서 뺀다. 실적은 보여 주기만 하고 배정 점수에는 쓰지 않는다.
 
@@ -196,7 +198,7 @@ CREW 표의 두 표시:
 - 아직 운항 전인 AIRCRAFT는 CREW CHANGE 없이 CREW BRIEFING에 새 구성이 들어간다.
 - CAPTAIN이 SUPERVISOR가 읽는 글에 일본어를 쓰면 카드에 `LANGUAGE`가 뜨고 FLIGHT FOLLOWING에도 참고로 나온다(ATC-150). 새 CREW BRIEFING에는 "SUPERVISOR가 읽는 글은 한국어" 줄이 들어 있으니 그 세션에 다시 보내면 된다. atc가 대신 보내지는 않는다.
 
-기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 DISPATCH 탭 "2b 켜기 점검표"의 **CREW CHANGE 발부**와 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
+기록은 `~/.local/state/atc/crew-changes.jsonl`에 추가만 한다. 2b를 켜기 전에 CREW CHANGE가 발부되는지와, 배정 대상 AIRPORT마다 있는 **READBACK 규칙**(`[OCC CC-xxxx]` → `READBACK CC-xxxx`까지)을 확인한다.
 
 ## 새 팀 들이기
 
@@ -240,6 +242,8 @@ atc가 AIRCRAFT 세션을 직접 띄우고 멈춘다(2026-09-28부터). Claude C
 카드(와 PR 서랍)의 **RELAY…**는 SUPERVISOR가 AIRCRAFT에게 짧은 글을 보내는 길입니다. 글은 **영어**로 쓰고(세션끼리 주고받는 글은 영어입니다), 종류는 `INFO`(알림, ROGER로 답함)나 `INSTRUCTION`(지시, READBACK이나 UNABLE로 답함)입니다. **보내기…**를 누르면 받는 AIRCRAFT·종류·글을 한 번 더 보여 주고, **보내기 확인**을 눌러야 나갑니다. 글은 TOWER가 CLEARANCE로 **고치지 않고** 그대로 보냅니다(다음 tick에). PR 서랍의 RELAY…는 그 PR의 현재 head에 리뷰 지적이 있으면 FIX 글이 채워진 채로 열립니다. 카드의 RELAY…에서 **이슈 댓글 넣기**는 그 FLIGHT에 SUPERVISOR가 단 Linear 댓글을 글로 채웁니다(FLIGHT PLAN을 보낸 뒤 단 댓글을 전할 때). 닿지 못하면 DUTY 서랍의 QUEUE에 손으로 전하는 카드가 뜹니다([DUTY 채팅](duty.md)).
 
 STAND를 쥔 세션이 없는 PR에 GO AROUND나 FIX가 필요하면 TOWER가 보낼 곳이 없습니다. 이때는 QUEUE에 `RELAY` 줄이 하나 뜹니다(PR과 head마다 하나). 줄에는 TOWER의 글과 그 FLIGHT를 난 AIRCRAFT(제안, 다른 REGISTRATION으로 고칠 수 있음)가 있고, **RELAY…** → **보내기…** → **보내기 확인**으로 한 번 확인하면 TOWER가 그 글을 고치지 않고 `GO AROUND`나 `FIX` CLEARANCE로 그 PR의 STAND에 묶어 보냅니다. PR 서랍의 **RELAY…** 줄도 같은 글을 채워 줍니다. head가 바뀌거나 PR이 닫히거나 쥔 세션이 생기면 줄은 사라집니다.
+
+이 줄은 DISPATCH가 먼저 holder를 찾아 보고 받을 AIRCRAFT가 없을 때만 나옵니다(ATC-354). 그 FLIGHT를 난 AIRCRAFT가 놀고 있거나 TYPE RATING이 맞는 AIRCRAFT가 있으면, QUEUE의 PROPOSAL에 **PR HOLDER** 카드(보통의 ASSIGN)가 먼저 뜹니다. 승인하면 FLIGHT PLAN에 보류 중인 글이 실려 가고, 새 holder는 머지하지 않습니다. 서비스를 다시 띄운 직후 첫 DISPATCH 주기(최대 5분)가 지나기 전에는 `RELAY` 줄이 아직 없을 수 있습니다. PR HOLDER 카드는 새 일을 배정하기 전에 먼저 계획되어서, 놀고 있는 AIRCRAFT가 열린 PR을 먼저 받습니다(ATC-392). `RELAY` 줄은 받을 AIRCRAFT가 없을 때만 나오고, 줄에 이유가 적힙니다(그 AIRPORT에 AIRCRAFT가 없음, TYPE RATING이 없음, 한도·진행 중). 거절·UNABLE·RECALL로 끝난 카드는 30분 뒤 같은 head로 다시 제안되고, 한 head에서 3번 끝나면 `RELAY` 줄로 돌아옵니다. 승인한 카드는 다른 세션이 연 PR이어도 OCC가 확인을 기다리지 않고 보냅니다.
 
 ## FLEET PLAN: atc의 제안
 

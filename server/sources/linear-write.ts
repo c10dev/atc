@@ -1,7 +1,7 @@
 import { config } from "../config.ts";
 import type { MoveIssue } from "../flight-state.ts";
 
-// Linear에 쓰는 유일한 파일(외부 부작용). G3: 이슈 하나의 상태를 옮긴다(부르는 곳은 flight-state-run.ts의 SUPERVISOR 클릭 하나). D7a: DUTY의 이슈 만들기·고치기·댓글(duty-l1-run.ts).
+// Linear에 쓰는 유일한 파일(외부 부작용). G3: 이슈 하나의 상태를 옮긴다(부르는 곳은 flight-state-run.ts의 SUPERVISOR 클릭 하나). D7a: DUTY의 이슈 만들기·고치기·댓글(duty-l1-run.ts. ATC-401: 제안 버리기의 사유 댓글과 이슈 읽기도 SUPERVISOR 클릭 하나로 release-run.ts가 부른다).
 // 다른 source 파일(linear.ts, linear-labels.ts, linear-projects.ts)은 query만 한다. 토큰은 서버 안에만 있고 화면으로 나가지 않는다.
 const ENDPOINT = "https://api.linear.app/graphql";
 
@@ -79,8 +79,9 @@ export interface DutyTeam {
   states: { id: string; name: string; type: string }[];
   labels: { id: string; name: string }[];
 }
-const TEAM_QUERY = `query DutyTeam($key: String!) {
-  teams(filter: { key: { eq: $key } }) { nodes { id key states(first: 30) { nodes { id name type } } labels(first: 250) { nodes { id name } } } }
+// teams에는 first를 준다(ATC-400): 생략하면 Linear가 기본 50개로 곱해 states·labels(250)와 곱한 값이 복잡도 한도(10000)를 넘어 "Query too complex"로 거절된다. 팀 하나만 읽는다
+export const TEAM_QUERY = `query DutyTeam($key: String!) {
+  teams(first: 1, filter: { key: { eq: $key } }) { nodes { id key states(first: 30) { nodes { id name type } } labels(first: 250) { nodes { id name } } } }
   issueLabels(first: 250, filter: { team: { null: true } }) { nodes { id name } }
 }`;
 // ATC 팀의 id·상태·라벨(팀 라벨과 워크스페이스 라벨). 없으면 null
@@ -135,6 +136,16 @@ export async function createDutyIssue(input: CreateInput): Promise<{ key: string
   );
   if (!d.issueCreate.success || !d.issueCreate.issue) throw new Error("Linear가 이슈 만들기를 받아들이지 않음");
   return { key: d.issueCreate.issue.identifier, url: d.issueCreate.issue.url };
+}
+
+// blocker가 blocked를 막는다(Linear 관계 `blocks`, ATC-396). 이슈를 만든 직후 부른다
+export async function createDutyBlocks(blockerId: string, blockedId: string): Promise<void> {
+  ready();
+  const d = await gqlDuty<{ issueRelationCreate: { success: boolean } }>(
+    `mutation DutyBlocks($input: IssueRelationCreateInput!) { issueRelationCreate(input: $input) { success } }`,
+    { input: { issueId: blockerId, relatedIssueId: blockedId, type: "blocks" } },
+  );
+  if (!d.issueRelationCreate.success) throw new Error("Linear가 막는 관계를 받아들이지 않음");
 }
 
 export interface UpdateInput {

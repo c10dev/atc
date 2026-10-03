@@ -12,7 +12,7 @@
   padding: var(--space-3) var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .apt-form .label {
   width: 100%;
@@ -42,30 +42,8 @@
   text-transform: uppercase;
 }
 
-.apt-btn {
-  height: 30px;
-  padding: 0 var(--space-3);
-  background: var(--panel-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font: 600 var(--text-sm) var(--sans);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.apt-btn:hover {
-  background: var(--panel-3);
-}
-.apt-btn.primary {
-  border-color: var(--radar);
-  color: var(--radar);
-}
-.apt-btn.danger {
-  color: var(--alert);
-}
-
 .apt-error {
-  margin: -8px 0 16px;
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
   color: var(--alert);
 }
 
@@ -74,7 +52,7 @@
   border-collapse: collapse;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .apt-table th {
@@ -116,6 +94,11 @@
 }
 .apt-code:hover {
   border-color: var(--cyan);
+}
+.apt-form .btn,
+.apt-edit .btn,
+.apt-table .btn {
+  white-space: nowrap;
 }
 .apt-edit {
   display: inline-flex;

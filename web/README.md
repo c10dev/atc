@@ -40,11 +40,9 @@ Tabs are addressed by URL hash; old bookmarks (`#map`, `#teams`, `#tickets`) sti
 | STRIPS | `#strips` | `views/Teams.tsx`, `views/Teams.css` | LANDING SEQUENCE at the top (open PRs from `snapshot.pulls`: CLEARED TO LAND by `readyAt`, then APPROACH folded, Drafts muted and folded; a notice when `github.error` is set), then one flight strip per session: status, STANDs held with each STAND's PR badge (`CLEARED TO LAND` + `SEQ n`, or `APPROACH` + block count and the blocks behind a toggle, `#PR` link), tickets, CLEARANCEs (awaiting READBACK blue, NO READBACK orange, READBACK dotted) |
 | FIDS | `#board` | `views/Tickets.tsx` | A DEPARTURES board (TIME · FLIGHT · DESTINATION · AIRCRAFT · STAND · PRI · REMARKS) or a board by flight phase |
 | AIRPORTS | `#airports` | `views/Airports.tsx` | Repository registry: open, rename, close, reopen, delete; home and TRANSIENT aircraft |
-| METRICS | `#metrics` | `views/Metrics.tsx` | FLIGHT RECORDER metrics and the stage 2 readiness check |
-| NETWORK | `#network` | `views/Network.tsx` | Stage 4 read-only overview from `GET /api/network`: ROUTES (open FLIGHTs by state, ARRIVED 14 days, AIRCRAFT, landing wait, Linear project goal), AIRCRAFT TARGETS vs actuals, and 28-day trends (ARRIVED, landing wait, reverts, DISPATCH/SCHEDULE decisions and agreement, CROSSCHECK match) with keyboard chart cursors and day tables |
+| METRICS | `#metrics`, `#metrics/leaks`, `#metrics/misfire`, `#metrics/fuel`, `#metrics/network` | `views/Metrics.tsx` | Sub-views OPERATIONS, LEAKS, MISFIRE (every automatic lane: DISPATCH, SCHEDULE, FLEET PLAN, `views/MetricsMisfire.tsx`), FUEL and NETWORK (`views/Network.tsx`, the Stage 4 read-only overview from `GET /api/network`; the old `#network` opens it) |
 | FLEET | `#fleet` | `views/fleet/Fleet.tsx` (one file per part in `views/fleet/`) | Every AIRCRAFT with status, current FLIGHTs and profile (crew, TYPE RATINGS, ROUTES, TARGETS); ENTRY INTO SERVICE, CREW BRIEFING, AOG, RETIREMENT |
 | DISPATCH | `#dispatch` | `views/Dispatch.tsx` | Stage 2 proposals: shadow verdicts in 2a; approve / reject, IN FLIGHT (sent, READBACK, overdue) and the stage 3 check in 2b; mode switch with confirmation |
-| SCHEDULE | `#schedule` | `views/Schedule.tsx` | OCC S1 drafts (shadow): the S2 gate panel; open draft cards (FLIGHT, current class, changes, OCC reason) with "승인했을 것 / 거절했을 것" (would approve / would reject; reject with reason chips and a memo) and a hint of what to change in Linear by hand; candidates; RECENT (drafts closed in the last 7 days) |
 
 The header holds the logo, tabs and counters on one row above 1760px; from 861 to 1760px the tabs move to a second header row, and at 860px and below they wrap.
 
@@ -87,6 +85,7 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | `src/SplitFlap.tsx` | Solari split-flap characters: cells turn through the drum (space, A–Z, 0–9, `: - . /`), at most 6 flaps, left to right. Tiles fall like real flaps; text without tiles drops in letter by letter. Only flaps on screen move |
 | `src/Ticker.tsx` | Scrolling alert ticker |
 | `src/Starfield.tsx` | Night Sky background (30 fps cap, pauses when hidden) and today's moon phase icon |
-| `src/ui.tsx` | Small shared pieces: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
-| `src/styles.css`, `src/ui.css`, `src/views/*.css` | Theme tokens and styles |
+| `src/badges.tsx`, `src/badges.css` | Small shared domain badges: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
+| `src/kit/` | Shared building blocks (L1 primitives): `Icon.tsx` (`Icon`, `IconButton`), `useDialog.ts` and `dialog-focus.ts` (dialog focus rules). One `.css` per primitive, a `.tsx` only where behaviour needs one ([design-system.md](../docs/design-system.md)) |
+| `src/styles.css`, `src/views/*.css` | Theme tokens and styles |
 | `src/views/*.tsx` | One file per tab. FLEET is a folder, `src/views/fleet/`, one file per part (page shell, status list, card, FUEL, ENTRY INTO SERVICE, LAUNCH and CREW BRIEFING panels, editor) with its CSS next to it |

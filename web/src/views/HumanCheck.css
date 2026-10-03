@@ -112,28 +112,13 @@
   color: var(--text);
   font: var(--text-xs) var(--mono);
 }
-.hc-btn {
-  padding: 0 var(--space-2);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  font: 700 var(--text-2xs)/20px var(--mono);
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-.hc-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.hc-btn.is-pass {
-  color: var(--phase-cleared);
-}
-.hc-btn.is-fail {
-  color: var(--alert);
-}
 .hc-ok {
   color: var(--phase-cleared);
 }
 .hc-error {
   color: var(--alert);
+}
+/* title에만 있던 "왜 못 누르나"를 화면으로(ATC-418, 원칙 11) */
+.hc-why {
+  font-size: var(--text-xs);
 }

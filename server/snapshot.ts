@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import { type Alert, type Claim, parentKeysOf, type Session, type Snapshot, type Ticket } from "./model.ts";
+import { type Alert, type Claim, type Session, type Snapshot, type Ticket } from "./model.ts";
 import { hostedDbOfAirport, resolveAirports } from "./airports.ts";
 import { migrationGateOf } from "./migration-gate.ts";
 import { readAppliedCached } from "./sources/supabase-migrations.ts";
@@ -16,9 +16,10 @@ import { readWorkspaces, ticketKeyFromBranch, ticketKeyFromTitle } from "./sourc
 import { readGithub } from "./sources/github.ts";
 import { readLinear } from "./sources/linear.ts";
 import { buildPulls, strandedMessage, strandedOf } from "./landing.ts";
-import { inspectionOf, loadMcc, readMccRecords } from "./mcc.ts";
-import { loadDispatchConfig } from "./dispatch.ts";
+import { loadMcc, readMccRecords, reviewOfHead } from "./mcc.ts";
+import { airportOfTicket, loadDispatchConfig } from "./dispatch.ts";
 import { allProposals } from "./proposals.ts";
+import { noWorkspaceKeysOf } from "./arrived-open.ts";
 import { awaitSupervisorAlerts } from "./supervisor-confirm.ts";
 import { accountOf, CONTROL_DIRS, type ControlName, controlAccountOf, controlNameOf } from "./crew.ts";
 import { realpathSync } from "node:fs";
@@ -27,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { loadFleet } from "./fleet.ts";
 import { fuelAccountsOf, fuelByAircraft, fuelConfigOf, type FuelMember, observeMembers } from "./fuel-remaining.ts";
 import { readFuelHistory, readFuelRecords } from "./fuel-run.ts";
+import { laneStates, recordSingleLanes } from "./codex-lane-run.ts";
 import { readLandingReviews, readMergeReviews } from "./landing-review.ts";
 import { type GroundStop, groundStopsOf, holdStops, loadAtfm, readRecordedStops, reviveStops, stopFigures } from "./atfm.ts";
 import { fastTrackOf, isHeld, loadAutoland, loadAutolandState, mergeExclusionOf, planAutoland } from "./autoland.ts";
@@ -34,6 +36,7 @@ import { regKey } from "./registration.ts";
 import { readRecords } from "./recorder.ts";
 import { launchModeOf } from "./session-origin.ts";
 import { readAbsent } from "./absent-run.ts";
+import { readReleaseView } from "./release-store.ts";
 
 // PR head별로 CLEARED TO LAND가 처음 된 시각 (메모리, 서버를 재시작하면 다시 센다)
 const readySince = new Map<string, string>();
@@ -41,6 +44,21 @@ const readySince = new Map<string, string>();
 let heldStops: GroundStop[] | null = null;
 
 const fresh = (c: Claim) => Date.now() - Date.parse(c.lastAt) < config.claimTtlMs;
+
+// 열린 PR이 있는 STAND를 쥔 살아 있는 세션의 점유는 claimTtlMs가 지나도 이어 둔다(ATC-387): 그 AIRCRAFT가 다음 FLIGHT를 새 STAND에서 하는 동안에도
+// 앞 PR의 FIX·GO AROUND가 STAND를 쥔 그 세션에게 가고, 그 FLIGHT가 슬롯 계산에 든다. 충돌·알림·건강 계산은 이미 끝났으므로 영향이 없다(그 뒤에 더한다)
+export function keptStandClaims(hookClaims: readonly Claim[], claims: readonly Claim[], pulls: readonly { standPath?: string | null }[], statusOf: (id: string) => string | undefined): Claim[] {
+  const standsWithPr = new Set(pulls.map((p) => p.standPath).filter((x): x is string => Boolean(x)));
+  const held = new Set(claims.filter((c) => c.state === "active").map((c) => c.workspacePath)); // 다른 세션이 지금 쥐고 있는 STAND는 그 세션이 홀더다
+  const kept = new Set<string>();
+  return [...hookClaims].sort((a, b) => b.lastAt.localeCompare(a.lastAt)).filter((c) => {
+    if (fresh(c) || c.state !== "active" || held.has(c.workspacePath) || kept.has(c.workspacePath)) return false;
+    const st = statusOf(c.sessionId);
+    const keep = st !== undefined && st !== "dead" && standsWithPr.has(c.workspacePath);
+    if (keep) kept.add(c.workspacePath); // STAND마다 하나(가장 최근에 건드린 세션)
+    return keep;
+  });
+}
 
 export async function buildSnapshot(): Promise<Snapshot> {
   const airports = await resolveAirports();
@@ -155,6 +173,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const alerts = buildAlerts(sessions, workspaces, tickets, claims, occupancy);
   const fleet = loadFleet();
   const dispatchCfg = loadDispatchConfig();
+  // 화면 사이드바가 AIRPORT별로 묶는다(ATC-443). DISPATCH가 쓰는 같은 규칙이라 화면에 따로 규칙을 두지 않는다(원칙 4)
+  for (const t of tickets) t.airport = airportOfTicket(t, dispatchCfg);
   const team = new RegExp(dispatchCfg.teamPattern, "i");
   // 관찰한 ACCOUNT가 있으면 그것(ATC-146), 등록부가 없으면 home 라벨. 라벨을 쓰지 않는 등록부(accountOf가 null)는 그대로 null
   const accountOfSession = (x: Session) => (x.status !== "dead" && team.test(x.name) ? (accountOf(fleet, x.name) === null ? null : (x.account ?? accountOf(fleet, x.name))) : null);
@@ -219,6 +239,8 @@ export async function buildSnapshot(): Promise<Snapshot> {
     return alCfg.mode !== "off" && Boolean(code) && alCfg.airports.includes(code!) && !alSt.groundStops.some((g) => g.airport === code);
   };
   const fastTrack = fastTrackOf(alSt.reviewRequests);
+  // 조용한 리뷰 레인(ATC-386): 저장소 수준 판단. GitHub을 읽은 저장소 가운데 Codex를 쓰는 저장소만(MCC AIRPORT는 INSPECTION이 리뷰), 전이는 codex-lane.jsonl에 한 줄씩. 스위치 codex-lane.json이 off면 쉰다(ATC-393)
+  const laneSilent = laneStates(github.byRepo, Date.now(), undefined, (repo) => repo !== mccAirport?.repo);
   const pulls = buildPulls(
     repos.filter((r) => github.byRepo.has(r)).map((repo) => ({ repo, pulls: github.byRepo.get(repo)!, defaultBranch: github.defaultByRepo.get(repo) ?? null })),
     workspaces,
@@ -236,17 +258,20 @@ export async function buildSnapshot(): Promise<Snapshot> {
       // 보안 규칙에만 걸린 PR도 REVIEW 세션에 보낼까(ATC-30, 설정 창). 기본 "exclude", 보내면 옛 이름 "deepseek"
       security: loadDispatchConfig().externalReview.security,
       fastTrack: (repo, number, head) => (alActive(repo) ? fastTrack(repo, number, head) : null),
+      lane: (repo) => laneSilent.get(repo) ?? null,
       // MCC(docs/mcc.md): 맡은 AIRPORT(atc) PR은 이 head의 INSPECTION이 리뷰를 대신한다
       mcc: (() => {
         const repo = airports.open.find((a) => a.code === loadMcc().airport)?.repo;
         if (!repo) return undefined;
         const records = readMccRecords();
-        return { repo, reviewOf: (number: number, head: string) => inspectionOf(records, number, head) };
+        return { repo, reviewOf: (number: number, head: string) => reviewOfHead(records, number, head) };
       })(),
       // AUTOLAND AIRPORT의 머지 리뷰(ATC-328): atc에 기록한 이 head의 리뷰가 착륙 리뷰
       autoland: { repos: airports.open.filter((a) => alCfg.airports.includes(a.code)).map((a) => a.repo), reviewedSecurity: alCfg.reviewedSecurity, reviews: readMergeReviews() },
     },
   );
+
+  recordSingleLanes(pulls); // REVIEW 한 레인으로 CLEARED가 된 PR(ATC-386)
 
   // STALLED와 멈춘 AIRCRAFT의 FLIGHT 유지(ATC-86): 점유·Linear·PR이 모두 읽힌 뒤에
   // REPORT 판정(ATC-89): 세션마다 마지막 판정을 붙인다. 판정 뒤에 다시 움직이기 시작한 세션(busy)에는 붙이지 않는다
@@ -255,6 +280,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     const r = reports.get(x.id);
     if (r && x.status === "idle") x.report = r;
   }
+  claims.push(...keptStandClaims(hookClaims, claims, pulls, (id) => sessionById.get(id)?.status));
   applyFlightHealth({ sessions, teamPattern: dispatchCfg.teamPattern, freshClaims: claims, staleClaims: hookClaims.filter((c) => !fresh(c)), workspaces, tickets, pulls, now: healthAt, cfg: config.health });
 
   // STRANDED(ATC-29): FLIGHT가 있는 PR이 기본 브랜치가 아닌 곳에 머지됐고, 그 커밋이 기본 브랜치에도 그리로 가는 열린 PR에도 없음.
@@ -336,6 +362,7 @@ export async function buildSnapshot(): Promise<Snapshot> {
     stranded,
     atfm: { mains: [...github.mainByRepo.values()].filter((m) => repos.includes(m.repo)), groundStops },
     autoland,
+    releases: readReleaseView(),
     fuel,
     fuelAccounts,
     restarting,
@@ -390,11 +417,8 @@ function buildAlerts(
   }
 
   const ticketsWithWs = new Set(workspaces.map((w) => w.ticketKey));
-  // 상위 이슈는 하위 이슈를 묶는 컨테이너라, 그 자체에 워크트리가 없는 것은 방치가 아니다.
-  const parents = parentKeysOf(tickets);
-  for (const t of tickets) {
-    if (t.stateType !== "started" || ticketsWithWs.has(t.key) || parents.has(t.key)) continue;
-    alerts.push({ kind: "no-workspace", message: `진행 중인데 워크트리가 없음`, ticketKey: t.key });
-  }
+  // 상위 이슈는 하위 이슈를 묶는 컨테이너라, 그 자체에 워크트리가 없는 것은 방치가 아니다. STAND 없는 FLIGHT(SURVEY·CHECK)는 워크트리가 있을 수 없어
+  // 이 알림이 아무것도 알리지 못한다: 뺀다(ARRIVED인데 아직 In Progress면 SUPERVISOR의 할 일 한 줄, ATC-473)
+  for (const key of noWorkspaceKeysOf(tickets, ticketsWithWs)) alerts.push({ kind: "no-workspace", message: `진행 중인데 워크트리가 없음`, ticketKey: key });
   return alerts;
 }

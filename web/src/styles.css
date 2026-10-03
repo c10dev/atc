@@ -1,33 +1,70 @@
-/* ATC 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다. */
+/* ATC 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다.
+   테마 바꾸는 법(ATC-439, design-system S1): 면·선·글자·신호 색(--bg … --blue)은 손으로 쓰지 않고 web/src/theme-gen.ts의 입력(THEMES: 바탕, 면, 글자,
+   신호 다섯 색, contrast)에서 나온다. 입력을 고치고 `node web/gen-themes.ts`를 돌리면 아래 theme-gen 표식 사이가 다시 써진다(손으로 고치면 테스트가 깨진다).
+   표식 밖(도메인 토큰, 그림자, 글꼴, 모서리)은 손으로 둔다. 신호 뜻: --radar AIRBORNE·ENROUTE, --amber HOLDING·CLEARED TO LAND, --cyan APPROACH·정보,
+   --alert LOSS OF SEPARATION·NORDO, --blue HANDOFF. */
 :root {
+  /* theme-gen:radar begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #05080c;
+  --n-2: #070b10;
+  --n-3: #0a0f15;
+  --n-4: #0f1720;
+  --n-5: #172331;
+  --n-6: #203041;
+  --n-7: #263a4e;
+  --n-8: #385572;
+  --n-9: #8b9eb2;
+  --n-10: #a5b5c5;
+  --n-11: #dde6ee;
+  --hue-radar: #3ef08f;
+  --hue-amber: #ffb627;
+  --hue-cyan: #5cd0ff;
+  --hue-alert: #ff4a4a;
+  --hue-blue: #8aa8ff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:radar end */
   /* 층: 바탕(0) < 패널(1) < 카드(2) < 떠 있는 것(3). 층마다 밝기와 테두리가 한 단계씩 오른다. */
-  --bg: #05080c;
-  --chrome: #0b1118;
-  --panel: #0f1720;
-  --panel-2: #182330;
-  --panel-3: #212e3d;
-  --scope: #070c0f;
-  --line: #2a3a4c;
-  --line-strong: #3d5470;
+  /* 바탕 단계(맥락 토큰, design-system S2): kit 부품은 놓인 자리의 면을 --layer로 읽는다. 담는 쪽이 자식에게 다시 정할 수 있다 */
+  --layer: var(--panel);
+  --layer-hover: var(--panel-2);
   --bracket: #5f7a96;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
   --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --shadow-inset-scope: inset 0 0 40px rgba(0, 0, 0, 0.55); /* RADAR 스코프 안쪽 그늘 */
+  --shadow-inset-bay: inset 0 1px 3px rgba(0, 0, 0, 0.5); /* 스트립 레일 안쪽 */
+  --shade: #000; /* 기울어진 판의 그늘(불투명도로 쓴다) */
+  --mask-solid: #000; /* mask-image의 보이는 쪽(색은 쓰이지 않고 알파만) */
 
-  /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상 */
-  --text: #dde6ee;
-  --muted: #a3b0bf;
-  --faint: #8494a6;
+  /* 글자는 가장 흐린 것도 모든 층에서 4.5:1 이상(server/theme-contrast.test.ts가 지킨다). 글자를 opacity로 흐리게 하지 않는다 */
 
-  /* 신호: 색 하나에 뜻 하나 */
-  --radar: #3ef08f; /* AIRBORNE, ENROUTE */
-  --amber: #ffb627; /* HOLDING, CLEARED TO LAND */
-  --cyan: #5cd0ff; /* APPROACH, 정보 */
   /* 차트의 두 계열(FUEL 개요, ATC-137): 테마마다 두 색이 떨어져 보이는 짝. night는 --amber가 푸른 별이라 금색(--radar)으로 */
   --series-captain: var(--cyan);
   --series-crew: var(--amber);
-  --alert: #ff4a4a; /* LOSS OF SEPARATION, NORDO */
-  --blue: #8aa8ff; /* HANDOFF */
+  --alert-wash: rgba(255, 74, 74, 0.08); /* 경고 줄의 바탕 */
+  --alert-soft: #ff8b8b; /* 경고 줄의 글자 */
+  --on-alert: #fff; /* 경고색 바탕 위의 글자와 줄무늬 */
+  --on-amber: #000; /* 호박색·주황 바탕 위의 글자 */
+  /* 테마가 정의하는 색의 기본값(다른 테마의 규칙이 아무것도 아닌 값으로 풀리지 않게): cockpit --magenta, night --gold·--display */
+  --magenta: var(--blue);
+  --gold: var(--amber);
+  --display: var(--sans);
   --ring: var(--radar); /* RADAR 거리 링, 스위프 */
   --tab-on: var(--radar);
   --tab-on-bg: linear-gradient(#0b1812, var(--chrome));
@@ -53,7 +90,7 @@
   --paper: #ece6d3;
   --paper-parked: #bdb8a8;
   --paper-ink: #1b2127;
-  --paper-muted: #5a6066;
+  --paper-muted: #42484e;
   --paper-line: rgba(27, 33, 39, 0.16);
   --paper-shadow:
     0 1px 0 rgba(255, 255, 255, 0.25) inset,
@@ -62,6 +99,18 @@
   --stamp-amber: #a86a00;
   --stamp-blue: #2c55c9;
   --stamp-gray: #585e64;
+
+  /* 티커(주의 줄), 우선순위 칩, 스트립 레일 */
+  --ticker-bg: #0b0904;
+  --ticker-line: #2c2410;
+  --ticker-serious-bg: #0c0606;
+  --ticker-serious-line: #3a1414;
+  --prio-bg: #3a3a3a;
+  --prio-ink: #ddd;
+  --prio-2: #ff8f3a;
+  --nocontact-line: rgba(255, 182, 39, 0.6); /* 교신 끊김 칩의 점선 */
+  --bay-line: #131d28;
+  --holder-parked: #6b7280;
 
   /* FIDS: 반전판 */
   --fids-bg: #0b0b0b;
@@ -76,13 +125,13 @@
   --fids-title: #e8e8e8;
   --fids-count: #b0955a;
 
-  /* 글자 크기: 7단계만 쓴다. 영문 약호(대문자·고정폭)는 10, 한국어 본문은 11 이상 */
-  --text-2xs: 10px; /* 대문자 약호, 캡션 */
+  /* 글자 크기: 7단계만 쓴다. 모든 글자는 11 이상 */
+  --text-2xs: 11px; /* 대문자 약호, 캡션 */
   --text-xs: 12px; /* 보조 설명, 칩(기본 밀도 12, compact 11. DL7) */
   --text-sm: 12px; /* 표·카드의 부가 정보 */
   --text-md: 14px; /* 본문(기본 밀도 14, compact 13. DL7) */
   --text-lg: 15px; /* FLIGHT NUMBER, 콜사인 강조 */
-  --text-xl: 18px; /* 상단 수치, FLIGHT STRIPS 콜사인 */
+  --text-xl: 18px; /* 상단 수치 */
   --text-2xl: 24px; /* 지표 큰 숫자 */
 
   /* 움직임(3.5 Craft 8): 호버·누름은 fast, 열고 닫고 접는 것은 base, 곡선은 하나. 늘 도는 생동감 애니메이션(ping·sweep·flap 등)은 자기 시간을 쓴다 */
@@ -101,7 +150,7 @@
      한 덩어리 안(4–8) < 이웃한 덩어리 사이(8–16) < 무리 사이(24–32) */
   --space-0-5: 2px;
   --space-1: 4px;
-  --space-1-5: 6px; /* 작은 칩의 좌우 여백에만 */
+  --space-1-5: 6px; /* 작은 칩의 좌우 여백, 6px 간격·어긋남(ATC-416) */
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
@@ -123,6 +172,11 @@
   --gap-column: var(--space-4); /* 열 사이 */
   --gap-section: var(--space-8); /* 베이·구역 사이 */
   --console-h: 48px;
+  --rail-w: 56px; /* 왼쪽 아이콘 레일(ATC-442) */
+  --bar-h: 56px; /* ≤860px의 아래 탭 줄 */
+  --sidebar-w: 0px;
+  --sidebar-open-w: 260px; /* 열린 사이드바의 너비: .has-sidebar인 .shell이 --sidebar-w로 쓴다(ATC-443). 접히면 --sidebar-w는 0 */
+  --drawer-w: 0px; /* 서랍 열(Z3가 채우기 전에는 접혀 있다) */
 
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
@@ -163,25 +217,32 @@ button {
 .tn,
 .readout b,
 .readout.clock,
-.cell .val,
-.cell .sub,
 .fl-r-elapsed,
 .fl-r-last,
 .fl-r-week,
 .fl-r-ctx,
 .fl-r-burn,
-.fl-actuals,
 .fl-ctx,
 .fc-count,
-.dp-score,
-.dp-age,
-.dp-count,
-.sc-age,
-.sc-cand-count,
 .fp-age,
 .du-since,
 .activity-ago {
   font-variant-numeric: tabular-nums !important;
+}
+/* 작은 기종·종류 칸(설정의 서버 목록, 에이전트 줄)과 값 없음 글. 스트립은 st-agent·st-none을 쓴다(ATC-424) */
+.type {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--paper-ink);
+  color: var(--paper);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  vertical-align: 3px;
+}
+.none {
+  color: var(--paper-muted);
+  font-weight: 400;
 }
 .muted {
   color: var(--muted);
@@ -211,10 +272,6 @@ button {
   white-space: nowrap;
   min-width: 0;
 }
-.empty {
-  color: var(--faint);
-  margin: var(--space-2) 0 0;
-}
 
 /* 영문 약호 + 한글 풀이. 한글에는 자간을 주지 않는다. */
 .label {
@@ -229,7 +286,7 @@ button {
 .label em,
 .readout em,
 .link em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -241,47 +298,12 @@ button {
   top: 0;
   z-index: var(--z-sticky);
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  height: var(--console-h);
+  min-height: var(--console-h);
   background: var(--chrome);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-2);
-}
-/* 로고 = 설정 버튼 */
-.brand-wrap {
-  position: relative;
-  display: flex;
-  flex: none;
-  border-right: 1px solid var(--line);
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) 0 var(--space-4);
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-.brand:hover,
-.brand[aria-expanded="true"] {
-  background: var(--panel);
-}
-.brand-gear {
-  width: 13px;
-  height: 13px;
-  color: var(--faint);
-  transition:
-    color var(--dur-fast) var(--ease),
-    transform var(--dur-base) var(--ease);
-}
-.brand:hover .brand-gear {
-  color: var(--text);
-}
-.brand[aria-expanded="true"] .brand-gear {
-  color: var(--tab-on);
-  transform: rotate(60deg);
 }
 .scope-icon {
   width: 26px;
@@ -291,66 +313,6 @@ button {
 .scope-sweep {
   transform-origin: 13px 13px;
   animation: sweep 6s linear infinite;
-}
-.brand-name {
-  display: block;
-  font: 700 var(--text-lg)/1.1 var(--mono);
-  letter-spacing: 0.18em;
-}
-.brand-sector {
-  display: block;
-  font: 500 var(--text-2xs) var(--mono);
-  letter-spacing: 0.14em;
-  color: var(--cyan);
-}
-/* 탭이 넘치면 줄 안에서 가로 스크롤. 선택 탭 밑줄(bottom:-1px)이 잘리지 않게 아래로 1px 늘린다. */
-.tabs {
-  display: flex;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
-  padding-bottom: 1px;
-  margin-bottom: -1px;
-}
-.tab {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-0-5);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.tab:hover {
-  color: var(--text);
-  background: var(--panel);
-}
-.tab-code {
-  font: 700 var(--text-xs) var(--mono);
-  letter-spacing: 0.16em;
-}
-.tab-label {
-  font-size: var(--text-xs);
-}
-.tab[aria-selected="true"] {
-  color: var(--tab-on);
-  background: var(--tab-on-bg);
-}
-.tab[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--tab-on);
-  box-shadow: 0 0 10px var(--tab-on);
 }
 .readouts {
   margin-left: auto;
@@ -373,7 +335,7 @@ button {
 }
 .readout > span {
   margin-top: var(--space-1);
-  font: 500 var(--text-2xs) var(--mono);
+  font: 400 var(--text-2xs) var(--mono);
   letter-spacing: 0.14em;
   color: var(--muted);
   white-space: nowrap;
@@ -408,14 +370,14 @@ button {
   color: var(--amber);
 }
 .tone-alert {
-  background: rgba(255, 74, 74, 0.08);
+  background: var(--alert-wash);
 }
 .tone-alert b {
   color: var(--alert);
 }
 .tone-alert > span,
 .tone-alert em {
-  color: #ff8b8b;
+  color: var(--alert-soft);
 }
 .utc {
   color: var(--cyan);
@@ -459,14 +421,14 @@ button {
   padding: 0;
   overflow: hidden;
   border: 0;
-  border-bottom: 1px solid #2c2410;
-  background: #0b0904;
+  border-bottom: 1px solid var(--ticker-line);
+  background: var(--ticker-bg);
   text-align: left;
   cursor: pointer;
 }
 .ticker.is-serious {
-  background: #0c0606;
-  border-bottom-color: #3a1414;
+  background: var(--ticker-serious-bg);
+  border-bottom-color: var(--ticker-serious-line);
 }
 .ticker-head {
   flex: none;
@@ -474,13 +436,13 @@ button {
   align-items: center;
   padding: 0 var(--space-3);
   background: var(--amber);
-  color: #000;
+  color: var(--on-amber);
   font: 700 var(--text-xs) var(--mono);
   letter-spacing: 0.16em;
 }
 .ticker.is-serious .ticker-head {
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
 }
 .ticker-list {
   display: flex;
@@ -495,7 +457,7 @@ button {
 /* 흐를 때는 양 끝을 흐리게 해 글자가 스며들고 빠져나가게 */
 .ticker-list.is-running {
   padding: 0;
-  mask-image: linear-gradient(90deg, transparent, #000 var(--space-6), #000 calc(100% - var(--space-12)), transparent);
+  mask-image: linear-gradient(90deg, transparent, var(--mask-solid) var(--space-6), var(--mask-solid) calc(100% - var(--space-12)), transparent);
 }
 .ticker-track {
   display: flex;
@@ -527,14 +489,6 @@ button {
   align-items: center;
   gap: var(--space-2);
   color: var(--amber);
-}
-.code-chip {
-  flex: none;
-  padding: 0 var(--space-1-5);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs)/15px var(--mono);
-  letter-spacing: 0.1em;
 }
 /* 등급(ATC-110): WARNING 빨강, CAUTION 호박, ADVISORY 회색 */
 .lv-warning {
@@ -722,6 +676,17 @@ button {
 .update-close {
   margin-left: auto;
 }
+.update-cmd {
+  display: block;
+  margin: var(--space-1) 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font: 400 var(--text-xs) var(--mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
 .update-why {
   margin: var(--space-1) 0 0;
   color: var(--muted);
@@ -745,6 +710,7 @@ button {
 }
 
 .main {
+  position: relative; /* 첫 불러오기 장면(ApproachScene)이 겹쳐 사라진다 */
   padding: var(--space-4) var(--gutter) var(--space-12);
 }
 
@@ -800,30 +766,13 @@ button {
 }
 
 /* ── 공통 조각 ─────────────────────────── */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--space-1-5);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  font: 500 var(--text-2xs) var(--mono);
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
-}
+/* 칩·태그·점의 기본은 kit/chips.css. 여기는 세션 상태 점의 색만 */
 .dot-busy {
-  background: var(--radar);
+  --dot-ink: var(--radar);
   animation: ping 1.8s ease-out infinite;
 }
 .dot-dead {
-  background: var(--alert);
+  --dot-ink: var(--alert);
 }
 .session-badge {
   display: inline-flex;
@@ -844,16 +793,16 @@ button {
   letter-spacing: 0.06em;
   padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
-  background: #3a3a3a;
-  color: #ddd;
+  background: var(--prio-bg);
+  color: var(--prio-ink);
 }
 .prio-1 {
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
 }
 .prio-2 {
-  background: #ff8f3a;
-  color: #000;
+  background: var(--prio-2);
+  color: var(--on-amber);
 }
 
 @keyframes sweep {
@@ -905,7 +854,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: radial-gradient(ellipse at 50% 45%, var(--scope-glow) 0%, var(--scope) 70%);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-inset-scope);
 }
 .scope-frame::before {
   content: "";
@@ -1044,10 +993,6 @@ a.blk[href] {
   align-self: center;
   flex: none;
 }
-.strip .apt {
-  border-color: var(--paper-line);
-  color: var(--paper-ink);
-}
 .blk-code {
   font-size: var(--text-2xs);
   letter-spacing: 0.1em;
@@ -1102,7 +1047,7 @@ a.blk[href] {
 }
 .stand strong {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
 }
 /* 빈 STAND: 흐리게 하지 않고 점선 테두리와 흐린 글자로만 구분 */
 .stand.is-free {
@@ -1130,7 +1075,7 @@ a.blk[href] {
   padding: 0 var(--space-1-5);
   border-radius: var(--radius-sm);
   background: var(--alert);
-  color: #fff;
+  color: var(--on-alert);
   font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1161,12 +1106,12 @@ a.blk[href] {
   letter-spacing: 0.12em;
 }
 .ph em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
 }
 .fp.is-nocontact {
-  border: 1px dashed rgba(255, 182, 39, 0.6);
+  border: 1px dashed var(--nocontact-line);
 }
 .fp.is-nocontact .tgt {
   background: var(--amber);
@@ -1203,636 +1148,14 @@ a.blk[href] {
   --tone: var(--phase-canceled);
 }
 
-/* ── FLIGHT STRIPS ─────────────────────────── */
-.bay {
-  margin-bottom: var(--gap-section);
-}
-.bay-airborne .label {
-  color: var(--radar);
-}
-.bay-holding .label {
-  color: var(--amber);
-}
-.bay-nordo .label {
-  color: var(--alert);
-}
-/* Dark cockpit(ATC-111): 끝난 STAND만 쥔 AIRCRAFT는 접힌 GATE CLEANUP에 모은다 */
-.bay-gate > summary {
-  cursor: pointer;
-  margin-bottom: var(--space-2);
-  color: var(--faint);
-}
+/* MAP 머리글의 숨긴 ARRIVED STAND 수 */
 .gate-hidden {
   color: var(--faint);
 }
-.bay-rail {
-  display: grid;
-  gap: var(--gap-item);
-  padding: var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: repeating-linear-gradient(0deg, var(--panel) 0 46px, #131d28 46px 47px);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-}
-.strip {
-  display: grid;
-  grid-template-columns: 10px 190px 1fr;
-  min-height: 58px;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--paper-ink);
-  box-shadow: var(--paper-shadow);
-}
-.holder {
-  background: var(--amber);
-}
-.strip.is-airborne .holder {
-  background: var(--radar);
-}
-.strip.is-nordo .holder {
-  background: var(--alert);
-}
-.strip.is-parked {
-  background: var(--paper-parked);
-  opacity: 0.8;
-}
-.strip.is-parked .holder {
-  background: #6b7280;
-}
-.strip.is-los {
-  outline: 2px solid var(--alert);
-  outline-offset: 1px;
-}
-.strip.is-los .holder {
-  background: repeating-linear-gradient(45deg, var(--alert) 0 5px, #fff 5px 10px);
-}
-.strip-id {
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
-}
-.cs {
-  font: 700 var(--text-xl)/1.15 var(--mono);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.type {
-  margin-left: var(--space-1-5);
-  padding: 0 var(--space-1-5);
-  border-radius: var(--radius-sm);
-  background: var(--paper-ink);
-  color: var(--paper);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.06em;
-  vertical-align: 3px;
-}
-.strip .sub {
-  margin-top: var(--space-0-5);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-xs);
-  color: var(--paper-muted);
-}
-.strip-legs {
-  display: grid;
-  min-width: 0;
-}
-.leg {
-  display: grid;
-  grid-template-columns: minmax(170px, 1.1fr) 112px minmax(150px, 1.4fr) 112px minmax(110px, 0.8fr);
-  min-width: 0;
-}
-.leg + .leg {
-  border-top: 1px dashed var(--paper-line);
-}
-.leg.is-handed-off {
-  opacity: 0.5;
-}
-.cell {
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 1px solid var(--paper-line);
-}
-.cap {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: var(--space-0-5);
-  font: 700 var(--text-2xs) var(--mono);
-  letter-spacing: 0.1em;
-  color: var(--paper-muted);
-}
-.val {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 500 var(--text-sm) var(--mono);
-}
-.val.big {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-a.val:hover {
-  text-decoration: underline;
-}
-.none {
-  color: var(--paper-muted);
-  font-weight: 400;
-}
-.route {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  line-height: 1.35;
-}
-.cell-remarks {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: var(--space-1);
-}
-.stamp {
-  display: inline-block;
-  padding: 0 var(--space-1-5);
-  border: 1.5px solid;
-  border-radius: var(--radius-sm);
-  font: 700 var(--text-2xs)/15px var(--mono);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  transform: rotate(-2deg);
-}
-.stamp.red {
-  color: var(--stamp-red);
-}
-.stamp.amber {
-  color: var(--stamp-amber);
-}
-.stamp.blue {
-  color: var(--stamp-blue);
-}
-.stamp.dashed {
-  color: var(--stamp-gray);
-  border-style: dashed;
-}
 
-/* ── FIDS ─────────────────────────── */
-.board {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 1fr);
-  align-items: start; /* 한 열을 펼쳐도 옆 열의 높이가 따라 늘지 않는다(ATC-316) */
-  gap: var(--gap-column);
-  overflow-x: auto;
-  padding-bottom: var(--space-2);
-}
-.column {
-  --tone: var(--phase-filed);
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--fids-line);
-  border-radius: var(--radius-lg);
-  background: var(--fids-bg);
-  box-shadow: var(--shadow-1);
-}
-.column-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--fids-line);
-  border-top: 2px solid var(--tone);
-  background: var(--fids-head);
-}
-.column-code {
-  font: 700 var(--text-sm) var(--mono);
-  letter-spacing: 0.18em;
-  color: var(--tone);
-  white-space: nowrap;
-}
-.column-label {
-  font-weight: 600;
-  color: var(--fids-title);
-  white-space: nowrap;
-}
-.column-alias {
-  font: 400 var(--text-xs) var(--mono);
-  color: var(--faint);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.count {
-  margin-left: auto;
-  font: 700 var(--text-sm) var(--mono);
-  color: var(--fids-count);
-}
-.column-body {
-  display: grid;
-  gap: var(--gap-item);
-  padding: var(--space-2);
-}
-.ticket {
-  display: block;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--fids-line);
-  border-radius: var(--radius-md);
-  background: var(--fids-card);
-}
-a.ticket:hover {
-  border-color: var(--fids-hover-line);
-  background: var(--fids-hover);
-}
-.ticket.is-occupied {
-  box-shadow: inset 2px 0 0 var(--radar);
-}
-.ticket-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.flap {
-  display: inline-flex;
-  gap: var(--space-0-5);
-}
-.flap b {
-  display: inline-grid;
-  place-items: center;
-  width: var(--flap-w, 15px);
-  height: var(--flap-h, 21px);
-  border-radius: var(--radius-sm);
-  background: var(--flap-tile);
-  box-shadow: inset 0 0 0 1px var(--flap-edge);
-  font: 700 var(--text-sm) var(--mono);
-  color: var(--flap-ink);
-}
-/* 판 없이 글자만 넘기는 칸(TIME·REMARKS 등). 글꼴과 색은 둘러싼 글에서 받는다. */
-.flap-bare b {
-  display: inline-block;
-  font: inherit;
-}
-.flap b,
-.flap-bare b {
-  position: relative;
-  white-space: pre;
-}
 
-/* ── split-flap 칸의 반쪽 판. 넘기는 움직임은 SplitFlap.tsx가 건다 ── */
-.is-flipping {
-  perspective: 140px;
-}
-.fl-sizer {
-  visibility: hidden;
-}
-.fl-half {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 50%;
-  overflow: visible clip;
-  border-radius: inherit;
-  background: var(--flap-tile);
-  background-size: 100% 200%;
-  box-shadow: inherit;
-  backface-visibility: hidden;
-}
-.flap-bare .fl-half {
-  background: none;
-}
-.fl-half i {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 200%;
-  display: grid;
-  place-items: center;
-  font-style: normal;
-}
-.flap-bare .fl-half i {
-  justify-items: start;
-}
-.fl-top {
-  top: 0;
-  background-position: top;
-  transform-origin: bottom;
-}
-.fl-bot {
-  top: 50%;
-  background-position: bottom;
-  transform-origin: top;
-}
-.fl-bot i {
-  top: -100%;
-}
-/* 기울어진 판의 그늘 */
-.fl-shade {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: #000;
-  opacity: 0;
-}
-/* 판이 없는 칸에서 떨어져 앉는 글자 */
-.fl-tick {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-}
-.flap-bare .fl-tick {
-  justify-items: start;
-}
-.ticket-title {
-  margin-top: var(--space-2);
-  color: var(--fids-title);
-}
-.ticket-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-.ticket-assignee {
-  margin-left: auto;
-  font-size: var(--text-xs);
-}
-.ticket-alert {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-}
 
-/* ── 표시 옵션(FIDS) ─────────────────────────── */
-.icon-button {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--panel);
-  color: var(--muted);
-  cursor: pointer;
-}
-.icon-button:hover,
-.icon-button[aria-expanded="true"] {
-  border-color: var(--line-strong);
-  background: var(--panel-2);
-  color: var(--text);
-}
-.view-options {
-  position: relative;
-  margin-left: auto;
-}
-.view-menu {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: var(--z-menu);
-  width: 300px;
-  padding: var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel-3);
-  box-shadow: var(--shadow-3);
-}
-.view-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-.view-switch button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--panel);
-  color: var(--muted);
-  font-size: var(--text-md);
-  font-weight: 500;
-  cursor: pointer;
-}
-.view-switch button:hover {
-  color: var(--text);
-}
-.view-switch button[aria-checked="true"] {
-  border-color: var(--line-strong);
-  background: var(--panel-2);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
-.view-menu-hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-xs);
-  color: var(--faint);
-}
-.view-menu-row {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
 
-/* ── FIDS 목록: DEPARTURES 안내판 ─────────────────────────── */
-.fids-list {
-  overflow: hidden;
-  border: 1px solid var(--fids-line);
-  border-radius: var(--radius-lg);
-  background: var(--fids-bg);
-  box-shadow: var(--shadow-1);
-}
-.fids-list-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--fids-line);
-  background: var(--fids-head);
-}
-.fids-list-title {
-  font: 700 var(--text-md) var(--mono);
-  letter-spacing: 0.2em;
-  color: var(--flap-ink);
-}
-.fids-list-meta {
-  font: 700 var(--text-sm) var(--mono);
-  letter-spacing: 0.1em;
-  color: var(--fids-count);
-}
-.fids-table-wrap {
-  overflow-x: auto;
-}
-.fids-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.fids-table th {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--fids-line);
-  font: 700 var(--text-xs) var(--mono);
-  letter-spacing: 0.16em;
-  color: var(--fids-count);
-  text-align: left;
-  white-space: nowrap;
-}
-.fids-table td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
-  vertical-align: middle;
-}
-.fids-table tbody tr:nth-child(even) td {
-  background: color-mix(in srgb, var(--fids-card) 55%, transparent);
-}
-.fids-table tbody tr:hover td {
-  background: var(--fids-hover);
-}
-.fids-table tr.is-occupied td:first-child {
-  box-shadow: inset 2px 0 0 var(--radar);
-}
-.fids-table .none {
-  color: var(--faint);
-}
-/* 비행 단계 머리 줄(ATC-316): 이름은 단계 색(상태), 수는 중립. 그룹은 앞 5건만 보이고 "N more"로 펼친다 */
-.fids-table th.fids-group-th,
-.fids-group-head th {
-  padding: var(--space-2) var(--space-3);
-  border-top: 2px solid var(--tone);
-  background: var(--fids-head);
-  letter-spacing: 0.18em;
-}
-.fids-group-name {
-  color: var(--tone);
-}
-.fids-group-head .count {
-  float: right;
-  margin-left: 0;
-}
-/* FIDS는 글자 크기 둘(12·14)로: 약호·칩·우선순위는 12, FLIGHT 번호 칸은 night·cockpit에서도 14 */
-.fids-table .apt,
-.column .apt,
-.fids-table .prio,
-.column .prio,
-.fids-table .code-chip,
-.column .code-chip {
-  font-size: var(--text-xs);
-}
-:root[data-theme="night"] .fids-table .flap b,
-:root[data-theme="cockpit"] .fids-table .flap b,
-:root[data-theme="night"] .column .flap b,
-:root[data-theme="cockpit"] .column .flap b {
-  font-size: var(--text-md);
-}
-/* 단계 색은 그룹 머리·REMARKS(상태)가 말한다. 목록의 FLIGHT 번호는 중립 */
-:root[data-theme="night"] .fids-table .flap b {
-  color: var(--text);
-  text-shadow: none;
-}
-.col-age {
-  display: none;
-}
-.fids-table .col-time {
-  width: 1%;
-  font-size: var(--text-sm);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.fids-dest {
-  width: 42%;
-  max-width: 0;
-}
-.fids-dest a,
-.fids-dest span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fids-title);
-}
-.fids-dest a:hover {
-  text-decoration: underline;
-}
-.fids-aircraft {
-  white-space: nowrap;
-}
-.fids-aircraft .session-badge + .session-badge {
-  margin-left: var(--space-2);
-}
-.fids-table .col-stand {
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  color: var(--muted);
-}
-.fids-table .col-pri {
-  width: 1%;
-}
-.fids-remark {
-  white-space: nowrap;
-}
-.remark {
-  font: 700 var(--text-sm) var(--mono);
-  letter-spacing: 0.12em;
-  color: var(--tone);
-}
-/* 실제 안내판의 BOARDING처럼 CLEARED TO LAND는 깜빡인다 */
-.fids-table tr.tone-cleared .remark {
-  animation: blink 1.2s steps(2) infinite;
-}
-/* OOOI(ATC-123): REMARKS 옆에 가장 늦은 이정표(OUT·OFF·ON·IN) 하나 */
-.remark-ms {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--faint);
-  letter-spacing: 0.04em;
-}
-.fids-remark .code-chip {
-  margin-left: var(--space-2);
-}
-.fids-empty {
-  padding: var(--space-4);
-}
-/* ARRIVED "more" 줄(ATC-112): 목록은 표 맨 아래 한 줄, 보드는 열 맨 아래 */
-.fids-more td {
-  padding: 0;
-}
-.fids-more-btn {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  background: transparent;
-  border: 0;
-  border-top: 1px dashed var(--line-strong);
-  color: var(--muted);
-  font: var(--text-xs) var(--sans);
-  text-align: left;
-  cursor: pointer;
-}
-.fids-more-btn:hover,
-.fids-more-btn:focus-visible {
-  color: var(--text);
-  background: var(--panel-2);
-}
-.column-body .fids-more-btn {
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-md);
-}
 
 /* 애니메이션 끄기(설정). 기본값은 OS의 동작 줄이기 설정을 따른다. */
 :root[data-motion="off"] *,
@@ -1842,46 +1165,6 @@ a.ticket:hover {
   transition-duration: 0s !important;
 }
 
-@media (max-width: 1100px) {
-  .leg {
-    grid-template-columns: minmax(150px, 1fr) 104px minmax(120px, 1fr) 104px;
-  }
-  .cell-remarks {
-    grid-column: 1 / -1;
-    border-top: 1px dashed var(--paper-line);
-  }
-  .cell-remarks:empty {
-    display: none;
-  }
-}
-
-/* 탭이 헤더 한 줄에 다 안 들어가는 폭(탭 10개, 로고+탭+수치 ≈ 1740px): 탭을 헤더 둘째 줄로 */
-@media (min-width: 861px) and (max-width: 1760px) {
-  .console {
-    height: auto;
-    flex-wrap: wrap;
-  }
-  .brand {
-    height: var(--console-h);
-  }
-  .tabs {
-    order: 1;
-    flex-basis: 100%;
-    border-top: 1px solid var(--line);
-  }
-  .tab {
-    padding: var(--space-2) var(--space-4);
-  }
-}
-
-/* 둘째 줄이 가장 좁을 때: 탭 10개가 한 줄에 들어가게 좌우 여백을 줄인다(cockpit·night 글꼴이 넓다) */
-@media (min-width: 861px) and (max-width: 960px) {
-  .tab,
-  :root[data-theme="night"] .tabs .tab {
-    padding-left: var(--space-3);
-    padding-right: var(--space-3);
-  }
-}
 
 @media (max-width: 860px) {
   :root {
@@ -1891,46 +1174,33 @@ a.ticket:hover {
     height: auto;
     flex-wrap: wrap;
   }
-  .brand-wrap {
-    flex: 1;
-    border-right: 0;
-  }
-  .brand {
-    height: var(--console-h);
-  }
-  .tabs {
-    width: 100%;
-    flex-wrap: wrap;
-    overflow: visible;
-    padding-bottom: 0;
-    margin-bottom: 0;
-    border-top: 1px solid var(--line);
-  }
-  /* 한 줄에 4개씩(night 테마의 gap까지 들어가게 22%) */
-  .tab {
-    flex: 1 0 22%;
-    align-items: center;
-    padding: var(--space-2);
-    border-bottom: 1px solid var(--line);
-  }
-  .tab:last-child {
-    border-right: 0;
-  }
-  /* night 탭도 한 줄에 4개(탭 10개가 4/4/2) */
-  :root[data-theme="night"] .tabs .tab {
-    padding: 0 var(--space-2);
-  }
+  /* ≤860px: 가로로 밀지 않고 줄을 바꾼다(ATC-364, DL8). 칸은 72px 이상으로 늘어나 한 줄을 채우고, 소리 잠금 칩은 한 줄을 다 쓴다.
+     칸 사이 선은 border가 아니라 왼선·윗선 box-shadow라 줄 맨 앞 칸의 왼선은 화면 밖에 그려지고 칸의 크기는 그대로다 */
   .readouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
     width: 100%;
     margin-left: 0;
     border-top: 1px solid var(--line);
-    overflow-x: auto;
+    overflow: visible;
   }
   .readout {
-    flex: 1;
-    min-width: 72px;
+    min-width: 0;
     align-items: flex-start;
     padding: var(--space-2) var(--space-3);
+    border-left: 0;
+    box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line);
+  }
+  /* ALERTS는 늘 첫 줄(줄이 몇 개로 갈라져도) */
+  .readout.readout-alerts {
+    order: -1;
+  }
+  .readouts > .sound-lock {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: calc(100% - var(--space-6));
+    margin: var(--space-2) var(--space-3);
+    white-space: normal;
   }
   .readout em,
   .readout.clock {
@@ -1948,131 +1218,6 @@ a.ticket:hover {
   .legend {
     display: none;
   }
-  /* FIDS 목록(ATC-316): 행이 한 줄 카드 — FLIGHT · 제목 · AIRCRAFT · 나이. 가로 스크롤 없음 */
-  .fids-table,
-  .fids-table tbody,
-  .fids-group-head,
-  .fids-group-head th,
-  .fids-more,
-  .fids-more td {
-    display: block;
-  }
-  .fids-table thead,
-  .fids-table tbody tr.fids-row:nth-child(n) td.col-time,
-  .fids-table tbody tr.fids-row:nth-child(n) td.col-stand,
-  .fids-table tbody tr.fids-row:nth-child(n) td.col-pri {
-    display: none;
-  }
-  .fids-table tbody tr.fids-row:nth-child(n) {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    column-gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
-  }
-  .fids-table tbody tr.fids-row:nth-child(n) td {
-    display: block;
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-  .fids-table tr.is-occupied td:first-child {
-    box-shadow: none;
-  }
-  .fids-table tr.fids-row.is-occupied {
-    box-shadow: inset 2px 0 0 var(--radar);
-  }
-  .fids-row .flap {
-    --flap-w: 11px;
-    --flap-h: 17px;
-  }
-  .col-flight {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .fids-dest {
-    grid-column: 2;
-    grid-row: 1;
-    width: auto;
-    max-width: none;
-    min-width: 0;
-  }
-  .fids-aircraft {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .col-age {
-    display: block;
-    grid-column: 4;
-    grid-row: 1;
-    min-width: 2.5ch;
-    font-size: var(--text-xs);
-    color: var(--muted);
-    text-align: right;
-  }
-  /* REMARKS: 그룹 머리가 단계를 이미 말하므로 글자는 숨긴다. CLEARED TO LAND(깜빡임)와 이정표·NO CONTACT는 아래 줄에 남는다 */
-  .fids-table tbody tr.fids-row:nth-child(n) td.fids-remark {
-    display: none;
-  }
-  .fids-table tbody tr.fids-row:nth-child(n) td.fids-remark.has-extra,
-  .fids-table tbody tr.fids-row.tone-cleared:nth-child(n) td.fids-remark {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    grid-column: 2 / -1;
-    grid-row: 2;
-    margin-top: var(--space-1);
-  }
-  .fids-row:not(.tone-cleared) .fids-remark .remark {
-    display: none;
-  }
-  .fids-remark .remark-ms {
-    margin-left: 0;
-  }
-  /* FIDS 보드: 열이 세로로 쌓이고 카드는 한 줄(경고·AIRCRAFT 줄은 그 아래) */
-  .board {
-    grid-auto-flow: row;
-    grid-auto-columns: minmax(0, 1fr);
-    overflow-x: visible;
-  }
-  .ticket {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: var(--space-2);
-  }
-  .ticket .flap {
-    --flap-w: 11px;
-    --flap-h: 17px;
-  }
-  .ticket-top {
-    display: contents;
-  }
-  .ticket-top .flap {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .ticket-top .prio {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .ticket-title {
-    grid-column: 2;
-    grid-row: 1;
-    min-width: 0;
-    margin-top: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .ticket-foot,
-  .ticket-alert {
-    grid-column: 1 / -1;
-  }
-  .ticket-assignee {
-    display: none;
-  }
   .scope-frame {
     padding: var(--space-4);
   }
@@ -2083,46 +1228,51 @@ a.ticket:hover {
   .map-lines {
     display: none;
   }
-  .strip {
-    grid-template-columns: 8px 1fr;
-  }
-  .strip-legs {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--paper-line);
-  }
-  .leg {
-    grid-template-columns: 1fr 96px;
-  }
-  .cell-route,
-  .leg .cell:nth-child(4) {
-    display: none;
-  }
 }
 
 /* ── 테마: Glass Cockpit ─────────────────────────────
    조종석 디스플레이(EFIS). 색 하나에 뜻 하나: 마젠타는 활성 FLIGHT PLAN(ENROUTE),
    시안은 선택·APPROACH, 녹색은 작동 중(AIRBORNE), 호박은 주의, 빨강은 경고. 서체는 B612. */
 :root[data-theme="cockpit"] {
-  --bg: #060a14;
-  --chrome: #080d1a;
-  --panel: #0d1528;
-  --panel-2: #142038;
-  --panel-3: #1c2b4a;
-  --scope: #070c18;
+  /* theme-gen:cockpit begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #060a14;
+  --n-2: #070c18;
+  --n-3: #090f1d;
+  --n-4: #0d1528;
+  --n-5: #131e39;
+  --n-6: #192749;
+  --n-7: #253b6e;
+  --n-8: #3b5dac;
+  --n-9: #8e9cbc;
+  --n-10: #aeb9d0;
+  --n-11: #f2f5fa;
+  --hue-radar: #3cf06e;
+  --hue-amber: #ffbf1f;
+  --hue-cyan: #29e0ff;
+  --hue-alert: #ff4d4d;
+  --hue-blue: #29e0ff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:cockpit end */
   --scope-glow: #0f1b36;
-  --line: #2c3d66;
-  --line-strong: #4260a0;
   --bracket: #29e0ff;
 
-  --text: #f2f5fa;
-  --muted: #b0bdd6;
-  --faint: #8e9dbe;
 
-  --radar: #3cf06e;
-  --amber: #ffbf1f;
-  --cyan: #29e0ff;
-  --alert: #ff4d4d;
-  --blue: #29e0ff;
   --magenta: #ff5fdc;
   --ring: #6f8fd8;
   --sweep: none;
@@ -2180,46 +1330,9 @@ a.ticket:hover {
 :root[data-theme="cockpit"] .map {
   z-index: var(--z-raised);
 }
-:root[data-theme="cockpit"] .tab[aria-selected="true"] {
-  box-shadow: inset 0 0 0 1.5px var(--cyan);
-}
-:root[data-theme="cockpit"] .tab[aria-selected="true"]::after {
-  display: none;
-}
-:root[data-theme="cockpit"] .brand-sector {
-  color: var(--magenta);
-}
-:root[data-theme="cockpit"] .strip {
-  border-radius: var(--radius-sm);
-}
 :root[data-theme="cockpit"] .type {
   background: var(--cyan);
   color: var(--bg);
-}
-:root[data-theme="cockpit"] .bay-rail {
-  background: var(--panel);
-}
-:root[data-theme="cockpit"] .flap {
-  gap: 0;
-}
-:root[data-theme="cockpit"] .flap b {
-  width: auto;
-  height: auto;
-  font-size: var(--text-lg);
-  letter-spacing: 0.04em;
-}
-/* 활성 FLIGHT PLAN은 마젠타 항로선 */
-:root[data-theme="cockpit"] .column.tone-enroute .ticket-title::before {
-  content: "";
-  display: block;
-  height: 2px;
-  margin-bottom: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--magenta);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--magenta) 60%, transparent);
-}
-:root[data-theme="cockpit"] .ticket.is-occupied {
-  box-shadow: inset 2px 0 0 var(--radar);
 }
 
 /* ── 설정 창: 가운데 넓은 모달, 왼쪽 메뉴 + 오른쪽 내용 ─────────────────────────── */
@@ -2283,7 +1396,7 @@ a.ticket:hover {
 }
 .settings-title em {
   margin-left: var(--space-2);
-  font: 500 var(--text-sm) var(--sans);
+  font: 400 var(--text-sm) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -2333,7 +1446,7 @@ a.ticket:hover {
   border-radius: var(--radius-md);
   background: var(--panel-3);
   color: var(--text);
-  font: 500 var(--text-sm) var(--sans);
+  font: 400 var(--text-sm) var(--sans);
 }
 .settings-search:focus-visible {
   outline: 2px solid var(--ring);
@@ -2826,64 +1939,59 @@ a.ticket:hover {
   font-size: var(--text-xs);
   color: var(--muted);
 }
-.segmented {
-  display: flex;
-  gap: var(--space-0-5);
-  padding: var(--space-0-5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-}
-.segmented button {
-  flex: 1;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.segmented button:hover {
-  color: var(--text);
-}
-.segmented button[aria-checked="true"] {
-  background: var(--panel-3);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
 
 /* ── 테마: Night Sky ─────────────────────────────
    천측 항법. 밝고 따뜻한 별일수록 지금 움직이는 것: AIRBORNE·ENROUTE는 금색, HOLDING은 푸른 별,
    APPROACH는 청록, HANDOFF는 라일락, LOS는 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
 :root[data-theme="night"] {
-  --bg: #03040d;
+  /* night의 신호: --radar는 금색 별, --amber는 푸른 별(HOLDING) */
+  /* theme-gen:night begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #03040d;
+  --n-2: rgba(8, 10, 28, 0.3);
+  --n-3: rgba(10, 12, 32, 0.55);
+  --n-4: rgba(19, 24, 59, 0.5);
+  --n-5: rgba(30, 38, 90, 0.6);
+  --n-6: rgba(35, 45, 106, 0.85);
+  --n-7: rgba(238, 240, 255, 0.13);
+  --n-8: rgba(238, 240, 255, 0.3);
+  --n-9: #8e94c2;
+  --n-10: #acb2d6;
+  --n-11: #eef0ff;
+  --hue-radar: #ffd98a;
+  --hue-amber: #9ec2ff;
+  --hue-cyan: #7fe8ff;
+  --hue-alert: #ff6b85;
+  --hue-blue: #c3adff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:night end */
+  --sky: #080c24; /* 설정 창 견본의 바탕: 별밭 그라디언트의 가운데 */
   --backdrop:
     radial-gradient(ellipse 80% 50% at 70% 110%, rgba(120, 70, 200, 0.28), transparent 70%),
     radial-gradient(ellipse 60% 40% at 10% 100%, rgba(40, 90, 200, 0.18), transparent 70%),
     linear-gradient(115deg, transparent 38%, rgba(190, 170, 255, 0.04) 46%, rgba(255, 230, 200, 0.05) 50%, rgba(190, 170, 255, 0.04) 54%, transparent 62%),
     linear-gradient(180deg, #03040d 0%, #080c24 55%, #16103a 100%);
-  --chrome: rgba(6, 8, 26, 0.55);
-  --panel: rgba(18, 24, 58, 0.5);
-  --panel-2: rgba(28, 36, 82, 0.6);
-  --panel-3: rgba(40, 50, 108, 0.85);
-  --scope: rgba(8, 10, 32, 0.3);
   --scope-glow: rgba(40, 50, 120, 0.18);
-  --line: rgba(170, 190, 255, 0.16);
-  --line-strong: rgba(190, 205, 255, 0.34);
   --bracket: transparent;
   --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.35);
 
-  --text: #eef0ff;
-  --muted: #aab3d9;
-  --faint: #8a93c0;
 
-  --radar: #ffd98a; /* 금색 별 */
-  --amber: #9ec2ff; /* 푸른 별: HOLDING */
-  --cyan: #7fe8ff;
   --series-crew: var(--radar);
-  --alert: #ff6b85;
-  --blue: #c3adff;
   --gold: #ffd98a;
   --ring: #aab8ff;
   --sweep: none;
@@ -2949,47 +2057,10 @@ a.ticket:hover {
 :root[data-theme="night"] .moon-icon {
   filter: drop-shadow(0 0 8px rgba(255, 230, 170, 0.45));
 }
-:root[data-theme="night"] .brand-name,
-:root[data-theme="night"] .tab-code,
 :root[data-theme="night"] .readout b,
 :root[data-theme="night"] .label,
-:root[data-theme="night"] .blk-l1 strong,
-:root[data-theme="night"] .cs,
-:root[data-theme="night"] .val.big,
-:root[data-theme="night"] .column-code,
-:root[data-theme="night"] .flap b {
+:root[data-theme="night"] .blk-l1 strong {
   font-family: var(--display);
-}
-:root[data-theme="night"] .brand-sector {
-  color: var(--muted);
-  white-space: nowrap;
-}
-:root[data-theme="night"] .tabs {
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
-  align-items: center;
-}
-:root[data-theme="night"] .tab {
-  align-items: center;
-  height: 40px;
-  padding: 0 var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-}
-:root[data-theme="night"] .tab[aria-selected="true"] {
-  color: var(--text);
-  border-color: var(--line-strong);
-  box-shadow:
-    0 0 18px rgba(160, 180, 255, 0.18),
-    inset 0 0 12px rgba(160, 180, 255, 0.08);
-}
-:root[data-theme="night"] .tab[aria-selected="true"] .tab-code {
-  color: var(--gold);
-  text-shadow: 0 0 10px rgba(255, 217, 138, 0.6);
-}
-:root[data-theme="night"] .tab[aria-selected="true"]::after {
-  display: none;
 }
 :root[data-theme="night"] .tone-alert {
   background: none;
@@ -3020,7 +2091,6 @@ a.ticket:hover {
 :root[data-theme="night"] .ph,
 :root[data-theme="night"] .los-tag,
 :root[data-theme="night"] .prio,
-:root[data-theme="night"] .stamp,
 :root[data-theme="night"] .segmented,
 :root[data-theme="night"] .segmented button {
   border-radius: var(--radius-pill);
@@ -3038,9 +2108,6 @@ a.ticket:hover {
 }
 :root[data-theme="night"] .theme-card {
   border-radius: var(--radius-md);
-}
-:root[data-theme="night"] .stamp {
-  transform: none;
 }
 
 /* 성도: 천구 좌표(적위 호, 적경 호) */
@@ -3144,66 +2211,6 @@ a.ticket:hover {
   box-shadow: 0 0 24px rgba(255, 107, 133, 0.25);
 }
 
-/* FLIGHT STRIPS: 유리 줄, 별빛이 왼쪽에서 번진다 */
-:root[data-theme="night"] .bay-rail {
-  padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
-  gap: var(--space-2);
-}
-:root[data-theme="night"] .strip {
-  position: relative;
-  border-radius: var(--radius-md);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-:root[data-theme="night"] .strip .holder {
-  --star: var(--amber);
-  background: none;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--star) 70%, transparent);
-}
-:root[data-theme="night"] .strip::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 140px;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 0% 50%, color-mix(in srgb, var(--star, var(--amber)) 22%, transparent), transparent 70%);
-}
-:root[data-theme="night"] .strip.is-airborne {
-  --star: var(--gold);
-}
-:root[data-theme="night"] .strip.is-holding {
-  --star: var(--amber);
-}
-:root[data-theme="night"] .strip.is-nordo,
-:root[data-theme="night"] .strip.is-los {
-  --star: var(--alert);
-}
-:root[data-theme="night"] .strip.is-parked {
-  --star: var(--faint);
-}
-:root[data-theme="night"] .strip.is-airborne .holder,
-:root[data-theme="night"] .strip.is-nordo .holder,
-:root[data-theme="night"] .strip.is-parked .holder,
-:root[data-theme="night"] .strip.is-los .holder {
-  background: none;
-}
-:root[data-theme="night"] .strip.is-los {
-  outline: 1px solid rgba(255, 107, 133, 0.6);
-  outline-offset: -1px;
-  box-shadow: 0 0 28px rgba(255, 107, 133, 0.18);
-}
-:root[data-theme="night"] .strip.is-airborne .cs {
-  color: var(--gold);
-  text-shadow: 0 0 14px rgba(255, 217, 138, 0.5);
-}
-:root[data-theme="night"] .strip.is-holding .cs {
-  color: var(--amber);
-}
 :root[data-theme="night"] .type {
   background: rgba(170, 190, 255, 0.16);
   color: var(--text);
@@ -3211,47 +2218,6 @@ a.ticket:hover {
   padding: 0 var(--space-1-5);
 }
 
-/* FIDS: 유리 기둥, 위쪽에 별빛 선 */
-:root[data-theme="night"] .column {
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-:root[data-theme="night"] .column-head {
-  position: relative;
-  border-top: 0;
-}
-:root[data-theme="night"] .column-head::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  top: 0;
-  height: 1.5px;
-  background: linear-gradient(90deg, transparent, var(--tone), transparent);
-  box-shadow: 0 0 10px var(--tone);
-}
-:root[data-theme="night"] .column-body {
-  padding: var(--space-2);
-  gap: var(--space-2);
-}
-:root[data-theme="night"] .ticket {
-  border-radius: var(--radius-md);
-}
-:root[data-theme="night"] .flap {
-  gap: 0;
-}
-:root[data-theme="night"] .flap b {
-  color: var(--tone);
-  width: auto;
-  height: auto;
-  font-size: var(--text-lg);
-  letter-spacing: 0.08em;
-  text-shadow: 0 0 12px color-mix(in srgb, var(--tone) 50%, transparent);
-}
-:root[data-theme="night"] .ticket.is-occupied {
-  box-shadow: inset 2px 0 0 var(--gold);
-}
 
 /* ── 밀도: 촘촘하게 ─────────────────────────────
    Material 밀도 규칙: 켜는 사람이 고른다, 한 단계에 4px, 높이만 줄이고 화면 여백(gutter)은 그대로,
@@ -3271,49 +2237,11 @@ a.ticket:hover {
 :root[data-density="compact"] .blk .tgt {
   margin-top: calc(-1 * var(--space-1));
 }
-/* FLIGHT STRIPS: 한 줄 칸(둘째 줄은 툴팁으로), 목적지는 한 줄 */
-:root[data-density="compact"] .strip {
-  min-height: 0;
-}
-:root[data-density="compact"] .strip-id,
-:root[data-density="compact"] .cell {
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-}
-:root[data-density="compact"] .leg:not(.is-empty) .cell .sub {
-  display: none;
-}
-:root[data-density="compact"] .route {
-  -webkit-line-clamp: 1;
-}
-:root[data-density="compact"] .bay-rail {
-  padding: var(--space-1);
-}
-/* FIDS 보드: 카드 제목은 두 줄까지, 카드 안 간격 8 → 4 */
-:root[data-density="compact"] .column-body {
-  padding: var(--space-1);
-}
-:root[data-density="compact"] .ticket-title {
-  display: -webkit-box;
-  margin-top: var(--space-1);
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-:root[data-density="compact"] .ticket-foot,
-:root[data-density="compact"] .ticket-alert {
-  margin-top: var(--space-1);
-}
 /* 표: FIDS 목록, AIRPORT, 지표 */
-:root[data-density="compact"] .fids-table td,
 :root[data-density="compact"] .apt-table td,
-:root[data-density="compact"] .mx-table td {
+:root[data-density="compact"] .kit-table td {
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
-}
-/* 판 타일이 있는 Radar Console에서만 글자를 줄인다(다른 테마는 타일 없이 글자만) */
-:root[data-density="compact"][data-theme="radar"] .flap b {
-  font-size: var(--text-xs);
 }
 /* AUTOMATION 탭(ATC-131): 지금 정책 한 줄, ⚠ 모드는 호박색, 나머지 모드 경고는 접음 */
 .automation-line {
@@ -3358,7 +2286,7 @@ a.ticket:hover {
 }
 .acct-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .acct-registry { margin-top: var(--space-4); }
-.acct-registry em { font: 500 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
+.acct-registry em { font: 400 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
 .acct-launch-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 4px 0; font-size: var(--text-sm); }
 .acct-launch-row > span { min-width: 6.5em; color: var(--muted); }
 .acct-launch-row select {
@@ -3428,8 +2356,6 @@ a.ticket:hover {
 .acct-env legend { padding: 0 4px; }
 .acct-env label { display: inline-flex; align-items: center; gap: 4px; }
 .acct-done { margin-top: 8px; }
-.acct-next { margin: 4px 0 0; padding-left: 20px; }
-.acct-next li { margin: 3px 0; }
 .acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
 .acct-login { margin: 4px 0 2px; }
 /* PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫. 보통 수준은 무채색, INFO부터 amber, HOLD부터 alert(서버가 정한 수준) */

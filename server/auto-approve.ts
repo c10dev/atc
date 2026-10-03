@@ -5,7 +5,7 @@ import { type Proposal, regOfProposal } from "./proposals.ts";
 import type { ScheduleOp } from "./schedule.ts";
 
 // 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14와 WO-16 1·2단계). 여기는 순수 함수만 — 읽고 쓰는 것은 auto-approve-run.ts.
-// 서버가 스스로 승인하는 것은 CROSSCHECK가 agree한 열린 카드뿐이다. blind 표본, HELD, disagree, 주의(caution) 카드는 그대로 SUPERVISOR 몫이고,
+// CROSSCHECK는 은퇴했다(ATC-371): 승인 조건에 CROSSCHECK mark가 없다(옛 mark는 기록으로만 남는다). blind 표본, HELD, 주의(caution) 카드는 그대로 SUPERVISOR 몫이고,
 // 상한이 차면 카드는 SUPERVISOR를 기다린다. 스위치가 off면 아무것도 하지 않는다(그때는 이 규칙을 부르지도 않는다).
 
 const DAY_MS = 86_400_000;
@@ -19,8 +19,6 @@ export type AutoSkip =
   | "held"
   | "launch" // ASSIGN 규칙은 launch 카드를 승인하지 않는다(별도 스위치)
   | "not-launch"
-  | "no-crosscheck"
-  | "disagree"
   | "blind"
   | "caution"
   | "fuel-hold"
@@ -37,7 +35,7 @@ export interface AutoCounts {
   launched: number; // 지난 24시간의 자동 LAUNCH 시도(실패 포함, would-launch 포함)
 }
 
-type CardFacts = Pick<Proposal, "id" | "kind" | "status" | "at" | "launch" | "caution" | "crosscheck" | "holdAt">;
+type CardFacts = Pick<Proposal, "id" | "kind" | "status" | "at" | "launch" | "caution" | "holdAt">;
 
 export interface AssignCtx {
   now: number;
@@ -46,6 +44,7 @@ export interface AssignCtx {
   fuelHold: boolean; // 그 AIRCRAFT의 ACCOUNT가 FUEL hold(스위치가 켜져 있고 holdPct 이상)
   counts: AutoCounts;
   approveMax: number;
+  live?: boolean; // 자동 운항(ATC-367): blind·주의 메모를 보지 않는다
 }
 
 // 열린 ASSIGN(LAUNCH 아님)을 자동 승인해도 되나. 막히면 까닭, 되면 null
@@ -67,6 +66,7 @@ export interface LaunchCtx {
   backedOff: boolean; // 최근 LAUNCH 실패로 쉬는 REGISTRATION
   counts: AutoCounts;
   launchMax: number;
+  live?: boolean; // 자동 운항(ATC-367)
 }
 
 // 열린 launch 카드(ABSENT·RESUME)를 자동 승인하고 LAUNCH해도 되나. 조건은 모두 지켜야 한다
@@ -84,13 +84,13 @@ export function launchWhyNot(p: CardFacts, c: LaunchCtx): AutoSkip | null {
   return null;
 }
 
-// ASSIGN과 launch 카드가 같이 지키는 조건: SETTLED, HELD 아님, CROSSCHECK agree, blind 아님, 주의 없음, FUEL hold 아님
-function commonWhyNot(p: CardFacts, c: { now: number; settleMin: number; fuelHold: boolean }): AutoSkip | null {
+// ASSIGN과 launch 카드가 같이 지키는 조건: SETTLED, HELD 아님, blind 아님, 주의 없음, FUEL hold 아님
+// live(자동 운항, ATC-367)는 blind·주의 메모 조건을 보지 않는다: 주의 메모는 FLIGHT PLAN 글에 실려 CAPTAIN에게 가고, 사람 카드는 없다
+function commonWhyNot(p: CardFacts, c: { now: number; settleMin: number; fuelHold: boolean; live?: boolean }): AutoSkip | null {
   if (p.holdAt !== null) return "held";
   if (c.now - Date.parse(p.at) < c.settleMin * 60_000) return "unsettled";
-  if (!p.crosscheck) return "no-crosscheck";
-  if (p.crosscheck.verdict !== "agree") return "disagree";
-  if (isBlind(p.id)) return "blind"; // blind 표본은 SUPERVISOR가 mark를 못 본 채 판정한다. 자동으로는 절대 승인하지 않는다
+  if (c.live) return c.fuelHold ? "fuel-hold" : null;
+  if (isBlind(p.id)) return "blind"; // blind 표본은 SUPERVISOR가 직접 판정한다. 자동으로는 절대 승인하지 않는다
   if (p.caution) return "caution"; // OCC가 주의 메모를 단 카드는 사람이 본다
   if (c.fuelHold) return "fuel-hold";
   return null;
@@ -104,12 +104,10 @@ export interface ScheduleCtx {
 }
 
 // 열린 SCHEDULE 초안을 자동 승인해도 되나(TARGET·ROUTE 같은 network 종류는 적용할 길이 없어 승인이 아니라 그림자 판정만 있다)
-export function scheduleWhyNot(op: Pick<ScheduleOp, "id" | "kind" | "status" | "crosscheck">, c: ScheduleCtx): AutoSkip | null {
+export function scheduleWhyNot(op: Pick<ScheduleOp, "id" | "kind" | "status">, c: ScheduleCtx): AutoSkip | null {
   if (c.scheduleMode !== "approval") return "mode";
   if (op.status !== "draft") return "not-draft";
   if (c.isNetwork(op.kind)) return "network-kind";
-  if (!op.crosscheck) return "no-crosscheck";
-  if (op.crosscheck.verdict !== "agree") return "disagree";
   if (isBlind(op.id)) return "blind";
   if (c.counts.approved >= c.approveMax) return "daily-cap";
   return null;

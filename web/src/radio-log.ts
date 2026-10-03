@@ -40,6 +40,12 @@ export function optionsOf(txs: readonly Transmission[], key: "airport" | "aircra
   return [...new Set(txs.map((t) => t[key]).filter((v): v is string => Boolean(v)))].sort(key === "aircraft" ? compareRegistration : undefined);
 }
 
+// 한 FLIGHT의 교신(ATC-379, FLIGHT 서랍): flight가 그 FLIGHT인 호출과 그 호출의 답. 답은 flight 칸이 없을 수 있어 호출 id로 따라간다
+export function flightTx(txs: readonly Transmission[], flight: string): Transmission[] {
+  const calls = new Set(txs.filter((t) => !t.replyTo && t.flight === flight).map((t) => t.id));
+  return txs.filter((t) => (t.replyTo ? calls.has(t.replyTo) || t.flight === flight : calls.has(t.id)));
+}
+
 export interface Thread {
   tx: Transmission;
   replies: Transmission[];
@@ -104,9 +110,9 @@ export function linksOf(t: Transmission): Link[] {
   const out: Link[] = [];
   const id = baseId(t.replyTo ?? t.id);
   if (t.pr) out.push({ href: `${REPO_URL}/pull/${t.pr}`, label: `PR #${t.pr}` });
-  else if (/^D-\d+/.test(id)) out.push({ href: "#dispatch", label: id });
+  else if (/^D-\d+/.test(id)) out.push({ href: "#home", label: id });
   else if (/^CC-\d+/.test(id) && t.aircraft) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: id });
-  else if (/^C-\d+/.test(id)) out.push({ href: "#strips", label: id });
+  else if (/^C-\d+/.test(id)) out.push({ href: "#flights", label: id });
   if (t.aircraft && TEAM_REGISTRATION.test(t.aircraft) && !out.some((l) => l.href.startsWith("#fleet/"))) out.push({ href: `#fleet/${encodeURIComponent(t.aircraft)}`, label: t.aircraft });
   return out;
 }
@@ -140,4 +146,72 @@ export function saveFilter(storage: Pick<Storage, "setItem" | "removeItem"> | nu
     storage.setItem(KEY.freqs, JSON.stringify([...f.freqs]));
     for (const k of ["airport", "aircraft"] as const) f[k] ? storage.setItem(KEY[k], f[k]!) : storage.removeItem(KEY[k]);
   } catch {}
+}
+
+// ── 스테이션 필터(ATC-446): RADIO 사이드바. 관제 세션(TOWER·OCC·MCC·REVIEW·DUTY …)과 AIRCRAFT를 나누어 센다 ──
+export interface Station {
+  id: string; // 관제는 이름 그대로(TOWER), AIRCRAFT는 REGISTRATION(TEAM_G)
+  label: string; // AIRCRAFT는 콜사인(GOLF), 관제는 id
+  kind: "control" | "aircraft";
+}
+export interface StationCount extends Station {
+  count: number;
+}
+const CONTROL_ORDER = ["TOWER", "OCC", "MCC", "REVIEW", "DUTY"];
+// 서버가 보낸 쪽을 알 수 없을 때 채우는 자리 이름(server/radio.ts)과 CROSSCHECK 판정 줄의 보낸 쪽은 스테이션이 아니다. 그 줄은 aircraft로 거른다
+const NOT_STATIONS = ["ALL", "?", "AIRCRAFT", "CROSSCHECK"];
+
+// 교신의 "TOWER" · "GOLF (TEAM_G)" → 스테이션. 모두에게 하는 방송("ALL")과 빈 값, 자리 이름은 스테이션이 아니다
+export function stationOf(name: string): Station | null {
+  const n = name.trim();
+  if (!n || NOT_STATIONS.includes(n)) return null;
+  const m = /^(.*?)\s*\(([^()]+)\)$/.exec(n);
+  return m ? { id: m[2], label: m[1] || m[2], kind: "aircraft" } : { id: n, label: n, kind: "control" };
+}
+
+// 이 스테이션들의 id(보낸 쪽, 받는 쪽, 그리고 aircraft). PREFLIGHT 줄(CROSSCHECK → OCC, HOLD → ALL)은 AIRCRAFT가 보낸·받는 쪽에 없고 aircraft에만 있다
+function stationsIn(t: Transmission): Station[] {
+  const out = new Map<string, Station>();
+  for (const s of [t.from, t.to]) {
+    const st = stationOf(s);
+    if (st && !out.has(st.id)) out.set(st.id, st);
+  }
+  if (t.aircraft && !out.has(t.aircraft)) out.set(t.aircraft, { id: t.aircraft, label: t.aircraft, kind: "aircraft" });
+  return [...out.values()];
+}
+
+// 이 교신이 그 스테이션의 것인가(보낸 쪽이거나 받는 쪽이거나 그 교신의 AIRCRAFT). id가 null이면 전부
+export function stationPasses(t: Transmission, id: string | null): boolean {
+  if (!id) return true;
+  return stationsIn(t).some((s) => s.id === id);
+}
+export const filterByStation = (txs: readonly Transmission[], id: string | null) => (id ? txs.filter((t) => stationPasses(t, id)) : [...txs]);
+
+// 사이드바 목록: 스테이션마다 교신 수(stationPasses와 같은 규칙, 한 교신은 스테이션마다 한 번). 관제는 TOWER·OCC·MCC·REVIEW·DUTY 순 뒤에 이름순, AIRCRAFT는 REGISTRATION순
+export function stationsOf(txs: readonly Transmission[]): { control: StationCount[]; aircraft: StationCount[] } {
+  const by = new Map<string, StationCount>();
+  for (const t of txs) {
+    for (const st of stationsIn(t)) {
+      const cur = by.get(st.id);
+      if (cur) cur.count += 1;
+      else by.set(st.id, { ...st, count: 1 });
+    }
+  }
+  const rank = (id: string) => (CONTROL_ORDER.includes(id) ? CONTROL_ORDER.indexOf(id) : CONTROL_ORDER.length);
+  const all = [...by.values()];
+  return {
+    control: all.filter((s) => s.kind === "control").sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id)),
+    aircraft: all.filter((s) => s.kind === "aircraft").sort((a, b) => compareRegistration(a.id, b.id)),
+  };
+}
+
+// 주소 #radio/<스테이션>에서 필터 값. #radio만이면 null(전부)
+export function stationOfHash(hash: string): string | null {
+  const [head, sub] = hash.replace(/^#/, "").split("/");
+  if (head !== "radio" || !sub) return null;
+  try {
+    return decodeURIComponent(sub);
+  } catch {
+    return sub;
+  }
 }

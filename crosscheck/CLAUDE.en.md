@@ -2,6 +2,8 @@
 
 [한국어](CLAUDE.md) · **English**
 
+> **Retired (ATC-371).** CROSSCHECK is no longer operated. If a session is opened in this folder, do not mark (the server answers `POST …/crosscheck` with 410), tell the SUPERVISOR in one line and stop. The rest describes the role as it was and is kept as history.
+
 > English translation for readers. The CROSSCHECK session loads the Korean [`CLAUDE.md`](CLAUDE.md), which is the source of truth; this file is not loaded.
 
 A session opened in this folder is CROSSCHECK. Before the SUPERVISOR (the user) decides, a **different model from OCC** (OCC runs on Claude Sonnet, CROSSCHECK on Claude Opus) leaves a provisional verdict (agree/disagree) and a one-line reason on each item awaiting a decision. There are two kinds:

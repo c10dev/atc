@@ -2,6 +2,7 @@ import { fixOf } from "./fix.ts";
 import { goAroundOf } from "./go-around.ts";
 import { inSequence } from "./landing.ts";
 import type { Clearance, PullRequest, Snapshot, TrafficEvent } from "./model.ts";
+import { liveHolderClaims } from "./occupancy.ts";
 import { lastAircraftOf, type LastAircraftInput, type Relay, type RelayType } from "./relay.ts";
 
 // RELAY 제안(ATC-308): GO AROUND나 FIX가 있는데 그 PR의 STAND를 쥔 세션이 없어 TOWER가 못 보낼 때(`action: "supervisor"`, `why: "no-holder"`)
@@ -22,6 +23,7 @@ export interface RelayOffer {
   text: string; // TOWER의 글, 고치지 않는다
   to: string | null; // 제안하는 받는 AIRCRAFT(REGISTRATION). 모르면 null: SUPERVISOR가 고른다
   reason: string; // GO AROUND의 이유(dirty·behind·prevMerged) 또는 FIX의 지적 출처
+  noHolder: string | null; // PR HOLDER가 이 카드를 SUPERVISOR에게 넘긴 사유(ATC-392): 그 AIRPORT에 AIRCRAFT 없음, TYPE RATING 없음, 한도·진행 중 등. 모르면 null
 }
 
 export interface OfferInput {
@@ -30,9 +32,11 @@ export interface OfferInput {
   relays: readonly Pick<Relay, "type" | "pr" | "text" | "status">[];
   lastAircraft: LastAircraftInput;
   now: number;
+  // PR HOLDER(ATC-354, pr-holder.ts)의 경로. 주면 relay로 간 PR만 카드가 된다(AIRCRAFT가 이어받거나 DUTY로 가면 SUPERVISOR 카드가 없다). 안 주면 지금처럼 모두
+  holderRoutes?: ReadonlyMap<string, { kind: string; why?: string }> | null;
 }
 
-type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports">;
+type OfferSnapshot = Pick<Snapshot, "pulls" | "claims" | "workspaces" | "airports"> & Partial<Pick<Snapshot, "sessions">>;
 
 const repoName = (repo: string) => repo.replace(/\/+$/, "").split("/").pop() || repo;
 export const offerKey = (p: Pick<PullRequest, "repo" | "number" | "head">, type: RelayType) => `${repoName(p.repo)}#${p.number}@${p.head.slice(0, 7)}|${type}`;
@@ -47,9 +51,9 @@ export interface Pick1 {
 }
 
 // 이 PR에 STAND를 쥔 세션이 없을 때 TOWER가 못 보내는 글 하나(GO AROUND가 먼저). 없으면 null. 카드(relayOffersOf)와 PR 서랍이 같은 글을 쓴다
-export function noHolderPickOf(p: PullRequest, s: Pick<Snapshot, "pulls" | "claims">, x: Pick<OfferInput, "clearances" | "events" | "now">): Pick1 | null {
-  const holders = p.standPath ? s.claims.filter((c) => c.state === "active" && c.workspacePath === p.standPath).length : 0;
-  if (holders) return null; // 쥔 세션이 있으면 TOWER가 그에게 보낸다
+export function noHolderPickOf(p: PullRequest, s: Pick<Snapshot, "pulls" | "claims"> & Partial<Pick<Snapshot, "sessions">>, x: Pick<OfferInput, "clearances" | "events" | "now">): Pick1 | null {
+  const holders = liveHolderClaims(s.claims, p.standPath, s.sessions).length; // 끝난 세션의 점유는 홀더가 아니다(ATC-440)
+  if (holders) return null; // 살아 있는 세션이 쥐고 있으면 TOWER가 그에게 보낸다
   // brief와 같이 이 PR을 연 뒤 같은 STAND(없으면 같은 FLIGHT)로 나간 마지막 LAND
   const lastLand = x.clearances
     .filter((c) => c.type === "LAND" && !c.cancelledAt && c.at >= p.createdAt && ((p.standPath && c.stand === p.standPath) || (!c.stand && p.ticketKey && c.flight === p.ticketKey)))
@@ -67,6 +71,8 @@ export function relayOffersOf(s: OfferSnapshot, x: OfferInput): RelayOffer[] {
   for (const p of s.pulls.filter(inSequence)) {
     const pick = noHolderPickOf(p, s, x);
     if (!pick || taken(x.relays, pick.type, p.number, p.head.slice(0, 7))) continue;
+    const route = x.holderRoutes?.get(offerKey(p, pick.type));
+    if (x.holderRoutes !== undefined && route?.kind !== "relay") continue; // 아직 계산 전이거나 AIRCRAFT·DUTY가 맡는다
     const ws = p.standPath ? wsByPath.get(p.standPath) : undefined;
     out.push({
       key: offerKey(p, pick.type),
@@ -81,6 +87,7 @@ export function relayOffersOf(s: OfferSnapshot, x: OfferInput): RelayOffer[] {
       text: pick.text,
       to: lastAircraftOf(p.ticketKey ?? null, x.lastAircraft),
       reason: pick.reason,
+      noHolder: route?.why ?? null,
     });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key));

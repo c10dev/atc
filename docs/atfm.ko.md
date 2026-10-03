@@ -33,7 +33,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 
 1. **움직이기 전에 그림자로.** 모든 규칙은 먼저 사람의 결정 옆에서 "X를 했을 것"으로 돈다. 적어도 2주, 그리고 최소 건수를 채운다. 그림자 기록이 기준을 넘은 뒤에만 SUPERVISOR가 켠다.
 2. **사람을 잰다. 자동화는 사람으로 세지 않는다.** 자동 결정에는 `via: "atfm"`이 붙고, 2a/S1 일치 게이트와 CROSSCHECK 일치율에 절대 세지 않는다. 그러지 않으면 자동화가 자기를 채점하게 된다.
-3. **좁게, 되돌릴 수 있게.** 자동화는 구조상 위험이 낮은 경우만 맡는다(`SEC` 없음, CAUTION 없음, 명시한 라벨, CROSSCHECK agree). 장치마다 스위치, 하루 한도, 스스로 끄는 trip 조건이 있다.
+3. **좁게, 되돌릴 수 있게.** 자동화는 구조상 위험이 낮은 경우만 맡는다(`SEC` 없음, CAUTION 없음, 명시한 라벨). 장치마다 스위치, 하루 한도, 스스로 끄는 trip 조건이 있다.
 4. **보호하는 통제가 먼저.** GROUND STOP과 머지 슬롯은 속도를 늦추기만 한다. 그래서 일을 승인하는 어떤 것보다 먼저 켤 수 있다.
 5. **guard는 지금과 같다.** 새 쓰기 경로도 send-guard, linear-guard, Bash guard를 건너뛰지 않는다. 자동 FLIGHT PLAN과 Linear 호출은 기존 release 명령을 거친다. 그래서 guard가 여전히 정확한 문구와 입력을 비교한다.
 
@@ -51,7 +51,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 | A4 | `rating:SEC`도, Risk 그룹 라벨도 없다 | SEC는 절대 자동이 아니다([fleet.ko.md](fleet.ko.md) 4.3, [occ.ko.md](occ.ko.md) 7장) |
 | A5 | OCC가 검토했고(`note` 있음), CAUTION도 HOLD도 없다 | 지금까지 거절된 ASSIGN 3건 중 2건에 CAUTION이 있었다 |
 | A6 | FLIGHT에 `tail:`이 있으면 이 AIRCRAFT를 가리킨다. 없으면 FLIGHT의 프로젝트가 이 AIRCRAFT의 ROUTES에 있다 | 미리 정한 배정이나 늘 맡는 영역은 SUPERVISOR가 전에 내린 결정이다 |
-| A7 | 허용된 모델의 CROSSCHECK `agree` mark가 OCC 메모 뒤에 기록됐다 | 아무도 보지 않게 되기 전에, 독립된 검토자 둘이 동의한다 |
+| A7 | **없앴다(ATC-371).** CROSSCHECK `agree` mark를 요구했는데 CROSSCHECK가 은퇴해 이 코드는 보지 않고, 본 조건 목록에서도 빠진다 | — |
 | A8 | AIRCRAFT가 PARKED이고, AOG가 아니고, 필요한 TYPE RATING을 모두 가졌고, 최근 7일에 NO READBACK도 DECLINED도 없고, 아직 ARRIVED하지 않은 STAND 없는 FLIGHT를 날고 있지 않다([fleet.ko.md](fleet.ko.md) 5.1.1) | 답하지 않는 팀에 일을 자동으로 더 주면 안 된다. SURVEY나 CHECK를 나는 팀은 세션이 쉬고 있어도 바쁘다 |
 | A9 | FLIGHT에 우선순위가 있고, 상위 이슈가 아니고, 전에 DECLINED되거나 거절된 적이 없다 | 이것들이 나머지 실제 거절 사유다 |
 | A10 | 그 AIRPORT에 실제로 막는(enforced) GROUND STOP이 없고(6장), 한도에 여유가 있다(7장): 전체 하루 자동 ASSIGN 3건, 그리고 AIRCRAFT당 아직 ARRIVED하지 않은 자동 배정 FLIGHT 1건까지. WAKE 슬롯과 함께 센다(결정 3) | 흐름 관리가 배정보다 우선이다 |
@@ -60,7 +60,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 
 1. 2b를 2주 이상 돌렸고 `gate3`가 준비됐다. [dispatch.ko.md](dispatch.ko.md) 8장의 기준은 2주 이상, READBACK 90% 이상, DEPARTED 80% 이상, DISPATCH가 보낸 FLIGHT의 LOS가 거의 0, 유휴 AIRCRAFT 시간 감소다. 코드(`gate3Of`, `GATE3`)는 사람이 승인해 보낸 FLIGHT PLAN 10건 이상, READBACK 90% 이상, DEPARTED 80% 이상을 본다. 10건 최소치는 코드가 정한 것이다. LOS는 아래 5번 조건이 본다. 2주 기간은 FLIGHT RECORDER의 마지막 DISPATCH `mode:` 전환에서 잰다(`approvalRunOf`). `approval`로 14일 이상이면 통과다. 모드는 `approval`인데 마지막 전환 기록이 그렇지 않으면(파일을 직접 고쳤거나 전환이 기록 보존 기간 30일보다 오래됨) 판정 대신 "확인 필요"를 보인다. 유휴 AIRCRAFT 시간 감소는 재지 않는다: 아직 만들지 않음. DEPARTED 비율은 STAND가 필요한 FLIGHT만 센다. STAND 없는 FLIGHT는 READBACK 때 DEPARTED하므로 READBACK 비율에만 들어가고, `gate3.standFree`로 따로 보인다.
 2. **자동 대상의 그림자 정밀도**: SUPERVISOR가 판정한 자동 대상 ASSIGN이 20건 이상이고, 그중 95% 이상이 승인됐고, `already-done`, `parent-issue`, `waiting-on-prior`, `needs-human`으로 거절된 것이 하나도 없다.
-3. **DISPATCH의 CROSSCHECK, 모델 계열별**: 지금 쓰는 모델 계열(`byModel`, `modelFamily`로 묶음)의 mark가 달린 판정 20건 이상, 일치 90% 이상.
+3. **DISPATCH의 CROSSCHECK, 모델 계열별**: **없앴다(ATC-371).** CROSSCHECK가 은퇴해 켜기 점검에 일치율을 기다리는 줄이 없다. 옛 mark와 일치율은 기록으로 읽힌다.
    - 전체 비율로는 부족하다. 모델이 이미 한 번 바뀌었기 때문이다.
    - 계열은 같은 모델이 경로마다 다르게 받는 이름을 합친다: `claude-ocx-opencode-go--muse-spark-1.3-contributor`, `…[1m]`, `muse-spark-1.3-contributor`는 모두 `muse-spark-1.3`로 센다.
    - 모델 이름이 생기기 전의 mark는 `unknown`으로 읽는다. 따로 한 줄로 보이지만, "지금 계열"이 되지 않고 이 조건에도 세지 않는다.
@@ -91,7 +91,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 |---|---|
 | S1 | 종류가 `CLASSIFY`이고, 라벨이 없는 축에 라벨을 **더하기만** 한다(호출에 `removeLabels` 없음). 있는 라벨을 바꾸는 것은 사람의 결정이다(결정 5: 지금 S3 단계 범위는 이것이 전부) |
 | S2 | `rating:SEC`를 더하지 않고, FLIGHT에 `rating:SEC`, Risk 그룹 라벨(`Risk:Security`, 또는 옛 단독 라벨 `Risk: Security`. `classOf`는 `Risk:` 라벨을 모두 SEC로 읽는다), 그 FLIGHT의 DISPATCH 제안에 붙은 OCC CAUTION이 없다. atc가 FLIGHT를 읽지 못하면 S2에서 떨어진다: SEC 작업은 절대 자동이 아니다 |
-| S3 | 이 초안에 허용된 모델의 CROSSCHECK `agree` mark가 있고, OCC 사유가 정하는 축마다 fleet.md의 절을 인용한다(#29 규칙) |
+| S3 | OCC 사유가 정하는 축마다 fleet.md의 절을 인용한다(#29 규칙). 함께 요구하던 CROSSCHECK `agree` mark는 없앴다(ATC-371) |
 | S4 | FLIGHT가 Todo나 Backlog이고 어느 팀도 날고 있지 않다: STAND가 없고, 승인에서 ARRIVED 사이의 DISPATCH 제안이 없다(`isInFlight`. READBACK 때 DEPARTED한 STAND 없는 FLIGHT도 포함). `tail:` 라벨만으로는 막지 않는다. 미리 배정일 뿐이다 |
 
 조건이 하나 더 있지만 초안마다 보는 것은 아니다. S2 단계(승인 운용)가 켜져 있어야 한다. 그래야 Linear 호출이 atc가 release하고 linear-guard가 비교하는 호출이 된다. 이 조건은 모든 초안에 한꺼번에 맞거나 한꺼번에 안 맞는다. 그래서 아래 켜는 조건 1번이 본다.
@@ -108,7 +108,7 @@ ATFM(air traffic flow management, 교통 흐름 관리)은 atc의 3단계다. 1�
 
 1. S2 단계를 2주 돌렸고([occ.ko.md](occ.ko.md) 11장. 3장 1번처럼 마지막 SCHEDULE `mode:` 전환에서 잰다), 사람이 되돌린 APPLIED 작업이 없다. "되돌림"은 OCC가 더한 라벨이 7일 안에 사라진 것으로 감지한다.
 2. #29 이후 쓴 CLASSIFY 초안에 대한 사람 일치: 판정 20건 이상, 일치 85% 이상.
-3. SCHEDULE CLASSIFY의 CROSSCHECK, 지금 모델 계열별(3장과 같음, `unknown`은 세지 않음): mark 20건 이상, 일치 90% 이상(지금: 7건 중 7건, 그중 5건이 `unknown`).
+3. SCHEDULE CLASSIFY의 CROSSCHECK: **없앴다(ATC-371)**, 이유는 3장과 같다.
 4. 그림자 정밀도: 판정된 자동 대상 초안 20건 이상, 승인 95% 이상.
 
 **끄기와 되돌리기.** 스위치는 `atfm.json` `s3`(지금 `off | shadow`, 기본 `shadow`). `shadow`로 돌아가는 trip:

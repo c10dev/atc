@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "../Icon.tsx";
+import { Fold } from "../kit/Fold.tsx";
+import { Icon } from "../kit/Icon.tsx";
 import { useState } from "react";
 import type { AutolandView, PullTagKind } from "../../../server/autoland.ts";
 import type { Claim, Clearance, LandingBlockCode, PullRequest, Session, Snapshot } from "../../../server/model.ts";
@@ -13,23 +14,53 @@ import {
   flightPhase,
 } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
-import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, isGateCleanup, isStripVisible, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { attachCommandOf } from "../../../server/session-origin.ts";
-import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../ui.tsx";
+import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../badges.tsx";
 import { type MilestoneData, useMilestones } from "../useMilestones.ts";
 import { FlightProgressBar } from "./FlightProgress.tsx";
-import { HumanCheckQueue, HumanCheckTag } from "./HumanCheck.tsx";
+import { HumanCheckTag } from "./HumanCheck.tsx";
 import "./Teams.css";
 import { apiSend } from "../api.ts";
 
 const BAYS: AircraftStatus[] = ["airborne", "holding", "nordo", "parked"];
 const agentCode = { claude: "CLD", codex: "CDX" } as const;
 
+// FLIGHTS의 목록 보기에 붙는 착륙 순서(ATC-379): STRIPS가 보이던 LANDING SEQUENCE와 GitHub 상태 안내. HUMAN CHECK는 HOME의 큐가 맡는다
+export function FlightsLanding({ snapshot, idx }: { snapshot: Snapshot; idx: Index }) {
+  const pulls = snapshot.pulls ?? [];
+  const github = snapshot.github ?? null;
+  const landing = landingIndex(pulls, snapshot.autoland);
+  const nameOf = (id: string) => {
+    const s = idx.sessionById.get(id);
+    return s ? callsign(s) : id.slice(0, 8);
+  };
+  return (
+    <>
+      {github && !github.enabled && github.reason && (
+        <p className="ls-stale" title={github.reason}>
+          GitHub off · PR 상태를 읽지 않음
+        </p>
+      )}
+      {github?.error && (
+        <p className="ls-stale" title={github.error}>
+          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
+        </p>
+      )}
+      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
+    </>
+  );
+}
+
+// 기본(PARKED 숨김)으로 스트립에 보이는 AIRCRAFT 수. FLIGHTS의 접기 머리글이 개수를 말한다(design-language 4.3)
+export const stripCount = (snapshot: Snapshot, idx: Index) => sortSessions(snapshot.sessions, idx).filter((s) => isStripVisible(s, idx)).length;
+
+// 세션마다 스트립(AIRCRAFT bay). FLIGHTS의 목록 보기에서는 접힌 칸에 든다(ATC-379)
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
   const all = sortSessions(snapshot.sessions, idx);
-  const visible = showAll ? all : all.filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id) || s.job?.state === "blocked") // blocked job은 PARKED여도 보인다(NEEDS YOU, ATC-99);
+  const visible = showAll ? all : all.filter((s) => isStripVisible(s, idx)); // blocked job은 PARKED여도 보인다(NEEDS YOU, ATC-99)
   const hidden = all.length - visible.length;
   const nameOf = (id: string) => {
     const s = idx.sessionById.get(id);
@@ -41,9 +72,8 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
   const cleanup = visible.filter((s) => isGateCleanup(s, idx));
   const cleanupIds = new Set(cleanup.map((s) => s.id));
   for (const s of visible) if (!cleanupIds.has(s.id)) bays.get(aircraftStatus(s, hasActiveClaim(idx.claimsBySession.get(s.id))))!.push(s);
-  // 옛 서버 스냅샷에는 pulls·github가 없다
+  // 옛 서버 스냅샷에는 pulls가 없다
   const pulls = snapshot.pulls ?? [];
-  const github = snapshot.github ?? null;
   const landing = landingIndex(pulls, snapshot.autoland);
   const ms = useMilestones(snapshot.at.slice(0, 16)); // 진행 막대(ATC-211): 스냅샷이 바뀌는 분마다 한 번
 
@@ -58,18 +88,6 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
           PARKED AIRCRAFT 포함
         </label>
       </div>
-      {github && !github.enabled && github.reason && (
-        <p className="ls-stale" title={github.reason}>
-          GitHub off · PR 상태를 읽지 않음
-        </p>
-      )}
-      {github?.error && (
-        <p className="ls-stale" title={github.error}>
-          GitHub 조회 실패 · PR 상태가 오래됐을 수 있음
-        </p>
-      )}
-      <HumanCheckQueue pulls={pulls} idx={idx} nameOf={nameOf} />
-      <LandingSequence pulls={pulls} landing={landing} idx={idx} nameOf={nameOf} />
       {BAYS.map((bay) => {
         const sessions = bays.get(bay)!;
         if (!sessions.length) return null;
@@ -98,11 +116,10 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
         );
       })}
       {cleanup.length > 0 && (
-        <details className="bay bay-gate">
-          <summary className="label" title="쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT. 워크트리를 치우면 사라진다">
-            GATE CLEANUP <em>{cleanup.length}</em>
-          </summary>
-          <div className="bay-rail">
+        <div className="bay">
+          <Fold title="GATE CLEANUP" count={cleanup.length} defaultOpen={false} level={3}>
+            <p className="faint">쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT. 워크트리를 치우면 사라진다.</p>
+            <div className="bay-rail">
             {cleanup.map((s) => (
               <Strip
                 key={s.id}
@@ -116,8 +133,9 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
                 clearances={snapshot.clearances.filter((c) => c.to === s.id)}
               />
             ))}
-          </div>
-        </details>
+            </div>
+          </Fold>
+        </div>
       )}
     </section>
   );
@@ -151,11 +169,11 @@ function Strip({
 
   return (
     <article className={`strip is-${status}${los ? " is-los" : ""}`}>
-      <div className="holder" title={aircraftStatusLabel[status]} />
+      <div className="st-bar" title={aircraftStatusLabel[status]} />
       <div className="strip-id">
-        <div className="cs" title={s.name}>
+        <div className="st-cs" title={s.name}>
           {sign}
-          <span className="type">{agentCode[s.agent]}</span>
+          <span className="st-agent">{agentCode[s.agent]}</span>
           <AwayTag airports={idx.awayBySession.get(s.id)} />
           <NeedsYou job={s.job} attach={s.jobId ? attachCommandOf(s.jobId, s.attachDir) : null} />
           <PendingApproval job={s.job} health={s.health} attach={s.jobId ? attachCommandOf(s.jobId, s.attachDir) : null} />
@@ -178,21 +196,21 @@ function Strip({
                   .map((o) => nameOf(o.sessionId))
               : [];
             return (
-              <div key={c.workspacePath} className={`leg${c.state === "handed-off" ? " is-handed-off" : ""}`}>
-                <div className="cell">
-                  <span className="cap">STAND</span>
-                  <div className="val" title={ws?.branch ? `${c.workspacePath}\n${ws.branch}` : c.workspacePath}>
+              <div key={c.workspacePath} className={`st-leg${c.state === "handed-off" ? " is-handed-off" : ""}`}>
+                <div className="st-cell">
+                  <span className="st-cap">STAND</span>
+                  <div className="st-val" title={ws?.branch ? `${c.workspacePath}\n${ws.branch}` : c.workspacePath}>
                     <AirportCode airport={ws ? idx.airportByRepo.get(ws.repo) : undefined} />{" "}
                     {ws?.name ?? c.workspacePath.split("/").pop()}
                   </div>
                   <div className="sub">{ws?.branch ?? (ws ? `detached ${ws.head}` : "")}</div>
                 </div>
-                <div className="cell">
-                  <span className="cap">FLIGHT</span>
+                <div className="st-cell">
+                  <span className="st-cap">FLIGHT</span>
                   {ws?.ticketKey ? (
                     <>
                       <a
-                        className="val big"
+                        className="st-val big"
                         href={ticket?.url ?? undefined}
                         target="_blank"
                         rel="noreferrer"
@@ -203,42 +221,42 @@ function Strip({
                       {ticket && <div className="sub">{flightPhase(ticket)}</div>}
                     </>
                   ) : (
-                    <div className="val big none" title="티켓 없는 작업(AD HOC). 브랜치 claude/<slug>">
+                    <div className="st-val big st-none" title="티켓 없는 작업(AD HOC). 브랜치 claude/<slug>">
                       AD HOC
                     </div>
                   )}
                 </div>
-                <div className="cell cell-route">
-                  <span className="cap">ROUTE</span>
-                  <div className="route" title={ticket?.title}>
-                    {ticket?.title ?? <span className="none">AD HOC — 티켓 없는 작업</span>}
+                <div className="st-cell st-cell-route">
+                  <span className="st-cap">ROUTE</span>
+                  <div className="st-route" title={ticket?.title}>
+                    {ticket?.title ?? <span className="st-none">AD HOC — 티켓 없는 작업</span>}
                   </div>
                 </div>
-                <div className="cell">
-                  <span className="cap">LAST CONTACT</span>
-                  <div className="val" title={timeAgo(c.lastAt, now)}>
+                <div className="st-cell">
+                  <span className="st-cap">LAST CONTACT</span>
+                  <div className="st-val" title={timeAgo(c.lastAt, now)}>
                     {formatClock(c.lastAt, clock)}
                   </div>
                   <div className="sub">{timeAgo(c.lastAt, now)}</div>
                 </div>
-                <div className="cell cell-remarks">
+                <div className="st-cell st-remarks">
                   {(landing.byStand.get(c.workspacePath) ?? []).map((pr) => (
                     <PrLanding key={prKey(pr)} pr={pr} landing={landing} />
                   ))}
                   {others.length > 0 && (
-                    <span className="stamp red" title={`${others.join(", ")}와 같은 STAND`}>
+                    <span className="tag st-stamp" data-tone="red" title={`${others.join(", ")}와 같은 STAND`}>
                       LOS {others.join(", ")}
                     </span>
                   )}
                   {c.state === "handed-off" && (
-                    <span className="stamp blue">→ {c.handedOffTo ? nameOf(c.handedOffTo) : "?"} HANDOFF</span>
+                    <span className="tag st-stamp" data-tone="blue">→ {c.handedOffTo ? nameOf(c.handedOffTo) : "?"} HANDOFF</span>
                   )}
                   {ws && s.repo && ws.repo !== s.repo && c.state === "active" && (
-                    <span className="stamp away" title="소속 AIRPORT 밖 STAND">OUTSTATION</span>
+                    <span className="tag st-stamp" title="소속 AIRPORT 밖 STAND">OUTSTATION</span>
                   )}
-                  {ws?.dirty ? <span className="stamp amber">Δ {ws.dirty}</span> : null}
-                  {c.source === "transcript" && <span className="stamp dashed">ESTIMATED TRACK</span>}
-                  {c.source === "cwd" && <span className="stamp dashed">CWD</span>}
+                  {ws?.dirty ? <span className="tag st-stamp" data-tone="amber">Δ {ws.dirty}</span> : null}
+                  {c.source === "transcript" && <span className="tag st-stamp" data-tone="dashed">ESTIMATED TRACK</span>}
+                  {c.source === "cwd" && <span className="tag st-stamp" data-tone="dashed">CWD</span>}
                 </div>
                 {ws?.ticketKey && ms.progress.get(ws.ticketKey) && (
                   <div className="leg-progress">
@@ -257,9 +275,9 @@ function Strip({
             );
           })
         ) : (
-          <div className="leg is-empty">
-            <div className="cell">
-              <span className="cap">STAND</span>
+          <div className="st-leg is-empty">
+            <div className="st-cell">
+              <span className="st-cap">STAND</span>
               <div className="sub">배정된 STAND 없음</div>
             </div>
           </div>
@@ -302,13 +320,13 @@ function blocksTip(pr: PullRequest): string {
 }
 
 // CLEARED TO LAND(호박) 또는 APPROACH(시안) + 막는 조건 수
-function LandingBadge({ pr }: { pr: PullRequest }) {
+export function LandingBadge({ pr }: { pr: PullRequest }) {
   const cleared = pr.landing === "CLEARED";
   const n = pr.blocks.length;
   // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않는다. 사슬을 함께 보인다
   if (pr.blocks.some((b) => b.code === "stacked")) {
     return (
-      <span className="pr-badge is-approach" title={`STACKED: ${blocksTip(pr)}`}>
+      <span className="pr-badge is-approach" title="STACKED: base가 기본 브랜치가 아니라 이 PR은 CLEARED가 되지 않는다. 사슬을 함께 본다">
         STACKED{pr.stack ? ` ${pr.stack.chain.map((x) => `#${x}`).join(" → ")}` : ""}
       </span>
     );
@@ -316,7 +334,7 @@ function LandingBadge({ pr }: { pr: PullRequest }) {
   return (
     <span
       className={`pr-badge ${cleared ? "is-cleared" : "is-approach"}`}
-      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개\n${blocksTip(pr)}`}
+      title={cleared ? "CLEARED TO LAND: 머지할 수 있음" : `APPROACH: 막는 조건 ${n}개 — 아래에 이름과 문장`}
     >
       {cleared ? "CLEARED TO LAND" : "APPROACH"}
       {!cleared && n > 0 && <b className="pr-count">{n}</b>}
@@ -334,7 +352,7 @@ function ExtReviewTag({ pr }: { pr: PullRequest }) {
   const m = pr.extReview;
   if (!m) return null;
   // 스위치로 보낸 보안 PR(ATC-30)은 "보안, "을 붙여 외부 리뷰에 기댄 착륙임을 보인다
-  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
+  const codex = `${m.security ? "보안, " : ""}${pr.codexUnavailable?.why === "silent" ? "Codex 무응답" : pr.codexUnavailable?.why === "autoland" ? "AUTOLAND 재리뷰" : pr.codexUnavailable?.why === "lane" ? `Codex 저장소 무응답(${pr.codexUnavailable.since.slice(11, 16)}Z~)` : pr.codexUnavailable?.scope === "repo" ? `Codex 한도(저장소, ${pr.codexUnavailable.since.slice(11, 16)}Z~)` : "Codex 한도"}`;
   const r = m.review;
   const who = r ? reviewerOf(r.family) : "";
   const text =
@@ -436,15 +454,22 @@ function HoldButton({ pr, landing }: { pr: PullRequest; landing: LandingIndex })
     setBusy(false);
   };
   return (
-    <button
-      className={`pr-hold${held ? " is-held" : ""}`}
-      onClick={() => void toggle()}
-      disabled={busy}
-      aria-pressed={held}
-      title={error ?? (held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)")}
-    >
-      {held ? "HOLD ✓" : "HOLD"}
-    </button>
+    <>
+      <button
+        className={`btn pr-hold${held ? " is-primary" : ""}`}
+        onClick={() => void toggle()}
+        disabled={busy}
+        aria-pressed={held}
+        title={held ? "HOLD 풀기: AUTOLAND merge가 다시 이 PR을 머지할 수 있다" : "HOLD: AUTOLAND가 이 PR을 머지하지 않는다(SUPERVISOR가 머지)"}
+      >
+        {held ? "HOLD ✓" : "HOLD"}
+      </button>
+      {error && (
+        <span className="pr-hold-err" role="alert">
+          HOLD 실패 — {error}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -508,7 +533,7 @@ const blockShort: Record<LandingBlockCode, string> = {
 };
 
 // 막는 조건: 짧은 이름 한 줄, 펼치면(키보드로도) 전체 문장
-function BlockList({ pr }: { pr: PullRequest }) {
+export function BlockList({ pr }: { pr: PullRequest }) {
   if (pr.landing === "CLEARED" || !pr.blocks.length) return null;
   return (
     <details className="pr-more">
@@ -616,16 +641,18 @@ function LandingSequence({
       <AutolandStatus autoland={landing.autoland} idx={idx} />
       {cleared.length > 0 && <ol className="ls-list">{cleared.map(row)}</ol>}
       {approach.length > 0 && (
-        <details className="ls-group">
-          <summary>APPROACH PR {approach.length}개 · 막는 조건이 남음</summary>
-          <ol className="ls-list">{approach.map(row)}</ol>
-        </details>
+        <div className="ls-group">
+          <Fold title="APPROACH PR" summary={`${approach.length}개 · 막는 조건이 남음`} defaultOpen={false} level={3}>
+            <ol className="ls-list">{approach.map(row)}</ol>
+          </Fold>
+        </div>
       )}
       {drafts.length > 0 && (
-        <details className="ls-group is-draft">
-          <summary>DRAFT PR {drafts.length}개 · LANDING SEQUENCE에 들지 않음</summary>
-          <ol className="ls-list">{drafts.map(row)}</ol>
-        </details>
+        <div className="ls-group is-draft">
+          <Fold title="DRAFT PR" summary={`${drafts.length}개 · LANDING SEQUENCE에 들지 않음`} defaultOpen={false} level={3}>
+            <ol className="ls-list">{drafts.map(row)}</ol>
+          </Fold>
+        </div>
       )}
     </div>
   );
@@ -637,7 +664,6 @@ const RECENT_READBACK_MS = 30 * 60_000;
 // CLEARANCE: 답 대기(파랑), 10분 넘게 답 없음(주황), UNABLE(빨강), 최근 30분 안에 답 받음(점선).
 // 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER가 닫는다. 첫 STANDBY부터 10분을 한 번 다시 센다
 function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: number }) {
-  const { clock } = useSettings();
   const answeredAt = (c: Clearance) => c.readbackAt ?? c.unableAt ?? null;
   const shown = clearances.filter((c) => {
     const at = answeredAt(c);
@@ -650,7 +676,7 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
         const base = c.standbyAt && c.standbyAt >= c.at ? c.standbyAt : c.at;
         const overdue = !answeredAt(c) && now - Date.parse(base) > OVERDUE_MS;
         const tone = c.unableAt ? "red" : c.readbackAt ? "dashed" : overdue ? "amber" : "blue";
-        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 제목(title)에
+        // 도장은 좁은 칸이라 짧게. UNABLE 사유는 옆에 함께 보인다(제목에만 두지 않는다)
         const state = c.unableAt
           ? "UNABLE"
           : c.readbackAt
@@ -661,8 +687,9 @@ function ClearanceStamps({ clearances, now }: { clearances: Clearance[]; now: nu
                 ? "STANDBY"
                 : "READBACK 대기";
         return (
-          <span key={c.id} className={`stamp ${tone}`} title={`${c.text}\n${formatClock(c.at, clock)} 발부 · ${state}${c.unableReason ? ` — ${c.unableReason}` : ""}`}>
+          <span key={c.id} className="tag st-stamp" data-tone={tone} title={c.text}>
             {c.id} {c.type} · {state}
+            {c.unableReason && <span className="stamp-why"> — {c.unableReason}</span>}
           </span>
         );
       })}

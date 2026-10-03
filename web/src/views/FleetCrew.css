@@ -24,7 +24,7 @@
   display: flex;
   flex: 1 0 100%;
   flex-direction: column;
-  padding-left: 96px;
+  padding-left: calc(var(--space-12) * 2);
   font-size: var(--text-xs);
 }
 .fc-seen {
@@ -121,7 +121,7 @@
 .fc-diff {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: 0;
   font: 600 var(--text-xs) var(--mono);
   overflow-wrap: anywhere;
@@ -151,7 +151,7 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
-.fc-change .fl-btn:disabled {
+.fc-change .btn:disabled {
   color: var(--faint);
   cursor: default;
 }

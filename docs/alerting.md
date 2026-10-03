@@ -1,6 +1,22 @@
 # ALERTING: what gets the SUPERVISOR's attention, and where it goes
 
-Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue). The SUPERVISOR said it is unclear what ALERTS and the BELL each do and asked for their goals to be redesigned. Nothing here is built. The SUPERVISOR's decisions are in section 7.
+**English** · [한국어](alerting.ko.md) (status only)
+
+Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197](https://linear.app/vocado/issue/ATC-197)) was built. The parent [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue) was closed on 2026-10-03. The rest of the plan is cancelled or replaced, and the sections below are kept as the record of the design and of what A1 left in the server. The SUPERVISOR's decisions are in section 7.
+
+- **Built:**
+  - **A1** (ATC-197): `destOf` and `dest` on every item of `supervisorAlertsOf`, and the three condition items `rts|halted`, `control|down|<session>` and `reposition|stuck|<aircraft>` ("A1 as built" below). The server keeps `dest`, which HOME reads.
+  - **ATC-327** (PENDING approval that lasts) is not part of this plan and stays as built.
+- **Kept alive:** **A1b** ([ATC-203](https://linear.app/vocado/issue/ATC-203)) widens `control|down` to any cause and adds `host|memory`. It was not built under ATC-195: it is a standalone FLIGHT, released on 2026-10-03. Its "as built" record will go to its own PR, not to this document.
+- **Cancelled:** **A3–A7** (ATC-198, 199, 200, 201, 202): the MASTER light, the QUEUE and LOG header readouts, notifications by destination, summary v2 and the atc-app change.
+- **A2 and A8:** never filed as issues (the issues under ATC-195 are 197 to 203 only), and not planned.
+  - **A2** (Q1 and A1 share one source): Q1 ([ATC-194](https://linear.app/vocado/issue/ATC-194)) was finished separately on 2026-09-30, and HOME reads it.
+  - **A8** (guide rewrite): the layout PRs change the guide screen by screen.
+- **Replaced by layout.md:**
+  - **QUEUE and ALERTS** are sections of HOME (`#home`). ALERTS there are the WARNING and CAUTION items whose `dest` is `alerts`.
+  - **The header bell** moved to the sidebar header as the notifications icon ([ATC-447](https://linear.app/vocado/issue/ATC-447)), grouped by source (Linear, GitHub, atc).
+  - **MASTER, the LOG popover, the two-number tab title and summary v2** are not planned. The summary keeps `counts` and `pending`.
+- **Still true:** principles 1–6 and 8 of section 2 (they are gathered in [design-language.md](design-language.md)), the destination table in 3.1 and the decisions in section 7.
 
 ## 1. Current facts
 
@@ -78,7 +94,8 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
 | `following\|…` except `await-supervisor` | alerts | as today | — |
 | `recycle\|over`, `recycle\|wait`, `cap\|other` | alerts | as today | — |
 | — | alerts | WARNING | **`rts\|halted`**: RTS stopped after a ROLLBACK, until the MCC mode is picked again |
-| — | alerts | CAUTION | **`control\|down\|<session>`**: a control session that a RECYCLE stopped and did not start again |
+| — | alerts | CAUTION | **`control\|down\|<session>`**: a control session that a RECYCLE stopped and did not start again (A1b: any control session with no live row, for any cause) |
+| — | alerts | CAUTION or WARNING | **`host\|memory`** (A1b): host memory pressure, or an OOM kill in the last 30 minutes |
 | — | alerts | CAUTION | **`reposition\|stuck\|<aircraft>`**: the base moved but the LAUNCH failed |
 | `pending\|tool\|…`, `pending\|proposal\|…`, `pending\|schedule\|…`, `pending\|humancheck\|…` | queue | — | — |
 | `following\|…await-supervisor` | queue (GO) | — | — |
@@ -99,6 +116,19 @@ Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/
   - `control|down|<session>` (CAUTION, `recycle`): the session's last non-`would` RECYCLE record is `launch-failed`, or `stop-unconfirmed` with a refused LAUNCH, and no live session of that name (or folder) is running. Looks back 24 h of the FLIGHT RECORDER.
   - `reposition|stuck|<aircraft>` (CAUTION, `reposition`): the AIRCRAFT's last REPOSITION record is a failure at stage `launch` (the base moved, the LAUNCH failed) and no live session has that REGISTRATION. Looks back 24 h.
 - The three items show in the BELL as ordinary conditions until A3, and they count in the summary `counts` and `master` like any other item.
+
+### A1b as built (ATC-203)
+
+- **`control|down|<session>` for any cause.** Pure `controlGoneOf` (`server/supervisor-alerts.ts`): every configured control session with `launch: "bg"` (not retired: TOWER, OCC, MCC, REVIEW) that has **no live row** is a condition, whether it crashed, was OOM-killed or lost to a daemon restart. `mergeControlDown` joins it with the A1 case (a RECYCLE stopped it and the LAUNCH failed): one item per session, the RECYCLE text wins. The key does not change.
+  - **Not a condition** when the SUPERVISOR's own STOP is the latest thing that happened to the session (the FLIGHT RECORDER's `control` `stop` record, `ok`, `by: SUPERVISOR`; nothing new is written). A later `launch`, a failed STOP, or a STOP by `atc` (a RECYCLE) does not count. A `launch`, `stop` or `recycle` record younger than 2 minutes also holds the item back (`CONTROL_DOWN_GRACE_MS`), because the row takes a moment to appear or go away. The latest record per session is read once from the last 14 days, then each pass re-reads the last 5 minutes (`CONTROL_READ_OVERLAP_MS`), because `launchControl` and `stopControl` take their `t` before the `claude` call (up to 60 s) and append the record afterwards; reading a line twice is harmless. The result is kept in memory (`controlOpsNow` in `supervisor-alerts-run.ts`).
+  - **Level.** CAUTION per session; **WARNING** when TOWER or MCC is down, or when two or more control sessions are down at once. This also raises the A1 case for TOWER and MCC to WARNING.
+  - **Text.** `관제 세션 TOWER 없음 — 마지막 기록: stop(atc) 09-30 08:54Z`: the date and time of the last control record, not the time the session went down (that can be days ago, so the text never says "since"); without a record it says only that no live session exists. `next`: LAUNCH from FLEET → CONTROL SESSIONS. Clears by itself when a live row appears.
+- **`host|memory`** (pure `server/host-memory.ts`, read in `host-memory-run.ts`: `/proc/meminfo` and `/proc/vmstat`, no journal, no sudo, nothing written):
+  - **CAUTION** while `MemAvailable` < 10% of `MemTotal` **and** swap used > 80%. A host with no swap at all skips the swap clause and looks at available memory only (PILOT'S DISCRETION).
+  - **WARNING** while the `oom_kill` counter rose within the last 30 minutes. The last seen value and the rises (time and amount) live in memory; the first read after a server start is only the baseline, so kills before the start are not counted, and a counter that goes down (a reboot) re-baselines.
+  - **Text** carries MemAvailable, swap used and the OOM count of the window, for example `메모리 부족: 가용 1.2 GB · swap 98% · OOM kill 3회(30분)`. `next` is one line: which process died (`journalctl -k | grep -i oom`) and the FUEL/health view; the link is `#metrics/fuel`. Group `health`, so the settings kinds need no change.
+- **Destinations.** Both keys are `dest: alerts` (`destOf`: cases `control` and the new `host`, prefix `host` in `DEST_PREFIXES`); the "every prefix has a rule" test covers it.
+- **Side effects (reported for the review).** Read-only: `/proc`, the FLIGHT RECORDER and the session list; no new state file, nothing under `~/.local/state/atc`. The alert rule table is shared by every alert, so: (1) a configured control session that is simply not running now raises `control|down` (a host that never runs REVIEW will see its CAUTION); (2) the summary `counts`, `master` and the browser, SwiftBar and ANNUNCIATOR clients pick the new items up by key with no client change; (3) `host` joins the `health` group.
 
 ### PENDING approval that lasts, as built (ATC-327)
 

@@ -1,7 +1,7 @@
 /* FLEET 카드(Card.tsx, 편집기 제외). 색·글꼴은 styles.css의 :root 토큰만 쓴다(테마를 따라간다).
    ATC-287(디자인 언어 3.5 Craft): 이 카드가 기준 카드다. 평소 상태는 회색 — 색은 상태 점과 경보에만. 글꼴 역할(sans 글·mono 코드와 숫자),
-   글자 크기 셋(제목 lg · 값 md · 캡션 xs), 한 단계의 대문자 제목(칸 제목), 숫자는 .tn. 다른 FLEET 패널이 같이 쓰는 클래스(.fl-btn .fl-chip .fl-origin .fl-sub)는
-   여기서 .fl-card 안에서만 다시 정한다(밖은 L4 점검에서). */
+   글자 크기 셋(제목 lg · 값 md · 캡션 xs), 한 단계의 대문자 제목(칸 제목), 숫자는 .tn. 다른 FLEET 패널이 같이 쓰는 클래스(.fl-origin .fl-sub)는
+   여기서 .fl-card 안에서만 다시 정한다. 버튼과 칩은 공용 .btn·.chip이고(ATC-428) 카드는 다른 점만 적는다. */
 .fl-card {
   container-type: inline-size;
   display: flex;
@@ -10,7 +10,7 @@
   padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-md);
 }
 /* 안쪽 막대: AOG와 경보 띠에 CAUTION(amber)·WARNING(alert)이 있을 때만 */
@@ -88,9 +88,7 @@
 /* 태그(출처·AIRPORT·STALE·TYPE RATING): 중립 — line-strong 테두리, muted 글 */
 .fl-card .fl-origin,
 .fl-card .fl-origin.o-background,
-.fl-card .fl-stale-mark,
-.fl-card .fl-chip,
-.fl-card .fl-chip.r-SEC {
+.fl-card .fl-stale-mark {
   margin-left: 0;
   padding: 0 var(--space-1-5);
   border: 1px solid var(--line-strong);
@@ -99,9 +97,6 @@
   font: 400 var(--text-xs) var(--sans);
   letter-spacing: 0;
   white-space: nowrap;
-}
-.fl-card .fl-chip {
-  font-family: var(--mono);
 }
 /* AIRPORT 코드의 색·테두리는 공용 .apt 규칙. 카드에서는 크기만 맞춘다 */
 .fl-card .apt {
@@ -117,32 +112,23 @@
 .fl-card .fl-origin-mode {
   color: var(--muted);
 }
-.fl-card .fl-chip {
-  border-radius: var(--radius-pill);
-  font-weight: 600;
+/* TYPE RATING 칩: 공용 .chip(알약, 600 mono). 카드는 글자를 muted로, 간격을 좁게 */
+.fl-card .fl-chips .chip {
+  --chip-ink: var(--muted);
+  padding: 0 var(--space-1-5);
+  letter-spacing: 0;
 }
 
-/* 버튼: 투명 바탕, 1px line-strong 테두리, 4px 모서리, 호버 panel-3. LAUNCH만 radar */
-.fl-card .fl-btn {
-  display: inline-flex;
-  align-items: center;
+/* 버튼: 공용 .btn 위에서 카드는 투명 바탕, 28px 높이, 캡션 글자 크기. 되돌리기 어려운 동작(is-danger)도 테두리는 중립 */
+.fl-card .btn {
+  --btn-h: 28px;
   gap: var(--space-1-5);
-  height: 28px;
+  padding: 0 var(--space-3);
   background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  font: 600 var(--text-xs) var(--sans);
-  transition: background-color var(--dur-fast) var(--ease);
+  font-size: var(--text-xs);
 }
-.fl-card .fl-btn:hover {
-  background: var(--panel-3);
-}
-.fl-card .fl-btn.primary {
-  border-color: var(--radar);
-  color: var(--radar);
-}
-.fl-card .fl-btn.danger {
-  color: var(--alert);
+.fl-card .btn.is-danger {
+  border-color: var(--line-strong);
 }
 .fl-card .fl-copy-attach {
   font-family: var(--sans);
@@ -204,11 +190,15 @@
 .fl-name-conflict,
 .fl-absent,
 .fl-origin-note,
+.fl-health,
 .fl-rules {
   margin: 0;
   letter-spacing: 0;
   font: var(--text-md) var(--sans);
   overflow-wrap: anywhere;
+}
+.fl-health {
+  color: var(--muted);
 }
 .fl-acct-hold,
 .fl-rename,
@@ -244,7 +234,7 @@
   gap: var(--space-1);
   margin-left: var(--space-1);
 }
-.fl-report-btns .fl-btn.is-on {
+.fl-report-btns .btn.is-on {
   border-color: var(--line-strong);
   background: var(--panel-3);
   color: var(--text);
@@ -383,7 +373,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-strip {
   display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   height: 20px;
 }
 .fl-bar-o {
@@ -445,10 +435,10 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-card .activity-what {
   font-family: var(--mono);
 }
-.fl-card .activity .activity-dot,
-.fl-card .activity.is-tool .activity-dot,
-.fl-card .activity.is-model .activity-dot {
-  background: var(--faint);
+.fl-card .activity,
+.fl-card .activity.is-tool,
+.fl-card .activity.is-model {
+  --dot-ink: var(--faint);
 }
 .fl-kept {
   margin: 0;
@@ -649,7 +639,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
 }
-.fl-card .fl-menu .fl-btn {
+.fl-card .fl-menu .btn {
   justify-content: flex-start;
   text-align: left;
 }
@@ -720,7 +710,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 }
 .fl-launch-cap {
   min-width: 0;
-  max-width: 28ch;
+  max-width: 60ch;
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
@@ -765,4 +755,8 @@ button.fl-fold-head:focus-visible .fl-fold-k {
   border: 0;
   color: inherit;
   cursor: pointer;
+}
+/* STAND 없는 FLIGHT의 안내 글(ATC-324): 한글 문장이라 sans, 크기는 옆 칸의 .mono(--text-sm)와 맞춘다 */
+.fl-log .fl-log-note {
+  font-size: var(--text-sm);
 }

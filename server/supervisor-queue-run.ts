@@ -1,17 +1,30 @@
 import type { Hono } from "hono";
 import { config } from "./config.ts";
 import { openFleetPlanNow } from "./fleet-plan-run.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
 import { DEFAULT_HEALTH } from "./health.ts";
-import { landByOf } from "./land-by.ts";
+import { landDecisionOf } from "./land-by.ts";
 import { mccLandInfo } from "./mcc-run.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
 import { allClearances } from "./clearances.ts";
 import { allDecisions } from "./decision-card-run.ts";
 import { allProposals } from "./proposals.ts";
+import { arrivedOpenOf } from "./arrived-open.ts";
+import { closeManualOf, closePrOf } from "./close-manual.ts";
+import { loadLogbook } from "./logbook.ts";
+import { foldEffects } from "./effect-check.ts";
+import { readEffectLines } from "./effect-store.ts";
+import { followNow } from "./follow-run.ts";
+import { setTodo } from "./queue-todo.ts";
+import { currentAlerts } from "./supervisor-alerts-run.ts";
+import { candidateTeamsOf } from "./dispatch.ts";
+import { readReviewLines } from "./duty-review-store.ts";
+import { filedProposalsOf, proposalSourcesOf } from "./release-proposals.ts";
 import { queueEpoch } from "./queue-bust.ts";
 import { allRelays, lastAircraftSources } from "./relay-run.ts";
 import { relayOffersOf } from "./relay-offer.ts";
+import { holderRoutes } from "./pr-holder-state.ts";
 import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { type QueueInput, type SupervisorQueue, supervisorQueueView } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
@@ -30,18 +43,48 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   const st = await updateStatus().catch(() => null);
   const relays = allRelays();
   const clearances = allClearances();
+  // HOME의 한 목록(ATC-454): 읽기만 한다. 보드를 못 만들어도 다른 줄은 그대로
+  const scheduleOps = loadScheduleOps();
+  let follow: QueueInput["follow"];
+  try {
+    const f = followNow(s, now);
+    follow = { bundles: f.bundles.filter((b) => !b.folded), dispatchMode: f.dispatchMode };
+  } catch {
+    follow = undefined;
+  }
+  let effects: QueueInput["effects"];
+  try {
+    effects = foldEffects(readEffectLines());
+  } catch {
+    effects = undefined;
+  }
+  const closes = closeManualOf(scheduleOps, s.tickets, now).map((x) => {
+    const t = s.tickets.find((y) => y.key === x.flight);
+    return { id: x.id, flight: x.flight ?? null, statusAt: x.statusAt, url: t?.url ?? null, pr: closePrOf(x) };
+  });
   return {
+    alerts: currentAlerts(),
+    arrived: arrivedOpenOf(s.tickets, loadLogbook()),
+    follow,
+    effects,
+    closes,
     proposals: allProposals(),
-    schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
+    autoDispatch: loadDispatchConfig().autoDispatch === "on",
+    schedule: { mode: loadScheduleMode(), ops: scheduleOps },
     fleetPlan: openFleetPlanNow(now),
-    pulls: (s.pulls ?? []).map((p) => ({ ...p, landBy: landByOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false) })),
+    pulls: (s.pulls ?? []).map((p) => {
+      const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
+      return { ...p, landBy: d.by, landWhy: d.why };
+    }),
     update: st ? { kind: st.kind, deployed: st.deployed, main: st.main, mainCi: st.mainCi, at: st.at } : null,
     sessions: s.sessions.filter((x) => x.status !== "dead"),
     blockedMin: config.health.blockedMin ?? DEFAULT_HEALTH.blockedMin!,
+    teamPattern: loadDispatchConfig().teamPattern,
     relays,
     clearances,
     decisions: allDecisions(),
-    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now }),
+    relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], sessions: s.sessions ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
+    backlog: filedProposalsOf(s.tickets, proposalSourcesOf(readReviewLines(), loadScheduleOps()), candidateTeamsOf(loadDispatchConfig())).map((f) => ({ key: f.key, by: f.by, at: f.at })),
     folders: accountFolders().map((f) => ({ label: f.label, dir: f.dir })),
     defaultDir: config.claudeDir,
   };
@@ -49,14 +92,17 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
 
 let cache: { at: number; epoch: number; view: SupervisorQueue } | null = null;
 
+// 같은 5초 캐시로 큐를 준다(GET /api/supervisor/queue와 GET /api/notices가 함께 쓴다, ATC-447)
+export async function supervisorQueueNow(getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, now = Date.now()): Promise<SupervisorQueue> {
+  if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return cache.view;
+  const s = await getSnapshot();
+  const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
+  cache = { at: now, epoch: queueEpoch(), view };
+  setTodo(view.count); // SUPERVISOR SUMMARY의 todo가 같은 수를 읽는다(ATC-454)
+  return view;
+}
+
 export function mountSupervisorQueue(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, events: () => readonly TrafficEvent[] = () => []) {
   eventsOf = events;
-  app.get("/api/supervisor/queue", async (c) => {
-    const now = Date.now();
-    if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return c.json(cache.view);
-    const s = await getSnapshot();
-    const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
-    cache = { at: now, epoch: queueEpoch(), view };
-    return c.json(view);
-  });
+  app.get("/api/supervisor/queue", async (c) => c.json(await supervisorQueueNow(getSnapshot, updateStatus)));
 }

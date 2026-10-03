@@ -1,3 +1,5 @@
+import { mountLanes } from "./codex-lane-run.ts";
+import { supervisorGate, verdictFor } from "./supervisor-auth.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -5,70 +7,83 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
-import { mountAtfm, runAtfm } from "./atfm-run.ts";
-import { mountAutoland, runAutoland } from "./autoland-run.ts";
-import { mountJudges, runJudges } from "./judges/run.ts";
+import { mountAtfm } from "./atfm-run.ts";
+import { mountAutoland } from "./autoland-run.ts";
+import { mountJudges } from "./judges/run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountRelay } from "./relay-run.ts";
 import { mountDecisionCards } from "./decision-card-run.ts";
 import { mountLandingReview } from "./landing-review.ts";
 import { mccLandInfo, mountMcc, rtsState } from "./mcc-run.ts";
-import { mountMilestones, runMilestones } from "./milestones-run.ts";
+import { mountMilestones } from "./milestones-run.ts";
 import { mountUpdate } from "./update-run.ts";
 import { mountCrewChange } from "./crew-change.ts";
 import { mountCheckride } from "./checkride.ts";
 import { mountFleet } from "./fleet.ts";
 import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
-import { mountFleetPlan, runFleetPlan } from "./fleet-plan-run.ts";
+import { mountFleetPlan } from "./fleet-plan-run.ts";
 import { mountFreshStart } from "./fresh-start-run.ts";
-import { launchAircraft, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
+import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
+import { createJobRunner, jobs, provideService, serviceOf } from "./job-registry.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
 import { mountControlBulk } from "./control-bulk-run.ts";
-import { defaultActDeps, mountControlRecycle, runControlRecycle } from "./control-recycle-run.ts";
+import { defaultActDeps, mountControlRecycle } from "./control-recycle-run.ts";
 import { readCursor } from "./controller.ts";
 import { loadMcc, mccDeploys, readMccRecords } from "./mcc.ts";
 import { mountHumanCheck } from "./human-check-run.ts";
-import { mountStandFree, proposalArrived, runStandFree, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
+import { mountStandFree, proposalArrived, standFreeCandidates, standFreeTimeliness } from "./standfree-run.ts";
 import { arrivalMissingOf, followingNow, mountFollowing } from "./following.ts";
 import { foldReports, readReports } from "./arrival-report.ts";
 import { readWips, wipView } from "./charter-wip.ts";
 import { restartSafetyOf } from "./occ-safe.ts";
-import { recordDepartures } from "./departures.ts";
-import { loadLogbook, mountLogbook, runLogbook } from "./logbook.ts";
+import { loadLogbook, mountLogbook } from "./logbook.ts";
 import { diffSnapshots, EventLog, isWarm } from "./events.ts";
 import { mountMetrics } from "./metrics.ts";
-import { mountNetwork } from "./network.ts";
+import { mountNetwork } from "./network-run.ts";
 import { mountGlobe } from "./globe-api.ts";
-import { mountRoutes } from "./routes.ts";
-import { refreshOverlap } from "./overlap-run.ts";
-import { allProposals, DISPATCH_MS, mountDispatch, runDispatch } from "./proposals.ts";
-import { runAutoApprove } from "./auto-approve-run.ts";
-import { pruneRecords, record, SAMPLE_MS, sampleOf } from "./recorder.ts";
+import { loadRoutes } from "./routes-load.ts";
+import { mountRoutes } from "./routes-run.ts";
+import { allProposals, mountDispatch } from "./proposals.ts";
+import { mountAutonomyAuto } from "./autonomy-auto-run.ts";
+import { pruneRecords, record } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
 import { mountIdeas } from "./ideas-run.ts";
-import { mountFlightState } from "./flight-state-run.ts";
+import { arrivedOpenOf } from "./arrived-open.ts";
+import { defaultStateDeps, mountFlightState } from "./flight-state-run.ts";
 import { mountFollow } from "./follow-run.ts";
 import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
 import { mountSettings } from "./settings.ts";
+import { mountMigrate } from "./migrate-api.ts";
+import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
-import { currentAlerts, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
-import { mountQrh, runQrh } from "./qrh-run.ts";
+import { mountSinceLook } from "./since-look-run.ts";
+import { mountStatus } from "./status-run.ts";
+import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
+import { mountQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
+import { mountReleases, releaseFromChat } from "./release-run.ts";
+import { applyWrite } from "./linear-overlay.ts";
+import { onLocalState } from "./sources/linear.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
-import { mountDutyL1 } from "./duty-l1-run.ts";
-import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
+import { defaultL1Deps, mountDutyL1 } from "./duty-l1-run.ts";
+import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
+import { mountLeaks } from "./leaks-run.ts";
+import { mountEffectCheck } from "./effect-check-run.ts";
+import { mountMisfire } from "./misfire-run.ts";
+import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
+import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
-import { mountReadability, startReadability } from "./readability-run.ts";
-import { mountSkillUsage, startSkillUsage } from "./skill-calls-run.ts";
+import { mountReadability } from "./readability-run.ts";
+import { mountSkillUsage } from "./skill-calls-run.ts";
 import type { Transmission } from "./radio.ts";
 import { mountVoice } from "./voice-run.ts";
 import type { AlertEvent } from "./supervisor-alerts.ts";
@@ -79,14 +94,18 @@ import { githubStartupWarning, githubSwitch } from "./github-switch.ts";
 const TICK_MS = 2_000;
 
 let current: Snapshot | null = null;
+// atc 자신의 Linear 쓰기가 성공하면 이미 만든 스냅샷에도 새 상태를 싣는다(ATC-448): 바로 다음 /api/releases가 옛 상태를 보지 않는다
+onLocalState((key, next) => {
+  if (current) current = { ...current, tickets: applyWrite(current.tickets, new Map(), key, next, 0).tickets };
+});
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
 const summaryListeners = new Set<(s: SupervisorSummary) => void>(); // SUPERVISOR SUMMARY(ATC-153)
 const radioFeed = new RadioFeed(); // RADIO(ATC-170): 듣는 이가 있을 때만 기록을 읽는다
 const eventLog = new EventLog();
-let lastSampleAt = 0;
-let lastDispatchAt = 0;
+// 주기로 도는 서버 일(ATC-393): server/jobs/ 폴더의 선언을 읽어 돌린다. index.ts는 일을 하나씩 적지 않는다
+const runner = createJobRunner(jobs, { current: () => current, now: Date.now, service: serviceOf });
 
 // 지금 내주는 화면 번들. index.html이 바뀌었을 때만 다시 읽는다(재시작 없이 다시 빌드해도 알아챈다).
 const DIST = new URL("../web/dist", import.meta.url).pathname;
@@ -130,29 +149,14 @@ async function tick() {
     for (const event of eventLog.push(diffSnapshots(current, next))) {
       record({ t: event.at, kind: "event", epoch: eventLog.epoch, event });
     }
-    if (isWarm(next) && Date.now() - lastSampleAt >= SAMPLE_MS) {
-      lastSampleAt = Date.now();
-      record({ t: next.at, kind: "sample", ...sampleOf(next) });
-    }
-    if (isWarm(next) && Date.now() - lastDispatchAt >= DISPATCH_MS) {
-      lastDispatchAt = Date.now();
-      void refreshOverlap(next); // 파일 겹침(ATC-71): 이번 주기에 읽은 것은 다음 계획부터 쓴다
-      runDispatch(next);
-      runFleetPlan(next); // FLEET PLAN(docs/fleet.md 8.6): 같은 주기에 그림자 제안. claude agents를 읽어 기다리지 않는다
-    }
-    if (isWarm(next)) recordDepartures(next); // FLIGHT의 첫 STAND·claim과 HANDOFF를 착수 기록에(바뀔 때만). 첫 번은 기준선
-    if (isWarm(next)) runLogbook(next, addLogbookFuel); // 10분마다 머지된 PR을 LOGBOOK에 적는다
-    if (isWarm(next)) runMilestones(next); // OOOI(ATC-123): 처음 본 이정표를 FLIGHT RECORDER에 한 번(1분에 한 번, 이미 있는 기록만 읽는다)
-    if (isWarm(next)) runStandFree(next); // 5분마다 STAND 없는 FLIGHT의 ARRIVED 후보(ATC-72). ARRIVED는 OCC가 확인해 적는다
-    if (isWarm(next)) runAtfm(next); // 출발 중지 시작·끝, 1분마다 ATFM 데이터와 그림자 판정(docs/atfm.md)
-    if (isWarm(next)) runAutoland(next); // AUTOLAND(ATC-34): GitHub을 새로 읽을 때마다 갱신·머지 한 주기(스위치가 off면 GROUND STOP만 본다)
-    if (isWarm(next)) runJudges(next); // 판정 계열(ATC-36): 스위치가 off가 아닐 때만 1분에 한 번, CLASSIFY 초안 몇 건
-    if (isWarm(next)) runQrh(next); // QRH shadow(ATC-288): 서버가 체크리스트를 부를 조건을 처음 본 때만 FLIGHT RECORDER에 한 줄. 보내는 글은 바뀌지 않는다
+    // 주기로 도는 일(ATC-393): server/jobs/의 선언이 순서대로. 스냅샷이 따뜻할 때만(샘플·DISPATCH·착수 기록·LOGBOOK·OOOI·STAND 없는 FLIGHT·ATFM·AUTOLAND·판정·QRH)
+    runner.tick(next, isWarm(next));
 
     // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
+    if (isWarm(next)) await supervisorQueueNow(async () => next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
     const summary = isWarm(next) ? runSummary(next) : null;
     if (summary) for (const l of summaryListeners) l(summary);
     radioFeed.poll();
@@ -170,6 +174,10 @@ async function tick() {
 
 const app = new Hono();
 
+// SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
+app.use("/api/*", supervisorGate());
+app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
+
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
 app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
@@ -180,12 +188,7 @@ mountDecisionCards(app); // 관제 세션의 DECISION 카드(ATC-352): 올리기
 mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
-mountMetrics(app);
-// launch 카드의 LAUNCH(화면의 승인과 서버의 자동 승인이 같이 쓴다). by는 FLIGHT RECORDER에 남는 주체
-const launchForCard = (s: Snapshot, reg: string, proposal: string, resume: boolean, by: string) => {
-  const a = s.absent?.find((x) => x.registration === reg);
-  return launchAircraft(s, reg, { permissionMode: a?.permissionMode, lastModel: a?.model ?? null, ...(resume ? { account: a?.account } : { lastAccount: a?.account ?? null }) }, by, proposal);
-};
+mountMetrics(app, getSnapshot);
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),
@@ -194,13 +197,13 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // LAUNCH on approve(ATC-129): FLEET LAUNCH와 같은 길. 옵션은 그 AIRCRAFT의 마지막 atc LAUNCH와 같게.
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
-  launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "SUPERVISOR"),
+  launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "SUPERVISOR", flight),
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
-  const arrivalMissing = arrivalMissingOf(followingNow(s, now), foldReports(readReports()), now);
+  const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
   const wip = wipView(readWips(), now);
   return { arrivalMissing, restartSafety: restartSafetyOf({ inFlight, arrivalMissing, wip, now }) };
-});
+}, loadRoutes);
 mountStandFree(app, getSnapshot, addLogbookFuel);
 mountCrewChange(app);
 mountFleet(app, getSnapshot, (sessions, teamPattern) => aircraftContexts(sessions, teamPattern));
@@ -214,38 +217,27 @@ mountNetwork(app, getSnapshot);
 mountGlobe(app, getSnapshot);
 mountRoutes(app, getSnapshot);
 mountSchedule(app, getSnapshot, allProposals);
+mountAutonomyAuto(app);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
-mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
+mountReleases(app, getSnapshot); // 발권 기록(ATC-362): 화면 클릭·일괄 확인(Origin 검사)과 attested 증언
+// FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다. closable(ATC-473): STAND 없는 ARRIVED인데 아직 started인 FLIGHT만 Done으로 옮길 수 있다(HOME의 ARRIVED 줄과 같은 목록)
+mountFlightState(app, { ...defaultStateDeps, closable: async (key) => arrivedOpenOf((await getSnapshot()).tickets, loadLogbook()).some((a) => a.flight === key) });
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountIdeas(app); // IDEAS 서랍(DUTY G4): atc 저장소 idea 이슈 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);
 mountFollow(app, getSnapshot); // FOLLOW F1(ATC-276): 따라가는 번들의 줄별 단계(읽기만)와 follow.json 설정(Origin 검사)
 mountRadio(app); // RADIO R1(ATC-170): 기록된 교신을 합친 목록(읽기만)
 mountReadability(app); // READABILITY R0(ATC-176): 교신 질의 하루 기록(readability.jsonl)과 오늘의 부분 지표
-startReadability();
 mountSkillUsage(app); // SKILL-CALL READER(ATC-289): Skill·sub-agent 호출 수와 qrh.named → opened(skill-usage.jsonl, 읽기만)
-startSkillUsage();
 mountVoice(app, currentAlerts); // 음성 콜아웃(ATC-140): WAV만 만든다(소리는 브라우저)
 mountMilestones(app, getSnapshot);
 mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
+mountMigrate(app); // 마이그레이션 리허설 기록 읽기(ATC-368). 스위치는 설정 창(PUT /api/settings)뿐
 mountMcc(app, getSnapshot, () => head);
 const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
-// 자동 RTS(ATC-84): mcc 모드가 rts·land+rts일 때만 일한다. 그 밖의 모드나 시험 서버는 아무것도 하지 않는다
-setInterval(() => {
-  update
-    .pass()
-    .then((r) => r.started && console.log(`[atc] auto RTS started: ${r.why}`))
-    .catch(() => {});
-}, 30_000).unref();
-// 일치 기반 자동 승인(ATC-334, docs/autonomy.md C14): 스위치 autoApprove·autoApproveLaunch가 off(기본)면 아무것도 하지 않는다. shadow는 would-* 줄만, on은 승인.
-// 서버 안에서만 돈다(HTTP 길도 atcctl 명령도 없다). 1분에 한 번
-setInterval(() => {
-  if (!current) return;
-  void runAutoApprove(current, { max: MAX_LAUNCHED, launch: (s, reg, proposal, resume) => launchForCard(s, reg, proposal, resume, "auto") }).catch((e) => console.error("[atc] auto approve failed:", e));
-}, 60_000).unref();
-// CONTROL RECYCLE(ATC-166): 스위치가 off(기본)면 아무것도 하지 않는다. shadow는 "재시작했을 것"만 FLIGHT RECORDER에 남긴다. 1분에 한 번
+// CONTROL RECYCLE(ATC-166)의 안전 조건·동작: 라우트(APPLY NOW·일괄 동작)와 주기 일(server/jobs/control-recycle.ts)이 같이 쓴다
 const recycleFacts = {
   now: Date.now,
   towerEvents: () => eventLog.since(readCursor("controller")).events.length,
@@ -263,14 +255,14 @@ const recycleAct = defaultActDeps(() => current?.fuelAccounts);
 // LAUNCH ACCOUNT APPLY NOW(ATC-244): 같은 안전 조건·같은 STOP → LAUNCH. 기다리는 APPLY는 RECYCLE 주기에 이어 간다
 const applyNow = mountApplyNow(app, getSnapshot, { facts: recycleFacts, act: recycleAct });
 mountControlBulk(app, getSnapshot, { facts: recycleFacts, act: defaultActDeps(() => current?.fuelAccounts, "SUPERVISOR") }); // CONTROL SESSIONS 일괄 동작(ATC-255): 미리 보기는 읽기만, 실행은 Origin 검사
-setInterval(() => {
-  if (!current) return;
-  const s = current;
-  void runControlRecycle(s, { ...recycleFacts, act: recycleAct }).catch((e) => console.error("[atc] control recycle failed:", e));
-  void applyNow.tick();
-}, 60_000).unref();
+// 주기 일이 이름으로 받는 것(mount가 돌려준 객체와 이 파일에서 만든 것). 일을 더해도 여기는 그대로다
+provideService("eventLog", eventLog);
+provideService("update", update);
+provideService("applyNow", applyNow);
+provideService("recycleDeps", { facts: recycleFacts, act: recycleAct });
 mountControlRecycle(app);
 mountSettings(app);
+mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)
 mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
@@ -278,13 +270,26 @@ mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tic
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountNotices(app, getSnapshot, () => update.status()); // NOTICES(ATC-447): 사이드바 머리의 알림 세 개(읽기만)
+mountEffectCheck(app, getSnapshot); // EFFECT CHECK(ATC-402): 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 effect-verdicts.jsonl에 평결을 남긴다(재기만, 끄는 스위치는 설정 창)
+mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): 릴리스 뒤에도 사람이 거치는 단계를 leaks.jsonl에 열릴 때·닫힐 때 한 줄씩 센다(세기만)
+mountLanes(app); // 조용한 리뷰 레인(ATC-386): 날짜별 착륙 수와 REVIEW 한 레인으로 착륙한 수(읽기만)
+mountMisfire(app); // 자동 운항 MISFIRE(ATC-367): 서버가 승인한 카드가 나중에 틀렸다고 드러난 수를 날짜별 승인 대비 몫으로(읽기만)
 mountDuty(app, getSnapshot, () => update.status(), (l) => duty().recordDraft(l)); // DUTY L0(ATC-219): brief 읽기와 초안 붙이기(밖으로 나가는 동작 없음)
-mountDutyL1(app); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)
-mountDutyRun(app); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
+mountDutyL1(app, { ...defaultL1Deps, ...reviewHooks(getSnapshot) }); // DUTY D7a: STAND 만들기·치우기와 Linear 쓰기(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절). REVIEW 턴(ATC-396)에는 Backlog만·중복 거절
+mountDutyReview(app, getSnapshot); // DUTY REVIEW(ATC-396): 주기·트리거로 서버가 DUTY 턴을 시작한다(duty.json review, 기본 켜짐, SUPERVISOR만 끈다). 읽기 GET /api/duty/review
+mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
+mountStatus(app, getSnapshot, currentAlerts); // STATUS(ATC-384): "현재 상태"·"ATC-n 어디까지"에 한 번에 답하는 읽기 전용 요약
+mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
+app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
-app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
+app.get("/api/supervisor-summary", async (c) => {
+  if (!current) return c.json({ error: "snapshot not ready" }, 503);
+  await supervisorQueueNow(async () => current!, () => update.status()).catch(() => null); // todo는 큐가 센 수(ATC-454)
+  return c.json(summaryNow(current));
+});
 
 // ?topics=snapshot,alert,version,summary,radio,duty: 받을 이벤트를 고른다. 없으면 summary·radio·duty를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
 app.get("/api/events", (c) => {
@@ -340,6 +345,7 @@ app.get("/api/events", (c) => {
 app.use("/*", serveStatic({ root: DIST, onFound: (path, c) => void (path.endsWith(".html") && c.header("Cache-Control", "no-cache")) }));
 
 pruneRecords();
+runner.startTimers(); // every 일의 타이머와 start 일(ATC-393)
 await tick();
 // 시험 서버가 SUPERVISOR의 토큰으로 GitHub를 폴링하면 시작할 때 한 줄 경고한다(ATC-161)
 const ghWarn = githubStartupWarning({ enabled: githubSwitch().enabled, stateDir: config.stateDir, prodStateDir: join(config.home, ".local/state/atc") });

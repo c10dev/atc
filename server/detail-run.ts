@@ -4,7 +4,7 @@ import type { Hono } from "hono";
 import { GithubOffError } from "./github-switch.ts";
 import { flightKeyOf, makeCache, prRefOf, shapeIssue, shapePr, type IssueDetail, type PrDetail } from "./detail.ts";
 import { loadAutoland } from "./autoland.ts";
-import { escalationOf, inspectionOf, loadMcc, readMccRecords, tierOfFiles } from "./mcc.ts";
+import { escalationOf, loadMcc, readMccRecords, reviewOfHead, tierOfFiles } from "./mcc.ts";
 import { allClearances } from "./clearances.ts";
 import { fixOf } from "./fix.ts";
 import { noHolderPickOf } from "./relay-offer.ts";
@@ -13,6 +13,7 @@ import { lastAircraftOf } from "./relay.ts";
 import { queueEvents } from "./supervisor-queue-run.ts";
 import { type MergeInfo, mergeInfoOf, mergeMethodOf } from "./pr-merge.ts";
 import type { Snapshot } from "./model.ts";
+import { liveHolderClaims } from "./occupancy.ts";
 import { fetchPrView, slugOf } from "./sources/github.ts";
 import { ticketKeyFromBranch, ticketKeyFromTitle } from "./sources/git.ts";
 import { fetchIssueDrawer } from "./sources/linear.ts";
@@ -55,7 +56,7 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
       let landing: PrDetail["landing"] = null;
       if (polled) {
         const tier = await tierOfFiles(polled.changed ?? d.files.map((f) => f.path)).then((t) => t.tier).catch(() => null);
-        const ins = loadMcc().airport === airport.code ? inspectionOf(readMccRecords(), polled.number, polled.head) : null;
+        const ins = loadMcc().airport === airport.code ? reviewOfHead(readMccRecords(), polled.number, polled.head) : null;
         landing = {
           state: polled.landing,
           blocks: polled.blocks.map((b) => b.en),
@@ -81,8 +82,9 @@ export function mountDetail(app: Hono, getSnapshot: () => Promise<Snapshot>) {
             )
           : null;
       // RELAY… 줄(ATC-271): 이 PR의 STAND를 쥔 AIRCRAFT와, 현재 head에 리뷰 지적이 있으면 FIX 본문(TOWER가 보내는 글과 같다). 없으면 빈 글
-      const holder = polled?.standPath ? snap.claims.find((x) => x.state === "active" && x.workspacePath === polled.standPath) : undefined;
-      const holders = polled?.standPath ? snap.claims.filter((x) => x.state === "active" && x.workspacePath === polled.standPath).length : 0;
+      const liveHolders = liveHolderClaims(snap.claims, polled?.standPath, snap.sessions); // 끝난 세션의 점유는 홀더가 아니다(ATC-440)
+      const holder = liveHolders[0];
+      const holders = liveHolders.length;
       const fix = polled ? fixOf(polled, { clearances: allClearances(), holders, now: Date.now() }) : null;
       // STAND를 쥔 세션이 없으면(ATC-308) 그 FLIGHT를 난 AIRCRAFT를 제안하고(고칠 수 있다), 글은 TOWER가 못 보내는 GO AROUND, 없으면 FIX의 것이다
       const pick = polled && !holders ? noHolderPickOf(polled, snap, { clearances: allClearances(), events: queueEvents(), now: Date.now() }) : null;

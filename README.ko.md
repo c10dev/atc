@@ -242,7 +242,7 @@ journalctl --user -u atc -f           # 로그
   [ATC C-0007] BRAVO (TEAM_B) · HOLD
   STAND vocado-voc-175 · FLIGHT VOC175
   Do not touch this STAND until the team ahead finishes and hands it off
-  — Reply to this message with "READBACK C-0007" if you take it, "UNABLE C-0007 — reason" if you cannot, or "STANDBY C-0007" if you need time.
+  — Reply to this message with "READBACK C-0007" if you take it. Reply with "UNABLE C-0007 — reason" if you cannot. Reply with "STANDBY C-0007" if you need time.
   ```
 
 - 팀 세션과 TOWER 세션의 권한 모드(자동 승인 여부)가 다르면 메시지가 사용자 승인 대기로 잡힐 수 있다.
@@ -308,7 +308,7 @@ atc 서버는 `~/.local/state/atc/flight-recorder/YYYY-MM-DD.jsonl`(UTC 날짜)�
 - **FLIGHT 분류**([docs/fleet.ko.md](docs/fleet.ko.md) 4장): Linear 라벨 `type:`(`BUILD` `MAINT` `TEST` `SURVEY` `CHECK` `FERRY`), `wake:`(`L` `M` `H` `J`), `rating:`(`SEC` `UI` `DATA` `DOCS`). Risk 그룹 라벨은 모두 `SEC`로 본다. Linear 라벨 그룹 안의 라벨은 `그룹:이름`으로 읽는다. planner는 FLEET 등록부에서 필요한 TYPE RATING을 모두 가졌고 팀원이 그 종류의 일을 할 수 있는 AIRCRAFT에만 제안한다(`flash-helper`만 있는 팀에 `BUILD` 없음). AIRPORT 슬롯은 WAKE로 세고(L 0.5, M 1, H 2), `J`는 나누기 전까지 제외하며, AIRCRAFT의 ROUTE에 든 FLIGHT는 +1. 라벨이 없으면 `BUILD · M`. DISPATCH 카드 제목 아래에 분류가 보인다.
 - **2b 승인 운용**(`mode: approval`, DISPATCH 탭에서 전환): SUPERVISOR가 제안을 승인·거절한다. 승인된 ASSIGN은 OCC 세션이 `dispatch release`로 SENT로 바꾸고 정해진 FLIGHT PLAN(`[DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)` …)을 받아 CAPTAIN에게 보낸다. CAPTAIN의 `READBACK D-0003`으로 ACCEPTED, 그 FLIGHT의 STAND가 생기면 atc가 DEPARTED로 바꾼다. 승인·전달·수락된 제안은 AIRCRAFT와 FLIGHT를 예약해 두 번 제안되지 않는다. 승인된 RELEASE는 보내지 않고 SUPERVISOR가 Linear에서 정리한다.
 - **send-guard**(`occ/send-guard.mjs`, SendMessage의 PreToolUse): approval 모드이고, SENT 상태인 제안을, 그 제안의 CAPTAIN에게, atc가 만든 FLIGHT PLAN 문구 그대로 보낼 때만 통과시킨다. `[DISPATCH D-xxxx] RECALL` 메시지는 `recalling` 제안의 CAPTAIN에게, atc가 만든 RECALL 문구 그대로일 때만 통과한다. `[OCC CC-xxxx]` CREW CHANGE는 approval 모드이고, `atcctl crew-change send`로 `sent`가 된 건을, 그 AIRCRAFT(REGISTRATION)에게, 저장된 문구 그대로 보낼 때만 통과한다. TOWER·OCC 폴더의 hook은 모두 fail-closed(`… || exit 2`)라 hook이 없거나 실패하면 도구가 막힌다.
-- **CROSSCHECK**([docs/occ.ko.md](docs/occ.ko.md) "CROSSCHECK"): OCC와 다른 모델(OCC는 Sonnet, CROSSCHECK는 Claude Opus. 다른 관제 세션처럼 `claude --bg`로 연다. 2026-09-29 전에는 `ocx`로 Muse·GPT-5.6 Terra)로 `crosscheck/`에서 연 세션이, 열린 DISPATCH 제안과 SCHEDULE 초안마다 예비 판정(mark: `agree`/`disagree`와 이유 한 줄)을 먼저 단다(`atcctl crosscheck brief`, `atcctl dispatch|schedule crosscheck <ID> agree|disagree -- <이유>`). mark는 상태를 바꾸지 않는다. 탭에는 점선 칩으로 보이고, "CROSSCHECK에 동의"를 누르면 같은 판정이 한 번에 들어간다. 게이트는 사람 판정만 세고, 점검 패널의 "CROSSCHECK 일치 n/m"이 mark가 사람과 맞은 비율이다(전체와 모델별). 사람 판정마다 `via: "crosscheck" | "manual"`(한 번 클릭인지)이 남고, `gate.crosscheck.oneClick: {count, decided}`가 한 번 클릭이 가능했던 판정(판정 전에 mark가 있었고 `via`가 기록됨) 중 한 번 클릭 건수를 보인다. CROSSCHECK를 따르는 습관이 게이트를 부풀리는지 보려는 것이다. 옛 판정은 `via`가 없어 세지 않는다. mark마다 모델 이름이 남는데, 세션이 적지 않고 guard가 세션 기록(transcript)에서 확인한 실제 모델을 붙인다. Claude Opus가 아니면 mark 자체를 막는다. 옛 mark는 `unknown`으로 센다. guard는 fail-closed다: `guard.mjs --crosscheck --gh-read`(atcctl 읽기와 crosscheck 명령, PR 사실 확인용 읽기 전용 `gh pr view|checks|list`만), `mcp-guard.mjs --read-only`, `crosscheck/read-guard.mjs`(파일은 `crosscheck/`와 atc `docs/`만 읽음), Edit·Write·SendMessage·Agent·Artifact 금지.
+- **CROSSCHECK(은퇴, ATC-371)**: 두 번째 의견 세션은 더 띄우거나 살려 두거나 재시작하지 않고, 서버의 어떤 규칙도 그 mark를 기다리지 않는다(자동 승인, ATFM A7·S3, PREFLIGHT HOLD). `POST …/crosscheck`는 410으로 답한다. 은퇴 전에 남은 mark는 기록으로 읽힌다(옛 카드의 칩, NETWORK GATES, ATFM 기록). 그 기록을 위해 `crosscheck/` 폴더는 남겨 둔다. [docs/occ.ko.md](docs/occ.ko.md) "CROSSCHECK" 참고.
 - **REVIEW**([review/README.ko.md](review/README.ko.md), [docs/occ.ko.md](docs/occ.ko.md) 9.2): 착륙 리뷰 세션. `review/` 폴더에서 Claude Sonnet으로 연다(`claude --bg`. 2026-09-29 전에는 tmux의 `ocx`로 DeepSeek V4.1 Flash). Codex가 한도에 걸리거나 말이 없으면 atc가 주는 자료를 읽고(`atcctl landing queue`, `landing review <repo>#<PR>`) P0·P1·P2로 `pass`·`findings`를 남긴다. 제외되지 않은 PR의 현재 head pass는 착륙 근거가 된다("REVIEW: SONNET (Codex 한도)"). 비밀·키 경로와 FLIGHT 없는 PR은 보내지 않는다. 보안 PR(rating:SEC·Risk 라벨, migrations·SQL·auth·session·admission·RLS·middleware 경로, 보안 키워드)은 `externalReview.security`가 `deepseek`(옛 이름, 뜻은 "보냄")일 때만 보낸다(ATC-30). Bash guard는 `guard.mjs --review`(`manual`, `landing queue`, `landing review`, jq만. 기록은 실제 모델이 Claude Sonnet이어야 함), 읽기는 `review/`와 `docs/`만.
 - **MCC**([mcc/README.ko.md](mcc/README.ko.md), [docs/mcc.md](docs/mcc.md)): atc 자신의 착륙 세션. `mcc/` 폴더에서 Claude로 연다(tmux `atc-mcc`). 열린 atc PR을 INSPECTION하고(`atcctl mcc queue`, `mcc packet <PR>`, `mcc inspect`), `auto`·`flagged` PR의 착륙(`mcc land`)과 RETURN TO SERVICE(`mcc rts`, 상태 확인·ROLLBACK을 하는 `atc-rts` 유닛이 함)를 서버에 청한다. 서버가 조건 L2–L8을 다시 보고 SUPERVISOR 스위치 `mcc.json`(`shadow` 기본, `land`, `land+rts`, `rts`)을 따른다. Bash guard는 `guard.mjs --mcc --gh-read`(`manual`, `mcc …`, jq, 읽기 전용 `gh pr`만. 쓰기는 실제 Claude 모델이어야 함), 읽기는 `.env*`를 뺀 atc 저장소. 다른 관제 세션은 `mcc` 쓰기를 못 한다.
 - 2b를 켜기 전에 팀 CLAUDE.md의 READBACK 규칙을 FLIGHT PLAN(`[DISPATCH D-xxxx]`)까지 넓힌다. 설계 문서의 "2b 켜는 법" 참고.
@@ -408,7 +408,7 @@ CHARTER REQUEST → AD HOC FLIGHT 초안(S1: SCHEDULE 탭에서 판정) → FILE
 | `hooks/` | 세션이 어느 워크트리에서 일하는지 기록하는 점유 hook | [hooks/README.ko.md](hooks/README.ko.md) |
 | `controller/` | TOWER 세션 작업 폴더(1단계) | [CLAUDE.md](controller/CLAUDE.md) · [/tick](controller/.claude/skills/tick/SKILL.md) |
 | `occ/` | OCC 세션 작업 폴더(DISPATCH, SCHEDULE 초안, 운항 추적) | [CLAUDE.md](occ/CLAUDE.md) · [/tick](occ/.claude/skills/tick/SKILL.md) |
-| `crosscheck/` | CROSSCHECK 세션 작업 폴더(다른 모델의 예비 판정) | [CLAUDE.md](crosscheck/CLAUDE.md) · [/tick](crosscheck/.claude/skills/tick/SKILL.md) |
+| `crosscheck/` | 은퇴한 CROSSCHECK 세션의 작업 폴더(기록용으로 남김, ATC-371) | [CLAUDE.md](crosscheck/CLAUDE.md) |
 | `deploy/` | systemd 사용자 서비스 | [deploy/README.ko.md](deploy/README.ko.md) |
 | `docs/guide/` | DOCS 탭에 보이는 사용 안내(한국어) | [소개](docs/guide/introduction.md) |
 | `docs/` | 설계와 규칙 | [DISPATCH 설계](docs/dispatch.ko.md) · [OCC 설계](docs/occ.ko.md) · [FLEET 설계](docs/fleet.ko.md) · [ATFM 설계(3단계)](docs/atfm.ko.md) · [MCC 설계(영어)](docs/mcc.md) · [FUEL 설계 초안(영어)](docs/fuel.md) · [Knowledge 설계 초안(영어)](docs/knowledge.md) · [이름 규칙](docs/naming.ko.md) |
@@ -465,7 +465,7 @@ atc/
 │   └── index.ts            # /api/snapshot, /api/events, /api/version
 ├── web/src/                # Vite + React. 연결 / 팀 / 티켓 화면
 ├── occ/                    # OCC 세션 작업 폴더 (CLAUDE.md, /tick, 설정, send-guard, mcp-guard)
-├── crosscheck/             # CROSSCHECK 세션 작업 폴더 (CLAUDE.md, /tick, fail-closed 설정)
+├── crosscheck/             # 은퇴한 CROSSCHECK 세션 폴더, 기록용(ATC-371)
 ├── controller/             # TOWER 세션 작업 폴더
 │   ├── CLAUDE.md           # 역할·판단 기준
 │   ├── atcctl.mjs          # TOWER·OCC용 atc CLI (atcctl.test.mjs)

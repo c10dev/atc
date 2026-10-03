@@ -1,10 +1,14 @@
 import { ExternalLink, X } from "lucide-react";
-import { Icon, IconButton } from "./Icon.tsx";
+import { Icon, IconButton } from "./kit/Icon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDialog, useDocked } from "./kit/useDialog.ts";
 import type { DrawerRef, IssueDetail, IssueRef, PrDetail } from "../../server/detail.ts";
 import type { MergeInfo } from "../../server/pr-merge.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
 import { RelayBox } from "./Relay.tsx";
+import { FlightDispatch } from "./FlightDispatch.tsx";
+import { FlightEffect } from "./EffectVerdict.tsx";
+import { FlightRadio } from "./FlightRadio.tsx";
 import { flightNumber } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import "./Drawer.css";
@@ -33,6 +37,8 @@ export function Md({ src }: { src: string }) {
   return <div className="dr-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// TIER 태그의 색(kit/chips.css data-tone): user는 사람이 머지, flagged는 MCC가 착륙, auto는 읽기만
+const TIER_TONE: Record<string, string> = { user: "alert", flagged: "amber", auto: "radar" };
 const PRIORITY = ["없음", "긴급", "높음", "보통", "낮음"];
 
 function RefList({ label, items }: { label: string; items: IssueRef[] }) {
@@ -145,8 +151,8 @@ function FollowToggle({ k }: { k: string }) {
           {on ? "FOLLOWING ✓" : "FOLLOW"}
         </button>
         {on && (
-          <a href="#follow" className="faint">
-            FOLLOW 탭 열기
+          <a href="#flights" className="faint">
+            FLIGHTS 열기
           </a>
         )}
         {err && <span className="dr-error">{err}</span>}
@@ -171,7 +177,7 @@ function Flight({ k, now }: { k: string; now: number }) {
           <dd>
             {d.state ?? "—"}
             {d.ready && (
-              <span className="dr-chip dr-ready" title="막는 FLIGHT가 모두 Done 또는 Canceled">
+              <span className="tag dr-ready" data-tone="radar" title="막는 FLIGHT가 모두 Done 또는 Canceled">
                 READY
               </span>
             )}
@@ -200,7 +206,7 @@ function Flight({ k, now }: { k: string; now: number }) {
             <dt>라벨</dt>
             <dd className="dr-chips">
               {d.labels.map((x) => (
-                <span key={x} className="dr-chip">
+                <span key={x} className="chip dr-chip">
                   {x}
                 </span>
               ))}
@@ -235,6 +241,9 @@ function Flight({ k, now }: { k: string; now: number }) {
           </a>
         </p>
       )}
+      <FlightEffect k={d.key} now={now} />
+      <FlightDispatch k={d.key} now={now} />
+      <FlightRadio k={d.key} />
       <h3 className="dr-h">본문</h3>
       {d.description ? <Md src={d.description} /> : <p className="dr-note">본문 없음</p>}
       {d.descriptionTruncated && <p className="dr-note">본문이 길어 앞부분만 보인다.</p>}
@@ -360,7 +369,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
               <dt>착륙</dt>
               <dd>
                 {d.landing.state}
-                {d.landing.tier && <span className={`dr-chip tier-${d.landing.tier}`}>TIER {d.landing.tier}</span>}
+                {d.landing.tier && <span className="tag dr-tier" data-tone={TIER_TONE[d.landing.tier] ?? undefined}>TIER {d.landing.tier}</span>}
                 {d.landing.blocks.length > 0 && (
                   <ul className="dr-refs">
                     {d.landing.blocks.map((b, i) => (
@@ -402,7 +411,7 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
             <dt>라벨</dt>
             <dd className="dr-chips">
               {d.labels.map((x) => (
-                <span key={x} className="dr-chip">
+                <span key={x} className="chip dr-chip">
                   {x}
                 </span>
               ))}
@@ -453,20 +462,12 @@ function Pr({ airport, number, now }: { airport: string; number: number; now: nu
 export default function Drawer({ target, onClose, now }: { target: Extract<DrawerRef, { kind: "flight" | "pr" }>; onClose: () => void; now: number }) {
   const ref = useRef<HTMLElement>(null);
   const id = target.kind === "flight" ? target.key : `${target.airport}/${target.number}`;
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.scrollTo({ top: 0 });
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [id, onClose]);
+  const docked = useDocked();
+  useDialog(ref, onClose, id, { trap: !docked, restore: false });
   return (
-    <>
-      <div className="dr-backdrop" onClick={onClose} />
-      <aside className="dr" role="dialog" aria-modal="true" aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
-        <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
-        {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
-      </aside>
-    </>
+    <aside className="dr" role="dialog" aria-modal={!docked} aria-label={target.kind === "flight" ? `FLIGHT ${target.key}` : `PR ${target.number}`} tabIndex={-1} ref={ref}>
+      <IconButton className="dr-close" onClick={onClose} label="닫기" icon={X} size={16} />
+      {target.kind === "flight" ? <Flight k={target.key} now={now} /> : <Pr airport={target.airport} number={target.number} now={now} />}
+    </aside>
   );
 }

@@ -26,6 +26,7 @@ import {
   type MccRecord,
   parseInspect,
   parseMcc,
+  reviewOfHead,
   type RtsRecord,
   rtsDueOf,
   spacingStartOf,
@@ -40,13 +41,13 @@ const NOW = Date.parse("2026-09-28T09:00:00Z");
 const iso = (minAgo: number) => new Date(NOW - minAgo * 60_000).toISOString();
 
 test("설정: 모르는 값은 기본값(shadow, ATCC, check), 사용자가 적은 다른 키는 저장해도 남는다", () => {
-  assert.deepEqual(parseMcc(null), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [] });
-  assert.deepEqual(parseMcc({ mode: "merge", airport: "atcc", holds: [106, 106, -1, "x", 1.5] }), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [106] });
+  assert.deepEqual(parseMcc(null), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
+  assert.deepEqual(parseMcc({ mode: "merge", airport: "atcc", holds: [106, 106, -1, "x", 1.5] }), { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [106], kApproval: "on" });
   assert.equal(parseMcc({ mode: "land+rts" }).mode, "land+rts");
   const file = join(mkdtempSync(join(tmpdir(), "mcc-")), "mcc.json");
   writeFileSync(file, JSON.stringify({ note: "keep" }));
   saveMcc({ ...loadMcc(file), mode: "land" }, file);
-  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { note: "keep", mode: "land", airport: "ATCC", ciCheck: "check", holds: [] });
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { note: "keep", mode: "land", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
 });
 
 test("INSPECTION 입력: 지금 head만(짧은 SHA 가능), pass에 P0·P1 없음, findings에 등급, 모델은 Claude만", () => {
@@ -380,4 +381,36 @@ test("autoRtsInfoOf: 켜짐 표시와 다음 시각(5분 간격 대기 중일 �
   assert.deepEqual(autoRtsInfoOf("land+rts", iso(6), true, NOW), { on: true, nextAt: null });
   assert.deepEqual(autoRtsInfoOf("rts", null, true, NOW), { on: true, nextAt: null });
   assert.deepEqual(autoRtsInfoOf("rts", iso(2), false, NOW), { on: true, nextAt: null });
+});
+
+test("reviewOfHead(ATC-390): ESCALATE한 head는 P0·P1 없는 pass, INSPECTION 기록이 있으면 그것이 먼저, 다른 head는 아직 본 적 없음", () => {
+  const insp = (pr: number, head: string, verdict: Inspection["verdict"], at: string): MccRecord => ({ op: "inspect", at, pr, head, verdict, text: "P1 x.ts:1 — 문제", model: "claude-opus-5-5", p0: 0, p1: verdict === "findings" ? 1 : 0, p2: 0 });
+  const records: MccRecord[] = [
+    { op: "escalate", at: iso(30), pr: 110, head: OLD, reason: "상태 형식 바뀜" },
+    { op: "escalate", at: iso(20), pr: 111, head: HEAD, reason: "의심이 남음" },
+    insp(111, HEAD, "findings", iso(19)), // 같은 head의 findings가 ESCALATE보다 먼저다
+    { op: "escalate", at: iso(10), pr: 112, head: HEAD, reason: "되돌리기 어려움" },
+    insp(112, HEAD, "pass", iso(9)),
+  ];
+  // 지금 head(HEAD)는 아직 INSPECTION도 ESCALATE도 없다: 새 head는 새 INSPECTION이 필요하고, ESCALATE는 PR에 남는다
+  assert.equal(reviewOfHead(records, 110, HEAD), null);
+  assert.equal(escalationOf(records, 110)?.reason, "상태 형식 바뀜");
+  // ESCALATE한 그 head는 본 것이다
+  const seen = reviewOfHead(records, 110, OLD);
+  assert.deepEqual([seen?.verdict, seen?.p0, seen?.p1, seen?.at], ["pass", 0, 0, iso(30)]);
+  assert.match(seen!.text, /상태 형식 바뀜/);
+  // findings 기록이 있으면 ESCALATE가 가리지 않는다
+  assert.equal(reviewOfHead(records, 111, HEAD)?.verdict, "findings");
+  assert.equal(reviewOfHead(records, 112, HEAD)?.verdict, "pass");
+  assert.equal(reviewOfHead(records, 999, HEAD), null);
+});
+
+test("ESCALATE한 PR의 착륙 리뷰(ATC-390): 같은 head는 막힘 없음(CLEARED 쪽), findings는 지적, 새 head는 INSPECTION 대기", () => {
+  const records: MccRecord[] = [{ op: "escalate", at: iso(5), pr: 110, head: OLD, reason: "상태 형식 바뀜" }];
+  const at = (head: string) => reviewBlocks(gh({ headRefOid: head, reviews: [] }), undefined, undefined, undefined, { review: reviewOfHead(records, 110, head) }).map((b) => b.code);
+  assert.deepEqual(at(OLD), []);
+  assert.deepEqual(at(HEAD), ["no-review"]);
+  const withFindings: MccRecord[] = [...records, { op: "inspect", at: iso(4), pr: 110, head: OLD, verdict: "findings", text: "P1 a.ts:1 — x", model: "claude-opus-5-5", p0: 0, p1: 1, p2: 0 }];
+  const f = reviewBlocks(gh({ headRefOid: OLD, reviews: [] }), undefined, undefined, undefined, { review: reviewOfHead(withFindings, 110, OLD) });
+  assert.deepEqual(f.map((b) => b.code), ["review-findings"]);
 });

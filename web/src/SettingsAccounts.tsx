@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { Icon } from "./Icon.tsx";
+import { Icon } from "./kit/Icon.tsx";
 import { useEffect, useState } from "react";
 import { ApplyNow } from "./ApplyNow.tsx";
 import type { AddPreview, AddResult } from "../../server/account-add.ts";
@@ -368,12 +368,14 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
         </>
       )}
       <div className="acct-actions">
-        <button type="button" className="config-btn is-primary" disabled={!p || busy || !label.trim() || dirty} title={dirty ? "위 등록 칸의 바뀐 것을 먼저 저장하거나 되돌린다" : undefined} onClick={add}>
+        <button type="button" className="config-btn is-primary" disabled={!p || busy || !label.trim() || dirty} onClick={add}>
           {busy ? "만드는 중…" : "만들고 등록"}
         </button>{" "}
         <button type="button" className="config-btn" onClick={() => setOpen(false)}>
           닫기
         </button>
+        {/* 왜 못 누르는지(사유)는 화면에 — disabled 버튼의 title에만 두지 않는다(ATC-418) */}
+        {dirty && <span className="settings-hint">위 등록 칸의 바뀐 것을 먼저 저장하거나 되돌린다</span>}
         {error && <span className="settings-hint acct-err"> {error}</span>}
       </div>
       {done && (

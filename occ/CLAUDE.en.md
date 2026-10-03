@@ -80,6 +80,8 @@ A HOLD does not expire after 24 hours. atc supersedes it (and the planner offers
 
 The SUPERVISOR does not judge a HELD proposal; they press "대기열로" (back to the queue, the same proposal) or "FLIGHT 보류 확정" (hold the FLIGHT for 24 hours and close it). A proposal that CROSSCHECK marked `disagree` with a FLIGHT chip is already sent to HELD by the server as a PREFLIGHT HOLD (you may still add a note). **Do not HOLD a proposal again after the SUPERVISOR has put it back in the queue** (the server refuses with 409); leave a note only.
 
+A PR HOLDER proposal (an ASSIGN with `prHolder`, ATC-354) takes over the GO AROUND or FIX of a PR that no session holds. The planner proposes it only when no live session holds the STAND, so do not put a HOLD on it or wait for a SUPERVISOR confirmation because another session started the PR (ATC-392). Add a one-line note with the PR number and what is taken over, and send an approved card like any other approved proposal.
+
 ### "The user decides" wording
 
 If the body or comments leave the start to a person, put a HOLD without a prerequisite, whatever the AIRCRAFT: `dispatch note <D-xxxx> --caution --hold -- "waiting for the user: <quoted wording>"`. Examples: "사용자가 정한다", "사용자 지시를 기다린다", "사용자 확인 후", "The user decides when to start", "user decides", "implementation later (a person decides)". Work that needs a person's hands (recruiting, observing, interviewing users) is the same. VOC-195 was held this way, but VOC-177 and VOC-125 were not, so the same rejection repeated across teams.

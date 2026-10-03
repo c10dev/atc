@@ -1,6 +1,8 @@
 import type { Hono } from "hono";
 import { allClearances } from "./clearances.ts";
-import type { Clearance, TrafficEvent } from "./model.ts";
+import { type FlowView, flowViewOf } from "./flow.ts";
+import { loadFlow } from "./flow-run.ts";
+import type { Clearance, Snapshot, TrafficEvent } from "./model.ts";
 import { type RecordLine, readRecords, type Sample } from "./recorder.ts";
 
 // 운용 지표. FLIGHT RECORDER 기록과 CLEARANCE 기록을 집계한다(순수 함수 computeMetrics).
@@ -139,6 +141,14 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
   });
   const answerable = issued.filter((c) => !c.cancelledAt);
   const readbackRate = answerable.length ? answerable.filter((c) => answeredAt(c)).length / answerable.length : null;
+  // FIX·GO AROUND의 READBACK 시간을, 그때 그 AIRCRAFT가 다른 FLIGHT를 하고 있었나로 나눈다(ATC-387). elsewhere가 없는 옛 기록은 어느 쪽에도 넣지 않는다
+  const fixRb = (xs: Clearance[]) => {
+    const ms = xs.filter((c) => c.readbackAt).map((c) => Date.parse(c.readbackAt!) - Date.parse(c.at));
+    const m = median(ms);
+    return { n: xs.length, readBack: ms.length, medianMin: m === null ? null : round1(m / MIN) };
+  };
+  const fixKinds = issued.filter((c) => (c.type === "FIX" || c.type === "GO AROUND") && !c.cancelledAt && c.elsewhere !== undefined);
+  const fixReadback = { elsewhere: fixRb(fixKinds.filter((c) => c.elsewhere)), direct: fixRb(fixKinds.filter((c) => !c.elsewhere)) };
   const byType: Record<string, number> = {};
   for (const c of issued) byType[c.type] = (byType[c.type] ?? 0) + 1;
 
@@ -214,6 +224,7 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
       readbackMedianMin: readbackMedian === null ? null : round1(readbackMedian / MIN),
       overdue: overdue.length,
       cancelled: issued.filter((c) => c.cancelledAt).length,
+      fixReadback,
     },
     landing: {
       requests: count("landing.requested"),
@@ -235,10 +246,26 @@ export function computeMetrics(records: RecordLine[], clearances: Clearance[], n
 
 export type Metrics = ReturnType<typeof computeMetrics>;
 
-export function mountMetrics(app: Hono) {
-  app.get("/api/metrics", (c) => {
+// FLOW(ATC-468)는 기록을 30일치 읽으므로 기간마다 1분 캐시한다(화면은 스냅샷이 바뀔 때마다 다시 묻는다)
+export type MetricsView = Metrics & { flow: FlowView };
+const FLOW_TTL_MS = 60_000;
+const flowCache = new Map<number, { at: number; flow: FlowView }>();
+
+export function flowFor(tickets: Snapshot["tickets"], now: number, days: number): FlowView {
+  const hit = flowCache.get(days);
+  if (hit && now - hit.at < FLOW_TTL_MS) return hit.flow;
+  const { input, samples } = loadFlow(tickets, now);
+  const flow = flowViewOf(input, samples, now - days * DAY, now + 1);
+  flowCache.set(days, { at: now, flow });
+  return flow;
+}
+
+export function mountMetrics(app: Hono, getSnapshot: () => Promise<Snapshot>) {
+  app.get("/api/metrics", async (c) => {
     const days = Math.min(30, Math.max(1, Number(c.req.query("days")) || 7));
     const now = Date.now();
-    return c.json(computeMetrics(readRecords(now - days * DAY), allClearances(), now, days));
+    const tickets = await getSnapshot().then((s) => s.tickets).catch(() => []);
+    const body: MetricsView = { ...computeMetrics(readRecords(now - days * DAY), allClearances(), now, days), flow: flowFor(tickets, now, days) };
+    return c.json(body);
   });
 }

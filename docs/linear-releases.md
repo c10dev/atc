@@ -124,4 +124,4 @@ Recommendation: **B, build partly; drop the `Merged` state (do not build A).**
 4. **Where the key lives:** a `EnvironmentFile=` outside the repository, mode 600, separate from `LINEAR_API_KEY`. The unit change is `user` tier and is deployed by the SUPERVISOR by hand.
 5. **Manual deploys:** the UPDATE bar and MCC already share `atc-rts.service`, so they are covered. Hand deploys outside the unit are not recorded; accepted.
 
-PILOT'S DISCRETION (this survey): the doc is English only (a new design document, `CLAUDE.md` "계획과 아이디어"); no CHANGELOG fragment (no behaviour change); the options table (section 3) was added to make the recommendation readable; "Merged" is used as the state's name only as a working name.
+PILOT'S DISCRETION (this survey): the doc is English only (a new design document, `docs/rules.ko.md` "계획"); no CHANGELOG fragment (no behaviour change); the options table (section 3) was added to make the recommendation readable; "Merged" is used as the state's name only as a working name.

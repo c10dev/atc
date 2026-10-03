@@ -1,0 +1,174 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  aircraftGroups,
+  aircraftStateWord,
+  compareFlights,
+  DONE_WINDOW_MS,
+  filterLabeled,
+  flightGroups,
+  type FlightInput,
+  groupByAirport,
+  HOME_FILTERS,
+  homeFilterCounts,
+  homeFilterOf,
+  homeFilterOfKind,
+  matchesQuery,
+  METRICS_ITEMS,
+  metricsSubOf,
+  NO_AIRPORT,
+  partitionRelease,
+  RELEASE_SECTIONS,
+  releaseSectionCounts,
+  releaseSectionOf,
+} from "../web/src/sidebar-rows.ts";
+
+const AIRPORTS = [
+  { code: "ATCC", repo: "/r/atc", name: "atc" },
+  { code: "VCDO", repo: "/r/vocado", name: "vocado" },
+];
+const NOW = Date.parse("2026-10-02T12:00:00Z");
+const f = (key: string, over: Partial<FlightInput> = {}): FlightInput => ({
+  key,
+  title: `title of ${key}`,
+  state: "In Progress",
+  stateType: "started",
+  priority: 0,
+  airport: "ATCC",
+  live: false,
+  updatedAt: "2026-10-02T10:00:00Z",
+  ...over,
+});
+
+test("검색어: 낱말이 모두 어딘가에 있으면 맞고, 대소문자·빈 검색어는 무시한다", () => {
+  assert.equal(matchesQuery("", ["x"]), true);
+  assert.equal(matchesQuery("  ", [null, undefined]), true);
+  assert.equal(matchesQuery("atc-4 sidebar", ["ATC-443", "Shell Z2: a screen sidebar"]), true);
+  assert.equal(matchesQuery("atc-4 rail", ["ATC-443", "Shell Z2: a screen sidebar"]), false);
+  assert.equal(matchesQuery("team_f", ["TEAM_F"]), true);
+});
+
+test("AIRPORT 묶음: airports 순서, 빈 묶음 없음, 모르는 코드와 코드 없음은 맨 뒤 한 묶음", () => {
+  const rows = [
+    { id: 1, airport: "VCDO" },
+    { id: 2, airport: "ATCC" },
+    { id: 3, airport: null },
+    { id: 4, airport: "ZZZZ" },
+    { id: 5, airport: "ATCC" },
+  ];
+  const g = groupByAirport(rows, AIRPORTS);
+  assert.deepEqual(g.map((x) => x.code), ["ATCC", "VCDO", NO_AIRPORT]);
+  assert.deepEqual(g[0]!.rows.map((r) => r.id), [2, 5]);
+  assert.deepEqual(g[2]!.rows.map((r) => r.id), [3, 4]);
+  assert.equal(g[0]!.repo, "/r/atc");
+  assert.equal(g[2]!.repo, null);
+  assert.deepEqual(groupByAirport([], AIRPORTS), []);
+});
+
+test("FLIGHT 정렬: 살아 있는 것 먼저, 하는 중 → 기다림, 우선순위(없음은 맨 뒤), key 숫자순", () => {
+  const list = [
+    f("ATC-10", { stateType: "unstarted" }),
+    f("ATC-9", { stateType: "started", priority: 3 }),
+    f("ATC-11", { stateType: "started", priority: 1 }),
+    f("ATC-12", { stateType: "started" }),
+    f("ATC-50", { stateType: "unstarted", live: true }),
+  ];
+  assert.deepEqual([...list].sort(compareFlights).map((x) => x.key), ["ATC-50", "ATC-11", "ATC-9", "ATC-12", "ATC-10"]);
+});
+
+test("FLIGHT 묶음: 끝난 것은 개수 뒤로 접고, 오래된 끝난 것과 backlog는 뺀다", () => {
+  const list = [
+    f("ATC-1"),
+    f("ATC-2", { stateType: "completed", updatedAt: "2026-10-01T00:00:00Z" }),
+    f("ATC-3", { stateType: "canceled", updatedAt: "2026-09-01T00:00:00Z" }), // 7일보다 오래됨
+    f("ATC-4", { stateType: "backlog" }),
+    f("ATC-5", { stateType: "backlog", live: true }), // 살아 있으면 들어간다
+    f("VOC-1", { airport: "VCDO", stateType: "completed", updatedAt: "2026-10-02T11:00:00Z" }), // 끝난 것만 있는 AIRPORT
+  ];
+  const g = flightGroups(list, AIRPORTS, "", NOW);
+  assert.deepEqual(g.map((x) => x.code), ["ATCC", "VCDO"]);
+  assert.deepEqual(g[0]!.rows.map((x) => x.key), ["ATC-5", "ATC-1"]);
+  assert.equal(g[0]!.liveCount, 1);
+  assert.deepEqual(g[0]!.done.map((x) => x.key), ["ATC-2"]);
+  assert.equal(g[0]!.doneCount, 1);
+  assert.equal(g[1]!.rows.length, 0);
+  assert.equal(g[1]!.doneCount, 1);
+  assert.ok(DONE_WINDOW_MS === 7 * 24 * 3600_000);
+});
+
+test("FLIGHT 묶음: 검색은 key·제목·AIRPORT만 거르고 묶음과 접힘은 그대로다", () => {
+  const list = [f("ATC-1", { title: "Fix sidebar" }), f("ATC-2", { title: "Other" }), f("VOC-9", { airport: "VCDO", title: "sidebar for vocado" }), f("ATC-3", { stateType: "completed", title: "old sidebar" })];
+  const g = flightGroups(list, AIRPORTS, "sidebar", NOW);
+  assert.deepEqual(g.map((x) => x.code), ["ATCC", "VCDO"]);
+  assert.deepEqual(g[0]!.rows.map((x) => x.key), ["ATC-1"]);
+  assert.equal(g[0]!.doneCount, 1);
+  assert.deepEqual(flightGroups(list, AIRPORTS, "nomatch", NOW), []);
+  assert.deepEqual(flightGroups(list, AIRPORTS, "vcdo", NOW).map((x) => x.code), ["VCDO"]);
+});
+
+test("AIRCRAFT 묶음: 퇴역은 빼고, 비행 중 → 쉬는 중 → NORDO → ABSENT 순, 상태 낱말로도 검색된다", () => {
+  const items = [
+    { registration: "TEAM_B", callsign: "BRAVO", airport: "ATCC", status: "idle", retired: false },
+    { registration: "TEAM_A", callsign: "ALFA", airport: "ATCC", status: "busy", retired: false },
+    { registration: "TEAM_C", callsign: "CHARLIE", airport: "ATCC", status: "absent", retired: false },
+    { registration: "TEAM_D", callsign: "DELTA", airport: "VCDO", status: "dead", retired: false },
+    { registration: "TEAM_E", callsign: "ECHO", airport: "ATCC", status: "busy", retired: true },
+  ];
+  const g = aircraftGroups(items, AIRPORTS, "");
+  assert.deepEqual(g[0]!.rows.map((a) => a.registration), ["TEAM_A", "TEAM_B", "TEAM_C"]);
+  assert.deepEqual(g.map((x) => x.code), ["ATCC", "VCDO"]);
+  assert.deepEqual(aircraftGroups(items, AIRPORTS, "nordo").map((x) => x.rows.map((a) => a.registration)), [["TEAM_D"]]);
+  assert.deepEqual(aircraftGroups(items, AIRPORTS, "alfa")[0]!.rows.map((a) => a.registration), ["TEAM_A"]);
+  assert.equal(aircraftStateWord("busy"), "AIRBORNE");
+  assert.equal(aircraftStateWord("idle"), "IDLE");
+  assert.equal(aircraftStateWord("dead"), "NORDO");
+  assert.equal(aircraftStateWord("absent"), "ABSENT");
+});
+
+test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 가르고 수를 센다", () => {
+  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["후보", "Todo 발권 전", "최근 발권"]);
+  interface R {
+    key: string;
+    fire: "fire" | "release" | null;
+    children: R[];
+  }
+  const row = (key: string, fire: R["fire"], children: R[] = []): R => ({ key, fire, children });
+  const tree = [{ rows: [row("A-1", "fire", [row("A-2", null, [row("A-3", "release")])]), row("A-4", "release")] }, { rows: [row("B-1", "fire")] }];
+  const p = partitionRelease(tree);
+  assert.deepEqual(p.candidates.map((r) => r.key), ["A-1", "B-1"]);
+  assert.deepEqual(p.unreleased.map((r) => r.key), ["A-3", "A-4"]);
+  assert.deepEqual(p.rest.map((r) => r.key), ["A-2"]);
+  // 후보 수에는 SCHEDULE NEW 제안이 더해지고, 최근 발권은 기록 수
+  assert.deepEqual(releaseSectionCounts({ tree, proposals: [{}, {}], recent: [{}] }).map((x) => x.count), [4, 2, 1]);
+  assert.deepEqual(releaseSectionCounts(null).map((x) => x.count), [0, 0, 0]);
+  assert.equal(releaseSectionOf("#release/unreleased"), "unreleased");
+  assert.equal(releaseSectionOf("#release"), null);
+  assert.equal(releaseSectionOf("#release/x"), null);
+});
+
+test("METRICS 하위 화면과 HOME 닻: 이름·주소가 고정이고 검색이 거른다", () => {
+  assert.deepEqual(METRICS_ITEMS.map((m) => m.label), ["OPERATIONS", "LEAKS", "MISFIRE", "FUEL", "NETWORK"]);
+  assert.deepEqual(HOME_FILTERS.map((a) => a.label), ["전체", "QUEUE", "ALERT", "STUCK", "EFFECT", "DONE"]);
+  assert.deepEqual(filterLabeled(METRICS_ITEMS, "fuel").map((m) => m.id), ["fuel"]);
+  assert.equal(filterLabeled(HOME_FILTERS, "").length, 6);
+  assert.equal(metricsSubOf("#metrics"), "ops");
+  assert.equal(metricsSubOf("#metrics/leaks"), "leaks");
+  assert.equal(metricsSubOf("#metrics/nope"), "ops");
+  assert.equal(metricsSubOf("#home"), "ops");
+});
+
+test("HOME 거름(ATC-422): kind별로 나뉘고 수가 붙고 항목 없는 거름은 빠지며 전체가 기본이다", () => {
+  assert.equal(homeFilterOfKind("PROPOSAL"), "queue");
+  assert.equal(homeFilterOfKind("HUMAN CHECK"), "queue");
+  assert.equal(homeFilterOfKind("ALERT"), "alert");
+  assert.equal(homeFilterOfKind("STUCK"), "stuck");
+  assert.equal(homeFilterOfKind("EFFECT"), "effect");
+  assert.equal(homeFilterOfKind("CLOSE"), "done");
+  const items = [{ kind: "PROPOSAL" }, { kind: "LANDING" }, { kind: "ALERT" }, { kind: "ALERT" }, { kind: "CLOSE" }];
+  assert.deepEqual(homeFilterCounts(items).map((f) => [f.id, f.count]), [["all", 5], ["queue", 2], ["alert", 2], ["done", 1]]);
+  assert.deepEqual(homeFilterCounts([]).map((f) => [f.id, f.count]), [["all", 0]]);
+  assert.equal(homeFilterOf("#home"), "all");
+  assert.equal(homeFilterOf("#home/alert"), "alert");
+  assert.equal(homeFilterOf("#home/nope"), "all");
+  assert.equal(homeFilterOf("#release/alert"), "alert"); // 주소의 첫 마디는 보지 않는다: 호출하는 쪽이 HOME에서만 부른다
+});

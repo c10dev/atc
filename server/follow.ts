@@ -60,6 +60,7 @@ export interface FollowRow {
   issues: { code: FollowIssue["code"]; severity: FollowIssue["severity"]; text: string }[]; // FLIGHT FOLLOWING의 문제(같은 코드·같은 글)
   history: { at: string; text: string }[]; // 단계 시각과 RECALL·거절·SUPERSEDED 같은 되돌림, 시각순
   proposal: string | null; // 지금 이 줄을 이끄는 제안 D-xxxx
+  proposalInfo: { id: string; status: Proposal["status"]; aircraftName: string | null; departedStand: string | null; departedVia: Proposal["departedVia"] | null } | null; // 줄의 CANCEL·RECALL이 쓴다(ATC-377, 더하기만 한 칸)
   standFree: boolean;
   tail: boolean;
   stuck: FollowStuck | null;
@@ -68,6 +69,10 @@ export interface FollowRow {
   ready: boolean;
   goAround: { id: string; readbackAt: string | null } | null;
   reverted: { number: number; at: string } | null;
+  // ATC-382: PR 없는 FLIGHT(STAND 없음)의 ARRIVED 시각. 알림이 읽는다(더하기만 한 칸)
+  arrivedAt: string | null;
+  // ATC-382: SUPERVISOR의 화살표(발권한 FLIGHT)로 따라가는 줄이다. 알림이 landed를 따로 알리지 않고 끝에서 한 번만 알리게 한다
+  arrow?: boolean;
 }
 
 export interface FollowBundle {
@@ -85,6 +90,7 @@ export interface FollowBundle {
   done: boolean;
   doneAt: string | null;
   folded: boolean; // 모두 끝난 지 하루가 지남
+  arrows?: boolean; // ATC-382: 발권한 FLIGHT를 자동으로 따라가는 묶음(follow.json이 아니라 발권 기록이 정한다)
 }
 
 export interface FollowInput {
@@ -100,6 +106,7 @@ export interface FollowInput {
   noDeploy: ReadonlySet<string>; // MCC AIRPORT가 아닌 곳의 FLIGHT: deployed가 없고 ON이 끝이다
   userPulls?: ReadonlySet<number>; // MCC AIRPORT에서 SUPERVISOR가 머지할 PR 번호(`user` 등급 또는 ESCALATE). 없으면 merge 칩이 없다
   airports?: readonly { code: string; repo: string }[]; // PR 서랍 주소(#pr/<AIRPORT>/<번호>)용
+  cardWaits?: Readonly<Record<string, string>>; // 제안 id → 승인됐는데 보내지 못하는 사유 한 줄(ACCOUNT 불일치, ATC-458). 있으면 "발송 없음" 대신 이 글을 보인다
   now: number;
 }
 
@@ -218,6 +225,7 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
     issues,
     history,
     proposal: live?.id ?? null,
+    proposalInfo: live ? { id: live.id, status: live.status, aircraftName: live.aircraftName ?? null, departedStand: live.departedStand ?? null, departedVia: live.departedVia ?? null } : null,
     standFree,
     tail,
     stuck,
@@ -225,6 +233,7 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
     ready,
     goAround: go ? { id: go.id, readbackAt: go.readbackAt ?? null } : null,
     reverted: m?.reverted ? { number: m.reverted.number, at: m.reverted.at } : null,
+    arrivedAt: arrivedFree ? (item?.stages.arrived ?? null) : null,
   };
 }
 
@@ -253,7 +262,7 @@ function stuckOf(c: StuckCtx): FollowStuck | null {
   if (live?.status === "sent" && !stages.readback.done && !live.awaitSupervisor && stages.sent.at && now - Date.parse(stages.sent.at) > READBACK_OVERDUE_MS)
     return { stage: "sent", code: "sent-no-readback", text: `발송 ${mins(stages.sent.at)}분 · READBACK 없음`, since: stages.sent.at };
   if (live?.status === "approved" && stages.approved.at && now - Date.parse(stages.approved.at) >= STUCK_APPROVED_MIN * MIN)
-    return { stage: "approved", code: "approved-not-sent", text: `승인 ${mins(stages.approved.at)}분 · 발송 없음`, since: stages.approved.at };
+    return { stage: "approved", code: "approved-not-sent", text: `승인 ${mins(stages.approved.at)}분 · ${inp.cardWaits?.[live.id] ?? "발송 없음"}`, since: stages.approved.at };
   for (const [code, stage] of [["no-pr", "readback"], ["pr-not-cleared", "pr"], ["landing-wait", "ci"]] as const) {
     const i = issue(code);
     if (i) return { stage, code, text: i.text, since: i.since };
@@ -286,7 +295,7 @@ function nextOf(c: NextCtx): FollowNext | null {
   if (t.stateType === "backlog" && isReady(t.stateType, t.blockedBy.map((k) => inp.tickets.find((x) => x.key === k)?.stateType ?? null)))
     return { kind: "release", label: "Todo로", href: null };
   if (t.stateType === "unstarted" && t.priority === 0 && !live && !c.tail) return { kind: "priority", label: "우선순위 정하기", href: `#flight/${c.key}` };
-  if (live?.status === "proposed" && live.holdAt == null) return { kind: "approve", label: `승인하러 ${live.id}`, href: "#dispatch", proposal: live.id };
+  if (live?.status === "proposed" && live.holdAt == null) return { kind: "approve", label: `승인하러 ${live.id}`, href: "#home", proposal: live.id };
   if (pull) {
     const code = inp.airports?.find((a) => a.repo === pull.repo)?.code;
     const href = code ? `#pr/${code}/${pull.number}` : null;
@@ -294,7 +303,7 @@ function nextOf(c: NextCtx): FollowNext | null {
     if (pull.landing === "CLEARED" && inp.userPulls?.has(pull.number)) return { kind: "merge", label: `머지 #${pull.number}`, href };
   }
   if (stuck && (stuck.stage === "sent" || stuck.stage === "readback")) return { kind: "look", label: "살펴보기", href: "#radio" };
-  if (stuck && stuck.stage === "landed") return { kind: "look", label: "살펴보기", href: "#strips" };
+  if (stuck && stuck.stage === "landed") return { kind: "look", label: "살펴보기", href: "#flights" };
   return null;
 }
 
@@ -351,7 +360,7 @@ function nowText(c: NowCtx): string {
       return line || `READBACK ${minSince(stages.readback.at, now) ?? 0}분 전`;
     }
     if (stages.sent.done) return `발송 ${minSince(stages.sent.at, now) ?? 0}분 · READBACK 대기`;
-    if (stages.approved.done) return `승인 ${minSince(stages.approved.at, now) ?? 0}분 · 발송 없음`;
+    if (stages.approved.done) return `승인 ${minSince(stages.approved.at, now) ?? 0}분 · ${inp.cardWaits?.[live.id] ?? "발송 없음"}`;
     return "승인 대기";
   }
   if (c.tail) {
@@ -379,36 +388,57 @@ function dispatchWhy(key: string, t: Ticket, plan: FollowInput["plan"]): string 
   return t.priority === 0 ? "우선순위 없음" : null;
 }
 
+// 줄 모음의 요약(순수): 번들과 화살표 묶음이 같이 쓴다
+function summaryOf(rows: readonly FollowRow[], now: number) {
+  const finished = rows.filter((r) => r.finished).length;
+  const flying = rows.filter((r) => !r.finished && (r.stages.sent.done || r.stages.pr.done || r.tail)).length;
+  const done = rows.length > 0 && finished === rows.length;
+  const ends = rows.flatMap((r) => [r.stages.deployed.at, r.stages.landed.at, r.arrivedAt, r.history.at(-1)?.at ?? null]).filter((x): x is string => Boolean(x));
+  const doneAt = done && ends.length ? ends.reduce((a, b) => (b > a ? b : a)) : null;
+  return {
+    total: rows.length,
+    finished,
+    flying,
+    next: rows.filter((r) => r.next).length,
+    stuck: rows.filter((r) => r.stuck).length,
+    done,
+    doneAt,
+    folded: Boolean(done && doneAt && now - Date.parse(doneAt) > FOLD_AFTER_MS),
+  };
+}
+
+// 막힌 줄이 맨 위로(3.3). 나머지는 주어진 순서 그대로(안정 정렬)
+const stuckFirst = (rows: readonly FollowRow[]) => rows.map((r, i) => ({ r, i })).sort((a, b) => Number(Boolean(b.r.stuck)) - Number(Boolean(a.r.stuck)) || a.i - b.i).map((x) => x.r);
+
 // 번들 전체(순수). parents 순서를 지킨다
 export function followBoardOf(inp: FollowInput): FollowBundle[] {
   const { parents, ...rest } = inp;
   return parents.map((parent) => {
     const p = inp.tickets.find((t) => t.key === parent);
     const keys = chainOrder(bundleKeysOf(parent, inp.tickets), inp.tickets);
-    // 막힌 줄이 번들 맨 위로(3.3). 나머지는 사슬 순서 그대로(안정 정렬)
-    const rows = keys.map((k) => followRowOf(k, rest)).map((r, i) => ({ r, i })).sort((a, b) => Number(Boolean(b.r.stuck)) - Number(Boolean(a.r.stuck)) || a.i - b.i).map((x) => x.r);
-    const finished = rows.filter((r) => r.finished).length;
-    const flying = rows.filter((r) => !r.finished && (r.stages.sent.done || r.stages.pr.done || r.tail)).length;
-    const done = rows.length > 0 && finished === rows.length;
-    const ends = rows.flatMap((r) => [r.stages.deployed.at, r.stages.landed.at, r.history.at(-1)?.at ?? null]).filter((x): x is string => Boolean(x));
-    const doneAt = done && ends.length ? ends.reduce((a, b) => (b > a ? b : a)) : null;
-    return {
-      parent,
-      title: p?.title ?? null,
-      url: p?.url ?? null,
-      state: p?.state ?? null,
-      missing: !p,
-      rows,
-      total: rows.length,
-      finished,
-      flying,
-      next: rows.filter((r) => r.next).length,
-      stuck: rows.filter((r) => r.stuck).length,
-      done,
-      doneAt,
-      folded: Boolean(done && doneAt && inp.now - Date.parse(doneAt) > FOLD_AFTER_MS),
-    };
+    const rows = stuckFirst(keys.map((k) => followRowOf(k, rest)));
+    return { parent, title: p?.title ?? null, url: p?.url ?? null, state: p?.state ?? null, missing: !p, rows, ...summaryOf(rows, inp.now) };
   });
+}
+
+// ATC-382: SUPERVISOR의 화살표. 발권한 FLIGHT는 FOLLOW 클릭 없이 발권부터 IN까지 같은 단계 점과 "지금" 글로 따라간다.
+// 끝난 줄은 하루(FOLD_AFTER_MS) 보이다가 빠진다. 가장 나중에 발권한 것이 위, 막힌 줄은 맨 위. 줄이 없으면 null(정상 상태에 빈 묶음을 그리지 않는다)
+export const ARROWS_KEY = "ARROWS";
+export function arrowsBundleOf(released: readonly { flight: string; at: string }[], inp: Omit<FollowInput, "parents">): FollowBundle | null {
+  const byFlight = new Map<string, string>();
+  for (const r of released) if (!byFlight.has(r.flight) || r.at > byFlight.get(r.flight)!) byFlight.set(r.flight, r.at);
+  const rows = [...byFlight.entries()]
+    .filter(([k]) => inp.tickets.some((t) => t.key === k))
+    .sort((a, b) => b[1].localeCompare(a[1]))
+    .map(([k]) => ({ ...followRowOf(k, inp), arrow: true }))
+    .filter((r) => {
+      if (!r.finished) return true;
+      const ends = [r.stages.deployed.at, r.stages.landed.at, r.arrivedAt].filter((x): x is string => Boolean(x));
+      const end = ends.length ? ends.reduce((a, b) => (b > a ? b : a)) : null;
+      return !end || inp.now - Date.parse(end) <= FOLD_AFTER_MS;
+    });
+  if (!rows.length) return null;
+  return { parent: ARROWS_KEY, title: "SUPERVISOR의 화살표", url: null, state: null, missing: false, rows: stuckFirst(rows), ...summaryOf(rows, inp.now), arrows: true };
 }
 
 // ── follow.json(설정): 따라가는 상위 이슈 key. 기록이 아니라 설정이다 ──

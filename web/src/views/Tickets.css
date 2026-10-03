@@ -1,0 +1,536 @@
+/* FLIGHTS BOARD와 LIST(FIDS, Tickets.tsx): 안내판 보드·목록·표시 옵션의 규칙(ATC-425, S3b). 판 글자 규칙은 SplitFlap.css.
+   테마·밀도·좁은 화면 규칙도 이 파일에 둔다. 색은 :root 토큰만 쓴다. */
+/* ── FIDS ─────────────────────────── */
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 1fr);
+  align-items: start; /* 한 열을 펼쳐도 옆 열의 높이가 따라 늘지 않는다(ATC-316) */
+  gap: var(--gap-column);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+.column {
+  --tone: var(--phase-filed);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--fids-line);
+  border-radius: var(--radius-lg);
+  background: var(--fids-bg);
+  box-shadow: var(--shadow-1);
+}
+.column-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--fids-line);
+  border-top: 2px solid var(--tone);
+  background: var(--fids-head);
+}
+.column-code {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.18em;
+  color: var(--tone);
+  white-space: nowrap;
+}
+.column-alias {
+  font: 400 var(--text-xs) var(--mono);
+  color: var(--faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.count {
+  margin-left: auto;
+  font: 700 var(--text-sm) var(--mono);
+  color: var(--fids-count);
+}
+.column-body {
+  display: grid;
+  gap: var(--gap-item);
+  padding: var(--space-2);
+}
+.ticket {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--fids-line);
+  border-radius: var(--radius-md);
+  background: var(--fids-card);
+}
+a.ticket:hover {
+  border-color: var(--fids-hover-line);
+  background: var(--fids-hover);
+}
+.ticket.is-occupied {
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+.ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ticket-title {
+  margin-top: var(--space-2);
+  color: var(--fids-title);
+}
+.ticket-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.ticket-assignee {
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+.ticket-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+}
+/* ── 표시 옵션(FIDS) ─────────────────────────── */
+/* 표시 옵션 버튼: 공용 .btn 위에 정사각 알약. 바탕은 --layer(패널)를 읽는다 */
+.icon-button {
+  --btn-h: 32px;
+  width: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+}
+.icon-button:hover:not(:disabled),
+.icon-button[aria-expanded="true"] {
+  color: var(--text);
+}
+.icon-button[aria-expanded="true"] {
+  background: var(--panel-3);
+}
+.view-options {
+  position: relative;
+  margin-left: auto;
+}
+.view-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: var(--z-menu);
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--space-4));
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-3);
+  box-shadow: var(--shadow-3);
+}
+/* 보기 전환: 공용 Segmented에 아이콘과 글, 40px 칸 */
+.view-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  font-size: var(--text-md);
+}
+.view-menu-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.view-menu-row {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+/* ── FIDS 목록: DEPARTURES 안내판 ─────────────────────────── */
+.fids-list {
+  overflow: hidden;
+  border: 1px solid var(--fids-line);
+  border-radius: var(--radius-lg);
+  background: var(--fids-bg);
+  box-shadow: var(--shadow-1);
+}
+.fids-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--fids-line);
+  background: var(--fids-head);
+}
+.fids-list-title {
+  font: 700 var(--text-md) var(--mono);
+  letter-spacing: 0.2em;
+  color: var(--flap-ink);
+}
+.fids-list-meta {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--fids-count);
+}
+/* 표 바탕은 공용 .kit-table. 안내판은 바깥 .fids-list가 테두리·바탕을 갖고, 글자 크기는 둘러싼 글을 따른다 */
+.fids-table {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+}
+.fids-table th {
+  background: transparent;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--fids-line);
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--fids-count);
+  text-align: left;
+  white-space: nowrap;
+}
+.fids-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
+  vertical-align: middle;
+}
+/* 공용 표는 마지막 줄의 밑선을 지우지만 안내판은 그룹 끝 줄도 선을 둔다 */
+.fids-table tr:last-child td {
+  border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
+}
+.fids-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--fids-card) 55%, transparent);
+}
+.fids-table tbody tr:hover td {
+  background: var(--fids-hover);
+}
+.fids-table tr.is-occupied td:first-child {
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+.fids-table .none {
+  color: var(--faint);
+}
+/* 비행 단계 머리 줄(ATC-316): 이름은 단계 색(상태), 수는 중립. 그룹은 앞 5건만 보이고 "N more"로 펼친다 */
+.fids-group-head th {
+  padding: var(--space-2) var(--space-3);
+  border-top: 2px solid var(--tone);
+  background: var(--fids-head);
+  letter-spacing: 0.18em;
+}
+.fids-group-name {
+  color: var(--tone);
+}
+.fids-group-head .count {
+  float: right;
+  margin-left: 0;
+}
+/* FIDS는 글자 크기 둘(12·14)로: 약호·칩·우선순위는 12, FLIGHT 번호 칸은 night·cockpit에서도 14 */
+.fids-table .apt,
+.column .apt,
+.fids-table .prio,
+.column .prio,
+.fids-table .code-chip,
+.column .code-chip {
+  font-size: var(--text-xs);
+}
+:root[data-theme="night"] .fids-table .flap b,
+:root[data-theme="cockpit"] .fids-table .flap b,
+:root[data-theme="night"] .column .flap b,
+:root[data-theme="cockpit"] .column .flap b {
+  font-size: var(--text-md);
+}
+/* 단계 색은 그룹 머리·REMARKS(상태)가 말한다. 목록의 FLIGHT 번호는 중립 */
+:root[data-theme="night"] .fids-table .flap b {
+  color: var(--text);
+  text-shadow: none;
+}
+.col-age {
+  display: none;
+}
+.fids-table .col-time {
+  width: 1%;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fids-dest {
+  width: 42%;
+  max-width: 0;
+}
+.fids-dest a,
+.fids-dest span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fids-title);
+}
+.fids-dest a:hover {
+  text-decoration: underline;
+}
+.fids-aircraft {
+  white-space: nowrap;
+}
+.fids-aircraft .session-badge + .session-badge {
+  margin-left: var(--space-2);
+}
+.fids-table .col-stand {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.fids-table .col-pri {
+  width: 1%;
+}
+.fids-remark {
+  white-space: nowrap;
+}
+.remark {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--tone);
+}
+/* 실제 안내판의 BOARDING처럼 CLEARED TO LAND는 깜빡인다 */
+.fids-table tr.tone-cleared .remark {
+  animation: blink 1.2s steps(2) infinite;
+}
+/* OOOI(ATC-123): REMARKS 옆에 가장 늦은 이정표(OUT·OFF·ON·IN) 하나 */
+.remark-ms {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
+.fids-remark .code-chip {
+  margin-left: var(--space-2);
+}
+.fids-empty {
+  padding: var(--space-4);
+}
+/* ARRIVED "more" 줄(ATC-112): 목록은 표 맨 아래 한 줄, 보드는 열 맨 아래 */
+.fids-more td {
+  padding: 0;
+}
+.fids-more-btn {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+  color: var(--muted);
+  font: var(--text-xs) var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+.fids-more-btn:hover,
+.fids-more-btn:focus-visible {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.column-body .fids-more-btn {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+}
+@media (max-width: 860px) {
+  /* FIDS 목록(ATC-316): 행이 한 줄 카드 — FLIGHT · 제목 · AIRCRAFT · 나이. 가로 스크롤 없음 */
+  .fids-table,
+  .fids-table tbody,
+  .fids-group-head,
+  .fids-group-head th,
+  .fids-more,
+  .fids-more td {
+    display: block;
+  }
+  .fids-table thead,
+  .fids-table tbody tr.fids-row:nth-child(n) td.col-time,
+  .fids-table tbody tr.fids-row:nth-child(n) td.col-stand,
+  .fids-table tbody tr.fids-row:nth-child(n) td.col-pri {
+    display: none;
+  }
+  .fids-table tbody tr.fids-row:nth-child(n) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
+  }
+  .fids-table tbody tr.fids-row:nth-child(n) td {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .fids-table tr.is-occupied td:first-child {
+    box-shadow: none;
+  }
+  .fids-table tr.fids-row.is-occupied {
+    box-shadow: inset 2px 0 0 var(--radar);
+  }
+  .fids-row .flap {
+    --flap-w: 11px;
+    --flap-h: 17px;
+  }
+  .col-flight {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .fids-dest {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
+  .fids-aircraft {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .col-age {
+    display: block;
+    grid-column: 4;
+    grid-row: 1;
+    min-width: 2.5ch;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    text-align: right;
+  }
+  /* REMARKS: 그룹 머리가 단계를 이미 말하므로 글자는 숨긴다. CLEARED TO LAND(깜빡임)와 이정표·NO CONTACT는 아래 줄에 남는다 */
+  .fids-table tbody tr.fids-row:nth-child(n) td.fids-remark {
+    display: none;
+  }
+  .fids-table tbody tr.fids-row:nth-child(n) td.fids-remark.has-extra,
+  .fids-table tbody tr.fids-row.tone-cleared:nth-child(n) td.fids-remark {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    grid-column: 2 / -1;
+    grid-row: 2;
+    margin-top: var(--space-1);
+  }
+  .fids-row:not(.tone-cleared) .fids-remark .remark {
+    display: none;
+  }
+  .fids-remark .remark-ms {
+    margin-left: 0;
+  }
+  /* FIDS 보드: 열이 세로로 쌓이고 카드는 한 줄(경고·AIRCRAFT 줄은 그 아래) */
+  .board {
+    grid-auto-flow: row;
+    grid-auto-columns: minmax(0, 1fr);
+    overflow-x: visible;
+  }
+  .ticket {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--space-2);
+  }
+  .ticket .flap {
+    --flap-w: 11px;
+    --flap-h: 17px;
+  }
+  .ticket-top {
+    display: contents;
+  }
+  .ticket-top .flap {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .ticket-top .prio {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .ticket-title {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ticket-foot,
+  .ticket-alert {
+    grid-column: 1 / -1;
+  }
+  .ticket-assignee {
+    display: none;
+  }
+}
+/* 활성 FLIGHT PLAN은 마젠타 항로선 */
+:root[data-theme="cockpit"] .column.tone-enroute .ticket-title::before {
+  content: "";
+  display: block;
+  height: 2px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--magenta);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--magenta) 60%, transparent);
+}
+:root[data-theme="cockpit"] .ticket.is-occupied {
+  box-shadow: inset 2px 0 0 var(--radar);
+}
+:root[data-theme="night"] .column-code {
+  font-family: var(--display);
+}
+/* FIDS: 유리 기둥, 위쪽에 별빛 선 */
+:root[data-theme="night"] .column {
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+:root[data-theme="night"] .column-head {
+  position: relative;
+  border-top: 0;
+}
+:root[data-theme="night"] .column-head::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--tone), transparent);
+  box-shadow: 0 0 10px var(--tone);
+}
+:root[data-theme="night"] .column-body {
+  padding: var(--space-2);
+  gap: var(--space-2);
+}
+:root[data-theme="night"] .ticket {
+  border-radius: var(--radius-md);
+}
+:root[data-theme="night"] .ticket.is-occupied {
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+/* FIDS 보드: 카드 제목은 두 줄까지, 카드 안 간격 8 → 4 */
+:root[data-density="compact"] .column-body {
+  padding: var(--space-1);
+}
+:root[data-density="compact"] .ticket-title {
+  display: -webkit-box;
+  margin-top: var(--space-1);
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+:root[data-density="compact"] .ticket-foot,
+:root[data-density="compact"] .ticket-alert {
+  margin-top: var(--space-1);
+}
+:root[data-density="compact"] .fids-table td {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+/* DEPARTURES(ATC-418): REMARKS에 더한 한 줄 */
+.remark-rev {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--amber);
+}

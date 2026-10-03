@@ -1,5 +1,5 @@
 import { ChevronDown, Ellipsis, X } from "lucide-react";
-import { Icon, IconButton } from "../../Icon.tsx";
+import { Icon, IconButton } from "../../kit/Icon.tsx";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { AircraftView } from "../../../../server/fleet.ts";
 import { fleetStatusOf, flightDetailText } from "../../../../server/fleet-status.ts";
@@ -17,7 +17,8 @@ import { flightNumber } from "../../aviation.ts";
 import { OpenFlight } from "../../FlightLink.tsx";
 import { RelayBox } from "../../Relay.tsx";
 import { timeAgo } from "../../derive.ts";
-import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../ui.tsx";
+import { jobKnownText } from "../../../../server/job-age.ts";
+import { ActivityLine, JobDetail, NeedsYou, PendingApproval, SuggestedReply } from "../../badges.tsx";
 import { pendingNeedsOf } from "../../../../server/pending.ts";
 import { formatClock, useSettings } from "../../settings.ts";
 import { CrewChangePending, CrewTable } from "../FleetCrew.tsx";
@@ -30,6 +31,7 @@ import { ReportLine } from "./ReportMark.tsx";
 import { Fold } from "./Fold.tsx";
 import { LOG_OUTCOME_TEXT, type SessionBrief, type SessionRow, logOutcomeOf, pct, ratingHelp, stripOf } from "./shared.ts";
 import "./Card.css";
+import { Lights } from "../../kit/Loading.tsx";
 
 // AIRCRAFT 한 대의 카드(ATC-280): 머리(이름·상태·버튼) → 경보 띠(있을 때만) → 네 칸 본문(NOW · CREW · ACCOUNT·FUEL · PERFORMANCE).
 // variant detail은 목록 행 아래(FLYING·활동·FOB는 행이 이미 보인다), card는 "카드" 보기(전부)
@@ -60,25 +62,20 @@ function RepositionNote({ r }: { r: LastReposition | null }) {
 // LOGBOOK 최근 FLIGHT는 이만큼만 먼저 보이고 나머지는 더 보기
 const LOG_ROWS = 5;
 
-// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만(14일 건수·착륙 대기 중앙값은 툴팁)
-function factsOf(a: AircraftView) {
-  const x = a.actuals;
-  return [
-    `최근 14일 ARRIVED ${x.total} · 되돌림 ${x.reverted} · LOS ${x.los}`,
-    x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}(PR을 연 뒤 머지될 때까지. 정시율에는 넣지 않는다)` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
+// PERFORMANCE(ATC-287): 라벨·값 줄, 목표는 값 옆의 캡션. 되돌림·LOS는 0보다 클 때만.
+// 14일 건수(ARRIVED)와 착륙 대기 중앙값(PR을 연 뒤 머지될 때까지, 정시율에는 넣지 않는다)은 이번 주 줄의 캡션에 보인다
 function PerformanceKv({ a }: { a: AircraftView }) {
   const x = a.actuals;
   const t = a.targets;
   const weekShort = t.flightsPerWeek != null && x.week < t.flightsPerWeek;
   const lateShort = t.onTime != null && x.onTime.rate != null && x.onTime.rate < t.onTime;
-  const facts = factsOf(a);
   return (
     <>
-      <Kv label="이번 주" tone={weekShort ? "short" : undefined} target={t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : undefined} title={facts}>
+      <Kv
+        label="이번 주"
+        tone={weekShort ? "short" : undefined}
+        target={[t.flightsPerWeek != null ? `목표 ${t.flightsPerWeek}` : null, `14일 ${x.total}`, x.landingWait.medianMin != null ? `착륙 대기 중앙값 ${blockTime(Math.round(x.landingWait.medianMin))}` : null].filter(Boolean).join(" · ")}
+      >
         {x.week}
       </Kv>
       <Kv
@@ -90,12 +87,12 @@ function PerformanceKv({ a }: { a: AircraftView }) {
         {x.onTime.rate == null ? "—" : pct(x.onTime.rate)}
       </Kv>
       {x.reverted > 0 && (
-        <Kv label="되돌림" tone="bad" title={facts}>
+        <Kv label="되돌림" tone="bad">
           {x.reverted}
         </Kv>
       )}
       {x.los > 0 && (
-        <Kv label="LOS" tone="bad" title={facts}>
+        <Kv label="LOS" tone="bad">
           {x.los}
         </Kv>
       )}
@@ -171,13 +168,16 @@ function LogTable({ a }: { a: AircraftView }) {
                   {e.los > 0 && <span className="fl-bad"> LOS {e.los}</span>}
                 </td>
                 {/* STAND 없는 FLIGHT(ATC-72): PR 대신 확인한 증거 */}
-                <td className="muted tn mono">{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
+                <td className={`muted tn${e.pr ? " mono" : " fl-log-note"}`}>{e.pr ? `#${e.pr.number}` : e.standFree?.arrivedVia === "confirmed-suggestion" ? "STAND 없음 · 후보 확인" : "STAND 없음 · 보고"}</td>
                 <td className="r tn mono" title={blockTitle}>
-                  <span className={e.onTime === false ? "fl-late" : undefined}>{e.blockMin == null ? "—" : blockTime(e.blockMin)}</span>
+                  <span className={e.onTime === false ? "fl-late" : undefined}>
+                    {e.blockMin == null ? "—" : blockTime(e.blockMin)}
+                    {e.onTime === false ? " 지연" : ""}
+                  </span>
                   {e.landingWaitMin != null && (
-                    <span className="muted" title="착륙 대기(PR → 머지)">
+                    <span className="muted">
                       {" "}
-                      +{blockTime(e.landingWaitMin)}
+                      +{blockTime(e.landingWaitMin)} 대기
                     </span>
                   )}
                 </td>
@@ -310,8 +310,17 @@ export function Card({
     alerts.push(
       <li key="needs" className="fl-needs-you">
         <NeedsYou job={a.job} attach={origin?.attach} />
-        {a.job.detail && <span className="fl-line faint"> {a.job.detail}</span>}
+        {a.job.detail && <span className="fl-line faint"> {a.job.detail} · {jobKnownText(a.job, now)}</span>}
         <SuggestedReply job={a.job} />
+      </li>,
+    );
+  }
+  // health(ATC-45): 행은 짧은 상태 글만 보인다. 오류 한 줄과 다음 한 걸음은 여기(펼친 곳)에서 보인다
+  // 승인 대기(PENDING)는 위 NEEDS YOU 줄이 이미 보인다. 같은 말을 두 번 하지 않는다
+  if (a.health && !(a.health.code === "PENDING" && a.job?.state === "blocked")) {
+    alerts.push(
+      <li key="health" className="fl-health">
+        {a.health.detail} <span className="faint">— {a.health.next}</span>
       </li>,
     );
   }
@@ -334,8 +343,8 @@ export function Card({
   if (a.accountHold) {
     raise("amber");
     alerts.push(
-      <li key="hold" className="fl-acct-hold" title={ACCOUNT_HOLD_NEXT}>
-        {accountHoldLabel(a.accountHold, now)} <span className="faint">· {accountHoldDetail(a.accountHold)}</span>
+      <li key="hold" className="fl-acct-hold">
+        {accountHoldLabel(a.accountHold, now)} <span className="faint">· {accountHoldDetail(a.accountHold)} — {ACCOUNT_HOLD_NEXT}</span>
       </li>,
     );
   }
@@ -472,12 +481,7 @@ export function Card({
             </span>
           )}
           {stale.length > 0 && (
-            <span
-              className="fl-stale-mark mono"
-              title={`${stale.map((x) => x.id).join(", ")} — claude agents --json에 pid·status 없이 남은 멈춘 background job. Claude Code가 멈춘 job을 아직 목록에 둠 — 무시해도 된다. LAUNCH를 막지 않고 상한에 세지 않는다`}
-            >
-              STALE {stale.length}
-            </span>
+            <span className="fl-stale-mark mono">STALE {stale.length} — pid 없이 남은 멈춘 job</span>
           )}
         </div>
         <div className="fl-actions fl-head-actions">
@@ -485,14 +489,19 @@ export function Card({
             <span className="fl-launch">
               <span className="fl-split" role="group" aria-label="LAUNCH">
                 {!optsOpen && (
-                  <button type="button" className="fl-btn primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} title={defaults.cap || undefined} onClick={() => runLaunch()}>
-                    {launchBusy ? "띄우는 중…" : "LAUNCH"}
+                  <button type="button" className="btn is-primary fl-split-main" disabled={launchBusy || Boolean(defaults.refused)} onClick={() => runLaunch()}>
+                    {launchBusy ? (
+            <>
+              <Lights />
+              띄우는 중…
+            </>
+          ) : "LAUNCH"}
                   </button>
                 )}
                 <button
                   ref={toggleRef}
                   type="button"
-                  className={`fl-btn fl-split-more${optsOpen ? " is-open" : ""}`}
+                  className={`btn fl-split-more${optsOpen ? " is-open" : ""}`}
                   aria-expanded={optsOpen}
                   aria-controls={optsId}
                   aria-label={optsOpen ? "LAUNCH 옵션 닫기" : "LAUNCH 옵션"}
@@ -502,21 +511,21 @@ export function Card({
                 </button>
               </span>
               {!optsOpen && (
-                <span className="fl-launch-cap faint" title={defaults.refused ?? (defaults.cap || undefined)}>
-                  {defaults.refused ? `LAUNCH 불가 — ${defaults.refused}` : defaults.caption}
+                <span className="fl-launch-cap faint">
+                  {defaults.refused ? `LAUNCH 불가 — ${defaults.refused}` : `${defaults.caption}${defaults.cap ? ` · ${defaults.cap}` : ""}`}
                 </span>
               )}
             </span>
           )}
           {session && isBackground(a.origin ?? (session.kind === "background" ? "background" : null)) && (
-            <button className="fl-btn" onClick={onStop}>
+            <button className="btn" onClick={onStop}>
               STOP
             </button>
           )}
-          <button className="fl-btn" onClick={(e) => onBriefing(e.currentTarget)}>
+          <button className="btn" onClick={(e) => onBriefing(e.currentTarget)}>
             CREW BRIEFING
           </button>
-          <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="fl-btn" />
+          <RelayBox to={a.registration} flight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} notesFlight={(a.flying[0] as string | undefined) ?? kept[0]?.key ?? null} btnClass="btn" />
           <MoreMenu aog={Boolean(a.aog)} onEdit={onEdit} attach={origin?.attach ?? null} onAog={onAog} onRetire={onRetire} />
         </div>
       </header>
@@ -560,7 +569,7 @@ export function Card({
                 {a.ratings.length ? (
                   <span className="fl-chips">
                     {a.ratings.map((r) => (
-                      <span key={r} className={`fl-chip r-${r}`} title={ratingHelp[r]}>
+                      <span key={r} className={`chip r-${r}`} title={ratingHelp[r]}>
                         {r}
                       </span>
                     ))}
@@ -676,19 +685,19 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
   };
   return (
     <div className="fl-more-menu">
-      <button ref={btn} type="button" className="fl-btn" aria-haspopup="menu" aria-expanded={open} aria-controls={id} aria-label="더 보기" onClick={() => setOpen(!open)}>
+      <button ref={btn} type="button" className="btn" aria-haspopup="menu" aria-expanded={open} aria-controls={id} aria-label="더 보기" onClick={() => setOpen(!open)}>
         <Icon icon={Ellipsis} />
       </button>
       {open && (
         <div ref={box} id={id} role="menu" className="fl-menu" onKeyDown={key}>
-          <button type="button" role="menuitem" className="fl-btn" onClick={run(onEdit)}>
+          <button type="button" role="menuitem" className="btn" onClick={run(onEdit)}>
             고치기
           </button>
           {attach && (
             <button
               type="button"
               role="menuitem"
-              className="fl-btn"
+              className="btn"
               title={attach}
               aria-label={`${attach} 복사`}
               onClick={async () => {
@@ -700,10 +709,10 @@ function MoreMenu({ aog, onEdit, attach, onAog, onRetire }: { aog: boolean; onEd
               {copied === "ok" ? "복사됨" : copied === "fail" ? "복사 못 함 — 툴팁의 명령을 직접" : "ATTACH 복사"}
             </button>
           )}
-          <button type="button" role="menuitem" className="fl-btn" onClick={run(onAog)}>
+          <button type="button" role="menuitem" className="btn" onClick={run(onAog)}>
             {aog ? "AOG 해제" : "AOG"}
           </button>
-          <button type="button" role="menuitem" className="fl-btn danger" onClick={run(onRetire)}>
+          <button type="button" role="menuitem" className="btn is-danger" onClick={run(onRetire)}>
             퇴역
           </button>
         </div>

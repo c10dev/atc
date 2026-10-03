@@ -2,7 +2,7 @@ import { type AlertLevel, alertLevel } from "./alert-level.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
 import { registrationOf } from "./registration.ts";
 import { attachCommandOf } from "./session-origin.ts";
-import type { FollowItem } from "./following.ts";
+import type { EndedKey, FollowItem } from "./following.ts";
 import type { FollowRow } from "./follow.ts";
 import type { Alert, PullRequest, Session, Ticket, Workspace } from "./model.ts";
 import type { LandBy } from "./land-by.ts";
@@ -12,7 +12,9 @@ import type { Proposal } from "./proposals.ts";
 import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
 import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { type CapIdleHint, idleText } from "./other-background.ts";
+import type { HostMemory } from "./host-memory.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -48,7 +50,7 @@ export interface SupervisorAlert {
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
 // key의 첫 마디로 정하고, 마디가 더 필요한 것은 아래 함수가 가른다. 새 key 종류를 더하면 DEST_PREFIXES와 여기에도 규칙을 더해야 한다(시험이 이 파일의 key 모양을 읽어 확인한다).
 // 순수 함수: 읽는 것은 key와, land 항목의 landBy(PR → 누가 착륙시키나, land-by.ts)뿐이다. 등급 규칙을 새로 두지 않고 landByOf(=deploy/landing-tier.mjs의 등급)를 그대로 쓴다
-export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow"] as const;
+export const DEST_PREFIXES = ["alert", "pending", "following", "land", "rts", "recycle", "cap", "control", "reposition", "follow", "revert", "host"] as const;
 export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<string, LandBy>): AlertDest {
   const p = item.key.split("|");
   switch (p[0]) {
@@ -70,12 +72,16 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
       return p[1] === "over" || p[1] === "wait" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
     case "cap":
       return "alerts";
-    case "control": // control|down|<session>: 멈춘 채인 관제 세션
+    case "revert": // revert|stop|<airport>|<at>: breaker가 lane을 낮췄다(ATC-351). SUPERVISOR만 다시 올린다
+      return "alerts";
+    case "control": // control|down|<session>: 어떤 이유로든 없는 관제 세션(ATC-203)
+      return "alerts";
+    case "host": // host|memory: 호스트 메모리 부족·OOM kill(ATC-203)
       return "alerts";
     case "reposition":
       return p[1] === "stuck" ? "alerts" : "log"; // reposition|stuck|<aircraft>는 조건, 나머지는 결과
-    case "follow": // FOLLOW(ATC-278, docs/follow.md 3.5): ready·approve는 SUPERVISOR의 몫(queue), landed·deployed는 일어난 일(log), stuck·failed는 조건(alerts)
-      return p[1] === "ready" || p[1] === "approve" ? "queue" : p[1] === "landed" || p[1] === "deployed" ? "log" : "alerts";
+    case "follow": // FOLLOW(ATC-278, docs/follow.md 3.5): ready·approve는 SUPERVISOR의 몫(queue), landed·deployed·arrived는 일어난 일(log), stuck·failed는 조건(alerts)
+      return p[1] === "ready" || p[1] === "approve" ? "queue" : p[1] === "landed" || p[1] === "deployed" || p[1] === "arrived" ? "log" : "alerts";
     default:
       return "alerts"; // 모르는 종류는 SUPERVISOR가 놓치지 않게 alerts에. 시험이 이 경우를 막는다
   }
@@ -88,8 +94,43 @@ export interface RtsHalted {
 }
 export interface ControlDown {
   session: string;
-  since: string; // 멈춘 RECYCLE 기록 시각
+  since: string | null; // 멈춘 RECYCLE 기록 시각, 이유를 모르는 사라짐(gone)이면 마지막 기록 시각이나 null
   reason: string;
+  gone?: true; // RECYCLE 실패가 아니라 이유 불문 살아 있는 세션이 없다(ATC-203)
+}
+
+// 관제 세션이 마지막으로 겪은 일(FLIGHT RECORDER의 control launch·stop·recycle 기록). SUPERVISOR의 STOP인지 가르는 데 쓴다
+export interface ControlOp {
+  t: string;
+  op: "launch" | "stop" | "recycle";
+  by: string;
+  ok: boolean;
+}
+// 방금 뜨거나 멈춘 세션은 행이 나타나기까지 잠깐 비어 있다: 이 안의 기록은 아직 "없음"으로 치지 않는다
+export const CONTROL_DOWN_GRACE_MS = 120_000;
+// 이 둘이 켜진 관제 세션은 지금 없으면 WARNING(나머지는 CAUTION). 둘 이상이 한꺼번에 없어도 WARNING
+export const CONTROL_CRITICAL = ["TOWER", "MCC"] as const;
+
+// 순수(ATC-203): 설정된 관제 세션(launch bg) 가운데 살아 있는 행이 없는 것. 이유는 묻지 않는다(크래시·OOM·데몬 재시작 모두).
+// 단 SUPERVISOR가 직접 STOP한 것이 그 세션에 일어난 마지막 일이면(성공한 stop, by SUPERVISOR) 제 뜻이니 뺀다. 새 상태는 두지 않고 기존 기록만 읽는다
+export function controlGoneOf(inp: { sessions: readonly string[]; running: ReadonlySet<string>; last: ReadonlyMap<string, ControlOp>; now: number }): ControlDown[] {
+  const out: ControlDown[] = [];
+  for (const name of [...inp.sessions].sort()) {
+    if (inp.running.has(name)) continue;
+    const l = inp.last.get(name);
+    if (l && l.op === "stop" && l.ok && l.by === "SUPERVISOR") continue;
+    if (l && inp.now - Date.parse(l.t) < CONTROL_DOWN_GRACE_MS) continue;
+    // since는 마지막 기록의 시각이지 내려간 시각이 아니다(며칠 전의 launch일 수 있다): 글에는 "부터"가 아니라 기록의 날짜와 시각을 적는다
+    out.push({ session: name, since: l?.t ?? null, reason: l ? `마지막 기록: ${l.op}${l.ok ? "" : " 실패"}(${l.by}) ${l.t.slice(5, 10)} ${l.t.slice(11, 16)}Z` : "살아 있는 세션이 없음", gone: true });
+  }
+  return out;
+}
+
+// 순수: RECYCLE이 멈춘 채인 것(이유가 분명하다)과 이유 불문 없는 것을 한 세션에 하나로 합친다. 같은 세션이면 RECYCLE 쪽 글을 쓴다
+export function mergeControlDown(recycle: readonly ControlDown[], gone: readonly ControlDown[]): ControlDown[] {
+  const by = new Map<string, ControlDown>(gone.map((c) => [c.session, c]));
+  for (const c of recycle) by.set(c.session, c);
+  return [...by.values()].sort((a, b) => a.session.localeCompare(b.session));
 }
 export interface RepositionStuck {
   aircraft: string;
@@ -133,7 +174,7 @@ export function repositionStuckOf(repositions: readonly RepositionRecordLike[], 
 }
 
 // FOLLOW(ATC-278): 따라가는 번들의 줄. followBoardOf의 줄을 그대로 읽는다(단계를 다시 세지 않는다). folded 번들의 줄은 넣지 않는다
-export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted" | "stuck">;
+export type FollowAlertRow = Pick<FollowRow, "key" | "title" | "finished" | "current" | "stages" | "issues" | "proposal" | "ready" | "goAround" | "reverted" | "stuck"> & Partial<Pick<FollowRow, "arrow" | "arrivedAt">>;
 export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목이 남는 시간(그 단계의 시각부터). 시각을 모르면 번들이 접힐 때까지
 
 export interface AlertsInput {
@@ -143,6 +184,7 @@ export interface AlertsInput {
   tickets: Pick<Ticket, "key" | "stateType">[];
   following: Pick<FollowItem, "flight" | "aircraft" | "issues">[];
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
+  autoDispatch?: boolean; // 자동 운항(ATC-367): ASSIGN 카드는 서버가 승인하므로 판정 대기 알림이 없다
   pulls: Pick<PullRequest, "repo" | "number" | "title" | "head" | "landing" | "draft" | "ticketKey" | "humanCheck">[];
   rts: Pick<RtsRecord, "at" | "from" | "to" | "result" | "detail"> | null;
   // SCHEDULE 판정(ATC-162): approval 모드에서만 SUPERVISOR 결정을 기다리는 일이다. shadow는 게이트 판정이라 항목이 없다. 없으면 항목 없음
@@ -155,13 +197,19 @@ export interface AlertsInput {
   overCap?: (OverCap & { since: string })[]; // CAP을 넘었지만 자동 재시작 대상이 아닌 세션(OCC)
   // ATC-197: 상태에서 만드는 조건 항목 셋(각각 순수 함수 rtsHaltedOf·controlDownOf·repositionStuckOf의 결과)과, land 항목의 목적지를 가르는 PR별 landBy(`<repo>#<번호>` → 누가 착륙시키나)
   rtsHalted?: RtsHalted | null;
+  revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
+  k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
   controlDown?: ControlDown[];
+  hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
   // PENDING approval(ATC-327): 지금(now)과 CAUTION으로 올리는 분(pendingMin), AIRCRAFT(REGISTRATION)별로 기다리는 RADIO 호출. 없으면 전과 같다(ADVISORY)
   pending?: { now: number; pendingMin: number; calls: ReadonlyMap<string, WaitingCall[]>; teamPattern?: string };
+  // 주인 없는 조건(ATC-385): 주인 없는 변경(unattended)·종료된 세션의 점유(orphan)가 afterMs(기본 UNOWNED_AFTER_MS) 넘게 그대로면 CAUTION 수에서 빠지고 한 줄(`alert|cleanup`)로 접힌다.
+  // since: alertKeyOf → 처음 본 시각(ms). 접힌 key는 ended에 모은다(있으면). 없으면 접지 않는다. 변경은 지우지 않는다 — 알림에서 접을 뿐이다
+  unowned?: { now: number; since: ReadonlyMap<string, number>; afterMs?: number; ended?: EndedKey[] };
   follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
 
@@ -188,7 +236,7 @@ export function stuckLineOf(row: Pick<FollowAlertRow, "issues" | "finished" | "c
 }
 
 // FOLLOWING 문제 가운데 다른 경로가 이미 알리는 것은 뺀다: health·stranded는 ALERT가, landing-wait는 PR 항목이 알린다
-const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
+export const DUPLICATED = new Set<string>(["health", "stranded", "landing-wait"]);
 
 const NEXT_BY_ISSUE: Partial<Record<string, string>> = {
   "await-supervisor": "그 세션에서 직접 go를 친다",
@@ -210,6 +258,13 @@ const NEXT_BY_STUCK: Partial<Record<string, string>> = {
 // STAND 이름(ATC-152): 워크트리 이름, 없으면 경로의 마지막 마디
 export const standNameOf = (path: string, names: ReadonlyMap<string, string | undefined>) => names.get(path) || path.replace(/\/+$/, "").split("/").pop() || path;
 
+// 주인 없는 조건: 어느 쪽에도 주인(세션)이 없는 STAND의 일. 오래 그대로면 CAUTION이 아니라 정리 줄 하나로 접는다(ATC-385)
+export const UNOWNED_KINDS: ReadonlySet<Alert["kind"]> = new Set(["unattended", "orphan"]);
+export const UNOWNED_AFTER_MS = 6 * 3_600_000;
+export const CLEANUP_KEY = "alert|cleanup";
+export const alertKeyOf = (a: Pick<Alert, "key" | "kind" | "workspacePath" | "ticketKey" | "sessionIds">): string =>
+  `alert|${a.key ?? [a.kind, a.workspacePath ?? "", a.ticketKey ?? "", (a.sessionIds ?? []).join(",")].join("|")}`;
+
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : "?");
 
 export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
@@ -221,13 +276,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   const nameOf = new Map(inp.sessions.map((s) => [s.id, s.name]));
   const standNames = new Map(inp.workspaces.map((w) => [w.path, w.name]));
 
+  const stale: { a: Alert; first: number }[] = [];
   // 1) ALERT(ATC-110 등급 그대로). health 종류는 LIMIT·RESUME·STALLED·NETWORK 같은 AIRCRAFT health
   for (const a of inp.alerts) {
     const ids = a.sessionIds ?? [];
     const aircraft = ids.map((id) => nameOf.get(id)).filter(Boolean).join(", ") || null;
     const health = ids.map((id) => inp.sessions.find((s) => s.id === id)?.health).find(Boolean);
+    const key = alertKeyOf(a);
+    const first = inp.unowned?.since.get(key);
+    if (inp.unowned && UNOWNED_KINDS.has(a.kind) && first !== undefined && inp.unowned.now - first >= (inp.unowned.afterMs ?? UNOWNED_AFTER_MS)) {
+      stale.push({ a, first });
+      inp.unowned.ended?.push({ key, rule: "unowned-stale" });
+      continue;
+    }
     out.push({
-      key: `alert|${a.key ?? [a.kind, a.workspacePath ?? "", a.ticketKey ?? "", ids.join(",")].join("|")}`,
+      key,
       group: a.kind === "health" ? "health" : "alert",
       level: alertLevel(a, idx),
       cue: null,
@@ -236,8 +299,27 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       // 키에 STAND 경로가 든 ALERT(주인 없는 변경·종료된 세션의 점유 …)는 어느 STAND인지 문구에 붙인다(ATC-152). 이미 이름이 있으면 그대로
       text: a.workspacePath && !a.message.includes(standNameOf(a.workspacePath, standNames)) ? `${a.message} — ${standNameOf(a.workspacePath, standNames)}` : a.message,
       next: health?.next ?? "",
-      link: "#strips",
+      link: "#flights",
       since: null,
+    });
+  }
+
+  // 1b) 오래 주인이 없는 것은 한 줄로(ATC-385): 개수만 센다. 자동으로 지우지 않는다
+  if (stale.length) {
+    const changes = stale.filter((x) => x.a.kind === "unattended");
+    const claims = stale.filter((x) => x.a.kind === "orphan");
+    const names = stale.slice(0, 3).map((x) => (x.a.workspacePath ? standNameOf(x.a.workspacePath, standNames) : x.a.message));
+    out.push({
+      key: CLEANUP_KEY,
+      group: "alert",
+      level: "advisory",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `정리 대기 ${stale.length}건 — 주인 없는 변경 ${changes.length}곳, 종료된 세션의 점유 ${claims.length}곳이 ${Math.round((inp.unowned!.afterMs ?? UNOWNED_AFTER_MS) / 3_600_000)}시간 넘게 그대로 (${names.join(", ")}${stale.length > 3 ? " …" : ""})`,
+      next: "STAND를 확인해 커밋·푸시하거나 직접 정리한다. atc는 변경을 지우지 않는다",
+      link: "#flights",
+      since: new Date(Math.min(...stale.map((x) => x.first))).toISOString(),
     });
   }
 
@@ -259,7 +341,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: inp.pending ? pendingTextOf({ name: s.name, since: s.health.since, now, calls, needs }) : `${s.name} — PENDING: ${s.health.detail}`,
       next: s.jobId ? `${s.health.next} — ${attachCommandOf(s.jobId, s.attachDir)}` : s.health.next,
-      link: "#strips",
+      link: "#flights",
       since: s.health.since,
     });
   }
@@ -282,7 +364,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
         flight: f.flight,
         text: i.text,
         next: NEXT_BY_ISSUE[i.code] ?? "FLIGHT FOLLOWING에서 그 FLIGHT를 확인한다",
-        link: "#strips",
+        link: "#flights",
         since: i.since,
       });
     }
@@ -291,6 +373,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
   // 4) SUPERVISOR가 판정할 DISPATCH 제안(HOLD 걸린 것은 사람 결정을 기다리는 게 아니라 선행 FLIGHT를 기다린다)
   for (const p of inp.proposals) {
     if (p.holdAt !== null || (p.status !== "proposed" && p.status !== "agreed" && p.status !== "disagreed")) continue;
+    if (inp.autoDispatch && p.kind === "ASSIGN") continue;
     // 따라가는 줄의 제안은 follow|approve로 낸다(pending|proposal을 대신한다, 이중 알림 없음)
     out.push({
       key: followProposals.has(p.id) ? `follow|approve|${p.id}` : `pending|proposal|${p.id}`,
@@ -300,17 +383,17 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       aircraft: p.aircraftName,
       flight: p.flight,
       text: `제안 ${p.id} — ${p.flight}${p.aircraftName ? ` → ${p.aircraftName}` : ""} ${p.kind === "RELEASE" ? "RELEASE " : ""}판정 대기`,
-      next: "DISPATCH 탭에서 승인하거나 거절한다",
-      link: "#dispatch",
+      next: "HOME의 QUEUE에서 승인하거나 거절한다",
+      link: "#home",
       since: p.statusAt,
       ask: p.kind === "RELEASE" ? "release" : "assign",
     });
   }
 
-  // 4b) SCHEDULE 판정(approval 모드만): 열린 작업(draft·agreed·disagreed)은 SUPERVISOR의 승인·거절을 기다린다
-  if (inp.schedule?.mode === "approval") {
+  // 4b) SCHEDULE 판정(approval 모드만): draft는 SUPERVISOR의 승인·거절을 기다린다. 기다림의 정의는 QUEUE와 같은 함수 하나(schedule-waiting.ts, ATC-450)
+  if (inp.schedule) {
     for (const op of inp.schedule.ops) {
-      if (op.status !== "draft" && op.status !== "agreed" && op.status !== "disagreed") continue;
+      if (!scheduleWaitsOnSupervisor(inp.schedule.mode, op)) continue;
       out.push({
         key: `pending|schedule|${op.id}`,
         group: "pending",
@@ -319,8 +402,8 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
         aircraft: null,
         flight: op.flight,
         text: `SCHEDULE ${op.id} — ${op.kind}${op.flight ? ` ${op.flight}` : ""} 판정 대기`,
-        next: "SCHEDULE 탭에서 승인하거나 거절한다",
-        link: "#schedule",
+        next: "HOME의 QUEUE에서 승인하거나 거절한다",
+        link: "#home",
         since: op.statusAt,
         ask: op.kind.toLowerCase(),
       });
@@ -332,11 +415,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     if (pr.draft) continue;
     const id = `${pr.repo}#${pr.number}`;
     if (pr.landing === "CLEARED") {
-      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#airports", since: null });
+      out.push({ key: `land|${id}|${pr.head}`, group: "land", level: "advisory", cue: null, aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — CLEARED TO LAND`, next: "착륙시킨다(MCC 또는 머지)", link: "#flights", since: null });
     }
     const hc = pr.humanCheck;
     if (hc?.required && hc.state !== "done") {
-      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#airports", since: null });
+      out.push({ key: `pending|humancheck|${id}|${pr.head}`, group: "pending", level: "advisory", cue: "call", aircraft: null, flight: pr.ticketKey, text: `PR #${pr.number} ${pr.title} — HUMAN CHECK 대기`, next: "사람이 확인하고 PR 본문에 적는다", link: "#home", since: null });
     }
   }
 
@@ -353,7 +436,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: `RTS ${short(r.from)} → ${short(r.to)} ${r.result.toUpperCase()}${r.detail ? ` — ${r.detail}` : ""}`,
       next: bad ? "설정 창에서 MCC 모드를 다시 고르기 전에 원인을 본다(docs/mcc.md 6)" : r.result === "refused" ? "UPDATE 바에서 사유를 본다" : "",
-      link: "#radar",
+      link: "#home",
       since: r.at,
     });
   }
@@ -414,22 +497,70 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       flight: null,
       text: `RTS 멈춤 — ${inp.rtsHalted.reason}`,
       next: "원인을 본 뒤 설정 창에서 MCC 모드를 다시 고른다(docs/mcc.md 6). 그때까지 배포되지 않는다",
-      link: "#radar",
+      link: "#home",
       since: inp.rtsHalted.since,
     });
   }
-  for (const c of inp.controlDown ?? []) {
+  for (const r of inp.revertStops ?? []) {
     out.push({
-      key: `control|down|${c.session}`,
-      group: "recycle",
-      level: "caution",
+      key: `revert|stop|${r.airport}|${r.at}`,
+      group: "land",
+      level: "warning",
       cue: null,
       aircraft: null,
       flight: null,
-      text: `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
+      text: `자동 되돌림 멈춤(${r.airport}) — ${r.detail}`,
+      next: "원인을 본 뒤 lane(AUTOLAND·MCC)과 설정 창의 AUTO REVERT 스위치를 다시 고른다. 그때까지 되돌리지 않는다",
+      link: "#radar",
+      since: r.at,
+    });
+  }
+  for (const h of inp.k3Holds ?? []) {
+    out.push({
+      key: `alert|k3-hold|${h.flight}`,
+      group: "alert",
+      level: "caution",
+      cue: null,
+      aircraft: null,
+      flight: h.flight,
+      text: `K3 HOLD ${h.flight} — ${h.text}`,
+      next: h.fix,
+      link: "#release",
+      since: null,
+    });
+  }
+  // 관제 세션이 없다(ATC-203): CAUTION, TOWER나 MCC가 없거나 둘 이상이 한꺼번에 없으면 WARNING. 키는 세션마다 그대로다
+  const downs = inp.controlDown ?? [];
+  for (const c of downs) {
+    const critical = (CONTROL_CRITICAL as readonly string[]).includes(c.session) || downs.length >= 2;
+    out.push({
+      key: `control|down|${c.session}`,
+      group: "recycle",
+      level: critical ? "warning" : "caution",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: c.gone
+        ? `관제 세션 ${c.session} 없음 — ${c.reason}`
+        : `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",
       since: c.since,
+    });
+  }
+  // 호스트 메모리(ATC-203): 가용 메모리·swap·최근 30분의 OOM kill 수를 글에 싣는다
+  if (inp.hostMemory) {
+    out.push({
+      key: "host|memory",
+      group: "health",
+      level: inp.hostMemory.level,
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: inp.hostMemory.text,
+      next: "어느 프로세스가 죽었나: journalctl -k | grep -i oom, 가용 메모리는 FUEL·health 화면",
+      link: "#metrics/fuel",
+      since: null,
     });
   }
   for (const r of inp.repositionStuck ?? []) {
@@ -454,7 +585,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     const recent = (at: string | null) => !at || now - Date.parse(at) < FOLLOW_LOG_WINDOW_MS;
     const title = (r: FollowAlertRow) => `${r.key}${r.title ? ` ${r.title}` : ""}`;
     for (const r of inp.follow.rows) {
-      const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#follow" };
+      const base = { group: "follow" as const, aircraft: null, flight: r.key, link: "#flights" };
       if (r.ready && !r.finished) out.push({ ...base, key: `follow|ready|${r.key}`, level: "advisory", cue: "call", text: `${title(r)} — 풀 수 있음(READY)`, next: "FOLLOW 탭에서 Todo로 푼다", since: null });
       const stuck = stuckLineOf(r);
       if (stuck) {
@@ -466,8 +597,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       if (rtsBad && r.stages.landed.done && !r.stages.deployed.done && !r.stages.deployed.na && (!r.stages.landed.at || r.stages.landed.at <= rtsBad.at)) why.push(`RTS ${rtsBad.result.toUpperCase()}`);
       if (r.reverted) why.push(`PR #${r.reverted.number}로 되돌려짐`);
       if (why.length) out.push({ ...base, key: `follow|failed|${r.key}`, level: "warning", cue: null, text: `${title(r)} — ${why.join(" · ")}`, next: "FOLLOW 탭에서 그 FLIGHT의 기록을 보고 결정한다", since: r.reverted?.at ?? null });
-      if (!r.stages.landed.na && r.stages.landed.done && recent(r.stages.landed.at)) out.push({ ...base, key: `follow|landed|${r.key}`, level: null, cue: null, text: `${title(r)} — 착륙(ON)`, next: "", since: r.stages.landed.at });
+      // 화살표(발권한 FLIGHT, ATC-382)는 끝에서 한 번만 알린다: IN이 남아 있는 동안은 ON을 따로 알리지 않는다
+      if (!r.stages.landed.na && r.stages.landed.done && recent(r.stages.landed.at) && !(r.arrow && !r.stages.deployed.na)) out.push({ ...base, key: `follow|landed|${r.key}`, level: null, cue: null, text: `${title(r)} — 착륙(ON)`, next: "", since: r.stages.landed.at });
       if (!r.stages.deployed.na && r.stages.deployed.done && recent(r.stages.deployed.at)) out.push({ ...base, key: `follow|deployed|${r.key}`, level: null, cue: null, text: `${title(r)} — 배포(IN)`, next: "", since: r.stages.deployed.at });
+      // PR 없는 FLIGHT의 끝은 ARRIVED(ATC-382)
+      if (r.arrow && r.arrivedAt && recent(r.arrivedAt)) out.push({ ...base, key: `follow|arrived|${r.key}`, level: null, cue: null, text: `${title(r)} — 도착(ARRIVED)`, next: "", since: r.arrivedAt });
     }
   }
 

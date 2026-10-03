@@ -221,9 +221,14 @@ test("S2 Linear 호출: 계획 필드만, 라벨 그룹 하위 이름으로, 근
   const nu = callsOf({ ...base, id: "S-0003", kind: "NEW", flight: null, payload }, undefined, "Vocado");
   assert.deepEqual(nu, [{ tool: "save_issue", input: {
     team: "Vocado", title: "추천 곡 카드", description: "## 목표\nx\n\n— OCC S-0003 · CHARTER REQUEST (SCHEDULE S-0003, SUPERVISOR 승인)",
-    project: "Song Experience", priority: 3, labels: ["BUILD", "M", "rating:UI", "tail:TEAM_F"], relatedTo: ["VOC-179"],
+    project: "Song Experience", priority: 3, labels: ["BUILD", "M", "rating:UI", "tail:TEAM_F"], relatedTo: ["VOC-179"], state: "Backlog",
   } }]);
-  for (const c of [...cls, ...pri, ...nu]) assert.ok(!("state" in c.input) && !("assignee" in c.input), "상태·담당은 쓰지 않는다");
+  for (const c of [...cls, ...pri]) assert.ok(!("state" in c.input) && !("assignee" in c.input), "상태·담당은 쓰지 않는다");
+  // NEW만 상태를 쓴다: 늘 Backlog(제안). Todo로 푸는 것은 SUPERVISOR(ATC-370)
+  assert.ok(nu.every((c) => c.input.state === "Backlog" && !("assignee" in c.input)));
+  // 서버가 사람 판정 없이 승인한 초안은 근거 줄에 그렇게 적는다
+  const auto = callsOf({ ...base, id: "S-0004", kind: "NEW", flight: null, payload, via: "auto" }, undefined, "Vocado");
+  assert.match(String(auto[0].input.description), /\(SCHEDULE S-0004, 서버 자동 승인\)$/);
 });
 
 test("S2 동기화: 발부된 작업이 Linear에 보이면 APPLIED, 승인만 된 것은 SUPERSEDED, 오래되면 EXPIRED", () => {

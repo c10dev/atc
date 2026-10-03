@@ -27,7 +27,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 2px solid var(--amber);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
   color: var(--muted);
 }
@@ -43,22 +43,8 @@
   color: var(--amber);
 }
 
-/* 넓은 표는 이 상자 안에서만 가로로 넘긴다 */
-/* position: 안쪽의 화면 밖 글자(.nw-sr)가 상자를 벗어나 쪽 전체를 넓히지 않게 */
-.nw-scroll {
-  position: relative;
-  max-width: 100%;
-  overflow-x: auto;
-  border-radius: var(--radius);
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
-}
-.nw-scroll:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 2px;
-}
-/* 행 머리가 붙으려면 표 자체가 넘침을 자르지 않아야 한다(.mx-table의 overflow: hidden이 sticky를 가둔다).
-   모서리는 .nw-scroll이 둥글게 자른다. collapse 대신 separate로 칸 테두리를 칸에 붙인다. */
+/* 행 머리가 붙으려면 표 자체가 넘침을 자르지 않아야 한다(.kit-table의 overflow: hidden이 sticky를 가둔다).
+   모서리는 .kit-scroll이 둥글게 자른다. collapse 대신 separate로 칸 테두리를 칸에 붙인다. */
 .nw-table {
   overflow: visible;
   border-collapse: separate;
@@ -70,7 +56,7 @@
 }
 /* 머리 줄의 한글 풀이: .label em처럼 자간 없이 */
 .nw-table thead em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
   color: var(--muted);
@@ -116,7 +102,7 @@
   color: var(--muted);
 }
 .nw-status em {
-  font: 500 var(--text-xs) var(--sans);
+  font: 400 var(--text-xs) var(--sans);
   font-style: normal;
   letter-spacing: 0;
 }
@@ -182,7 +168,7 @@
   position: absolute;
   width: 5px;
   height: 5px;
-  margin: -2.5px 0 0 -2.5px;
+  margin: calc(var(--space-0-5) * -1) 0 0 calc(var(--space-0-5) * -1);
   border-radius: 50%;
   background: var(--cyan);
   pointer-events: none;

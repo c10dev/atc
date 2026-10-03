@@ -29,12 +29,16 @@ export const config = {
   linearApiKey: env.LINEAR_API_KEY || "",
   // AUTOLAND 마이그레이션 게이트(ATC-329): 호스티드 DB 적용 버전을 읽는 토큰. 읽기에만 쓰고 로그·기록·화면에 쓰지 않는다
   supabaseAccessToken: env.SUPABASE_ACCESS_TOKEN || "",
+  // 마이그레이션 리허설(ATC-368, K2): 시험·실전 DB에 SQL을 보내는 토큰. SUPERVISOR가 .env.local에 둔다. 읽기 토큰과 따로이고, 로그·기록·화면·메시지에 쓰지 않는다
+  supabaseMigrateToken: env.SUPABASE_MIGRATE_TOKEN || "",
   linearTeamKey: (env.LINEAR_TEAM_KEY || "VOC").toUpperCase(), // 주 팀
   // 읽는 팀 전부(주 팀이 맨 앞). LINEAR_TEAM_KEYS=VOC,ATC. 없으면 주 팀 하나
   linearTeamKeys: parseTeamKeys(env.LINEAR_TEAM_KEY || "VOC", env.LINEAR_TEAM_KEYS),
   // Codex 신호 없이 이 시간이 지나면 CODEX UNAVAILABLE로 보고 REVIEW 세션 리뷰로 넘긴다(ATC-7)
   codexSilentMs: Number(env.ATC_CODEX_SILENT_HOURS || 6) * 3_600_000,
   // 저장소에서 Codex 한도 안내가 이 시간 안에 있었고 그 뒤 진짜 Codex 신호가 없으면, 그 저장소의 새 head는 한도로 본다(ATC-312)
+  // 저장소 어느 PR에도 Codex 신호가 없고 그 동안 PR이 이만큼 기다렸으면 그 저장소의 Codex는 조용하다고 보고 기다리는 PR·새 head를 곧바로 REVIEW로 보낸다(ATC-386, 분)
+  codexLaneSilentMs: Number(env.ATC_CODEX_LANE_SILENT_MIN || 30) * 60_000,
   codexLimitMs: Number(env.ATC_CODEX_LIMIT_HOURS || 6) * 3_600_000,
   linearTeamName: env.LINEAR_TEAM_NAME || "Vocado", // S2에서 새 이슈를 만들 Linear 팀 이름(MCP save_issue의 team)
   // 판정 계열 Jev(ATC-36): TypeSafe API 키. 로그·출력·기록에 쓰지 않는다. ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음)

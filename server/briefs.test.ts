@@ -42,9 +42,9 @@ test("DIRECT 배정 문구: 받는 팀·BRIEF 줄·목표·완료 기준·PILOT'
       "https://linear.app/x/ATC-40",
       "Goal: 한 줄",
       "Done when: 테스트",
-      "Where it is ambiguous, use PILOT'S DISCRETION: pick a reasonable default and record it in the PR.",
-      '— If you take it, answer "READBACK ATC-40"; if you cannot, answer with the reason. Tell me the PR number when you open it.',
-      "Carry it through to the end; stop and ask only for what needs a SUPERVISOR decision.",
+      "If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.",
+      '— If you take it, answer "READBACK ATC-40". If you cannot, answer with the reason. Tell me the PR number when you open it.',
+      "Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),
   );
 });

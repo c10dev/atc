@@ -1,11 +1,18 @@
 import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
-import type { Metrics as MetricsData, SeriesPoint } from "../../../server/metrics.ts";
+import type { MetricsView as MetricsData, SeriesPoint } from "../../../server/metrics.ts";
 import type { Snapshot } from "../../../server/model.ts";
 import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
+import { MetricsLeaks } from "./MetricsLeaks.tsx";
+import { MetricsMisfire } from "./MetricsMisfire.tsx";
+import { Network } from "./Network.tsx";
+import { SingleLane } from "./SingleLane.tsx";
 import "./Metrics.css";
 import { apiGet } from "../api.ts";
+import { Empty } from "../kit/Empty.tsx";
+import { Loading } from "../kit/Loading.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // 1.5단계 운용 지표. FLIGHT RECORDER 기록으로 2단계(DISPATCH)로 넘어갈지 판단한다.
 
@@ -40,9 +47,20 @@ function stamp(iso: string, clock: "utc" | "local", withDate: boolean): string {
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
-// 하위 화면(ATC-137): #metrics는 운용 지표, #metrics/fuel은 FUEL 개요. 주소로 고른다
-type Sub = "ops" | "fuel";
-const subOfHash = (): Sub => (location.hash.slice(1).split("/")[1] === "fuel" ? "fuel" : "ops");
+// 하위 화면(ATC-137, ATC-380): #metrics는 운용 지표, #metrics/leaks·misfire·fuel·network. 주소로 고른다.
+// 옛 #network는 #metrics/network로 열린다(legacy-hash.ts)
+type Sub = "ops" | "leaks" | "misfire" | "fuel" | "network";
+const SUBS: readonly (readonly [Sub, string])[] = [
+  ["ops", "OPERATIONS"],
+  ["leaks", "LEAKS"],
+  ["misfire", "MISFIRE"],
+  ["fuel", "FUEL"],
+  ["network", "NETWORK"],
+];
+const subOfHash = (): Sub => {
+  const p = location.hash.slice(1).split("/")[1];
+  return SUBS.find(([id]) => id === p)?.[0] ?? "ops";
+};
 function useSub(): [Sub, (s: Sub) => void] {
   const [sub, setSub] = useState<Sub>(subOfHash);
   useEffect(() => {
@@ -50,7 +68,7 @@ function useSub(): [Sub, (s: Sub) => void] {
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);
-  return [sub, (s) => (location.hash = s === "fuel" ? "metrics/fuel" : "metrics")];
+  return [sub, (s) => (location.hash = s === "ops" ? "metrics" : `metrics/${s}`)];
 }
 
 export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot?: Snapshot | null }) {
@@ -58,18 +76,23 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
   return (
     <section className="metrics">
       <div className="mx-sub" role="tablist" aria-label="METRICS">
-        {(
-          [
-            ["ops", "OPERATIONS"],
-            ["fuel", "FUEL"],
-          ] as const
-        ).map(([id, label]) => (
+        {SUBS.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={sub === id} onClick={() => goSub(id)}>
             {label}
           </button>
         ))}
       </div>
-      {sub === "fuel" ? <MetricsFuel snapshot={snapshot ?? null} /> : <Operations refreshKey={refreshKey} />}
+      {sub === "fuel" ? (
+        <MetricsFuel snapshot={snapshot ?? null} />
+      ) : sub === "leaks" ? (
+        <MetricsLeaks refreshKey={refreshKey} />
+      ) : sub === "misfire" ? (
+        <MetricsMisfire refreshKey={refreshKey} />
+      ) : sub === "network" ? (
+        <Network refreshKey={refreshKey} />
+      ) : (
+        <Operations refreshKey={refreshKey} />
+      )}
     </section>
   );
 }
@@ -113,16 +136,18 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         </p>
       )}
       {!data ? (
-        <p className="empty">불러오는 중…</p>
+        <Loading>불러오는 중…</Loading>
       ) : (
         <>
           <Readiness data={data} />
           <KpiRow data={data} />
+          <Flow data={data} />
+          <SingleLane refreshKey={refreshKey} />
           <h2 className="label">
             TRENDS <em>5분 표본</em>
           </h2>
           {data.series.length < 2 ? (
-            <p className="empty mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</p>
+            <Empty className="mx-empty">표본이 아직 모자람 — 5분마다 하나씩 쌓인다.</Empty>
           ) : (
             <div className="mx-trends">
               {TRENDS.map((t) => (
@@ -162,6 +187,48 @@ function Readiness({ data }: { data: MetricsData }) {
   );
 }
 
+// 나이처럼 한 단위로(디자인 언어 9번): 59m까지 분, 47h까지 시간, 그 위는 일
+const spanOf = (min: number | null) => (min === null ? "—" : min < 60 ? `${Math.round(min)}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`);
+const sinceOf = (iso: string | null) => (iso ? `${iso.slice(0, 10)}부터 기록` : "기록 없음");
+
+// FLOW(ATC-468): 일이 어디서 시간을 쓰나. 놀고-큐가 빈 분과 이슈가 지나는 세 구간의 중앙값. 숫자마다 기록에서 왔는지 대신한 값인지 적는다
+function Flow({ data }: { data: MetricsData }) {
+  const f = data.flow;
+  const idle = f.idleEmpty;
+  const stretch = (name: keyof typeof f.stretches, label: string, note: string) => {
+    const s = f.stretches[name];
+    const src = [s.record.n ? `기록 ${s.record.n}` : "", s.substitute.n ? `대신한 값 ${s.substitute.n}(만든 시각 기준)` : ""].filter(Boolean).join(" · ");
+    return { label, value: s.n ? spanOf(s.medianMin) : "—", sub: s.n ? `중앙값 · ${s.n}건 · ${src}` : `이 기간에 마친 이슈 없음 · ${note}` };
+  };
+  const tiles = [
+    {
+      label: "IDLE · 큐 빔",
+      value: idle.minutes === null ? "기록 안 됨" : spanOf(idle.minutes),
+      sub: idle.minutes === null ? `놀 AIRCRAFT가 있는데 기다리는 Todo가 없던 시간 · ${sinceOf(f.recordedSince.samples)}` : `놀 AIRCRAFT가 있고 기다리는 Todo가 없던 시간 · 표본 ${idle.recordedSamples}개${idle.unrecordedSamples ? ` · 옛 표본 ${idle.unrecordedSamples}개는 기록 안 됨` : ""} · ${sinceOf(f.recordedSince.samples)}`,
+    },
+    { ...stretch("created-todo", "CREATED → TODO", sinceOf(f.recordedSince.ticketLines)) },
+    { ...stretch("todo-release", "TODO → RELEASED", "발권 기록 기준") },
+    { ...stretch("release-launch", "RELEASED → LAUNCH", "발권과 LAUNCH 기록 기준") },
+  ];
+  return (
+    <>
+      <h2 className="label">
+        FLOW <em>일이 어디서 시간을 쓰나</em>
+      </h2>
+      <div className="mx-kpis mx-flow">
+        {tiles.map((t) => (
+          <div key={t.label} className="mx-kpi">
+            <div className="mx-kpi-label">{t.label}</div>
+            <div className="mx-kpi-value">{t.value}</div>
+            <div className="mx-kpi-sub">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mx-note">CREATED → TODO는 {sinceOf(f.recordedSince.ticketLines)}(서버가 본 상태 변화)만 잰다. 그 앞은 알 수 없다. TODO → RELEASED는 기록 전 이슈를 만든 시각 기준으로 대신한다. 마친 구간만 센다.</p>
+    </>
+  );
+}
+
 function KpiRow({ data }: { data: MetricsData }) {
   const c = data.clearances;
   const types = Object.entries(c.byType)
@@ -170,6 +237,15 @@ function KpiRow({ data }: { data: MetricsData }) {
   const tiles = [
     { label: "READBACK 비율", value: pct(c.readbackRate), sub: `READBACK ${c.readBack} / CLEARANCE ${c.issued - c.cancelled} · 중앙값 ${mins(c.readbackMedianMin)}` },
     { label: "CLEARANCE", value: String(c.issued), sub: types || "CLEARANCE 없음" },
+    ...(c.fixReadback && c.fixReadback.elsewhere.n + c.fixReadback.direct.n > 0
+      ? [
+          {
+            label: "FIX·GO AROUND READBACK(중앙값)",
+            value: mins(c.fixReadback.elsewhere.medianMin),
+            sub: `다른 FLIGHT 중 ${c.fixReadback.elsewhere.readBack}/${c.fixReadback.elsewhere.n}건 · 바로 ${mins(c.fixReadback.direct.medianMin)} (${c.fixReadback.direct.readBack}/${c.fixReadback.direct.n}건)`,
+          },
+        ]
+      : []),
     { label: "LOSS OF SEPARATION", value: String(data.conflicts.count), sub: `지속 중앙값 ${mins(data.conflicts.medianMin)} · 열린 ${data.conflicts.open}` },
     { label: "HANDOFF", value: String(data.handoffs), sub: `OUTSTATION 시작 ${data.away}` },
     {
@@ -265,7 +341,8 @@ function Daily({ data }: { data: MetricsData }) {
       <h2 className="label">
         DAILY <em>UTC 날짜</em>
       </h2>
-      <table className="mx-table">
+      <TableScroll label="일별 표">
+      <table className="kit-table">
         <thead>
           <tr>
             <th>날짜</th>
@@ -293,6 +370,7 @@ function Daily({ data }: { data: MetricsData }) {
           ))}
         </tbody>
       </table>
+      </TableScroll>
     </>
   );
 }

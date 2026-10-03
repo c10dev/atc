@@ -7,7 +7,7 @@ export function OpenFlight({ k, label }: { k: string; label?: string }) {
   const key = flightKeyOf(k);
   const text = label ?? flightNumber(k);
   return key ? (
-    <a className="fl-link" href={`#flight/${key}`} title={`${key} 열기`}>
+    <a className="fl-link" href={`#flight/${key}`}>
       {text}
     </a>
   ) : (

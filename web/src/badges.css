@@ -1,0 +1,138 @@
+/* 공용 조각(ui.tsx) 스타일. 색·글꼴은 styles.css의 :root 토큰만 쓴다. */
+
+/* OUTSTATION: "OUTSTATION TNNS" */
+.away-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  white-space: nowrap;
+}
+.strip .away-tag {
+  color: var(--stamp-amber);
+}
+.blk-l1 .away-tag {
+  align-self: center;
+}
+
+/* 세션 배지의 상태 낱말(ATC-418): 점 색만으로 상태를 말하지 않는다. 이름(mono·대문자) 옆이라 sans·보통 굵기 */
+.sb-state {
+  margin-left: var(--space-1);
+  font-family: var(--sans);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* FLIGHT STRIPS 구간 도장: 소속 AIRPORT 밖 STAND */
+.stamp.away {
+  color: var(--stamp-gray);
+}
+.strip .cs .away-tag {
+  margin-left: var(--space-1-5);
+  vertical-align: 3px;
+}
+
+/* NEEDS YOU(ATC-99): blocked 백그라운드 job. 색은 :root 토큰만 */
+.needs-you {
+  display: inline-block;
+  max-width: 100%;
+  margin-right: var(--space-1-5);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-sm);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--alert);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.needs-you-text {
+  font-family: var(--sans); /* needs는 사람이 읽는 글(C2): 이름·코드가 아니라 문장 */
+  font-weight: 400;
+  letter-spacing: 0;
+}
+/* 기다린 시각(ATC-418): NEEDS YOU가 언제부터인지 화면에 보인다 */
+.needs-you-when {
+  font-weight: 400;
+}
+/* PENDING approval(ATC-327): 사람의 결정을 기다림이라 --alert가 아니라 --blue */
+.needs-you.is-pending {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.job-detail {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: var(--text-2xs);
+}
+.needs-you-reply {
+  margin: var(--space-1) 0;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.needs-you-reply code {
+  font-family: var(--mono);
+}
+.needs-you-copy {
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ACTIVITY(ATC-97): 지금 하는 일 한 줄. idle은 흐린 글자색으로(투명도로 흐리게 하지 않는다, ATC-408). 색은 :root 토큰만 */
+.activity {
+  --dot-ink: currentColor;
+  --dot-size: 6px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+  font: 400 var(--text-2xs) var(--mono);
+}
+.activity-what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-ago {
+  flex: none;
+  white-space: pre;
+}
+.activity-dot {
+  margin-right: var(--space-1);
+}
+.activity.is-tool {
+  --dot-ink: var(--radar);
+}
+.activity.is-model {
+  --dot-ink: var(--cyan);
+}
+.activity.is-idle {
+  color: var(--faint);
+}
+.strip .activity {
+  margin-top: var(--space-0-5);
+  color: var(--paper-ink);
+}
+.strip .activity.is-idle {
+  color: var(--paper-muted);
+}
+.strip .activity.is-tool {
+  --dot-ink: var(--stamp-blue);
+}
+.strip .activity.is-model {
+  --dot-ink: var(--stamp-amber);
+}

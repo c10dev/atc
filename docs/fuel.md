@@ -201,6 +201,31 @@ One screen for burn so far, inside METRICS: **`#metrics/fuel`** (the METRICS tab
 - **API (additive).** `GET /api/fuel` gains `byDay` (per UTC day: CAPTAIN and CREW cost, requests, unpriced tokens; only days with records, oldest first), `byModel` (requests, tokens, priced cost, unpriced requests and tokens; largest cost first) and `teamPattern`. Both aggregates come from the same pass as the rest of `summarizeFuel`; nothing is scanned twice. On 400,000 synthetic requests over 30 days `summarizeFuel` took about 490 ms against about 430–530 ms before, within run-to-run noise; the scan cost of `/api/fuel` is unchanged (ATC-83 is the fix for that). Older clients ignore the new fields.
 - **Pure view functions** are in `web/src/fuel-overview.ts` (grouping, sorting, the unpriced summary, leak rows, day bars, top FLIGHTs) and tested in `server/fuel-overview.test.ts`; `byDay` and `byModel` are tested in `server/fuel-byday.test.ts`.
 
+### USAGE TREND as built (ATC-389)
+
+Three comparisons on `#metrics/fuel` that answer "how much are we using agents, and how does that compare with before". Read only; nothing about how FUEL is measured or priced changed.
+
+- **TODAY** (top, always shown whatever window is picked): today from 00:00 to now against yesterday from 00:00 to the same time. The day boundary is the viewer's time zone: the screen sends `tz` (`Date.getTimezoneOffset()`, KST is −540) and the header names it (`오늘 0시부터 17:23까지(UTC+9)`). COST, requests, work time and ARRIVED, each with yesterday's value and the change.
+- **Previous period** for the FUEL window (1, 7, 14 or 30 days, rolling: `[now − days, now)` against the same length right before it):
+  - FUEL COST and requests get a `지난 7일 $768 · +12%` line in the existing summary row, so the current values are not shown twice.
+  - The **USAGE** block below the summary holds what the summary does not have:
+    - Activity: **WORK TIME** (가동 시간) and AIRCRAFT. Work time counts 5-minute slots that hold at least one request, per CAPTAIN session and per CREW agent separately (two subagents in the same 5 minutes are 10 minutes). It is an estimate from request timestamps, not wall-clock attendance: a long tool run with no request in between is not counted, and a single request counts as 5 minutes. AIRCRAFT is the number of team REGISTRATIONs that made a request (`registrationOf` with the DISPATCH `teamPattern`, so `Team G` and `TEAM_G` are one); control sessions and unnamed sessions are not counted.
+    - Results: ARRIVED (LOGBOOK `arrived` entries by `arrivedAt`), of which PRs, and COST per ARRIVED.
+- **Weekly rows** (in USAGE): 8 weeks of 7 days counted back from now (the last one is "이번 주"). COST, WORK TIME and ARRIVED, one row each with its own scale (no shared axis). Hover or keyboard focus on a week shows its requests, AIRCRAFT and PRs in a readout line under the rows; "표로 보기" lists every week.
+- **Costs and prices.** COST uses the same price table and `rateOf`/`costOf` rule as `byDay`; unpriced requests are left out of cost.
+- **Coverage rule.** `historyStart` is the earliest transcript record the scan found. A period's `coverage` is the share of it after `historyStart`. The change (`change.*`, `today.change.*`, computed on the server) is null unless the compared period is fully covered and non-zero. When it is only partly covered, the label says how much (`지난 7일 중 1.1일 $783`), and USAGE says why there is no percentage (`지난 기간 기록 1.1/7일뿐 · 대화 기록은 2026-09-24부터`). Weeks before `historyStart` are drawn as dashed empty slots, partly covered weeks are dimmed, and the table view states each week's coverage. Change is shown in neutral ink: more use is not good or bad by itself (principle 3).
+- **API.** `GET /api/fuel/trend?days=N&tz=M` (N as `/api/fuel`; M whole minutes from −840 to 840, anything else is UTC) returns `{at, days, historyStart, current, previous, weeks[], change, today: {tzOffsetMin, current, previous, change}}`. It reads transcripts for `max(2 × days, 56)` days (`trendScanDays`, at most 60), so it is a separate route and `/api/fuel` and the FLEET context sizes keep their shorter scan. The screen reads it once per window change or refresh, like `/api/fuel`. Measured on 2026-10-02 against the real `~/.claude` (read only): about 60,000 deduplicated requests since 2026-09-24, about 48 MB of heap for the 60-day scan. The parsed records stay in the in-memory scan cache, so expect roughly 0.8 KB per request once 60 days of history exist.
+- **Code.** `server/fuel-trend.ts` (pure: `usageTrend`, `changeOf`, `coverageOf`, `localDayStart`, `tzOffsetOf`, the text helpers), tested in `server/fuel-trend.test.ts` with synthetic records only; the route is in `server/fuel-run.ts`; the screen is `web/src/views/MetricsFuelTrend.tsx` (`useUsageTrend`, `UsageToday`, `SummaryChange`, `MetricsFuelTrend`), used by `MetricsFuel.tsx`.
+
+### LEVERAGE as built (ATC-397)
+
+**LEVERAGE** answers "how many days of work did the agents do in one day": the work time of a period (CAPTAIN + CREW, the 5-minute-slot rule of USAGE TREND above) divided by the wall-clock time that passed in it. Today at 09:00 with 64 h of work since 00:00 is `×7.0`; a 7-day window with 792 h is `×4.7` (÷ 168 h).
+
+- **Denominator.** Only the covered part of the period: time after `historyStart`, the earliest transcript record. A partly covered previous period therefore still has a fair rate (`지난 7일 중 1.1일 ×2.6`); its change stays hidden by the usual coverage rule. No record at all gives null (`—`).
+- **Where.** First tile in TODAY (today against yesterday up to the same time, with `가동 64h ÷ 9.0h` under it), a tile in USAGE's 가동 group (`÷ 흐른 168h`), the weekly readout line and a column in the weekly table. The weekly work-time row already has the same shape (every week is 168 h), so there is no separate leverage row.
+- **API.** Every `UsagePeriod` in `GET /api/fuel/trend` gains `leverage` (2 decimals, or null) and `elapsedHours`; `change.leverage` and `today.change.leverage` follow the same rule as the other metrics.
+- **Code.** `leverageOf` and `leverageText` in `server/fuel-trend.ts`, tested in `server/fuel-trend.test.ts`.
+
 ## 8. Implementation order (one issue each)
 
 | # | Issue | Depends on | Tier | Size |

@@ -15,6 +15,7 @@ atc 세션이 일하는 방법은 세 가지 파일에 나뉘어 있습니다: �
 | `atc-task` | ATC 이슈 하나를 구현해 PR로 올리고 보고하는 순서와 점검표 | 팀 세션이 "ATC-n 진행"처럼 이슈를 맡았을 때. 아래 셋을 부르는 길잡이이기도 합니다 |
 | `diagnosing-bugs` | 버그·실패하는 테스트·회귀를 재현하고 가설을 세워 고치는 방법(외부 skill을 가져옴, MIT) | `atc-task`가 버그 FLIGHT에서 코드를 바꾸기 전에 부릅니다 |
 | `ui-review` | 화면을 바꾼 PR을 디자인 언어(`docs/design-language.md` 5절)와 가져온 규칙(MIT)으로 검토해 결과 블록을 만듭니다 | `atc-task`가 `web/`이나 ANNUNCIATOR 화면을 바꾼 FLIGHT의 PR 전에 부릅니다 |
+| `status` | "현재 상태", "어디까지 진행됐어?", "ATC-n 진행 상황"에 읽기 전용 `GET /api/status` 하나만 읽고 한국어 8줄 안의 고정 모양으로 답합니다 | SUPERVISOR가 세션에게 상태를 물을 때. 더 조사하지 않고, 묻지 않으면 덧붙이지 않습니다 |
 | `codebase-locator`, `codebase-analyzer` | 코드가 어디 있는지 찾아 경로만 돌려주거나 `file:line`으로 설명하는 sub-agent(외부, Apache-2.0) | `atc-task`가 코드를 넓게 읽기 전에 맡깁니다 |
 | 관제 세션의 `/tick` | TOWER·OCC·CROSSCHECK·MCC·REVIEW가 한 바퀴마다 따르는 절차(OCC는 절차 파일 다섯 개가 더 있음) | `/loop`가 3~10분마다 부릅니다(TOWER 3분, MCC 5분, OCC·CROSSCHECK·REVIEW 10분) |
 | `inspector` | MCC INSPECTION을 새 맥락에서 하는 읽기 전용 sub-agent | MCC `/tick`이 PR마다 부릅니다 |
@@ -41,6 +42,7 @@ atc 세션이 일하는 방법은 세 가지 파일에 나뉘어 있습니다: �
 
 - `CLAUDE.md`, `docs/design-language.md`, `atc-task`가 바뀌면 실행 중인 atc 세션이 다음 차례에 바뀐 부분을 받습니다(`rules-drift` hook). FLEET 카드의 "RULES current / RULES 미확인"이 그 상태입니다. 다른 skill과 규정집은 아직 이 감시 대상이 아닙니다.
 - 관제 세션은 `/tick` 처음에 `manual check`로 자기 매뉴얼이 바뀌었는지 보고, 바뀌었으면 다시 읽습니다.
+- 규칙 파일에는 크기 예산이 있습니다(ATC-361). 매 턴 읽히는 `CLAUDE.md`와 `atc-task`가 `deploy/rules-budget.json`의 예산을 넘거나 두 파일에 같은 글이 되풀이되면 CI(`npm test`)가 실패합니다. 새 규칙은 먼저 `docs/rules.ko.md`(필요할 때만 읽는 규칙)나 해당 설계 문서에 두고, 정말 매 턴 필요한 것만 `CLAUDE.md`에 넣습니다. 예산을 올리는 변경은 `deploy/` 파일이라 SUPERVISOR가 머지합니다.
 - 가져온 skill의 출처·커밋·라이선스는 저장소의 `THIRD_PARTY_NOTICES.md`에 있습니다.
 
 ## SUPERVISOR가 정하는 것

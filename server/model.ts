@@ -1,4 +1,5 @@
 import type { Restarting } from "./restarting.ts";
+import type { ReleaseView } from "./release.ts";
 import type { AbsentAircraft } from "./dispatch-launch.ts";
 import type { CarriedReview, CodexFindingSummary, CodexUnavailable, ExtReviewState, Stranded } from "./landing.ts";
 import type { GroundStop, MainStatus } from "./atfm.ts";
@@ -99,6 +100,7 @@ export interface Ticket {
   url: string | null;
   updatedAt: string | null;
   project: string | null;
+  airport?: string | null; // 이 FLIGHT의 AIRPORT 코드(DISPATCH와 같은 규칙, airportOfTicket). 어디에도 속하지 않으면 null (ATC-443)
   labels: string[];
   createdAt: string | null;
   startedAt: string | null; // started 상태(ENROUTE 등)에 들어간 시각
@@ -107,6 +109,11 @@ export interface Ticket {
   related: string[];
   parent: string | null; // 상위 이슈 key (Linear parent)
   children: string[]; // 하위 이슈 key (Linear children)
+  kEffects?: string | null; // 본문 `## K effects` 절의 글(앞 400자, 발권 화면이 클릭 전에 보인다, ATC-376). 절이 없으면 null
+  k3Check?: { lines: number; unparsed: number; none: number }; // 본문 `## K effects`의 `K3` 줄 수·읽히지 않은 수·효과 없음으로 적은 수(ATC-398). K3 줄이 없으면 빈 칸
+  k3?: { label: import("./k3-allow.ts").K3Label; control: string; files: string[] }[]; // 본문 `## K effects`의 읽힌 K3 선언(ATC-372, k3-allow.ts). 없으면 빈 칸
+  sequence?: { after: string | null; reason: string | null; problem: string | null }; // 본문 `## Release`의 `Sequence: after ATC-n — 이유` 줄(ATC-456). 순서만 정하고 막지 않는다. 줄이 없으면 빈 칸
+  releaseHash?: string | null; // 본문(목표·완료 기준·K 효과)의 해시(ATC-362 발권 기록이 승인한 내용과 견준다). 본문이 없으면 null
 }
 
 // 상위 이슈(하위 이슈를 묶는 컨테이너). Linear의 children이 있거나 다른 FLIGHT의 parent로 지목된 것.
@@ -190,7 +197,10 @@ export interface Clearance {
   // 닿지 못해 TOWER가 닫음(ATC-271, op undeliverable): 취소와 같이 닫히고(cancelledAt) 사유가 남는다. SUPERVISOR QUEUE의 손으로 전하는 카드가 읽는다
   undeliverableAt?: string | null;
   undeliverableReason?: string | null;
+  undeliverableCause?: string | null; // 닿지 못한 원인(ATC-353, address.ts CAUSES). 옛 기록에는 없다
   handAt?: string | null; // SUPERVISOR가 손으로 전했다고 표시한 시각(op hand): 카드를 닫는다
+  // FIX·GO AROUND를 보낼 때 그 AIRCRAFT가 이 STAND 말고 하고 있던 다른 FLIGHT(ATC-387). null이면 다른 FLIGHT 없음, 없으면(옛 기록·다른 종류) 모른다
+  elsewhere?: string | null;
 }
 
 export type TrafficEventKind =
@@ -293,6 +303,7 @@ export interface Snapshot {
   stranded?: Stranded[]; // 기본 브랜치에 닿지 않은 머지(ATC-29). 경보(kind stranded)와 FLIGHT FOLLOWING이 읽는다
   atfm: { mains: MainStatus[]; groundStops: GroundStop[] }; // 기본 브랜치 CI와 출발 중지(docs/atfm.md)
   autoland?: AutolandView; // AUTOLAND(ATC-34): AIRPORT마다 다음 할 일, PR마다 표시·제외 사유
+  releases?: ReleaseView; // 발권 기록(ATC-362): DISPATCH는 발권한 FLIGHT만 배정한다(gate가 켜졌을 때)
   fuel?: Record<string, FuelRemaining>; // FUEL REMAINING(ATC-55): REGISTRATION(대문자) → 그 ACCOUNT의 가장 새 statusline 값
   fuelAccounts?: FuelRemaining[]; // ACCOUNT마다 하나(ATC-60): 관제 세션만 있는 ACCOUNT도 들어간다
   restarting?: Restarting[]; // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT(ATC-91). restartGraceMin 안에서만
