@@ -64,6 +64,8 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "duplicate-title-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }

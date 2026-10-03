@@ -1,6 +1,7 @@
 import type { Ticket } from "./model.ts";
 import { type Holder, matches, overlapsOf, type Predicted, pathsOfBody, predictedOf } from "./overlap.ts";
 import { PRIORITY_VALUE } from "./dispatch.ts";
+import { parentKeysOf } from "./model.ts";
 
 // RELEASE 화면의 순서(ATC-456): 상위 이슈마다 나무, 막는 이슈 밑에 막힌 이슈, 그룹마다 "다음 발권", 발권할 수 있는 줄의 한 순서, `Sequence:` 줄, 같은 파일.
 // 순수 함수만. 자료 모으기와 K 줄·해시 같은 덧붙임은 release-run.ts. 새 사실은 없다: 스냅샷의 이슈·관계·본문과 DISPATCH가 이미 모으는 파일 겹침 자료를 읽을 뿐이다.
@@ -73,6 +74,15 @@ export interface TreeRowBase {
   after: { key: string; reason: string; known: boolean } | null; // Sequence 줄이 읽혔다(known: 그 이슈를 안다)
   sequenceProblem: string | null; // 줄이 틀렸거나 모르는 이슈: 그대로 보이고 순서에는 쓰지 않았다
   sameFiles: string[]; // 같은 파일을 고치는 날고 있는 이슈, 또는 앞에 놓인 이슈
+  missing: MissingBlocker[]; // 기다리는 줄에서 이 화면의 줄이 아닌 막는 이슈(없으면 빈 목록)
+}
+// 기다리는 줄의 막는 이슈가 이 화면의 줄이 아닐 때 왜 없고 어디서 찾나(ATC-488). 한 이슈에 한 줄, 이유는 짧은 한 마디, href는 그 이슈가 있는 곳
+export type MissingWhy = "parked" | "team" | "parent" | "unknown" | "other";
+export interface MissingBlocker {
+  key: string;
+  why: MissingWhy;
+  text: string; // "PARKED" · "TEAM_X 팀, 후보 아님"처럼 한 마디
+  href: string | null; // PARKED 절, FLIGHT 서랍, 화면이 다루지 않는 팀은 Linear
 }
 export type TreeRow<X> = TreeRowBase & X & { children: TreeRow<X>[] };
 
@@ -92,6 +102,7 @@ export interface TreeInput<X> {
   released: (key: string) => boolean; // Todo가 이미 발권됐나(낡지 않은 발권)
   stageOf: (t: Ticket) => string | null; // 시작한 이슈의 FLIGHT 단계(PR 등). 모르면 상태 이름
   extra: (t: Ticket) => X; // 줄에 덧붙일 화면 자료(해시·K 줄 등)
+  parked?: ReadonlySet<string>; // PARKED 절에 있는 이슈 key(ATC-487)
   files?: { holders: readonly Holder[]; bodies: ReadonlyMap<string, string | null> } | null; // DISPATCH가 모은 파일 겹침 자료. 없으면 같은 파일 칸은 비어 있다
   wakeOf?: (t: Ticket) => Parameters<typeof overlapsOf>[1];
 }
@@ -122,6 +133,22 @@ export function releaseTreeOf<X>(inp: TreeInput<X>): { groups: TreeGroup<X>[]; o
     return null;
   };
   const words = new Map(members.map((t) => [t.key, wordOf(t)] as const));
+
+  // 막는 이슈가 이 화면의 줄이 아닐 때(ATC-488): PARKED, 후보 아닌 팀, 상위 이슈, 스냅샷에 없음. 줄이 되는 이슈는 말하지 않는다
+  const treeKeys = new Set(members.filter((t) => words.get(t.key)).map((t) => t.key));
+  const parentKeys = parentKeysOf(inp.tickets as Ticket[]);
+  const linearBase = inp.tickets.find((t) => t.url)?.url?.replace(/\/issue\/.*$/, "") ?? null;
+  const missingOf = (t: Ticket): MissingBlocker[] =>
+    t.blockedBy
+      .filter((k) => !finished(k) && !treeKeys.has(k))
+      .map((k): MissingBlocker => {
+        const b = byKey.get(k);
+        if (!b) return { key: k, why: "unknown", text: "알 수 없음", href: linearBase ? `${linearBase}/issue/${k}` : null };
+        if (parentKeys.has(k)) return { key: k, why: "parent", text: "상위 이슈", href: `#flight/${k}` };
+        if (!inp.candidate(b)) return { key: k, why: "team", text: `${k.split("-")[0]} 팀, 후보 아님`, href: b.url ?? (linearBase ? `${linearBase}/issue/${k}` : null) };
+        if (inp.parked?.has(k)) return { key: k, why: "parked", text: "PARKED", href: "#release/parked" };
+        return { key: k, why: "other", text: `${b.state}, 이 화면에 없음`, href: `#flight/${k}` };
+      });
 
   // 한 순서: 발권할 수 있는 줄 전부(그룹을 가로질러). 그룹마다 첫 줄이 "다음 발권"
   const cands: FireCand[] = members.filter((t) => words.get(t.key)?.fireable).map((t) => ({
@@ -165,6 +192,7 @@ export function releaseTreeOf<X>(inp: TreeInput<X>): { groups: TreeGroup<X>[]; o
       after: seq && !seq.problem && seq.after && seq.reason ? { key: seq.after, reason: seq.reason, known } : null,
       sequenceProblem: problem,
       sameFiles: w.fireable ? sameFilesOf(t) : [],
+      missing: w.state.kind === "waiting" ? missingOf(t) : [],
       children: [],
     } as TreeRow<X>;
   };

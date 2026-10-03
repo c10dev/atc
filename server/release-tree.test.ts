@@ -205,3 +205,38 @@ test("나무: 고리(A가 B를, B가 A를 막음)도 줄을 잃지 않는다", (
   const flat = (rows: { key: string; children: unknown[] }[]): string[] => rows.flatMap((r) => [r.key, ...flat(r.children as never)]);
   assert.deepEqual(flat(releaseTreeOf(input(t)).groups[0]!.rows).sort(), ["A-1", "A-2"]);
 });
+
+// ── 기다리는 줄의 막는 이슈가 이 화면의 줄이 아닐 때(ATC-488) ──
+test("기다리는 줄: 막는 이슈가 왜 없고 어디 있나 — PARKED, 후보 아닌 팀, 상위 이슈, 스냅샷에 없음, 그 밖", () => {
+  const url = (k: string) => `https://linear.app/vocado/issue/${k}`;
+  const tickets = [
+    tk("ATC-451", { title: "hand filed", url: url("ATC-451") }), // PARKED: 막는 이슈 없는 손으로 올린 Backlog
+    tk("ATC-452", { blockedBy: ["ATC-451"], url: url("ATC-452") }), // 2026-10-03: ATC-451 하나만 기다림
+    tk("VOC-9", { url: url("VOC-9"), stateType: "unstarted", state: "Todo" }), // 후보 아닌 팀
+    tk("ATC-460", { children: ["ATC-461"], url: url("ATC-460") }), // 상위 이슈
+    tk("ATC-461", { parent: "ATC-460" }),
+    tk("ATC-470", { stateType: "triage", state: "Triage" }), // 줄이 아닌 다른 상태
+    tk("ATC-480", { blockedBy: ["ATC-451", "VOC-9", "ATC-460", "ATC-404", "ATC-470"] }),
+  ];
+  const cand = (t: Ticket) => t.key.startsWith("ATC-") && !tickets.some((x) => x.parent === t.key);
+  const { groups } = releaseTreeOf(input(tickets, { candidate: cand, parked: new Set(["ATC-451"]) }));
+  const rows = groups.flatMap((g) => g.rows.flatMap(function walk(r: (typeof g.rows)[number]): (typeof r)[] { return [r, ...r.children.flatMap(walk)]; }));
+  const row = (k: string) => rows.find((r) => r.key === k)!;
+  assert.deepEqual(row("ATC-452").missing, [{ key: "ATC-451", why: "parked", text: "PARKED", href: "#release/parked" }]);
+  const m = Object.fromEntries(row("ATC-480").missing.map((x) => [x.key, x]));
+  assert.deepEqual(m["ATC-451"], { key: "ATC-451", why: "parked", text: "PARKED", href: "#release/parked" });
+  assert.deepEqual(m["VOC-9"], { key: "VOC-9", why: "team", text: "VOC 팀, 후보 아님", href: url("VOC-9") });
+  assert.deepEqual(m["ATC-460"], { key: "ATC-460", why: "parent", text: "상위 이슈", href: "#flight/ATC-460" });
+  assert.deepEqual(m["ATC-404"], { key: "ATC-404", why: "unknown", text: "알 수 없음", href: url("ATC-404") }); // Linear 링크는 다른 이슈의 주소에서 만든다
+  assert.deepEqual(m["ATC-470"], { key: "ATC-470", why: "other", text: "Triage, 이 화면에 없음", href: "#flight/ATC-470" });
+  // 줄이 되는 막는 이슈와 기다리지 않는 줄은 말하지 않는다
+  assert.deepEqual(rows.filter((r) => r.state.kind !== "waiting").map((r) => r.missing), rows.filter((r) => r.state.kind !== "waiting").map(() => []));
+});
+
+test("기다리는 줄: 막는 이슈가 나무의 줄이면 missing은 비어 있다, PARKED 입력이 없으면 PARKED라 말하지 않는다", () => {
+  const tickets = [tk("ATC-1", { stateType: "unstarted", state: "Todo" }), tk("ATC-2", { blockedBy: ["ATC-1"] }), tk("ATC-3", { blockedBy: ["ATC-9"] }), tk("ATC-9")];
+  const cand = (t: Ticket) => t.key.startsWith("ATC-");
+  const rows = releaseTreeOf(input(tickets, { candidate: cand })).groups.flatMap((g) => g.rows.flatMap(function walk(r: (typeof g.rows)[number]): (typeof r)[] { return [r, ...r.children.flatMap(walk)]; }));
+  assert.deepEqual(rows.find((r) => r.key === "ATC-2")!.missing, []);
+  assert.equal(rows.find((r) => r.key === "ATC-3")!.missing[0]!.why, "other"); // ATC-9는 후보 팀의 Backlog지만 PARKED 입력이 없어 이 말은 못 한다
+});
