@@ -104,7 +104,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--amber);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .fl-entry .label,
 .fl-briefing .label,

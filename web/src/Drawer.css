@@ -52,7 +52,7 @@
   width: 32px;
   height: 32px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--panel-2);
   color: var(--text);
   font-size: var(--text-xl);
@@ -140,7 +140,7 @@
   color: var(--alert);
 }
 .dr-files li {
-  padding: 1px 0;
+  padding: var(--space-0-5) 0;
 }
 .dr-ext {
   margin: var(--space-2) 0 0;
@@ -153,7 +153,7 @@
   margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--panel-2);
   font-size: var(--text-sm);
 }
@@ -182,7 +182,7 @@
   padding: var(--space-2);
   background: var(--scope);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font: var(--text-xs) var(--mono);
 }
 .dr-md code {
@@ -196,7 +196,7 @@
 }
 .dr-md th,
 .dr-md td {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border: 1px solid var(--line);
 }
 .dr-md blockquote {
@@ -232,9 +232,9 @@ a.fl-link:hover {
   gap: var(--space-2);
 }
 .dr-btn {
-  padding: 2px 10px;
+  padding: var(--space-0-5) var(--space-2);
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   font-size: var(--text-xs);
@@ -265,7 +265,7 @@ a.fl-link:hover {
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--panel-2);
   color: var(--text);
   text-decoration: none;

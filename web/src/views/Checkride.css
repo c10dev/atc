@@ -26,7 +26,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid transparent; /* 평소(GRANT)엔 막대가 없고 REVIEW·BLOCKED만 색(ATC-317) */
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .cr-row.st-REVIEW {
   border-left-color: var(--alert);
@@ -69,7 +69,7 @@
 .cr-evidence ul {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: var(--space-1) 0 0;
   padding: 0;
   list-style: none;

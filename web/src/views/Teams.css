@@ -328,7 +328,7 @@
 .flp-bar {
   position: relative;
   display: flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex: 0 1 240px;
   min-width: 120px;
   height: 8px;
@@ -336,7 +336,7 @@
 .flp-seg {
   flex: 1;
   height: 100%;
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   box-sizing: border-box;
 }
 .flp-seg.is-past {
@@ -357,13 +357,13 @@
 }
 .flp-mark {
   position: absolute;
-  top: -4px;
+  top: calc(var(--space-1) * -1);
   width: 5px;
   height: 16px;
-  margin-left: -2.5px;
+  margin-left: calc(var(--space-0-5) * -1);
   background: var(--paper-ink);
   box-shadow: 0 0 0 1px var(--paper);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
 }
 .flp.is-late .flp-seg.is-now {
   background: color-mix(in srgb, var(--stamp-amber) 30%, transparent);

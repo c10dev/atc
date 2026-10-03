@@ -9,7 +9,7 @@
   padding: 0 var(--space-4);
   list-style: none;
   background: var(--panel);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .hm-row {
   display: grid;
@@ -58,7 +58,7 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   background: var(--panel);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .hm-brow {
   display: flex;

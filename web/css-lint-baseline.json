@@ -1,24 +1,13 @@
 {
   "web/src/Drawer.css": {
     "font-size-em": 3,
-    "outline-none": 1,
-    "radius-literal": 5,
-    "spacing-literal": 3
+    "outline-none": 1
   },
   "web/src/Rail.css": {
     "token-family": 2
   },
-  "web/src/Relay.css": {
-    "radius-literal": 1
-  },
   "web/src/Starfield.tsx": {
     "color-literal": 2
-  },
-  "web/src/alerts.css": {
-    "spacing-literal": 21
-  },
-  "web/src/badges.css": {
-    "spacing-literal": 2
   },
   "web/src/styles.css": {
     "color-literal": 19,
@@ -26,79 +15,26 @@
     "spacing-literal": 34,
     "token-family": 32
   },
-  "web/src/views/Airports.css": {
-    "radius-literal": 2,
-    "spacing-literal": 1
-  },
-  "web/src/views/Atfm.css": {
-    "radius-literal": 1
-  },
-  "web/src/views/Briefs.css": {
-    "radius-literal": 1
-  },
-  "web/src/views/Checkride.css": {
-    "radius-literal": 1,
-    "spacing-literal": 1
-  },
   "web/src/views/Docs.css": {
-    "font-size-em": 4,
-    "radius-literal": 2,
-    "spacing-literal": 4
-  },
-  "web/src/views/FleetCrew.css": {
-    "spacing-literal": 2
-  },
-  "web/src/views/FleetPlan.css": {
-    "radius-literal": 2,
-    "spacing-literal": 4
+    "font-size-em": 4
   },
   "web/src/views/Flights.css": {
     "token-family": 1
   },
-  "web/src/views/Follow.css": {
-    "spacing-literal": 1
-  },
-  "web/src/views/Home.css": {
-    "radius-literal": 2
-  },
   "web/src/views/Metrics.css": {
-    "radius-literal": 3,
-    "spacing-literal": 5,
     "token-family": 1
   },
   "web/src/views/MetricsFuel.css": {
-    "radius-literal": 3,
     "token-family": 3
   },
-  "web/src/views/MetricsLeaks.css": {
-    "radius-literal": 1
-  },
   "web/src/views/Network.css": {
-    "radius-literal": 1,
-    "spacing-literal": 1,
     "token-family": 2
   },
-  "web/src/views/Radio.css": {
-    "radius-literal": 3
-  },
-  "web/src/views/Release.css": {
-    "radius-literal": 1
-  },
-  "web/src/views/RouteMap.css": {
-    "radius-literal": 1
-  },
   "web/src/views/Teams.css": {
-    "radius-literal": 2,
-    "spacing-literal": 3,
     "token-family": 12
   },
   "web/src/views/fleet/Card.css": {
-    "radius-literal": 1,
-    "spacing-literal": 1,
     "token-family": 6
-  },
-  "web/src/views/fleet/Fleet.css": {
-    "radius-literal": 1
   },
   "web/src/views/fleet/StatusList.css": {
     "token-family": 5
