@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync, openSync, readSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import { type GateMode, type GateRun, gateDirOf, gateView, parseGateConfig, parseRuns } from "./verify-gate.ts";
+import { readRemoteTarget } from "./verify-remote-run.ts";
 
 // VERIFY GATE의 파일 입출력(ATC-517). 폴더는 gateDirOf(): 운영 상태 폴더와 따로다. 읽기는 늘 실패해도 기본값으로 돈다
 
@@ -29,6 +30,19 @@ export function setGateMode(mode: GateMode, env: NodeJS.ProcessEnv = process.env
   renameSync(tmp, file);
 }
 
+// 원격 실행 스위치(ATC-518): config.json의 remote만 바꿔 쓴다
+export const loadRemoteMode = (env: NodeJS.ProcessEnv = process.env): GateMode => loadGateConfig(env).remote;
+export function setRemoteMode(mode: GateMode, env: NodeJS.ProcessEnv = process.env) {
+  const dir = gateDirOf(env);
+  mkdirSync(dir, { recursive: true });
+  const cur = readRaw(dir);
+  const base = cur && typeof cur === "object" ? (cur as Record<string, unknown>) : {};
+  const file = join(dir, "config.json");
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...base, remote: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 export function readGateRuns(env: NodeJS.ProcessEnv = process.env): GateRun[] {
   const file = join(gateDirOf(env), "runs.jsonl");
   try {
@@ -48,4 +62,5 @@ export function readGateRuns(env: NodeJS.ProcessEnv = process.env): GateRun[] {
   }
 }
 
-export const verifyGateData = (env: NodeJS.ProcessEnv = process.env, nowMs = Date.now()) => gateView(readGateRuns(env), loadGateConfig(env), nowMs);
+export const verifyGateData = (env: NodeJS.ProcessEnv = process.env, nowMs = Date.now()) =>
+  gateView(readGateRuns(env), loadGateConfig(env), nowMs, readRemoteTarget(gateDirOf(env)) !== null);

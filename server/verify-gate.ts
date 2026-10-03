@@ -3,8 +3,9 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { LOCAL_REASONS, type LocalReason, PROBE_SEC_DEFAULT } from "./verify-remote.ts";
 
-export const GATE_WHERE = "local"; // 기록의 where: 지금은 이 호스트뿐
+export const GATE_WHERE = "local"; // 기록의 where 기본: 이 호스트. 데스크톱에서 돈 줄은 "desktop"(ATC-518)
 export const WAIT_LIMIT_EXIT = 75; // EX_TEMPFAIL: 기다림 한도 초과
 export const USAGE_EXIT = 64; // EX_USAGE: 명령이 없다
 export const SLOTS_DEFAULT = 2; // 8 vCPU에서 두 건: 건당 test 프로세스 3개 + tsc·vite 몫이 코어를 넘지 않게
@@ -20,6 +21,8 @@ export interface GateConfig {
   slots: number;
   waitLimitMs: number;
   testConcurrency: number;
+  remote: "on" | "off"; // 원격 실행 스위치(ATC-518, verifyRemote). 기본 on
+  probeMs: number; // 데스크톱이 닿는지 보는 제한 시간
 }
 
 // 문의 폴더: 락·줄·기록·설정. 운영 상태 폴더(~/.local/state/atc)와 따로 둔다
@@ -40,6 +43,8 @@ export function parseGateConfig(raw: unknown, env: NodeJS.ProcessEnv = {}): Gate
     slots: intIn(env.ATC_GATE_SLOTS ?? f.slots, 1, SLOTS_MAX, SLOTS_DEFAULT),
     waitLimitMs: intIn(env.ATC_GATE_WAIT_LIMIT_SEC ?? f.waitLimitSec, 1, 86_400, WAIT_LIMIT_SEC_DEFAULT) * 1000,
     testConcurrency: intIn(env.ATC_GATE_TEST_CONCURRENCY ?? f.testConcurrency, 1, 64, TEST_CONCURRENCY_DEFAULT),
+    remote: f.remote === "off" ? "off" : "on",
+    probeMs: intIn(env.ATC_GATE_REMOTE_PROBE_SEC ?? f.remoteProbeSec, 1, 30, PROBE_SEC_DEFAULT) * 1000,
   };
 }
 
@@ -86,6 +91,9 @@ export interface GateRun {
   killed?: boolean; // 신호로 끝났다(슬롯은 커널이 놓는다)
   timedOut?: boolean; // 기다림 한도로 실행하지 않았다
   fallback?: string; // 문이 못 돌아 그냥 실행했다(사유)
+  syncMs?: number; // 데스크톱으로 보내고 준비하는 데 걸린 시간(ATC-518). 데스크톱을 시도한 줄만
+  localReason?: LocalReason; // 로컬에서 돈 사유(데스크톱이 없다·전송 오류·목록에 없다·스위치 꺼짐). 데스크톱에서 돈 줄에는 없다
+  lost?: boolean; // 데스크톱에서 명령이 시작된 뒤 연결을 잃었다(결과를 모른다, 다시 돌리지 않았다)
 }
 
 export const cmdLabel = (argv: readonly string[]): string => argv.slice(0, 3).join(" ").slice(0, 120);
@@ -97,8 +105,16 @@ export interface GateCounters {
   waitLimitFails: number;
   fallbacks: number;
   killedReleases: number; // 죽은 명령이 놓은 슬롯
+  desktopRuns: number; // 데스크톱에서 돈 실행(ATC-518)
+  transportFailed: number; // 전송 문제로 실패한 원격 시도: 시작 전에 로컬로 돌아선 것 + 시작 뒤 잃은 것
+  remoteCommandFails: number; // 데스크톱에서 돌았고 명령이 0이 아닌 코드로 끝난 것(전송 문제 아님)
+  localFallbacks: Record<LocalReason, number>; // 로컬에서 돈 실행을 사유별로
+  lostMidway: number; // 데스크톱에서 시작했다가 도중에 잃은 것
 }
-const emptyCounters = (): GateCounters => ({ runs: 0, waited: 0, longestWaitMs: 0, waitLimitFails: 0, fallbacks: 0, killedReleases: 0 });
+const emptyCounters = (): GateCounters => ({
+  runs: 0, waited: 0, longestWaitMs: 0, waitLimitFails: 0, fallbacks: 0, killedReleases: 0,
+  desktopRuns: 0, transportFailed: 0, remoteCommandFails: 0, localFallbacks: { "desktop-absent": 0, "transport-error": 0, "not-listed": 0, "switch-off": 0 }, lostMidway: 0,
+});
 
 export function parseRuns(text: string): GateRun[] {
   const out: GateRun[] = [];
@@ -124,6 +140,17 @@ export function countRuns(runs: readonly GateRun[], sinceMs = 0): GateCounters {
     if (r.timedOut) c.waitLimitFails += 1;
     if (r.fallback) c.fallbacks += 1;
     if (r.killed) c.killedReleases += 1;
+    if (r.where === "desktop") {
+      c.desktopRuns += 1;
+      if (r.lost) {
+        c.lostMidway += 1;
+        c.transportFailed += 1;
+      } else if (r.exit !== 0) c.remoteCommandFails += 1;
+    }
+    if (r.localReason && LOCAL_REASONS.includes(r.localReason)) {
+      c.localFallbacks[r.localReason] += 1;
+      if (r.localReason === "transport-error") c.transportFailed += 1;
+    }
   }
   return c;
 }
@@ -135,10 +162,11 @@ export interface GateView {
   waitLimitSec: number;
   testConcurrency: number;
   where: string;
+  remote: { mode: "on" | "off"; configured: boolean; probeSec: number }; // configured: remote.json이 있고 모양이 맞다(주소는 화면에 보내지 않는다)
   recent: GateRun[]; // 최근 몇 건(기록의 실제 모양을 보인다)
 }
 
-export function gateView(runs: readonly GateRun[], cfg: GateConfig, nowMs: number): GateView {
+export function gateView(runs: readonly GateRun[], cfg: GateConfig, nowMs: number, remoteConfigured = false): GateView {
   return {
     total: countRuns(runs),
     last7d: countRuns(runs, nowMs - 7 * 86_400_000),
@@ -146,6 +174,7 @@ export function gateView(runs: readonly GateRun[], cfg: GateConfig, nowMs: numbe
     waitLimitSec: cfg.waitLimitMs / 1000,
     testConcurrency: cfg.testConcurrency,
     where: GATE_WHERE,
+    remote: { mode: cfg.remote, configured: remoteConfigured, probeSec: cfg.probeMs / 1000 },
     recent: runs.slice(-5).reverse(),
   };
 }

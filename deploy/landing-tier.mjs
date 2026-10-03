@@ -39,6 +39,8 @@ export const SIDE_EFFECT = [
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 상태 옮기기(DUTY G3), 이슈 만들기·고치기·댓글(DUTY D7a). 서버가 Linear에 쓰는 유일한 파일"],
   ["server/duty-l1-run.ts", "DUTY L1 쓰기 길(D7a): git worktree add·remove·fetch와 node_modules 하드링크(STAND), Linear 쓰기 요청(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],
+  ["server/verify-gate-cli.ts", "검증 명령을 줄 세워 실행하고, 고정된 목록(npm test·tsc·vite build)이면 LAN 데스크톱으로 보내 ssh로 돌린다(ATC-517, ATC-518)"],
+  ["server/verify-remote-run.ts", "ssh·tar로 소스(제외 목록을 거친 추적·미추적 파일)를 데스크톱에 보내고 거기서 검증 명령을 돌린다. 데스크톱에서 STAND로는 아무것도 쓰지 않는다(ATC-518)"],
   ["server/tts.ts", "외부 TTS 명령(piper·espeak-ng·Kokoro 래퍼) 실행: 문구를 WAV로 렌더링(ATC-140, ATC-143)"],
   ["server/duty-run.ts", "DUTY `claude -p` 프로세스 띄우기(D2). D1에서는 비어 있고, D2가 이 파일을 등급 파일 수정 없이 flagged로 들이려고 미리 올려 둠"],
   ["server/pr-merge-run.ts", "PR 머지(gh api PUT, sha 고정, auto-merge 없음): PR 서랍 MERGE 버튼 — SUPERVISOR 클릭만, user 등급 CLEARED PR만(DUTY G2)"],
@@ -91,7 +93,6 @@ export const READ_ONLY = [
   ["server/sources/supabase-migrations.ts", "Supabase Management API GET 하나: 호스티드 DB가 적용한 마이그레이션 버전만 읽음(SQL·적용·쓰기 없음, ATC-329)"],
   ["server/sources/linear-labels.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/sources/linear-projects.ts", "Linear GraphQL query만(mutation 없음)"],
-  ["server/verify-gate-cli.ts", "호출자가 준 검증 명령을 줄 세워 그대로 실행(호스트 밖에 쓰지 않음, ATC-517)"],
   ["server/browser-gate-cli.ts", "Playwright가 준 Chrome을 줄 세워 그대로 실행(호스트 밖에 쓰지 않음, 스크린샷 안 씀, ATC-520)"],
   ["server/judges/engines.ts", "판정 엔진에 묻기만 함(POST지만 상태를 바꾸지 않음)"],
 ];

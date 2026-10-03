@@ -109,7 +109,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "PARKED", "RELEASE 화면의 PARKED 절과 그 발권", "parked backlog 손으로 올린 hand-filed release 발권 접힌 releaseParked"],
     ["operations", "SCOPE MEMORY", "백그라운드 세션 scope의 메모리 상한(OOM이 scope 안에서 끝나게)", "scope memory 메모리 oom kill cgroup memoryhigh memorymax launch bgMemoryCap"],
     ["operations", "DUPLICATE TITLE", "작업 지시서 제목이 열린 이슈와 거의 같으면 거절·표시", "duplicate title 중복 제목 비슷한 same-title-ok 409 parked possible duplicate duplicateTitle"],
-    ["operations", "VERIFY GATE", "무거운 검증 명령의 동시 실행 상한", "verify gate 검증 동시 실행 줄 npm test tsc vite build 슬롯 OOM verifyGate"],
+    ["operations", "VERIFY GATE", "무거운 검증 명령의 동시 실행 상한", "verify gate 검증 동시 실행 줄 npm test tsc vite build 슬롯 OOM verifyGate verify remote desktop 데스크톱 원격 LAN ssh verifyRemote"],
     ["operations", "BROWSER GATE", "브라우저(Playwright) 동시 실행 상한", "browser gate 브라우저 playwright chrome headless 동시 실행 줄 슬롯 CPU browserGate"],
     ["operations", "SCHEDULE·FLEET PLAN AUTO", "SCHEDULE·FLEET PLAN 자동 적용", "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog"],
     ["operations", "REPOSITION", "소속 AIRPORT 옮기기", "base fleet plan approval auto fleet-plan.reposition"],

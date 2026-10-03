@@ -7,6 +7,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { appendFileSync, chmodSync, closeSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { constants as osConstants } from "node:os";
 import { join } from "node:path";
 import {
@@ -28,6 +29,8 @@ import {
   waitDecision,
   waitMessage,
 } from "./verify-gate.ts";
+import { atRepoRoot, readRemoteTarget, sshTransport } from "./verify-remote-run.ts";
+import { type LocalReason, lockHash, lostMessage, newRunId, routeOf, runOnDesktop } from "./verify-remote.ts";
 
 const POLL_MS = 1000;
 const BUSY = 200; // 락 시도 껍데기가 "자리 없음"을 알리는 코드(알림 바이트가 오지 않았을 때만 뜻이 있다)
@@ -44,12 +47,16 @@ const dir = gateDirOf();
 let child: ChildProcess | null = null;
 let signalled: NodeJS.Signals | null = null;
 let ticketPath: string | null = null;
+let remoteChild: ChildProcess | null = null; // 데스크톱에서 도는 ssh(ATC-518). 신호는 이것에도 간다
+let syncMsLocal = 0; // 데스크톱을 시도했다가 로컬로 돌아선 실행의 보내기 시간(기록에 남는다)
+let localReason: LocalReason | undefined; // 이 실행이 로컬에서 돈 사유(데스크톱을 쓰지 않았거나 못 썼다)
 
 // 신호는 자식에게 넘기고 자식이 끝나면 따라 끝난다. 줄 서는 중이면 표를 지우고 바로 끝난다
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(sig, () => {
     signalled = sig;
-    if (child) child.kill(sig);
+    if (remoteChild) remoteChild.kill(sig);
+    else if (child) child.kill(sig);
     else {
       dropTicket();
       writeRun({ waited: true, waitedMs: Date.now() - startedAt, ranMs: 0, exit: exitCodeOf(null, osConstants.signals[sig]), killed: true });
@@ -59,7 +66,7 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 function writeRun(p: Pick<GateRun, "waited" | "waitedMs" | "ranMs" | "exit"> & Partial<GateRun>) {
-  const run: GateRun = { t: new Date(startedAt).toISOString(), where: GATE_WHERE, cmd: cmdLabel(argv), cwd: process.cwd(), ...p };
+  const run: GateRun = { t: new Date(startedAt).toISOString(), where: GATE_WHERE, cmd: cmdLabel(argv), cwd: process.cwd(), ...(localReason ? { localReason } : {}), ...(syncMsLocal ? { syncMs: syncMsLocal } : {}), ...p };
   try {
     appendFileSync(join(dir, "runs.jsonl"), JSON.stringify(run) + "\n"); // 한 줄은 PIPE_BUF 안이라 겹쳐 써도 안 섞인다
   } catch {
@@ -185,6 +192,29 @@ function tryOnce(slotFile: string, env: NodeJS.ProcessEnv): Promise<Attempt> {
   });
 }
 
+// 데스크톱에서 돌려 본다(ATC-518). 돌았으면 명령의 종료 코드를, 로컬로 돌아서야 하면 null(사유는 localReason에)
+async function tryDesktop(cfg: GateConfig, target: NonNullable<ReturnType<typeof readRemoteTarget>>): Promise<number | null> {
+  let hash: string;
+  try {
+    hash = lockHash(readFileSync(join(process.cwd(), "package-lock.json"), "utf8"));
+  } catch {
+    localReason = "transport-error"; // lock이 없으면 데스크톱이 의존을 준비할 수 없다
+    return null;
+  }
+  const id = newRunId(startedAt, process.pid, randomBytes(2).toString("hex"));
+  const transport = sshTransport({ target, cwd: process.cwd(), connectTimeoutSec: Math.ceil(cfg.probeMs / 1000), onChild: (c) => (remoteChild = c) });
+  const r = await runOnDesktop({ argv, id, hash, transport, probeMs: cfg.probeMs });
+  if (r.where === "local") {
+    localReason = r.reason;
+    if (r.reason === "transport-error") process.stderr.write(`[atc verify-gate] the desktop run could not start${r.error ? ` (${r.error.replace(/\s+/g, " ").slice(0, 200)})` : ""}; running locally\n`);
+    if (r.syncMs > 0) syncMsLocal = r.syncMs;
+    return null;
+  }
+  const exit = signalled ? exitCodeOf(null, osConstants.signals[signalled]) : r.exit;
+  if ("lost" in r && !signalled) process.stderr.write(lostMessage() + "\n");
+  writeRun({ where: "desktop", waited: false, waitedMs: 0, ranMs: r.ranMs, syncMs: r.syncMs, exit, ...("lost" in r ? { lost: true } : {}), ...(signalled ? { killed: true } : {}) });
+  return exit;
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function gated(cfg: GateConfig): Promise<number> {
@@ -255,6 +285,13 @@ async function main(): Promise<number> {
     mkdirSync(dir, { recursive: true });
     const probe = openSync(join(dir, "runs.jsonl"), "a"); // 문 폴더를 쓸 수 있는지
     closeSync(probe);
+    // 데스크톱(ATC-518): 고정된 검증 명령이고 스위치가 켜져 있고 닿을 때만. 아니면 사유를 달고 로컬 문으로 간다
+    const target = readRemoteTarget(dir);
+    const route = routeOf({ remote: cfg.remote, argv, atRepoRoot: cfg.remote === "on" ? atRepoRoot(process.cwd()) : false, target });
+    if (route.where === "desktop" && target) {
+      const exit = await tryDesktop(cfg, target);
+      if (exit !== null) return exit;
+    } else if (route.where === "local") localReason = route.reason;
     return await gated(cfg);
   } catch (e) {
     dropTicket();
