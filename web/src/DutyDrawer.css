@@ -42,19 +42,20 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-3) var(--gutter);
+}
+.du-log-inner {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
+/* 모양 b(docs/duty-screen.md 3.4): DUTY의 답은 상자 없이 본문 글꼴로 읽고, SUPERVISOR 자신의 글만 옅은 면에 놓는다 */
 .du-msg {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
+  padding: 0;
 }
 .du-user {
-  border-color: var(--line-strong);
-  background: var(--scope);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
 }
 .du-who {
   display: block;
@@ -68,12 +69,13 @@
 }
 .du-text {
   margin: 0;
-  font-size: var(--text-md);
-  line-height: 1.55;
+  font-size: var(--text-lg);
+  line-height: 1.7;
   white-space: pre-wrap;
 }
 .du-msg .dr-md {
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
+  line-height: 1.7;
 }
 .du-img {
   display: inline-block;
@@ -86,12 +88,24 @@
   color: var(--radar);
 }
 .du-tool {
-  padding-left: var(--space-2);
   font-size: var(--text-xs);
   color: var(--faint);
   overflow-wrap: anywhere;
 }
-.du-tool.is-error {
+.du-tool > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.du-tool > summary::-webkit-details-marker {
+  display: none;
+}
+.du-tool ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  list-style: none;
+}
+.du-tool li.is-error,
+.du-tool.is-error > summary {
   color: var(--alert);
 }
 .du-notice {
@@ -156,9 +170,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-}
-.du-buttons .dr-btn {
-  padding: var(--space-1) var(--space-3);
 }
 .du-stop {
   color: var(--amber);
@@ -254,8 +265,7 @@
   gap: var(--space-2);
   margin-top: var(--space-1);
 }
-a.dr-btn {
-  display: inline-block;
+a.btn {
   text-decoration: none;
 }
 .du-confirm {
@@ -304,9 +314,4 @@ a.du-queue-head:hover {
 a.du-queue-head:focus-visible {
   outline: 2px solid var(--radar);
   outline-offset: -2px;
-}
-
-.dr a.dr-btn.du-ideas {
-  text-decoration: none;
-  color: var(--text);
 }

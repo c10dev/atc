@@ -196,7 +196,7 @@ const kitDir = join(webDir, "kit") + "/";
 const viewsDir = join(webDir, "views") + "/";
 export const TOP_SCREEN_FILES = [
   // 서랍(S7)
-  "Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict", "SinceLook",
+  "Drawer", "DutyDrawer", "DutyChat", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict", "SinceLook",
   // 설정 창(S6)
   "SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing",
   // 머리글·알림·갱신(S8)
@@ -211,7 +211,7 @@ const SCREEN_GROUPS: [string, string[]][] = [
   ["FLEET", ["views/fleet/", "views/FleetCrew", "views/FleetPlan", "views/Checkride"]],
   ["METRICS", ["views/Metrics", "views/MetricsFuel", "views/MetricsFuelTrend", "views/MetricsLeaks", "views/MetricsMisfire", "views/Network"]],
   ["GLOBE", ["views/Globe", "views/GlobeAirport", "views/GlobeFlights", "views/GlobeRadio", "views/GlobeSpace", "GlobeMode"]],
-  ["DRAWERS", ["Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
+  ["DRAWERS", ["Drawer", "DutyDrawer", "DutyChat", "views/DutyScreen", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
   ["SETTINGS", ["SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing", "views/Airports"]],
   ["HEADER", ["App", "AlertBell", "Notices", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow"]],
 ];

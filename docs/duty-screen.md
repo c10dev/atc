@@ -124,6 +124,18 @@ Each step is one work order. U1 first; the rest are chained.
 - U2 and U3 touch different files and could run side by side, but both touch the log component, so they are chained to avoid conflicts (`Sequence` in the work orders where it is only an order).
 - U6 is independent of U2–U5 and uses the `choices` renderer from U1.
 
+### U1 as built (ATC-477)
+
+- **Shared part.** `web/src/DutyChat.tsx` holds `useDutyChat` (queue, decisions, charters, send, NEW SHIFT, pasted image, `fill`), `DutyLog`, `DutyComposer`, `NewShift` and `DutyGate`. `web/src/DutyDrawer.tsx` and `web/src/views/DutyScreen.tsx` are the two frames. Pure rules are in `server/duty-view.ts` (`blocksOf`, `leadOf`, `choicesOf`, `foldTools`, `shiftsOf`, `matchesQuery`, and the stick-to-bottom rules) with `server/duty-view.test.ts`.
+- **Routing.** `#duty/screen` replaces the `main` area; the rail keeps five entries and `#duty` still opens the drawer. Choosing a rail screen leaves the DUTY screen; "닫기" returns to the screen that was under it.
+- **Height.** While the screen is open the shell is `100dvh` and the centre column is a flex column; no timer, no measuring. A `ResizeObserver` only re-pins the log to the bottom when it was stuck, and a scroll event caused by a resize does not change the stuck state (`nextStick`).
+- **Left column** filters the loaded lines (client side; server search is U3), lists the standing decisions, and lists the SHIFTs newest first; a click clears the search and jumps to the divider.
+- **Right column** shows the cards and drafts that still wait (`waitingOf`, newest first) and the `QueueRow` link "할 일 n — HOME에서". Chips in the chat, the decision log and the "결정 n" chip are U2: here a waiting card still also shows inline in the log.
+- **Answers.** `leadOf` shows the first paragraph (at most 3 lines; a longer first paragraph is cut at 3 lines, never inside a list, table or code block; an answer of 3 lines or fewer is not split) and folds the rest under "더 보기". A `choices` fence is removed from the text and drawn as chips only under the newest DUTY answer that no SUPERVISOR message follows; a click only fills the input.
+- **Tool lines** fold per turn (consecutive tool lines) into `도구 7 · 거절 2`; the trailing group shows the running tool while DUTY is thinking; the folded line opens to the list of names and summaries.
+- **Below 1000 px** (before U7): one column, the chat first, then the waiting cards, then the left column; the page scrolls. At 1279 px and below the shell sidebar is hidden while the screen is open, like it is for a drawer.
+- **Kit.** The drawer's and cards' `dr-btn` became `.btn`; "더 보기" and the choices use `.chip`.
+
 ## 6. Risks
 
 | Risk | Mitigation |

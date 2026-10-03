@@ -43,6 +43,7 @@ const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "D
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
 const DutyDrawer = lazy(() => import("./DutyDrawer.tsx"));
+const DutyScreen = lazy(() => import("./views/DutyScreen.tsx"));
 const IdeasDrawer = lazy(() => import("./IdeasDrawer.tsx"));
 
 // 화면(주소 #<id>가 여는 것). 레일에 보이는 것은 RAIL_SCREENS(Rail.tsx)다(ATC-381·442): DOCS는 도움말 메뉴, GLOBE는 보기 모드, AIRPORTS는 설정 창으로 옮겼다.
@@ -107,14 +108,23 @@ export function App({ build }: { build: string }) {
   // DUTY 서랍(#duty, ATC-220): 어느 탭 위에서도 열린다. 꺼져 있으면 헤더에 readout이 없고, 주소로 열면 꺼짐 안내만 보인다
   const duty = useDuty();
   const [dutyOpen, setDutyOpen] = useState(() => location.hash === "#duty");
+  // DUTY 화면(#duty/screen, ATC-477): 레일 항목이 아니라 서랍의 "화면" 단추로 들어온다. 화면 자리(main)에 같은 대화를 세 열로 그린다
+  const [dutyScreen, setDutyScreen] = useState(() => location.hash === "#duty/screen");
   // #fleet/control과 #control은 아래 CONTROL 패널을 연다(ATC-445). 올라가는 숫자가 "열어라"는 신호다
   const [controlSignal, setControlSignal] = useState(() => (opensControlPanel(location.hash) ? 1 : 0));
   const closeDuty = useCallback(() => {
     setDutyOpen(false);
+    setDutyScreen(false);
     history.replaceState(null, "", `#${tabRef.current}`);
   }, []);
+  const prevTab = useRef(tab);
   useEffect(() => {
     // 같은 탭의 하위 경로(#docs/requesting)는 그대로 둔다. 서랍이 열려 있으면 주소를 건드리지 않는다
+    // DUTY 화면은 탭이 바뀔 때만(레일로 다른 화면을 고를 때) 나간다
+    const changed = prevTab.current !== tab;
+    prevTab.current = tab;
+    if (location.hash === "#duty/screen" && !changed) return;
+    setDutyScreen(false);
     if (drawerOfHash(location.hash) || location.hash === "#duty" || headOf(location.hash) === "globe") return;
     if (headOf(location.hash) !== tab) history.replaceState(null, "", `#${tab}`);
   }, [tab]);
@@ -128,7 +138,9 @@ export function App({ build }: { build: string }) {
       const d = drawerOfHash(location.hash);
       setDrawer(d);
       const isDuty = location.hash === "#duty";
+      const isDutyScreen = location.hash === "#duty/screen";
       setDutyOpen(isDuty);
+      setDutyScreen(isDutyScreen);
       // CONTROL 패널 주소: 화면은 그대로(옛 #fleet/control은 FLEET), 패널만 열고 주소는 화면 주소로 되돌린다
       if (opensControlPanel(location.hash)) {
         const to: Tab = headOf(location.hash) === "fleet" ? "fleet" : tabRef.current;
@@ -146,7 +158,7 @@ export function App({ build }: { build: string }) {
         history.replaceState(null, "", `#${tabRef.current}`);
         return;
       }
-      if (!d && !isDuty && head !== "globe") setTab(initialTab());
+      if (!d && !isDuty && !isDutyScreen && head !== "globe") setTab(initialTab());
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -192,11 +204,17 @@ export function App({ build }: { build: string }) {
   const brandTitle = `ATC · LOCAL CONTROL · ${location.port || "80"}`;
   const brandMark = settings.theme === "night" ? <MoonIcon /> : <ScopeIcon />;
   return (
-    <div className={`app shell${sbShown ? (narrow ? " sidebar-over" : " has-sidebar") : ""}`} data-drawer={drawerKind ?? undefined}>
+    <div className={`app shell${sbShown ? (narrow ? " sidebar-over" : " has-sidebar") : ""}`} data-drawer={drawerKind ?? undefined} data-screen={dutyScreen ? "duty" : undefined}>
       {settings.theme === "night" && <Starfield motion={settings.motion} meteors={settings.meteors} />}
       <Rail
         tab={tab}
-        onTab={(id) => setTab(id as Tab)}
+        onTab={(id) => {
+          setTab(id as Tab);
+          if (dutyScreen) {
+            setDutyScreen(false);
+            history.replaceState(null, "", `#${id}`);
+          }
+        }}
         refreshKey={snapshot?.at.slice(0, 16) ?? ""}
         brandTitle={brandTitle}
         brand={brandMark}
@@ -317,10 +335,16 @@ export function App({ build }: { build: string }) {
           </ul>
         )}
 
-        <main className="main">
+        <main className={dutyScreen ? "main is-duty" : "main"}>
           {!introDone && !(connection === "lost" && !snapshot) && <ApproachScene ready={Boolean(snapshot && idx)} onShow={showScene} onGone={sceneGone} />}
           {!snapshot || !idx ? (
             connection === "lost" ? <Empty>서버에 연결할 수 없음</Empty> : null
+          ) : dutyScreen ? (
+            <TabBoundary key="duty-screen" stale={false}>
+              <Suspense fallback={<TabLoading />}>
+                <DutyScreen chat={duty} onClose={closeDuty} airports={snapshot.airports ?? []} refreshKey={snapshot.at} now={now} />
+              </Suspense>
+            </TabBoundary>
           ) : (
             // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
             <div className={sceneSeen && !introDone ? "main-enter" : undefined}>
