@@ -7,6 +7,21 @@ import { createHash } from "node:crypto";
 export const REMOTE_CONFIG_FILE = "remote.json"; // 문 폴더(~/.local/state/atc-gate/) 안. 주소·사용자·포트·열쇠 파일을 담는다 — 저장소에는 없다
 export const REMOTE_LOST_EXIT = 76; // 원격에서 명령이 시작된 뒤 연결이 끊겨 결과를 모른다(시험 실패가 아니다). 75는 문의 기다림 한도
 export const PROBE_SEC_DEFAULT = 3;
+export const ABSENT_SEC_DEFAULT = 60; // 데스크톱이 없다고 본 뒤 probe를 건너뛰는 시간(ATC-524)
+export const ABSENT_MARK_FILE = "remote-absent.json"; // 게이트 폴더 안. 운영 상태 폴더가 아니다
+
+// 없다고 본 시각(ms). 파일이 틀렸으면 null이라 평소대로 probe한다
+export function parseAbsentMark(text: string): number | null {
+  try {
+    const at = (JSON.parse(text) as { at?: unknown } | null)?.at;
+    return typeof at === "number" && Number.isFinite(at) && at > 0 ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+// 기억한 시각에서 window 안이면 probe를 건너뛴다. 0이면 기억을 끈다. 미래 시각(시계가 되돌려졌다)은 믿지 않는다
+export const skipProbe = (markMs: number | null, nowMs: number, windowMs: number): boolean => windowMs > 0 && markMs !== null && nowMs >= markMs && nowMs - markMs < windowMs;
 export const MAX_FILE_BYTES = 20_000_000; // 이보다 큰 파일은 보내지 않는다(소스가 아니다)
 
 // 데스크톱에서 돌 수 있는 것은 이 목록의 정확히 같은 명령뿐이다. 낱말 하나라도 다르면 데스크톱으로 가지 않는다(여기서는 접두어 비교도 하지 않는다)
@@ -201,10 +216,13 @@ export type RemoteResult =
   | { where: "desktop"; lost: true; exit: number; syncMs: number; ranMs: number } // 시작한 뒤 연결을 잃었다
   | { where: "local"; reason: "desktop-absent" | "transport-error"; syncMs: number; error?: string };
 
-export async function runOnDesktop(p: { argv: readonly string[]; id: string; hash: string; transport: RemoteTransport; probeMs: number; now?: () => number }): Promise<RemoteResult> {
+export async function runOnDesktop(p: { argv: readonly string[]; id: string; hash: string; transport: RemoteTransport; probeMs: number; skipProbe?: boolean; onProbe?: (present: boolean) => void; now?: () => number }): Promise<RemoteResult> {
   const now = p.now ?? Date.now;
   const t = p.transport;
-  if (!(await t.probe(p.probeMs))) return { where: "local", reason: "desktop-absent", syncMs: 0 };
+  if (p.skipProbe) return { where: "local", reason: "desktop-absent", syncMs: 0 }; // 최근에 없다고 봤다(ATC-524): probe를 기다리지 않는다
+  const present = await t.probe(p.probeMs);
+  p.onProbe?.(present);
+  if (!present) return { where: "local", reason: "desktop-absent", syncMs: 0 };
   const s0 = now();
   const synced = await t.sync(p.id, p.hash).catch((e) => ({ ok: false, error: String((e as Error).message ?? e) }));
   const syncMs = now() - s0;

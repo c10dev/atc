@@ -29,7 +29,7 @@ gate 폴더는 `~/.local/state/atc-gate/`(`ATC_GATE_DIR`로 바꾼다). 운영 �
 
 | 파일 | 내용 |
 |---|---|
-| `config.json` | `mode`와 `remote`(스위치가 쓴다), 선택으로 `slots`(1–8), `waitLimitSec`, `testConcurrency`, `remoteProbeSec` |
+| `config.json` | `mode`와 `remote`(스위치가 쓴다), 선택으로 `slots`(1–8), `waitLimitSec`, `testConcurrency`, `remoteProbeSec`, `remoteAbsentSec` |
 | `remote.json` | 데스크톱 접속 정보(아래). 저장소에는 없다 |
 | `runs.jsonl` | 실행마다 한 줄(추가만) |
 | `slots/`, `queue/`, `bin/node` | 슬롯 락, 표, node 껍데기 |
@@ -52,7 +52,7 @@ gate 폴더는 `~/.local/state/atc-gate/`(`ATC_GATE_DIR`로 바꾼다). 운영 �
 
 ### 한 번의 실행 순서
 
-1. **닿는지.** 하드 한도(기본 3초, `config.json`의 `remoteProbeSec` 또는 `ATC_GATE_REMOTE_PROBE_SEC`, 1–30)로 `ssh true`. 답이 없으면 로컬로 돈다(`desktop-absent`). `wsl --shutdown` 뒤에도 한도 이상 기다리지 않는다.
+1. **닿는지.** 하드 한도(기본 3초, `config.json`의 `remoteProbeSec` 또는 `ATC_GATE_REMOTE_PROBE_SEC`, 1–30)로 `ssh true`. 답이 없으면 로컬로 돈다(`desktop-absent`). `wsl --shutdown` 뒤에도 한도 이상 기다리지 않는다. "없다"는 결과는 짧게(기본 60초, `config.json`의 `remoteAbsentSec` 또는 `ATC_GATE_REMOTE_ABSENT_SEC`, 0–3600, `0`이면 기억 끔) gate 폴더의 `remote-absent.json`에 기억한다: 그 안의 실행은 probe를 건너뛰고 바로 로컬로 돌고(그래도 `desktop-absent`로 센다), 지난 뒤 첫 실행은 다시 probe하며, 닿는 probe는 기억을 지운다. "없다"만 기억하고 전송 오류는 기억하지 않는다. 파일이 없거나 못 읽으면 평소대로 probe한다.
 2. **보내기.** 추적 + 미추적 소스(`git ls-files -co --exclude-standard`)에서 제외 목록을 뺀 것을 `tar`로 묶어 ssh로 데스크톱의 `~/atc-verify/runs/<id>`에 푼다. 20 MB를 넘는 파일은 보내지 않는다.
 3. **준비.** 데스크톱에서 빈 `git init`과 `git add -A`(일부 시험이 `git ls-files`를 쓴다. 원격도 자격 증명도 호출자의 `.git`도 없다), `node_modules`는 `package-lock.json` 해시별 캐시의 하드링크(lock마다 `npm ci` 한 번, 최신 캐시 셋만 두고 하루 지난 실행 폴더는 치운다).
 4. **실행.** 고정된 명령을 `ATC_GITHUB=off`로. 스크립트가 명령 전에 `.atc-started`, 뒤에 `.atc-exit`를 남긴다.
