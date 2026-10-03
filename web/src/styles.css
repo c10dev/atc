@@ -1,17 +1,48 @@
-/* ATC 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다. */
+/* ATC 콘솔 디자인. 색과 글꼴은 :root 토큰만 바꾸면 무드가 바뀐다.
+   테마 바꾸는 법(ATC-439, design-system S1): 면·선·글자·신호 색(--bg … --blue)은 손으로 쓰지 않고 web/src/theme-gen.ts의 입력(THEMES: 바탕, 면, 글자,
+   신호 다섯 색, contrast)에서 나온다. 입력을 고치고 `node web/gen-themes.ts`를 돌리면 아래 theme-gen 표식 사이가 다시 써진다(손으로 고치면 테스트가 깨진다).
+   표식 밖(도메인 토큰, 그림자, 글꼴, 모서리)은 손으로 둔다. 신호 뜻: --radar AIRBORNE·ENROUTE, --amber HOLDING·CLEARED TO LAND, --cyan APPROACH·정보,
+   --alert LOSS OF SEPARATION·NORDO, --blue HANDOFF. */
 :root {
+  /* theme-gen:radar begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #05080c;
+  --n-2: #070b10;
+  --n-3: #0a0f15;
+  --n-4: #0f1720;
+  --n-5: #172331;
+  --n-6: #203041;
+  --n-7: #263a4e;
+  --n-8: #385572;
+  --n-9: #8b9eb2;
+  --n-10: #a5b5c5;
+  --n-11: #dde6ee;
+  --hue-radar: #3ef08f;
+  --hue-amber: #ffb627;
+  --hue-cyan: #5cd0ff;
+  --hue-alert: #ff4a4a;
+  --hue-blue: #8aa8ff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:radar end */
   /* 층: 바탕(0) < 패널(1) < 카드(2) < 떠 있는 것(3). 층마다 밝기와 테두리가 한 단계씩 오른다. */
-  --bg: #05080c;
-  --chrome: #0b1118;
-  --panel: #0f1720;
-  --panel-2: #182330;
-  --panel-3: #212e3d;
   /* 바탕 단계(맥락 토큰, design-system S2): kit 부품은 놓인 자리의 면을 --layer로 읽는다. 담는 쪽이 자식에게 다시 정할 수 있다 */
   --layer: var(--panel);
   --layer-hover: var(--panel-2);
-  --scope: #070c0f;
-  --line: #2a3a4c;
-  --line-strong: #3d5470;
   --bracket: #5f7a96;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -21,24 +52,15 @@
   --shade: #000; /* 기울어진 판의 그늘(불투명도로 쓴다) */
   --mask-solid: #000; /* mask-image의 보이는 쪽(색은 쓰이지 않고 알파만) */
 
-  /* 글자: 가장 흐린 글자도 모든 층에서 4.5:1 이상(server/theme-contrast.test.ts가 지킨다). 글자를 opacity로 흐리게 하지 않는다 */
-  --text: #dde6ee;
-  --muted: #a3b0bf;
-  --faint: #8797a9;
+  /* 글자는 가장 흐린 것도 모든 층에서 4.5:1 이상(server/theme-contrast.test.ts가 지킨다). 글자를 opacity로 흐리게 하지 않는다 */
 
-  /* 신호: 색 하나에 뜻 하나 */
-  --radar: #3ef08f; /* AIRBORNE, ENROUTE */
-  --amber: #ffb627; /* HOLDING, CLEARED TO LAND */
-  --cyan: #5cd0ff; /* APPROACH, 정보 */
   /* 차트의 두 계열(FUEL 개요, ATC-137): 테마마다 두 색이 떨어져 보이는 짝. night는 --amber가 푸른 별이라 금색(--radar)으로 */
   --series-captain: var(--cyan);
   --series-crew: var(--amber);
-  --alert: #ff4a4a; /* LOSS OF SEPARATION, NORDO */
   --alert-wash: rgba(255, 74, 74, 0.08); /* 경고 줄의 바탕 */
   --alert-soft: #ff8b8b; /* 경고 줄의 글자 */
   --on-alert: #fff; /* 경고색 바탕 위의 글자와 줄무늬 */
   --on-amber: #000; /* 호박색·주황 바탕 위의 글자 */
-  --blue: #8aa8ff; /* HANDOFF */
   /* 테마가 정의하는 색의 기본값(다른 테마의 규칙이 아무것도 아닌 값으로 풀리지 않게): cockpit --magenta, night --gold·--display */
   --magenta: var(--blue);
   --gold: var(--amber);
@@ -1973,26 +1995,45 @@ a.ticket:hover {
    조종석 디스플레이(EFIS). 색 하나에 뜻 하나: 마젠타는 활성 FLIGHT PLAN(ENROUTE),
    시안은 선택·APPROACH, 녹색은 작동 중(AIRBORNE), 호박은 주의, 빨강은 경고. 서체는 B612. */
 :root[data-theme="cockpit"] {
-  --bg: #060a14;
-  --chrome: #080d1a;
-  --panel: #0d1528;
-  --panel-2: #142038;
-  --panel-3: #1c2b4a;
-  --scope: #070c18;
+  /* theme-gen:cockpit begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #060a14;
+  --n-2: #070c18;
+  --n-3: #090f1d;
+  --n-4: #0d1528;
+  --n-5: #131e39;
+  --n-6: #192749;
+  --n-7: #253b6e;
+  --n-8: #3b5dac;
+  --n-9: #8e9cbc;
+  --n-10: #aeb9d0;
+  --n-11: #f2f5fa;
+  --hue-radar: #3cf06e;
+  --hue-amber: #ffbf1f;
+  --hue-cyan: #29e0ff;
+  --hue-alert: #ff4d4d;
+  --hue-blue: #29e0ff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:cockpit end */
   --scope-glow: #0f1b36;
-  --line: #2c3d66;
-  --line-strong: #4260a0;
   --bracket: #29e0ff;
 
-  --text: #f2f5fa;
-  --muted: #b0bdd6;
-  --faint: #8e9dbe;
 
-  --radar: #3cf06e;
-  --amber: #ffbf1f;
-  --cyan: #29e0ff;
-  --alert: #ff4d4d;
-  --blue: #29e0ff;
   --magenta: #ff5fdc;
   --ring: #6f8fd8;
   --sweep: none;
@@ -2692,34 +2733,54 @@ a.ticket:hover {
    천측 항법. 밝고 따뜻한 별일수록 지금 움직이는 것: AIRBORNE·ENROUTE는 금색, HOLDING은 푸른 별,
    APPROACH는 청록, HANDOFF는 라일락, LOS는 붉은 거성. 패널은 반투명 유리라 뒤로 별이 비친다. */
 :root[data-theme="night"] {
-  --bg: #03040d;
+  /* night의 신호: --radar는 금색 별, --amber는 푸른 별(HOLDING) */
+  /* theme-gen:night begin (generated: web/src/theme-gen.ts의 입력을 고치고 `node web/gen-themes.ts`를 돌린다. 손으로 고치지 않는다) */
+  /* 팔레트: 단마다 일이 하나다(docs/design-system.md 5절). 화면과 kit은 쓰지 않고 아래 의미 토큰만 쓴다 */
+  --n-1: #03040d;
+  --n-2: rgba(8, 10, 28, 0.3);
+  --n-3: rgba(10, 12, 32, 0.55);
+  --n-4: rgba(19, 24, 59, 0.5);
+  --n-5: rgba(30, 38, 90, 0.6);
+  --n-6: rgba(35, 45, 106, 0.85);
+  --n-7: rgba(238, 240, 255, 0.13);
+  --n-8: rgba(238, 240, 255, 0.3);
+  --n-9: #8e94c2;
+  --n-10: #acb2d6;
+  --n-11: #eef0ff;
+  --hue-radar: #ffd98a;
+  --hue-amber: #9ec2ff;
+  --hue-cyan: #7fe8ff;
+  --hue-alert: #ff6b85;
+  --hue-blue: #c3adff;
+  --bg: var(--n-1);
+  --scope: var(--n-2);
+  --chrome: var(--n-3);
+  --panel: var(--n-4);
+  --panel-2: var(--n-5);
+  --panel-3: var(--n-6);
+  --line: var(--n-7);
+  --line-strong: var(--n-8);
+  --faint: var(--n-9);
+  --muted: var(--n-10);
+  --text: var(--n-11);
+  --radar: var(--hue-radar);
+  --amber: var(--hue-amber);
+  --cyan: var(--hue-cyan);
+  --alert: var(--hue-alert);
+  --blue: var(--hue-blue);
+  /* theme-gen:night end */
   --sky: #080c24; /* 설정 창 견본의 바탕: 별밭 그라디언트의 가운데 */
   --backdrop:
     radial-gradient(ellipse 80% 50% at 70% 110%, rgba(120, 70, 200, 0.28), transparent 70%),
     radial-gradient(ellipse 60% 40% at 10% 100%, rgba(40, 90, 200, 0.18), transparent 70%),
     linear-gradient(115deg, transparent 38%, rgba(190, 170, 255, 0.04) 46%, rgba(255, 230, 200, 0.05) 50%, rgba(190, 170, 255, 0.04) 54%, transparent 62%),
     linear-gradient(180deg, #03040d 0%, #080c24 55%, #16103a 100%);
-  --chrome: rgba(6, 8, 26, 0.55);
-  --panel: rgba(18, 24, 58, 0.5);
-  --panel-2: rgba(28, 36, 82, 0.6);
-  --panel-3: rgba(40, 50, 108, 0.85);
-  --scope: rgba(8, 10, 32, 0.3);
   --scope-glow: rgba(40, 50, 120, 0.18);
-  --line: rgba(170, 190, 255, 0.16);
-  --line-strong: rgba(190, 205, 255, 0.34);
   --bracket: transparent;
   --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.35);
 
-  --text: #eef0ff;
-  --muted: #aab3d9;
-  --faint: #929bc8;
 
-  --radar: #ffd98a; /* 금색 별 */
-  --amber: #9ec2ff; /* 푸른 별: HOLDING */
-  --cyan: #7fe8ff;
   --series-crew: var(--radar);
-  --alert: #ff6b85;
-  --blue: #c3adff;
   --gold: #ffd98a;
   --ring: #aab8ff;
   --sweep: none;

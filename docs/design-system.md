@@ -147,6 +147,32 @@ Decided (S1): a theme is a short list of inputs.
 
 The light theme (D7) would then be one more input set. The three dark themes would be re-expressed as inputs first, with **no visible change** as the acceptance test. Then later colour fixes become input changes.
 
+### As built (ATC-439)
+
+- **Inputs** (`THEMES` in `web/src/theme-gen.ts`, one entry per theme): `bg`, `surface` (the panel colour: surfaces lean toward it), `fg`, the five `hues`, `contrast` (how far `--line` and `--line-strong` sit from the background; 1 is the baseline), `depth` (how far cards and floating surfaces rise above the panel), and `glass` (translucent surfaces and lines, Night Sky). `surface`, `depth` and `glass` are additions to the S1 list: the old themes tint their surfaces differently per theme, and one background plus one foreground cannot reproduce that.
+- **Generator:** `generate(inputs)` is pure. It returns the palette and the semantic tokens; `block(inputs)` formats them as CSS; `applyGenerated(css)` swaps the marked region in `styles.css`.
+- **Palette** (`--n-1` … `--n-11`, `--hue-*`), each step with one job:
+
+  | Step | Token | Job |
+  |---|---|---|
+  | n-1 | `--bg` | app background (layer 0) |
+  | n-2 | `--scope` | inside of the RADAR scope, a breath above the background |
+  | n-3 | `--chrome` | console and rail on top (layer 0.5) |
+  | n-4 | `--panel` | panel (layer 1) |
+  | n-5 | `--panel-2` | card, hover surface (layer 2) |
+  | n-6 | `--panel-3` | floating or pressed surface (layer 3) |
+  | n-7 | `--line` | divider, decorative border (no contrast requirement) |
+  | n-8 | `--line-strong` | control border (WCAG 1.4.11, 3:1 target) |
+  | n-9 | `--faint` | faintest text (4.5:1) |
+  | n-10 | `--muted` | secondary text |
+  | n-11 | `--text` | body text |
+
+  `--hue-radar`, `--hue-amber`, `--hue-cyan`, `--hue-alert` and `--hue-blue` are the five signals, one meaning each.
+- **Semantic tokens** (`--bg` … `--text`, `--radar` … `--blue`) are `var()` references to the palette. Token names did not change (S6). Domain tokens (`--paper-*`, `--fids-*`, `--blk-*`, `--phase-*`) stay hand-set, and so do `--bracket`, `--scope-glow`, shadows and fonts.
+- **Written into CSS:** between `/* theme-gen:<name> begin … */` and `/* theme-gen:<name> end */` in each theme's block (`:root` is Radar Console). The output is committed; nothing runs at page load. To change a theme, edit its inputs and run `node web/gen-themes.ts`; the `:root` comment says the same.
+- **Tests:** `server/theme-gen.test.ts` (pure function; committed CSS equals the generator output; no generated token is set again outside the marked region; every generated colour is within 12/255 per channel of the pre-ATC-439 hand-set value, the five hues exactly) and `server/theme-contrast.test.ts` (the pairs table in every theme).
+- **Not changed:** the pairs in `KNOWN` of the contrast test still fail, because this unit kept today's colours. Raising `contrast` or the alert hue in the inputs fixes them as a visible change, tracked separately.
+
 `color-mix()` and `oklch()` in plain CSS can do part of this at runtime (hover = the surface mixed toward the text colour). They are supported in current browsers. They are an option for hover and pressed states even without a generator.
 
 ## 6. How the refactor units change
