@@ -383,6 +383,44 @@ test("ACCOUNT HOLD(ATC-51): 한 AIRCRAFT의 LIMIT이 같은 ACCOUNT의 AIRCRAFT�
   ]);
 });
 
+test("ACCOUNT HOLD(ATC-490): 같은 폴더의 라벨은 한 ACCOUNT, 관찰한 ACCOUNT가 먼저, 계획과 FLEET 경보가 같은 집합을 붙든다", async () => {
+  const { DEFAULT_FLEET } = await import("./crew.ts");
+  const { healthAlerts } = await import("./health.ts");
+  const { holdAccountOf } = await import("./account-key.ts");
+  const HOME_DIR = "/h/.claude";
+  // 등록부: acct-2가 ~/.claude를 가리키고(그래서 `default`도 같은 ACCOUNT), acct-1과 acct-3은 다른 폴더
+  const folders = [
+    { label: "acct-1", dir: "/h/a1", registered: true },
+    { label: "acct-2", dir: HOME_DIR, registered: true },
+    { label: "acct-3", dir: "/h/a3", registered: true },
+  ];
+  const resetsAt = new Date(NOW + 30 * 60_000).toISOString();
+  const limit = { code: "LIMIT", level: "alert", since: daysAgo(0), resetsAt, detail: "LIMIT 원문", next: "", holds: true } as Session["health"];
+  const sessions = [
+    { ...session("o", "TEAM_O"), health: limit }, // profile default = ~/.claude = acct-2
+    session("f", "TEAM_F"), // profile acct-2
+    { ...session("e", "TEAM_E"), account: "acct-2" }, // home acct-1, 실제로는 acct-2 폴더에서 돈다
+    session("g", "TEAM_G"), // 다른 폴더(acct-3)
+    { ...session("h", "TEAM_H"), account: "acct-3" }, // home acct-2지만 실제로는 acct-3
+  ];
+  const fleet = {
+    defaults: DEFAULT_FLEET.defaults,
+    aircraft: { TEAM_O: { account: "default" }, TEAM_F: { account: "acct-2" }, TEAM_E: { account: "acct-1" }, TEAM_G: { account: "acct-3" }, TEAM_H: { account: "acct-2" } },
+  };
+  const before = JSON.stringify(fleet);
+  const s = snap({ sessions, tickets: [ticket("VOC-190"), ticket("VOC-191", { labels: ["type:SURVEY"] })] });
+  const p = planDispatch(s, new Map(), cfg(), NOW, undefined, fleet, undefined, undefined, undefined, undefined, undefined, undefined, folders, HOME_DIR);
+  const held = p.aircraft.filter((a) => /^HOLD · LIMIT \(account /.test(a.reason ?? "") && a.name !== "TEAM_O").map((a) => a.name).sort();
+  assert.deepEqual(held, ["TEAM_E", "TEAM_F"]);
+  assert.equal(p.aircraft.find((a) => a.name === "TEAM_G")!.available, true);
+  assert.equal(p.aircraft.find((a) => a.name === "TEAM_H")!.available, true); // home는 같아도 실제로는 다른 폴더
+  // FLEET LIMIT 경보의 "같은 ACCOUNT도 HOLD" 목록과 같은 집합
+  const alerts = healthAlerts(sessions.map((x) => ({ sessionId: x.id, name: x.name, health: x.health, account: holdAccountOf(fleet, x, folders, HOME_DIR) })), NOW);
+  const siblings = /같은 ACCOUNT도 HOLD: (.+)$/.exec(alerts.find((a) => a.code === "LIMIT")!.message)![1]!.split(", ").sort();
+  assert.deepEqual(siblings, held);
+  assert.equal(JSON.stringify(fleet), before); // fleet.json 프로필은 고치지 않는다
+});
+
 test("FUEL HOLD(ATC-55, D3): 스위치가 켜져 있고 holdPct 이상이면 배정하지 않고, 꺼져 있으면 FUEL은 보여 주기만", () => {
   const fuel = (pct: number) => ({ group: "pro-2", account: "pro-2", at: daysAgo(0), from: "TEAM_K", fromKind: "aircraft" as const, windows: [], top: { name: "five_hour" as const, pct, resetsAt: new Date(NOW + 60 * 60_000).toISOString() }, level: "hold" as const, aircraft: ["TEAM_K", "TEAM_L"], control: [] });
   const s = { ...snap({ sessions: [session("k", "TEAM_K"), session("l", "TEAM_L"), session("m", "TEAM_M")], tickets: [ticket("VOC-170"), ticket("VOC-171", { labels: ["type:SURVEY"] })] }), fuel: { TEAM_K: fuel(96), TEAM_L: fuel(96), TEAM_M: { ...fuel(90), group: "main", account: "main", aircraft: ["TEAM_M"] } } };

@@ -291,7 +291,7 @@ D-0068(ATC-82 → TEAM_I)은 2026-09-29 01:40:31Z에 `aircraft: 04a9a868…`, �
 **후보**(`planDispatch`, [fleet.ko.md](fleet.ko.md)의 `snapshot.absent`). 살아 있는 세션이 없고, 전에 atc가 띄웠고(최근 14일 FLIGHT RECORDER LAUNCH), 등록부에 있고, RETIRED·`RESTARTING`이 아닌 AIRCRAFT를 `plan.aircraft`에 `id: "absent:<REG>"`, `launch: true`, 등록부의 base AIRPORT로 더한다. 붙들리지 않았으면 PARKED AIRCRAFT처럼 FLIGHT를 받는다(`reason: "ABSENT — 세션 없음, 승인하면 LAUNCH"`). 붙드는 것:
 
 - AOG;
-- `LIMIT`: 마지막 턴이 잘렸고 reset 전(`HOLD · LIMIT (cut 04:30Z) until 07:40Z`)이거나 reset을 모름. 살아 있는 형제의 ACCOUNT HOLD. FUEL HOLD;
+- `LIMIT`: 마지막 턴이 잘렸고 reset 전(`HOLD · LIMIT (cut 04:30Z) until 07:40Z`)이거나 reset을 모름. 살아 있는 형제의 ACCOUNT HOLD(같은 폴더: 관찰한 ACCOUNT가 먼저이고 `default`와 `~/.claude`를 가리키는 등록 항목은 한 ACCOUNT, [accounts.md](accounts.md) 5절). FUEL HOLD;
 - 그 AIRCRAFT의 RESUME 카드가 나올 차례(`RESUME — ATC-200을 이어서(RESUME 카드)`, `stopped`);
 - 끝나지 않은 `tail:` 라벨 In Progress FLIGHT(ATC-90, `stopped`);
 - base AIRPORT 없음.
