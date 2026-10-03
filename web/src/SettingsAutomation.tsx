@@ -489,6 +489,39 @@ function RemovalGuardStats({ d }: { d: RemovalStats & { headsKnown: boolean } })
     </ul>
   );
 }
+// VERIFY GATE 세기(ATC-517): 줄 선 실행·가장 긴 기다림·한도 실패·바로 실행·죽은 명령이 놓은 슬롯. 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface GateCounts {
+  runs: number;
+  waited: number;
+  longestWaitMs: number;
+  waitLimitFails: number;
+  fallbacks: number;
+  killedReleases: number;
+}
+interface VerifyGateData {
+  total: GateCounts;
+  last7d: GateCounts;
+  slots: number;
+  waitLimitSec: number;
+  testConcurrency: number;
+  where: string;
+}
+function VerifyGateStats({ d }: { d: VerifyGateData }) {
+  const row = (label: string, c: GateCounts) => (
+    <li>
+      {label} 실행 <b>{c.runs}</b> · 줄 섬 <b>{c.waited}</b> · 가장 긴 기다림 <b>{Math.round(c.longestWaitMs / 1000)}초</b> · 한도 실패 <b>{c.waitLimitFails}</b> · 바로 실행(문 고장) <b>{c.fallbacks}</b> · 죽은 명령이 놓은 슬롯 <b>{c.killedReleases}</b>
+    </li>
+  );
+  return (
+    <ul className="dp-misfire">
+      {row("전체", d.total)}
+      {row("최근 7일", d.last7d)}
+      <li className="faint">
+        동시 {d.slots}건 · 기다림 한도 {Math.round(d.waitLimitSec / 60)}분 · node --test 프로세스 {d.testConcurrency}개 · 실행 위치 {d.where}
+      </li>
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -525,6 +558,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   removalGuard: (s) => {
     const d = switchOf(s, "removalGuard")?.data as (RemovalStats & { headsKnown: boolean }) | undefined;
     return d ? <RemovalGuardStats d={d} /> : null;
+  },
+  verifyGate: (s) => {
+    const d = switchOf(s, "verifyGate")?.data as VerifyGateData | undefined;
+    return d ? <VerifyGateStats d={d} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
