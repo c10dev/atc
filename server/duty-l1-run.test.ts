@@ -217,11 +217,11 @@ test("길: Linear create — priority 필수·상태 Backlog/Todo·없는 라벨
     const { calls, o } = fake();
     const { d, lines } = deps(s.repo, o);
     mountDutyL1(app, d);
-    const good = { action: "create", title: "Work order", body: "Secret body text", priority: 2, state: "Todo", parent: "ATC-7", project: "DUTY", labels: ["RATING:SEC"] };
+    const good = { action: "create", title: "Work order", body: "## Goal\nSecret body text\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 2, state: "Todo", parent: "ATC-7", project: "DUTY", labels: ["RATING:SEC"] };
     const r = await post(app, "/api/duty/linear", good);
     assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
     assert.deepEqual(await r.json(), { ok: true, key: "ATC-99", url: "https://linear.app/x/ATC-99", state: "Todo" });
-    assert.deepEqual(calls[0], ["create", { teamId: "T", title: "Work order", description: "Secret body text", priority: 2, stateId: "st", labelIds: ["L1"], parentId: "i1", projectId: "P1" }]);
+    assert.deepEqual(calls[0], ["create", { teamId: "T", title: "Work order", description: "## Goal\nSecret body text\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 2, stateId: "st", labelIds: ["L1"], parentId: "i1", projectId: "P1" }]);
     assert.deepEqual(lines.at(-1), { t: "2026-10-01T00:00:00.000Z", kind: "duty", op: "linear", by: "DUTY", ok: true, action: "create", key: "ATC-99", state: "Todo" });
     assert.ok(!JSON.stringify(lines).includes("Secret body text"), "본문은 기록하지 않는다");
     const n = calls.length;
@@ -318,8 +318,55 @@ test("길: STAND 만들기·치우기는 기록되고(by DUTY), 잘못된 이름
   }
 });
 
+// ── 본문 모양 점검(ATC-469) ──
+const okBody = "## Goal\nx\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone";
+
+test("본문 모양: 빠진 절·읽히지 않는 K3 줄은 400이고 Linear에 아무것도 쓰지 않는다. create와 본문을 싣는 update만 본다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const { d } = deps(s.repo, o);
+    mountDutyL1(app, d);
+    const n = calls.length;
+    for (const [body, re] of [["## Goal\nx", /Done when.*K effects/], [`${okBody.replace("None\n\n## Measure", "K3: none\n\n## Measure")}`, /K3/], ["one line body", /Goal.*Done when.*K effects/]] as const) {
+      for (const req of [{ action: "create", title: "T", priority: 3, body }, { action: "update", key: "ATC-7", body }]) {
+        const r = await post(app, "/api/duty/linear", req);
+        assert.equal(r.status, 400, body);
+        assert.match(((await r.json()) as { error: string }).error, re);
+      }
+    }
+    assert.equal(calls.length, n, "거절이면 create·update를 부르지 않는다");
+    // 본문이 없는 update와 comment는 보지 않는다
+    assert.equal((await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", priority: 2 })).status, 200);
+    assert.equal((await post(app, "/api/duty/linear", { action: "comment", key: "ATC-7", body: "x" })).status, 200);
+  } finally {
+    s.done();
+  }
+});
+
+test("본문 모양: Measure가 없으면 만들고 warning을 싣는다. REVIEW 턴 제안과 update에도 같다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const { d } = deps(s.repo, { ...o, reviewTurn: () => true });
+    mountDutyL1(app, d);
+    const noMeasure = okBody.replace("\n\n## Measure\nNone", "");
+    const r = (await (await post(app, "/api/duty/linear", { action: "create", title: "T", priority: 3, body: noMeasure })).json()) as { ok: boolean; warning?: string };
+    assert.ok(r.ok && /Measure.*None/.test(r.warning ?? ""));
+    assert.ok(calls.some((c) => c[0] === "create"));
+    const u = (await (await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", body: noMeasure })).json()) as { ok: boolean; warning?: string };
+    assert.ok(u.ok && /Measure/.test(u.warning ?? ""));
+    const clean = (await (await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", body: okBody })).json()) as { warning?: string };
+    assert.equal(clean.warning, undefined);
+  } finally {
+    s.done();
+  }
+});
+
 // ── REVIEW 턴과 --blocked-by (ATC-396) ──
-const createBody = { action: "create", title: "Speed up the thing", body: "## Goal\nx", priority: 3 };
+const createBody = { action: "create", title: "Speed up the thing", body: "## Goal\nx\n\n## Done when\nx\n\n## K effects\nNone\n\n## Measure\nNone", priority: 3 };
 
 test("REVIEW 턴: 제안은 Backlog만(Todo는 만들기도 올리기도 403), 비슷한 열린 이슈가 있으면 409, 만든 제안은 알린다", async () => {
   const s = scratch();

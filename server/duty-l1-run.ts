@@ -16,6 +16,7 @@ import { loadDutyConfig } from "./duty-config.ts";
 import { DUTY_TEAM, issueVerdict, type LinearOp, parseLinearBody, resolveLabels, stateVerdict } from "./duty-linear.ts";
 import { standBranch, standDoneVerdict, standNameOf, standPath, worktreePaths } from "./duty-stand.ts";
 import { record } from "./recorder.ts";
+import { workOrderCheck, workOrderRejection } from "./work-order-check.ts";
 import { createDutyBlocks, createDutyComment, createDutyIssue, type CreateInput, type DutyIssueRead, type DutyTeam, fetchDutyIssue, fetchDutyTeam, fetchProjectId, updateDutyIssue, type UpdateInput } from "./sources/linear-write.ts";
 
 const run = promisify(execFile);
@@ -144,6 +145,11 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
     // REVIEW 턴(ATC-396): 스스로 낸 제안은 Backlog까지만. Todo는 SUPERVISOR가 RELEASE 화면에서 쏜다(원칙 10)
     const reviewing = d.reviewTurn?.() === true;
     if (reviewing && "state" in op && op.state === "Todo") return fail(403, "REVIEW 턴에는 Todo로 두지 않는다 — 제안은 Backlog에, 발권은 SUPERVISOR가 RELEASE 화면에서(원칙 10)");
+    // 본문 모양(ATC-469): create와, 본문을 싣는 update만. 거절이면 Linear에 아무것도 쓰지 않는다
+    const bodyText = op.action === "create" || op.action === "update" ? op.body : undefined;
+    const shape = bodyText === undefined ? null : workOrderCheck(bodyText);
+    if (shape && shape.errors.length) return fail(400, workOrderRejection(shape.errors));
+    const shapeWarning = shape?.warnings.length ? shape.warnings.join("; ") : undefined;
     if (op.action === "create") {
       if (reviewing) {
         const same = await d.openSimilar?.(op.title);
@@ -192,7 +198,7 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
         }
       }
       if (reviewing) d.onProposal?.(r.key, op.title);
-      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(blockNote ? { warning: blockNote } : {}) } };
+      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(blockNote || shapeWarning ? { warning: [blockNote, shapeWarning].filter(Boolean).join("; ") } : {}) } };
     }
     const issue = await d.issue(op.key);
     if (!issue) return fail(404, `${op.key}를 찾을 수 없음`);
@@ -219,7 +225,7 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
       input.labelIds = [...new Set([...issue.labels.map((l) => l.id), ...labels.ids])]; // 더하기만 한다(있는 라벨을 떼지 않는다)
     }
     const r = await d.update(issue.id, input);
-    return { status: 200, body: { ok: true, key: r.key, state: r.state } };
+    return { status: 200, body: { ok: true, key: r.key, state: r.state, ...(shapeWarning ? { warning: shapeWarning } : {}) } };
   } catch (e) {
     const m = msgOf(e);
     return fail(/미연결/.test(m) ? 503 : 502, m);
