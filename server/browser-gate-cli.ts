@@ -25,6 +25,7 @@ import {
   parentGone,
   parseBrowserGateConfig,
   queuePosition,
+  pollMsOf,
   shouldAnnounce,
   WAIT_LIMIT_EXIT,
   WATCH_MS,
@@ -33,7 +34,7 @@ import {
 } from "./browser-gate.ts";
 import type { Ticket } from "./verify-gate.ts";
 
-const POLL_MS = 1000;
+const POLL_MS = pollMsOf(process.env.ATC_GATE_POLL_MS);
 const BUSY = 200; // 락 시도 껍데기가 "자리 없음"을 알리는 코드(알림 바이트가 오지 않았을 때만 뜻이 있다)
 const NOTICE_FD = 5; // 3·4번은 Playwright의 디버깅 파이프라 Chrome까지 넘긴다
 

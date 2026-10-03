@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { after, test } from "node:test";
+import { after, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parseRuns } from "./verify-gate.ts";
 
@@ -60,123 +60,126 @@ function setup(opts: { remoteJson?: unknown; config?: unknown; env?: Record<stri
 }
 const TARGET = { host: "desk.test", user: "c10", port: 2222 };
 
-test("데스크톱에서 돈다: 출력과 종료 코드는 그대로이고 기록에 desktop·보내기 시간이 남는다", () => {
-  const s = setup({ remoteJson: TARGET, env: { FAKE_RUN_EXIT: "5" } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 5);
-  assert.equal(r.stdout, "REMOTE-OUT\n");
-  assert.equal(r.stderr, "REMOTE-ERR\n");
-  assert.ok(!r.stdout.includes("LOCAL-RAN"), "로컬에서는 돌지 않았다");
-  const [run] = s.runs();
-  assert.equal(run.where, "desktop");
-  assert.equal(run.exit, 5);
-  assert.equal(typeof run.syncMs, "number");
-  assert.equal(typeof run.ranMs, "number");
-  assert.equal(run.localReason, undefined);
-  const kinds = s.calls().map((c) => c.split(" ")[0]);
-  assert.deepEqual(kinds, ["probe", "extract", "prepare", "run", "cleanup"]);
-  assert.ok(s.calls().every((c) => c.includes("desk.test") === false || true));
-});
-
-test("ssh 인자: 접속 정보는 인자로만, 비대화형, 아는 호스트만", () => {
-  const s = setup({ remoteJson: TARGET });
-  s.run(["npm", "test"]);
-  const first = s.calls()[0];
-  assert.match(first, /"-l","c10"/);
-  assert.match(first, /"-p","2222"/);
-  assert.match(first, /"BatchMode=yes"/);
-  assert.match(first, /"StrictHostKeyChecking=yes"/);
-  assert.match(first, /"--","desk\.test"/);
-});
-
-test("데스크톱이 없으면(probe 실패) 로컬 문에서 돌고 사유 desktop-absent가 남는다. 보내지 않는다", () => {
-  const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "probe" } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /LOCAL-RAN/);
-  assert.deepEqual(s.calls().map((c) => c.split(" ")[0]), ["probe"]);
-  const [run] = s.runs();
-  assert.equal(run.where, "local");
-  assert.equal(run.localReason, "desktop-absent");
-});
-
-test("접속 정보(remote.json)가 없으면 ssh를 부르지 않고 로컬로(desktop-absent)", () => {
-  const s = setup({});
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /LOCAL-RAN/);
-  assert.deepEqual(s.calls(), []);
-  assert.equal(s.runs()[0].localReason, "desktop-absent");
-});
-
-test("목록에 없는 명령은 데스크톱에 가지 않는다(not-listed)", () => {
-  const s = setup({ remoteJson: TARGET });
-  for (const argv of [["node", "-e", "console.log('X')"], ["npm", "test", "--", "--foo"], ["sh", "-c", "echo hi"]]) {
-    const r = s.run(argv);
-    assert.equal(r.status, 0, argv.join(" "));
-  }
-  assert.deepEqual(s.calls(), [], "ssh를 한 번도 부르지 않는다");
-  assert.deepEqual(s.runs().map((x) => x.localReason), ["not-listed", "not-listed", "not-listed"]);
-  assert.ok(s.runs().every((x) => x.where === "local"));
-});
-
-test("스위치가 꺼지면 목록에 있는 명령도 로컬로(switch-off)", () => {
-  const s = setup({ remoteJson: TARGET, config: { remote: "off" } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /LOCAL-RAN/);
-  assert.deepEqual(s.calls(), []);
-  assert.equal(s.runs()[0].localReason, "switch-off");
-});
-
-test("보내기가 시작 전에 실패하면 로컬로 돈다(transport-error) — 오류 없이 같은 결과", () => {
-  for (const fail of ["extract", "prepare"]) {
-    const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: fail } });
+// 파일 안의 시험은 서로 임시 폴더가 달라 겹치지 않는다: 병렬로 돌려 가장 긴 시험 하나가 파일 시간이 되게 한다(ATC-523)
+describe("verify-remote-cli", { concurrency: 4 }, () => {
+  test("데스크톱에서 돈다: 출력과 종료 코드는 그대로이고 기록에 desktop·보내기 시간이 남는다", () => {
+    const s = setup({ remoteJson: TARGET, env: { FAKE_RUN_EXIT: "5" } });
     const r = s.run(["npm", "test"]);
-    assert.equal(r.status, 0, fail);
+    assert.equal(r.status, 5);
+    assert.equal(r.stdout, "REMOTE-OUT\n");
+    assert.equal(r.stderr, "REMOTE-ERR\n");
+    assert.ok(!r.stdout.includes("LOCAL-RAN"), "로컬에서는 돌지 않았다");
+    const [run] = s.runs();
+    assert.equal(run.where, "desktop");
+    assert.equal(run.exit, 5);
+    assert.equal(typeof run.syncMs, "number");
+    assert.equal(typeof run.ranMs, "number");
+    assert.equal(run.localReason, undefined);
+    const kinds = s.calls().map((c) => c.split(" ")[0]);
+    assert.deepEqual(kinds, ["probe", "extract", "prepare", "run", "cleanup"]);
+    assert.ok(s.calls().every((c) => c.includes("desk.test") === false || true));
+  });
+
+  test("ssh 인자: 접속 정보는 인자로만, 비대화형, 아는 호스트만", () => {
+    const s = setup({ remoteJson: TARGET });
+    s.run(["npm", "test"]);
+    const first = s.calls()[0];
+    assert.match(first, /"-l","c10"/);
+    assert.match(first, /"-p","2222"/);
+    assert.match(first, /"BatchMode=yes"/);
+    assert.match(first, /"StrictHostKeyChecking=yes"/);
+    assert.match(first, /"--","desk\.test"/);
+  });
+
+  test("데스크톱이 없으면(probe 실패) 로컬 문에서 돌고 사유 desktop-absent가 남는다. 보내지 않는다", () => {
+    const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "probe" } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 0);
     assert.match(r.stdout, /LOCAL-RAN/);
+    assert.deepEqual(s.calls().map((c) => c.split(" ")[0]), ["probe"]);
     const [run] = s.runs();
     assert.equal(run.where, "local");
-    assert.equal(run.localReason, "transport-error");
-    assert.equal(typeof run.syncMs, "number");
-    assert.ok(s.calls().map((c) => c.split(" ")[0]).includes("cleanup"));
-    assert.ok(!s.calls().some((c) => c.startsWith("run")), "원격 명령은 시작하지 않았다");
-  }
-});
+    assert.equal(run.localReason, "desktop-absent");
+  });
 
-test("시작한 뒤 연결을 잃으면 76과 안내, 다시 돌리지 않고 로컬로도 돌지 않는다(lost)", () => {
-  const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "1 " } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 76);
-  assert.match(r.stderr, /lost the connection to the desktop after the command started/);
-  assert.ok(!r.stdout.includes("LOCAL-RAN"));
-  assert.equal(s.calls().filter((c) => c.startsWith("run")).length, 1);
-  const [run] = s.runs();
-  assert.equal(run.where, "desktop");
-  assert.equal(run.lost, true);
-  assert.equal(run.exit, 76);
-});
+  test("접속 정보(remote.json)가 없으면 ssh를 부르지 않고 로컬로(desktop-absent)", () => {
+    const s = setup({});
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /LOCAL-RAN/);
+    assert.deepEqual(s.calls(), []);
+    assert.equal(s.runs()[0].localReason, "desktop-absent");
+  });
 
-test("시작 전에 끊기면(255, 시작 표 없음) 로컬로 돈다", () => {
-  const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "0 " } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /LOCAL-RAN/);
-  assert.equal(s.runs()[0].localReason, "transport-error");
-});
+  test("목록에 없는 명령은 데스크톱에 가지 않는다(not-listed)", () => {
+    const s = setup({ remoteJson: TARGET });
+    for (const argv of [["node", "-e", "console.log('X')"], ["npm", "test", "--", "--foo"], ["sh", "-c", "echo hi"]]) {
+      const r = s.run(argv);
+      assert.equal(r.status, 0, argv.join(" "));
+    }
+    assert.deepEqual(s.calls(), [], "ssh를 한 번도 부르지 않는다");
+    assert.deepEqual(s.runs().map((x) => x.localReason), ["not-listed", "not-listed", "not-listed"]);
+    assert.ok(s.runs().every((x) => x.where === "local"));
+  });
 
-test("명령 자신이 255로 끝나면 255 그대로(전송 문제가 아님)", () => {
-  const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "1 255" } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 255);
-  assert.equal(s.runs()[0].where, "desktop");
-  assert.equal(s.runs()[0].lost, undefined);
-});
+  test("스위치가 꺼지면 목록에 있는 명령도 로컬로(switch-off)", () => {
+    const s = setup({ remoteJson: TARGET, config: { remote: "off" } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /LOCAL-RAN/);
+    assert.deepEqual(s.calls(), []);
+    assert.equal(s.runs()[0].localReason, "switch-off");
+  });
 
-test("모양이 틀린 접속 정보는 없는 것으로 본다(옵션 주입 글자)", () => {
-  const s = setup({ remoteJson: { host: "-oProxyCommand=touch /tmp/x", user: "c10" } });
-  const r = s.run(["npm", "test"]);
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /LOCAL-RAN/);
-  assert.deepEqual(s.calls(), []);
+  test("보내기가 시작 전에 실패하면 로컬로 돈다(transport-error) — 오류 없이 같은 결과", () => {
+    for (const fail of ["extract", "prepare"]) {
+      const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: fail } });
+      const r = s.run(["npm", "test"]);
+      assert.equal(r.status, 0, fail);
+      assert.match(r.stdout, /LOCAL-RAN/);
+      const [run] = s.runs();
+      assert.equal(run.where, "local");
+      assert.equal(run.localReason, "transport-error");
+      assert.equal(typeof run.syncMs, "number");
+      assert.ok(s.calls().map((c) => c.split(" ")[0]).includes("cleanup"));
+      assert.ok(!s.calls().some((c) => c.startsWith("run")), "원격 명령은 시작하지 않았다");
+    }
+  });
+
+  test("시작한 뒤 연결을 잃으면 76과 안내, 다시 돌리지 않고 로컬로도 돌지 않는다(lost)", () => {
+    const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "1 " } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 76);
+    assert.match(r.stderr, /lost the connection to the desktop after the command started/);
+    assert.ok(!r.stdout.includes("LOCAL-RAN"));
+    assert.equal(s.calls().filter((c) => c.startsWith("run")).length, 1);
+    const [run] = s.runs();
+    assert.equal(run.where, "desktop");
+    assert.equal(run.lost, true);
+    assert.equal(run.exit, 76);
+  });
+
+  test("시작 전에 끊기면(255, 시작 표 없음) 로컬로 돈다", () => {
+    const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "0 " } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /LOCAL-RAN/);
+    assert.equal(s.runs()[0].localReason, "transport-error");
+  });
+
+  test("명령 자신이 255로 끝나면 255 그대로(전송 문제가 아님)", () => {
+    const s = setup({ remoteJson: TARGET, env: { FAKE_FAIL: "run", FAKE_STATUS: "1 255" } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 255);
+    assert.equal(s.runs()[0].where, "desktop");
+    assert.equal(s.runs()[0].lost, undefined);
+  });
+
+  test("모양이 틀린 접속 정보는 없는 것으로 본다(옵션 주입 글자)", () => {
+    const s = setup({ remoteJson: { host: "-oProxyCommand=touch /tmp/x", user: "c10" } });
+    const r = s.run(["npm", "test"]);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /LOCAL-RAN/);
+    assert.deepEqual(s.calls(), []);
+  });
 });

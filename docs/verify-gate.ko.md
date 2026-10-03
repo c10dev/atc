@@ -36,6 +36,8 @@ gate 폴더는 `~/.local/state/atc-gate/`(`ATC_GATE_DIR`로 바꾼다). 운영 �
 
 환경 변수: `ATC_GATE_SLOTS`, `ATC_GATE_WAIT_LIMIT_SEC`, `ATC_GATE_TEST_CONCURRENCY`, `ATC_GATE_REMOTE_PROBE_SEC`. 틀린 값은 기본값으로 읽는다.
 
+두 손잡이는 CLI 시험이 몇 초씩 기다리지 않게 하려고만 있다(ATC-523). 운영 기본값은 그대로이고 따로 정할 필요가 없다: `ATC_GATE_POLL_MS`(줄 선 실행이 빈 슬롯을 다시 보는 간격, 20–5000, 기본 1000)와 `ATC_GATE_WAIT_LIMIT_MS`(밀리초 단위 기다림 한도, 100 이상, 있으면 초 단위 값보다 먼저 본다). 브라우저 문도 `ATC_GATE_POLL_MS`를 읽고 `ATC_BROWSER_WAIT_LIMIT_MS`가 있다.
+
 ## 기록과 misfire 세기
 
 `runs.jsonl` 한 줄: `t`(시작), `where`(`local` 또는 `desktop`), `cmd`(앞 세 낱말만: 인자에 비밀이 섞이지 않게), `cwd`, `waited`, `waitedMs`, `ranMs`, `exit`, 해당하면 `killed`, `timedOut`, `fallback`, `syncMs`(데스크톱에 보내고 준비한 시간), `localReason`(로컬로 돈 사유), `lost`. 설정 창의 VERIFY GATE 블록은 전체와 최근 7일에 대해 실행 수, 줄 선 수, 가장 긴 기다림, 한도 실패, 바로 실행(gate 고장), 죽은 명령이 놓은 슬롯과 아래 원격 세기를 보인다.

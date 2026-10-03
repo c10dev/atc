@@ -33,6 +33,8 @@ The gate folder is `~/.local/state/atc-gate/` (`ATC_GATE_DIR` overrides it). It 
 
 Environment overrides: `ATC_GATE_SLOTS`, `ATC_GATE_WAIT_LIMIT_SEC`, `ATC_GATE_TEST_CONCURRENCY`. A malformed value reads as the default.
 
+Two knobs exist only so the CLI tests do not have to wait whole seconds (ATC-523); the production defaults are unchanged and nothing needs to set them: `ATC_GATE_POLL_MS` (how often a queued run looks for a free slot, 20 to 5000, default 1000) and `ATC_GATE_WAIT_LIMIT_MS` (the wait limit in milliseconds, 100 or more; when set it wins over the seconds value). The browser gate reads `ATC_GATE_POLL_MS` too and has `ATC_BROWSER_WAIT_LIMIT_MS`.
+
 ## Record and misfire counter
 
 Each line of `runs.jsonl`: `t` (start), `where` (`local` or `desktop`), `cmd` (the first three words only, so arguments cannot leak a secret), `cwd`, `waited`, `waitedMs`, `ranMs`, `exit`, and when they apply `killed`, `timedOut`, `fallback`, `syncMs` (how long sending and preparing on the desktop took), `localReason` (why a run was local, below) and `lost`. The VERIFY GATE block of the settings window shows, for all time and the last 7 days: runs, runs that waited, longest wait, wait-limit failures, direct fallbacks (gate broken), and slots released by a killed command.
