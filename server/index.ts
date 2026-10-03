@@ -77,6 +77,7 @@ import { mountLeaks } from "./leaks-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
+import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
 import { mountReadability } from "./readability-run.ts";
@@ -264,6 +265,7 @@ mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tic
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountNotices(app, getSnapshot, () => update.status()); // NOTICES(ATC-447): 사이드바 머리의 알림 세 개(읽기만)
 mountEffectCheck(app, getSnapshot); // EFFECT CHECK(ATC-402): 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 effect-verdicts.jsonl에 평결을 남긴다(재기만, 끄는 스위치는 설정 창)
 mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): 릴리스 뒤에도 사람이 거치는 단계를 leaks.jsonl에 열릴 때·닫힐 때 한 줄씩 센다(세기만)
 mountLanes(app); // 조용한 리뷰 레인(ATC-386): 날짜별 착륙 수와 REVIEW 한 레인으로 착륙한 수(읽기만)

@@ -58,14 +58,16 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
 
 let cache: { at: number; epoch: number; view: SupervisorQueue } | null = null;
 
+// 같은 5초 캐시로 큐를 준다(GET /api/supervisor/queue와 GET /api/notices가 함께 쓴다, ATC-447)
+export async function supervisorQueueNow(getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, now = Date.now()): Promise<SupervisorQueue> {
+  if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return cache.view;
+  const s = await getSnapshot();
+  const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
+  cache = { at: now, epoch: queueEpoch(), view };
+  return view;
+}
+
 export function mountSupervisorQueue(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, events: () => readonly TrafficEvent[] = () => []) {
   eventsOf = events;
-  app.get("/api/supervisor/queue", async (c) => {
-    const now = Date.now();
-    if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return c.json(cache.view);
-    const s = await getSnapshot();
-    const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
-    cache = { at: now, epoch: queueEpoch(), view };
-    return c.json(view);
-  });
+  app.get("/api/supervisor/queue", async (c) => c.json(await supervisorQueueNow(getSnapshot, updateStatus)));
 }
