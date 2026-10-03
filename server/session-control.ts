@@ -21,6 +21,8 @@ import { regKey, sameReg } from "./registration.ts";
 import { type K3Declaration, type K3Launch, k3LaunchOf } from "./k3-allow.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
 import { sessionProcOf } from "./session-proc.ts";
+import { memoryArgsOf, type ScopeMemory, scopeOomTextOf } from "./scope-memory.ts";
+import { scopeOomViewNow } from "./scope-oom-run.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import { ttlCache } from "./agents-cache.ts";
 import { readSquelchLast, squelchOfName } from "./squelch-last.ts";
@@ -354,13 +356,19 @@ export function tmuxBin(): string | null {
 // OOMPolicy=continue: scope 안의 프로세스 하나가 OOM으로 죽어도 scope(daemon과 모든 세션)는 두고 그 프로세스만 죽는다.
 // 기본값 stop이면 세션 하나의 테스트가 부푼 것만으로 백그라운드 세션이 모두 끝난다(2026-09-30 08:54Z, 12개)
 const SYSTEMD_RUN = "/usr/bin/systemd-run";
-export function launchCommandOf(bin: string, args: string[], scope: string | null, unit: string): { cmd: string; args: string[] } {
-  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
+// 메모리 상한(ATC-505): memory가 있으면 MemoryHigh·MemoryMax를 더해, 메모리를 너무 쓸 때 커널이 scope 안의 프로세스를 죽이고 밖(데스크톱·운영 서비스·DB)은 두게 한다. null이면 옛 동작
+export function launchCommandOf(bin: string, args: string[], scope: string | null, unit: string, memory: ScopeMemory | null = null): { cmd: string; args: string[] } {
+  return scope ? { cmd: scope, args: ["--user", "--scope", "--collect", "--quiet", "-p", "OOMPolicy=continue", ...memoryArgsOf(memory), `--unit=${unit}`, "--", bin, ...args] } : { cmd: bin, args };
 }
+// 지금 설정의 상한(스위치가 꺼져 있으면 null)
+const scopeMemoryNow = (): ScopeMemory | null => {
+  const c = loadDispatchConfig();
+  return c.bgMemoryCap === "off" ? null : { high: c.bgMemoryHigh, max: c.bgMemoryMax };
+};
 const scopeBin = () => (process.env.ATC_BG_SCOPE !== "off" && existsSync(SYSTEMD_RUN) ? SYSTEMD_RUN : null);
 
 function claude(args: string[], cwd?: string, { scope = false, configDir = null as string | null } = {}): Promise<{ ok: boolean; out: string }> {
-  const { cmd, args: argv } = launchCommandOf(config.claudeBin, args, scope ? scopeBin() : null, `atc-claude-${Date.now()}`);
+  const { cmd, args: argv } = launchCommandOf(config.claudeBin, args, scope ? scopeBin() : null, `atc-claude-${Date.now()}`, scope ? scopeMemoryNow() : null);
   return new Promise((resolve) => {
     execFile(cmd, argv, { cwd, env: cleanEnv(configDir), timeout: 60_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) =>
       resolve({ ok: !err, out: `${stdout}${stderr}`.trim() }),
@@ -659,6 +667,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       return c.json({
         // 백그라운드 세션 daemon이 atc 서비스 안에 있으면 atc 재시작(배포·RTS) 때 모든 백그라운드 세션이 죽는다
         daemonInService: inServiceCgroup(daemonCgroups()),
+        scopeOom: ((v, cap) => ({ ...v, cap, text: scopeOomTextOf(v, cap) }))(scopeOomViewNow(), loadDispatchConfig().bgMemoryCap), // 상한 스위치와 scope 안 OOM kill 수(ATC-505)
         sessions: CONTROL_SESSIONS.filter((spec) => !spec.retired || controlRowsOf(spec, rows, controlDirOf(spec)).length > 0).map((spec) => ({
           name: spec.name,
           dir: spec.dir,

@@ -1,3 +1,4 @@
+import { sizeBytes } from "./scope-memory.ts";
 import { DEFAULT_NOTES, type NotesConfig } from "./issue-notes.ts";
 import { DEFAULT_LAUNCH_CARD_TIMEOUT_MIN, DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -89,6 +90,10 @@ export interface DispatchConfig {
   k3Hold: K3HoldMode;
   // ACCOUNT 불일치 카드 풀기(ATC-458): "on"(기본)이면 OCC와 ACCOUNT가 달라 닿지 않는 AIRCRAFT의 열린 ASSIGN 카드를 닫고 FLIGHT를 계획으로 돌린다. "off"면 카드가 ATC-251 사유로 계속 기다린다(계획 규칙은 그대로)
   crossAccountRelease: "on" | "off";
+  // 백그라운드 세션 scope의 메모리 상한(ATC-505): "on"(기본)이면 LAUNCH의 임시 scope에 MemoryHigh·MemoryMax를 건다. OOM이 scope 안에서 끝나게. "off"면 OOMPolicy=continue만(옛 동작)
+  bgMemoryCap: "on" | "off";
+  bgMemoryHigh: string; // systemd 크기(예: 20G)
+  bgMemoryMax: string;
   // PARKED(ATC-487): "on"(기본)이면 RELEASE 화면이 막는 이슈 없이 손으로 올린 Backlog 이슈를 접힌 PARKED 절에 보이고 /api/releases/fire가 받는다. "off"면 절이 없고 fire가 거절한다(옛 동작)
   releaseParked: "on" | "off";
 }
@@ -142,6 +147,9 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   k3Hold: "on",
   crossAccountRelease: "on",
   releaseParked: "on",
+  bgMemoryCap: "on",
+  bgMemoryHigh: "20G",
+  bgMemoryMax: "24G",
 };
 
 const CONFIG_FILE = join(config.stateDir, "dispatch.json");
@@ -205,6 +213,26 @@ export function saveReleaseParked(mode: "on" | "off", file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, releaseParked: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// scope 메모리 크기 둘(ATC-505): 모양이 틀리면 기본, MemoryHigh가 MemoryMax보다 크면 MemoryHigh를 MemoryMax로 낮춘다(넘으면 의미가 없다)
+function scopeMemoryOf(high: unknown, max: unknown, d: { bgMemoryHigh: string; bgMemoryMax: string }): { bgMemoryHigh: string; bgMemoryMax: string } {
+  const ok = (v: unknown, dflt: string) => (typeof v === "string" && sizeBytes(v) !== null ? v : dflt);
+  const m = ok(max, d.bgMemoryMax);
+  const h = ok(high, d.bgMemoryHigh);
+  return { bgMemoryHigh: (sizeBytes(h) ?? 0) > (sizeBytes(m) ?? 0) ? m : h, bgMemoryMax: m };
+}
+
+// bgMemoryCap만 바꿔 저장한다(설정 창, ATC-505). 다른 설정은 그대로 둔다
+export function saveBgMemoryCap(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, bgMemoryCap: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -311,6 +339,9 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       k3Hold: user.k3Hold === "off" ? "off" : "on",
       // ACCOUNT 불일치 카드 풀기(ATC-458): 파일에 "off"라고 적었을 때만 끈다
       crossAccountRelease: user.crossAccountRelease === "off" ? "off" : "on",
+      // scope 메모리 상한(ATC-505): 파일에 "off"라고 적었을 때만 끈다. 크기는 systemd 꼴(숫자 + K·M·G·T)만, 아니면 기본
+      bgMemoryCap: user.bgMemoryCap === "off" ? "off" : "on",
+      ...scopeMemoryOf(user.bgMemoryHigh, user.bgMemoryMax, d),
       // PARKED(ATC-487): 파일에 "off"라고 적었을 때만 끈다
       releaseParked: user.releaseParked === "off" ? "off" : "on",
     };
