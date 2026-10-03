@@ -1,0 +1,36 @@
+/* FLIGHTS 목록 맨 위의 LATE WAYPOINTS(ATC-422). 줄 사이는 여백뿐, 색은 :root 토큰만 */
+.lw-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lw-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 14rem) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: var(--space-8);
+  font-size: var(--text-sm);
+}
+.lw-line,
+.lw-wp {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.lw-report {
+  font-size: var(--text-xs);
+  text-align: right;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .lw-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: var(--space-1);
+    padding-bottom: var(--space-2);
+  }
+  .lw-line {
+    grid-column: 1 / -1;
+  }
+}

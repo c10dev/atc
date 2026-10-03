@@ -15,21 +15,6 @@
   letter-spacing: 0.08em;
   color: var(--faint);
 }
-.since-look-chip,
-.since-look-seen {
-  font: inherit;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  padding: var(--space-0-5) var(--space-2);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
-}
-.since-look-chip:hover,
-.since-look-seen:hover {
-  background: var(--panel-2);
-}
 .since-look-chip b {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -39,8 +24,8 @@
   text-decoration: underline;
 }
 .since-look-seen {
-  color: var(--faint);
   margin-left: auto;
+  color: var(--faint);
 }
 .since-look-list {
   display: flex;
