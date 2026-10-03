@@ -1,6 +1,22 @@
 # ALERTING: what gets the SUPERVISOR's attention, and where it goes
 
-Status (2026-09-30): design draft for [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue). The SUPERVISOR said it is unclear what ALERTS and the BELL each do and asked for their goals to be redesigned. Nothing here is built. The SUPERVISOR's decisions are in section 7.
+**English** · [한국어](alerting.ko.md) (status only)
+
+Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197](https://linear.app/vocado/issue/ATC-197)) was built. The parent [ATC-195](https://linear.app/vocado/issue/ATC-195/alerting-split-bell-into-master-attention-alerts-conditions-queue) was closed on 2026-10-03. The rest of the plan is cancelled or replaced, and the sections below are kept as the record of the design and of what A1 left in the server. The SUPERVISOR's decisions are in section 7.
+
+- **Built:**
+  - **A1** (ATC-197): `destOf` and `dest` on every item of `supervisorAlertsOf`, and the three condition items `rts|halted`, `control|down|<session>` and `reposition|stuck|<aircraft>` ("A1 as built" below). The server keeps `dest`, which HOME reads.
+  - **ATC-327** (PENDING approval that lasts) is not part of this plan and stays as built.
+- **Kept alive:** **A1b** ([ATC-203](https://linear.app/vocado/issue/ATC-203)) widens `control|down` to any cause and adds `host|memory`. It was not built under ATC-195: it is a standalone FLIGHT, released on 2026-10-03. Its "as built" record will go to its own PR, not to this document.
+- **Cancelled:** **A3–A7** (ATC-198, 199, 200, 201, 202): the MASTER light, the QUEUE and LOG header readouts, notifications by destination, summary v2 and the atc-app change.
+- **A2 and A8:** never filed as issues (the issues under ATC-195 are 197 to 203 only), and not planned.
+  - **A2** (Q1 and A1 share one source): Q1 ([ATC-194](https://linear.app/vocado/issue/ATC-194)) was finished separately on 2026-09-30, and HOME reads it.
+  - **A8** (guide rewrite): the layout PRs change the guide screen by screen.
+- **Replaced by layout.md:**
+  - **QUEUE and ALERTS** are sections of HOME (`#home`). ALERTS there are the WARNING and CAUTION items whose `dest` is `alerts`.
+  - **The header bell** moved to the sidebar header as the notifications icon ([ATC-447](https://linear.app/vocado/issue/ATC-447)), grouped by source (Linear, GitHub, atc).
+  - **MASTER, the LOG popover, the two-number tab title and summary v2** are not planned. The summary keeps `counts` and `pending`.
+- **Still true:** principles 1–6 and 8 of section 2 (they are gathered in [design-language.md](design-language.md)), the destination table in 3.1 and the decisions in section 7.
 
 ## 1. Current facts
 

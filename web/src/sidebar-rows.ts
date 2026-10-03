@@ -153,9 +153,46 @@ export const METRICS_ITEMS = [
   { id: "network", label: "NETWORK", hash: "metrics/network" },
 ] as const;
 
-export const HOME_ANCHORS = [
-  { id: "queue", label: "TO DO", ariaLabel: "SUPERVISOR QUEUE · 할 일" }, // 알림·막힌 FLIGHT·EFFECT·CLOSE도 이 목록에 있다(ATC-454). BRAKES는 아래 패널 탭으로 갔다(ATC-455)
+// HOME의 사이드바는 할 일 목록을 종류별로 거른다(ATC-422, S1b). 고르면 주소가 `#home/<id>`가 되고 HOME이 그 주소를 읽는다. 전체가 기본이다.
+// QUEUE는 결정을 기다리는 줄(알림·막힌 FLIGHT·EFFECT·CLOSE가 아닌 것), DONE은 Linear에서 직접 Done으로 바꿀 CLOSE
+export const HOME_FILTERS = [
+  { id: "all", label: "전체", hash: "home" },
+  { id: "queue", label: "QUEUE", hash: "home/queue" },
+  { id: "alert", label: "ALERT", hash: "home/alert" },
+  { id: "stuck", label: "STUCK", hash: "home/stuck" },
+  { id: "effect", label: "EFFECT", hash: "home/effect" },
+  { id: "done", label: "DONE", hash: "home/done" },
 ] as const;
+export type HomeFilter = (typeof HOME_FILTERS)[number]["id"];
+
+// 큐 항목의 kind → 어느 거름에 드나(전체는 모두)
+export function homeFilterOfKind(kind: string): Exclude<HomeFilter, "all"> {
+  switch (kind) {
+    case "ALERT":
+      return "alert";
+    case "STUCK":
+      return "stuck";
+    case "EFFECT":
+      return "effect";
+    case "CLOSE":
+      return "done";
+    default:
+      return "queue";
+  }
+}
+
+// 거름마다 항목 수. 전체는 모두이고, 항목이 없는 거름은 목록에서 뺀다(전체는 늘 있다)
+export function homeFilterCounts(items: readonly { kind: string }[]): { id: HomeFilter; label: string; hash: string; count: number }[] {
+  const by: Record<string, number> = {};
+  for (const i of items) by[homeFilterOfKind(i.kind)] = (by[homeFilterOfKind(i.kind)] ?? 0) + 1;
+  return HOME_FILTERS.map((f) => ({ ...f, count: f.id === "all" ? items.length : (by[f.id] ?? 0) })).filter((f) => f.id === "all" || f.count > 0);
+}
+
+// 지금 주소의 거름(#home, #home/alert …). 모르는 것은 전체
+export function homeFilterOf(hash: string): HomeFilter {
+  const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
+  return HOME_FILTERS.some((f) => f.id === sub) ? (sub as HomeFilter) : "all";
+}
 
 export function filterLabeled<T extends { label: string }>(items: readonly T[], query: string): T[] {
   return items.filter((i) => matchesQuery(query, [i.label]));

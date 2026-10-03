@@ -220,9 +220,6 @@ const STYLESHEET_OWNER: Record<string, string> = { "alerts.css": "HEADER" };
 
 // 오늘의 위반 "가져오는 파일 -> 스타일시트": 그것을 없앨 화면 단위. 새 항목을 더하지 않는다.
 export const ALLOWED_LAYER_VIOLATIONS: Record<string, string> = {
-  "web/src/views/Home.tsx -> web/src/Drawer.css": "S1 (ATC-422)",
-  "web/src/views/Home.tsx -> web/src/DutyDrawer.css": "S1 (ATC-422)",
-  "web/src/views/Home.tsx -> web/src/views/fleet/Fleet.css": "S1 (ATC-422)",
   "web/src/SettingsAlerts.tsx -> web/src/alerts.css": "S6 (ATC-430): the alert-row classes move into the settings stylesheet or a kit part",
 };
 

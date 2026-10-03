@@ -2,7 +2,6 @@ import { SoundLockChip } from "./AlertBell.tsx";
 import { NoticeTotal, useNotices } from "./Notices.tsx";
 import { FollowNext } from "./FollowNext.tsx";
 import { canonicalHash } from "./legacy-hash.ts";
-import { SinceLook } from "./SinceLook.tsx";
 import { drawerOfHash, type DrawerRef } from "../../server/detail.ts";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { showNewVersion } from "../../server/version.ts";
@@ -325,8 +324,6 @@ export function App({ build }: { build: string }) {
           ) : (
             // 탭마다 오류 경계를 새로 둔다(한 탭의 오류·못 불러온 청크가 다른 탭을 막지 않게)
             <div className={sceneSeen && !introDone ? "main-enter" : undefined}>
-              {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
-              {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
               <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
                 <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
               </TabBoundary>

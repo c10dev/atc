@@ -17,7 +17,8 @@ import {
   flightGroups,
   type FlightInput,
   type Group,
-  HOME_ANCHORS,
+  homeFilterCounts,
+  homeFilterOf,
   matchesQuery,
   METRICS_ITEMS,
   metricsSubOf,
@@ -97,6 +98,11 @@ const radioOf = (j: unknown): Transmission[] => {
 };
 const NONE_RADIO: Transmission[] = [];
 const NONE_RELEASE: ReturnType<typeof releaseOf> = [];
+const queueKindsOf = (j: unknown): { kind: string }[] => {
+  const items = (j as { items?: { kind?: unknown }[] } | null)?.items;
+  return Array.isArray(items) ? items.map((i) => ({ kind: String(i.kind ?? "") })) : [];
+};
+const NONE_KINDS: { kind: string }[] = [];
 const NONE_AIRCRAFT: ReturnType<typeof aircraftOf> = [];
 
 function go(hash: string, onPick: () => void) {
@@ -197,7 +203,10 @@ export function Sidebar({
   const stations = useMemo(() => (screen === "radio" ? stationsOf(radioTxs) : { control: [], aircraft: [] }), [screen, radioTxs]);
 
   const metricsItems = filterLabeled(METRICS_ITEMS, query);
-  const homeItems = filterLabeled(HOME_ANCHORS, query);
+  // HOME: 할 일 목록(GET /api/supervisor/queue, 화면과 같은 길)을 종류별로 센다. 고르면 #home/<종류>가 되고 HOME이 그 주소로 거른다(ATC-422)
+  const homeKinds = useJson(screen === "home" ? "/api/supervisor/queue" : null, refreshKey, queueKindsOf, NONE_KINDS);
+  const homeItems = filterLabeled(homeFilterCounts(homeKinds), query);
+  const homeFilter = homeFilterOf(hash);
   const sub = metricsSubOf(hash);
 
   const empty = <p className="sb-empty faint">{query ? "맞는 항목 없음" : "표시할 것이 없음"}</p>;
@@ -339,18 +348,11 @@ export function Sidebar({
   } else if (screen === "home") {
     body = homeItems.length ? (
       <ul className="sb-list">
-        {homeItems.map((a) => (
-          <li key={a.id}>
-            <button
-              type="button"
-              className="sb-item"
-              onClick={() => {
-                // 비어 있으면 그 절이 그려지지 않는다(원칙 1): 없는 닻은 아무 데도 가지 않는다
-                document.querySelector<HTMLElement>(`section[aria-label="${a.ariaLabel}"]`)?.scrollIntoView({ block: "start" });
-                onPick();
-              }}
-            >
-              <span className="sb-key mono">{a.label}</span>
+        {homeItems.map((f) => (
+          <li key={f.id}>
+            <button type="button" className="sb-item" aria-current={homeFilter === f.id ? "page" : undefined} onClick={() => go(f.hash, onPick)}>
+              <span className="sb-key mono">{f.label}</span>
+              <span className="sb-count mono">{f.count}</span>
             </button>
           </li>
         ))}

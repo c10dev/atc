@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Icon } from "./kit/Icon.tsx";
 import { useCallback, useEffect, useState } from "react";
-import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, queueHeadOf, scheduleAskOf } from "../../server/duty-card.ts";
+import { type CardAction, actionsOf, cardKey, cardViewOf, NETWORK_KINDS, proposalAskOf, scheduleAskOf } from "../../server/duty-card.ts";
 import type { ChatItem } from "../../server/duty-chat.ts";
 import type { FleetProposal } from "../../server/fleet-plan.ts";
 import type { QueueItem, SupervisorQueue } from "../../server/supervisor-queue.ts";
@@ -9,6 +9,8 @@ import { timeAgo } from "./derive.ts";
 import { isManual, WILL_DO } from "./views/FleetPlan.tsx";
 import { RelayBox } from "./Relay.tsx";
 import "./Relay.css";
+import "./Drawer.css";
+import "./DutyDrawer.css";
 import { apiGet, apiSend } from "./api.ts";
 
 // DUTY 카드와 QUEUE 줄(ATC-230, docs/duty.md 3.2·4·5장 D3). 카드는 큐 줄 자체이고, 버튼은 이 화면이 기존 길을 부르는 것이다.
@@ -587,31 +589,16 @@ function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; 
   );
 }
 
-// 채팅 위의 접힌 QUEUE 줄. 펼치면 큐 전체를 보여 주고, 줄마다 카드와 같은 버튼이나 링크가 있다(DUTY가 말하지 않은 것도)
+// 채팅 위의 QUEUE 한 줄(ATC-422): 큐 목록은 HOME 한 곳에만 있다(같은 사실을 두 곳에 그리지 않는다). 여기는 수와 HOME 링크뿐이다.
+// 카드의 "처리됨"은 이 서랍에서 누른 결정만 센다(handled).
 export function QueueRow({ queue, ctx }: { queue: SupervisorQueue | null; ctx: CardCtx }) {
-  const [open, setOpen] = useState(false);
-  if (!queue) return <div className="du-queue"><p className="du-queue-head mono">QUEUE …</p></div>;
-  const items = queue.items.filter((i) => !ctx.handled.has(cardKey({ queueKind: i.kind, key: i.key })));
+  if (!queue) return <div className="du-queue"><p className="du-queue-head">할 일 …</p></div>;
+  const n = queue.items.filter((i) => !ctx.handled.has(cardKey({ queueKind: i.kind, key: i.key }))).length;
   return (
-    <section className="du-queue" aria-label="SUPERVISOR QUEUE">
-      <button type="button" className="du-queue-head mono" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <Icon icon={open ? ChevronDown : ChevronRight} /> {queueHeadOf(queue.counts, items.length)}
-      </button>
-      {open && (
-        <ul className="du-queue-list">
-          {items.length === 0 && <li className="du-hint">기다리는 결정이 없습니다</li>}
-          {items.map((i) => (
-            <li key={`${i.kind}/${i.key}`} className="du-qrow">
-              <div className="du-card-head">
-                <span className="du-kind">{i.kind}</span>
-                <span className="du-since">{timeAgo(i.since, ctx.now)}</span>
-              </div>
-              <p className="du-card-title">{i.title}</p>
-              <Actions item={i} actions={actionsOf(i, ctx.airports)} onDone={() => ctx.markHandled(cardKey({ queueKind: i.kind, key: i.key }))} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="du-queue">
+      <a className="du-queue-head" href="#home">
+        할 일 {n} — HOME에서
+      </a>
+    </div>
   );
 }
