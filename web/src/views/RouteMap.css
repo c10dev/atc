@@ -16,7 +16,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .rm-head {
   display: flex;

@@ -10,7 +10,7 @@
   padding: var(--space-4);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-size: var(--text-md);
 }
 /* 안쪽 막대: AOG와 경보 띠에 CAUTION(amber)·WARNING(alert)이 있을 때만 */
@@ -387,7 +387,7 @@ button.fl-fold-head:focus-visible .fl-fold-k {
 .fl-strip {
   display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   height: 20px;
 }
 .fl-bar-o {
