@@ -46,6 +46,21 @@ export interface FollowNext {
   proposal?: string; // approve: 기다리는 제안
 }
 
+export interface FollowProgress {
+  segment: FlightProgress["segment"];
+  elapsed: number | null; // 지금 구간에 든 뒤 분. 끝났거나 모르면 null
+  usual: { lo: number; hi: number } | null; // 보통 걸린 범위(p25–p75, 분). 표본이 모자라거나 work·landing이 아니면 null
+  late: boolean; // 보통 범위의 p75를 넘음
+  sample: string | null; // 보통 범위의 출처("BUILD·M, n=279")
+}
+
+// FlightProgress에서 그리는 쪽이 쓰는 모양으로(순수)
+export function followProgressOf(p: FlightProgress | null | undefined): FollowProgress | null {
+  if (!p) return null;
+  const t = p.typical;
+  return { segment: p.segment, elapsed: p.elapsedMin, usual: t ? { lo: t.p25, hi: t.p75 } : null, late: p.late, sample: t ? `${t.group}, n=${t.n}` : null };
+}
+
 export interface FollowRow {
   key: string;
   title: string | null;
@@ -57,6 +72,8 @@ export interface FollowRow {
   current: FollowStage | null; // 닿은 마지막 단계
   finished: boolean;
   now: string; // 지금 어디에 있나 한 줄
+  // 2번째 줄을 글 해석 없이 그리는 자료(ATC-491, 더하기만 한 칸, 분 단위). OUT 전이면 null. now의 글은 그대로다
+  progress: FollowProgress | null;
   issues: { code: FollowIssue["code"]; severity: FollowIssue["severity"]; text: string }[]; // FLIGHT FOLLOWING의 문제(같은 코드·같은 글)
   history: { at: string; text: string }[]; // 단계 시각과 RECALL·거절·SUPERSEDED 같은 되돌림, 시각순
   proposal: string | null; // 지금 이 줄을 이끄는 제안 D-xxxx
@@ -222,6 +239,7 @@ export function followRowOf(key: string, inp: Omit<FollowInput, "parents">): Fol
     current,
     finished,
     now: nowText({ key, t, live, resets, item, pull, stages, finished, standFree, tail, noDeploy, inp }),
+    progress: followProgressOf(inp.progress[key]),
     issues,
     history,
     proposal: live?.id ?? null,
@@ -407,8 +425,9 @@ function summaryOf(rows: readonly FollowRow[], now: number) {
   };
 }
 
-// 막힌 줄이 맨 위로(3.3). 나머지는 주어진 순서 그대로(안정 정렬)
-const stuckFirst = (rows: readonly FollowRow[]) => rows.map((r, i) => ({ r, i })).sort((a, b) => Number(Boolean(b.r.stuck)) - Number(Boolean(a.r.stuck)) || a.i - b.i).map((x) => x.r);
+// 묶음 안의 순서(3.3, ATC-491): 막힌 줄, 날고 있는 줄(발송 이후 끝나지 않음), 기다리는 줄, 끝난 줄. 같은 무리 안에서는 주어진 순서 그대로(안정 정렬)
+const groupOf = (r: FollowRow) => (r.stuck ? 0 : r.finished ? 3 : r.stages.sent.done || r.stages.pr.done || r.tail ? 1 : 2);
+export const flightOrder = (rows: readonly FollowRow[]) => rows.map((r, i) => ({ r, i, g: groupOf(r) })).sort((a, b) => a.g - b.g || a.i - b.i).map((x) => x.r);
 
 // 번들 전체(순수). parents 순서를 지킨다
 export function followBoardOf(inp: FollowInput): FollowBundle[] {
@@ -416,7 +435,7 @@ export function followBoardOf(inp: FollowInput): FollowBundle[] {
   return parents.map((parent) => {
     const p = inp.tickets.find((t) => t.key === parent);
     const keys = chainOrder(bundleKeysOf(parent, inp.tickets), inp.tickets);
-    const rows = stuckFirst(keys.map((k) => followRowOf(k, rest)));
+    const rows = flightOrder(keys.map((k) => followRowOf(k, rest)));
     return { parent, title: p?.title ?? null, url: p?.url ?? null, state: p?.state ?? null, missing: !p, rows, ...summaryOf(rows, inp.now) };
   });
 }
@@ -438,7 +457,7 @@ export function arrowsBundleOf(released: readonly { flight: string; at: string }
       return !end || inp.now - Date.parse(end) <= FOLD_AFTER_MS;
     });
   if (!rows.length) return null;
-  return { parent: ARROWS_KEY, title: "SUPERVISOR의 화살표", url: null, state: null, missing: false, rows: stuckFirst(rows), ...summaryOf(rows, inp.now), arrows: true };
+  return { parent: ARROWS_KEY, title: "SUPERVISOR의 화살표", url: null, state: null, missing: false, rows: flightOrder(rows), ...summaryOf(rows, inp.now), arrows: true };
 }
 
 // ── follow.json(설정): 따라가는 상위 이슈 key. 기록이 아니라 설정이다 ──
