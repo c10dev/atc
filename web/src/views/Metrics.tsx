@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
-import type { Metrics as MetricsData, SeriesPoint } from "../../../server/metrics.ts";
+import type { MetricsView as MetricsData, SeriesPoint } from "../../../server/metrics.ts";
 import type { Snapshot } from "../../../server/model.ts";
 import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
@@ -141,6 +141,7 @@ function Operations({ refreshKey }: { refreshKey: string }) {
         <>
           <Readiness data={data} />
           <KpiRow data={data} />
+          <Flow data={data} />
           <SingleLane refreshKey={refreshKey} />
           <h2 className="label">
             TRENDS <em>5분 표본</em>
@@ -183,6 +184,48 @@ function Readiness({ data }: { data: MetricsData }) {
       </ul>
       <p className="mx-note">기준은 제안값이다(server/metrics.ts의 READINESS). 운용해 보며 조정한다.</p>
     </div>
+  );
+}
+
+// 나이처럼 한 단위로(디자인 언어 9번): 59m까지 분, 47h까지 시간, 그 위는 일
+const spanOf = (min: number | null) => (min === null ? "—" : min < 60 ? `${Math.round(min)}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`);
+const sinceOf = (iso: string | null) => (iso ? `${iso.slice(0, 10)}부터 기록` : "기록 없음");
+
+// FLOW(ATC-468): 일이 어디서 시간을 쓰나. 놀고-큐가 빈 분과 이슈가 지나는 세 구간의 중앙값. 숫자마다 기록에서 왔는지 대신한 값인지 적는다
+function Flow({ data }: { data: MetricsData }) {
+  const f = data.flow;
+  const idle = f.idleEmpty;
+  const stretch = (name: keyof typeof f.stretches, label: string, note: string) => {
+    const s = f.stretches[name];
+    const src = [s.record.n ? `기록 ${s.record.n}` : "", s.substitute.n ? `대신한 값 ${s.substitute.n}(만든 시각 기준)` : ""].filter(Boolean).join(" · ");
+    return { label, value: s.n ? spanOf(s.medianMin) : "—", sub: s.n ? `중앙값 · ${s.n}건 · ${src}` : `이 기간에 마친 이슈 없음 · ${note}` };
+  };
+  const tiles = [
+    {
+      label: "IDLE · 큐 빔",
+      value: idle.minutes === null ? "기록 안 됨" : spanOf(idle.minutes),
+      sub: idle.minutes === null ? `놀 AIRCRAFT가 있는데 기다리는 Todo가 없던 시간 · ${sinceOf(f.recordedSince.samples)}` : `놀 AIRCRAFT가 있고 기다리는 Todo가 없던 시간 · 표본 ${idle.recordedSamples}개${idle.unrecordedSamples ? ` · 옛 표본 ${idle.unrecordedSamples}개는 기록 안 됨` : ""} · ${sinceOf(f.recordedSince.samples)}`,
+    },
+    { ...stretch("created-todo", "CREATED → TODO", sinceOf(f.recordedSince.ticketLines)) },
+    { ...stretch("todo-release", "TODO → RELEASED", "발권 기록 기준") },
+    { ...stretch("release-launch", "RELEASED → LAUNCH", "발권과 LAUNCH 기록 기준") },
+  ];
+  return (
+    <>
+      <h2 className="label">
+        FLOW <em>일이 어디서 시간을 쓰나</em>
+      </h2>
+      <div className="mx-kpis mx-flow">
+        {tiles.map((t) => (
+          <div key={t.label} className="mx-kpi">
+            <div className="mx-kpi-label">{t.label}</div>
+            <div className="mx-kpi-value">{t.value}</div>
+            <div className="mx-kpi-sub">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mx-note">CREATED → TODO는 {sinceOf(f.recordedSince.ticketLines)}(서버가 본 상태 변화)만 잰다. 그 앞은 알 수 없다. TODO → RELEASED는 기록 전 이슈를 만든 시각 기준으로 대신한다. 마친 구간만 센다.</p>
+    </>
   );
 }
 

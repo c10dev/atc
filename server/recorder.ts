@@ -15,6 +15,7 @@ import type { QrhNamedLine } from "./qrh.ts";
 // - fleet: SUPERVISOR가 AIRCRAFT 세션을 띄우거나 멈춤(session-control.ts)
 // - qrh: 서버가 체크리스트를 부를 조건을 처음 본 때(ATC-288, shadow: 보내는 글은 바뀌지 않는다). subject마다 풀릴 때까지 한 줄(qrh.ts)
 // - relay: SUPERVISOR RELAY(ATC-271)의 만들기·issued·undeliverable·hand. 글은 싣지 않는다
+// - ticket: Linear 상태 변화를 서버가 본 때(ATC-468, op state. 이슈 key, from(처음 본 이슈는 null), to). created → Todo의 유일한 출처
 // - milestone: FLIGHT의 OOOI(ATC-123, milestone.out|off|on|in)를 처음 본 때. t는 이정표가 일어난 시각, seenAt은 atc가 처음 본 시각. FLIGHT·이정표마다 한 줄
 
 export interface Sample {
@@ -27,12 +28,19 @@ export interface Sample {
   pendingClearances: number;
 }
 
+// FLOW(ATC-468): 표본 줄에 더하는 DISPATCH 계획의 두 사실. 옛 표본에는 없다("기록 안 됨"이지 0이 아니다). 계획을 못 읽었을 때도 싣지 않는다
+export interface SampleFacts {
+  available?: number; // 배정 받을 수 있는 놀고 있는 AIRCRAFT 수
+  waiting?: number; // 일감이 있는데 아직 배정되지 않은 Todo FLIGHT 수
+}
+
 export type RecordLine =
   | { t: string; kind: "event"; epoch: string; event: TrafficEvent }
-  | ({ t: string; kind: "sample" } & Sample)
+  | ({ t: string; kind: "sample" } & Sample & SampleFacts)
   | { t: string; kind: "ack"; consumer: string }
   | { t: string; kind: "milestone"; milestone: Milestone; flight: string; at: string; seenAt: string }
   | QrhNamedLine
+  | { t: string; kind: "ticket"; op: "state"; key: string; from: string | null; to: string } // t는 서버가 본 시각. from이 null이면 만든 직후(10분 안)에 처음 본 것이다
   | { t: string; kind: "dispatch"; op: string; id: string; via?: string; flight?: string; aircraft?: string; by?: string; ok?: boolean; stage?: "stop" | "launch" | "send"; jobId?: string; error?: string }
   | { t: string; kind: "schedule"; op: string; id: string }
   // SUPERVISOR RELAY(ATC-271): 화면에서 만든 relay와 그 뒤의 표시. 글(text)은 relays.jsonl에만 있고 여기에는 적지 않는다. by는 만든 쪽(supervisor), 표시한 쪽(TOWER 또는 supervisor)

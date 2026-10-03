@@ -6,6 +6,8 @@ import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
 import { appendEffectLine, readEffectLines, VERDICTS_FILE } from "./effect-store.ts";
+import { flowDataOf } from "./flow.ts";
+import { loadFlow } from "./flow-run.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { loadMcc } from "./mcc.ts";
 import { isAutoApproved, misfireOf } from "./misfire.ts";
@@ -56,12 +58,14 @@ const minMs = (xs: (string | undefined)[]) => {
   return ts.length ? Math.min(...ts) : null;
 };
 
-export function gatherEffectData(sinceMs: number): EffectData {
+export function gatherEffectData(sinceMs: number, tickets: Snapshot["tickets"] = []): EffectData {
   const leaks = readLeaks();
   const proposals = allProposals();
   const clearances = allClearances();
   const events = readRecords(sinceMs).flatMap((r) => (r.kind === "event" && r.event.kind === "alert.raised" && r.event.alertKind ? [{ at: r.event.at, kind: String(r.event.alertKind) }] : []));
+  const flow = loadFlow(tickets, Date.now()); // FLOW(ATC-468): flow:<name> 측정
   return {
+    flow: flowDataOf(flow.input, flow.samples),
     leaks,
     misfires: proposals.filter((p) => isAutoApproved(p) && misfireOf(p)).map((p) => ({ at: p.timeline.approved! })),
     alerts: events,
@@ -166,7 +170,7 @@ export const realDeps = (s: Snapshot): EffectDeps => ({
     const d = (await fetchIssueDetail(f)) as { description?: unknown };
     return typeof d.description === "string" ? d.description : "";
   },
-  data: gatherEffectData,
+  data: (since) => gatherEffectData(since, s.tickets),
   releaseOf: (f) => {
     const r = readReleaseView().records[f];
     return r ? releaseIdOf(r) : null;

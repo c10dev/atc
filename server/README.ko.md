@@ -18,7 +18,7 @@ npm test           # server/**/*.test.ts, hooks, controller의 node --test
 
 1. `buildSnapshot()`(`snapshot.ts`)이 소스를 읽어 세션 ─ 점유 ─ 워크트리 ─ 티켓을 잇고, HANDOFF·충돌을 판정하고(`occupancy.ts`), 경보를 계산하고, 열린 PR마다 CLEARED TO LAND 조건을 따진다(`landing.ts`).
 2. `diffSnapshots()`(`events.ts`)가 직전 스냅샷과의 차이를 이벤트로 만들고, 이벤트마다 FLIGHT RECORDER에 기록한다.
-3. 스냅샷이 따뜻해지면(Linear·git·GitHub를 한 번 이상 읽은 뒤) `jobs/`에 선언한 tick 일을 `order` 순서로 돌린다(교통 표본과 DISPATCH는 5분마다, 이어서 착수 기록, LOGBOOK, OOOI, STAND 없는 FLIGHT, ATFM, AUTOLAND, 판정, QRH). 30초·60초 타이머와 한 번만 시작하는 일 둘도 `jobs/`에 있고, `index.ts`는 어느 것도 하나씩 적지 않는다([docs/switches.md](../docs/switches.md)).
+3. 스냅샷이 따뜻해지면(Linear·git·GitHub를 한 번 이상 읽은 뒤) `jobs/`에 선언한 tick 일을 `order` 순서로 돌린다(DISPATCH는 5분마다, 이어서 교통 표본, Linear 상태 변화(`ticket-state`), 착수 기록, LOGBOOK, OOOI, STAND 없는 FLIGHT, ATFM, AUTOLAND, 판정, QRH). 30초·60초 타이머와 한 번만 시작하는 일 둘도 `jobs/`에 있고, `index.ts`는 어느 것도 하나씩 적지 않는다([docs/switches.md](../docs/switches.md)).
 4. 시각 말고 바뀐 것이 있으면 SSE 구독자 모두에게 스냅샷을 보낸다.
 
 tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 때만 다시 읽음). 화면이 불러오는 진입 스크립트 `/assets/index-<hash>.js`가 빌드 정체(build)다. 같은 번들로 재시작하면 그대로고, 다시 빌드하면 재시작하지 않아도 바뀐다. 빌드가 없으면 `null`.
@@ -91,8 +91,9 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `radio.ts`, `radio-run.ts` | RADIO R1(ATC-170): `radioOf`가 기록된 교신을 transmission으로 합친다(순수, 테스트 있음). `radio-run.ts`가 파일을 읽어 `GET /api/radio`를 열고 SSE 토픽 `radio`를 먹인다(듣는 이가 있을 때만 tick마다 파일을 읽는다) |
 | `radio-phrase.ts` | RADIO R3(ATC-172, 순수): `radioPhraseOf`가 교신의 읽을 틀을 필드로만 만들고(`body`는 읽지 않는다), `voiceOf`가 스테이션·콜사인마다 안정적인 목소리를 고르고, `parseVoiceOverrides`가 `?voices=`를 읽는다 |
 | `other-background.ts` | 그 밖의 백그라운드 세션(ATC-184, 순수): `otherBackgroundOf`가 AIRCRAFT도 관제 세션도 아닌 살아 있는 백그라운드 줄을 뽑고, `capHoldersOf`·`capHoldersText`·`capLine`이 `ATC_MAX_LAUNCHED` 자리를 누가 쥐었는지 적고, `capIdleHintsOf`가 120분 놀이 힌트(ADVISORY `cap|other|<id>`)를 고른다 |
-| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`, `milestone`), 30일 보관 |
+| `recorder.ts` | FLIGHT RECORDER: 날짜별 JSONL(`event`, `sample`, `dispatch`, `ack`, `schedule`, `checkride`, `milestone`, `ticket`), 30일 보관. `sample` 줄에는 `available`·`waiting`이 붙을 수 있다(ATC-468) |
 | `metrics.ts` | 운용 지표와 2단계 진입 점검(순수 함수 `computeMetrics`) |
+| `flow.ts`, `flow-facts.ts`, `flow-run.ts` | FLOW(ATC-468): 큐가 빈 채 놀던 분과, 작업 지시서가 지나는 구간(만든 때 → Todo → 발권 → 첫 LAUNCH)의 중앙값. `flow.ts`는 순수 함수, `flow-run.ts`가 FLIGHT RECORDER와 `releases.jsonl`을 읽고, `jobs/ticket-state.ts`가 Linear 상태 변화를 기록한다 |
 | `logbook.ts` | LOGBOOK: 10분마다 머지된 PR → ARRIVED FLIGHT마다 `arrived` 줄, 머지된 Revert PR은 `reverted` 줄(순수 함수 `buildEntry`, `planLogbook`, `foldLogbook`). FLEET 카드의 TARGETS 실적(순수 함수 `computeActuals`, `expectationMin`). `GET /api/logbook`. AIRCRAFT와 출발은 착수 기록으로도 찾고, 옛 모름 줄은 `attributed` 줄로 채운다(순수 함수 `attribution`). `measured` 줄로 지시서(VECTORS·DIRECT), SOLO·CREW, PR 뒤 수정 커밋, P0–P2 지적을 더한다(순수 함수 `measureLines`). `GET /api/logbook/briefs`. 새 `arrived` 줄에는 14일 FUEL 읽기로 선택 필드 `fuel`을 붙인다(FUEL F4, ATC-53). 옛 줄은 그대로. `GET /api/logbook`의 `fuel`이 있는 항목에 `fuelCost`(ATC-59)를 붙인다. 읽을 때 지금 가격표로 값을 매긴다(`loadPricedLogbook`). `trip`(ATC-56: NET을 TRIP FUEL과 비교, `verdict`는 `inside`·`unexpected`·`null`)도 붙는다 |
 | `briefs.ts` | DIRECT 지시서(ATC-32, 순수 함수): 이슈 본문에서 지시서 칸(`directSectionsOf`), 배정 문구(`formatAssignment`), 대화 기록 사건과 FLIGHT의 지시서 사실(`talkEventsOf`, `briefFactsOf`), STAND 안 쓰기로 SOLO·CREW(`crewModeOf`), P0–P2 지적(`findingsOf`), 수정 커밋(`reworkOf`), VECTORS 대 DIRECT 비교(`compareBriefs`) |
 | `departures.ts` | 착수 기록(DEPARTURE LOG): 따뜻한 tick마다 점유·워크트리를 STAND별 마지막 AIRCRAFT와 비교해 `stand`·`claim`·`handoff` 줄을 추가(순수 함수 `diffDepartures`, `foldDepartures`). `matchDepartures`가 브랜치·FLIGHT·STAND로 AIRCRAFT와 첫 시각을 찾는다(맞는 줄은 `departureHits`, FUEL F4도 쓴다) |
@@ -164,7 +165,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `POST /api/controller/ack` | 브리핑 처리 완료 `{cursor}` |
 | `POST /api/clearances` | CLEARANCE 기록 `{to, type, stand?, flight?, text}`, 보낼 문구 반환 |
 | `POST /api/clearances/:id/readback` · `/roger` · `/unable` · `/standby` · `/cancel` | 팀의 답(ATC-122, `response.ts`): READBACK·ROGER(R만)·UNABLE `{reason}`은 닫고, STANDBY(W/U만)는 overdue를 한 번 다시 센다 · 취소 |
-| `GET /api/metrics?days=1..30` | 운용 지표 |
+| `GET /api/metrics?days=1..30` | 운용 지표. `flow`에 FLOW 숫자(큐가 빈 채 놀던 분, 구간 중앙값 셋. 각각 건수와 기록인지 대신한 값인지를 싣는다. 1분 캐시) |
 | `GET /api/fuel?days=1..30` | FUEL BURN(읽기 전용, 기본 7일. METRICS FUEL 개요(ATC-137)용 `byDay`(UTC 날짜별), `byModel`, `teamPattern`도 싣는다): 세션·AIRCRAFT(세션 이름)별 다섯 가지, CAPTAIN 대 CREW(`outputLowerBound`, `nullStopShare`, agent 종류), CACHE HIT, 모델, compaction과 모르는 줄 수. 규칙별 FUEL LEAK(`leak`: `coldCache`, `controlWake`, `modelSwitch`, `compaction`, `sessionChange`, `upgrade`, `unexplained`, `total`과 그중 CREW 몫 `crew`. `expectedRebuild`·`proxied`는 밖에 따로)와 큰 순서 20개 `leakEvents`. CREW 경고(`crewWarnings` 수, 최근 50개 `crewWarningEvents`), `sessionBaselines`(AIRPORT별 새 세션 기준선). `scan`에 읽은 파일·바이트·시간. FLIGHT별 귀속(F4): `aircraft[].attribution`이 AIRCRAFT마다 `flights`(ARRIVED)·`enRoute`·`unattributed`(UNATTRIBUTED)로 나누고 각각 CAPTAIN·CREW·합. `attribution.totals`(모든 세션), `attribution.flights`(기간 안 FLIGHT별, `leak`·`crewWarnings`와 ATC-59부터 `byModel`로 매긴 `fuelCost` 포함). 토큰 옆에 USD FUEL COST(F5, CAPTAIN·CREW·total마다 `cost`, 값 없는 `unpriced` 요청), NET FUEL(`netCost`), 값 없는 모델의 `priceWarnings`, `prices`(가격표 출처·파일·오류) |
 | `GET /api/routes` | ROUTE MAP: ROUTE마다 열린 FLIGHT, AIRCRAFT, 완료 속도, WAYPOINT(FLIGHT·완료 기준·ETA)(읽기 전용) |
 | `GET /api/network` | NETWORK 개요: ROUTE, AIRCRAFT TARGETS 대 실적, 28일 추세, 출처 상태(읽기 전용) |

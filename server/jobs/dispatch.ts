@@ -1,4 +1,5 @@
 import type { EventLog } from "../events.ts";
+import { noteFacts, planFactsOf } from "../flow-facts.ts";
 import { defineJob } from "../job-def.ts";
 import { refreshOverlap } from "../overlap-run.ts";
 import { DISPATCH_MS, runDispatch } from "../proposals.ts";
@@ -11,6 +12,7 @@ export default defineJob({
   order: 20,
   run: (ctx, s) => {
     void refreshOverlap(s!);
-    runDispatch(s!, Date.now(), () => ctx.service<EventLog>("eventLog").since(null).events);
+    const plan = runDispatch(s!, Date.now(), () => ctx.service<EventLog>("eventLog").since(null).events);
+    noteFacts(planFactsOf(plan), Date.parse(s!.at)); // FLOW(ATC-468): 표본(jobs/sample.ts)이 싣는 두 사실
   },
 });
