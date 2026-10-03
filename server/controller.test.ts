@@ -128,10 +128,10 @@ test("브리핑: 충돌은 먼저 들어온 순, LANDING SEQUENCE, NO READBACK C
   assert.deepEqual(brief.traffic.map((t) => t.callsign).sort(), ["BRAVO", "DELTA", "President"]);
 });
 
-test("LAND 문구: 같은 저장소·base의 첫 PR은 지금 LANDING, 그 뒤는 앞 PR 머지 뒤 rebase, AIRPORT·FLIGHT 없으면 괄호 없음", () => {
+test("LAND 문구: 같은 저장소·base의 첫 PR은 지금 LANDING, 그 뒤는 앞 PR 머지 뒤 origin/main 병합, AIRPORT·FLIGHT 없으면 괄호 없음", () => {
   assert.equal(landTextOf(1, "VCDO", 389, "VOC52", null), "LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now. Check that base is current before you merge.");
-  assert.equal(landTextOf(2, "VCDO", 393, "VOC191", 389), "LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.");
-  assert.equal(landTextOf(3, null, 40, null, 393), "LANDING sequence 3: PR #40. Rebase and LAND after the PR ahead (#393) merges.");
+  assert.equal(landTextOf(2, "VCDO", 393, "VOC191", 389), "LANDING sequence 2 (VCDO): PR #393 (VOC191). After the PR ahead (#389) merges, merge origin/main, push with a plain git push, then LAND.");
+  assert.equal(landTextOf(3, null, 40, null, 393), "LANDING sequence 3: PR #40. After the PR ahead (#393) merges, merge origin/main, push with a plain git push, then LAND.");
 });
 
 test("브리핑: APPROACH에는 영어 infoText(blocks[].en을 ' · '로 이음), CLEARED에는 null (ATC-174)", () => {
@@ -162,8 +162,8 @@ test("브리핑: CLEARED PR에만 landText, 순서와 앞 PR은 같은 저장소
   assert.equal(byPr.get(5)!.landText, "LANDING sequence 1 (TNNS): PR #5. Clear to LAND now. Check that base is current before you merge.");
   assert.equal(byPr.get(22)!.landText, null); // APPROACH
   assert.equal(byPr.get(22)!.repoSeq, null);
-  assert.equal(byPr.get(23)!.landText, "LANDING sequence 2 (VCDO): PR #23 (VOC191). Rebase and LAND after the PR ahead (#21) merges.");
-  assert.equal(byPr.get(6)!.landText, "LANDING sequence 2 (TNNS): PR #6. Rebase and LAND after the PR ahead (#5) merges.");
+  assert.equal(byPr.get(23)!.landText, "LANDING sequence 2 (VCDO): PR #23 (VOC191). After the PR ahead (#21) merges, merge origin/main, push with a plain git push, then LAND.");
+  assert.equal(byPr.get(6)!.landText, "LANDING sequence 2 (TNNS): PR #6. After the PR ahead (#5) merges, merge origin/main, push with a plain git push, then LAND.");
   assert.equal(byPr.get(24)!.landText, "LANDING sequence 1 (VCDO): PR #24. Clear to LAND now. Check that base is current before you merge."); // 다른 base
 });
 

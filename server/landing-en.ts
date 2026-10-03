@@ -11,7 +11,7 @@ export const changesRequestedEn = (requesters: string[]) =>
   requesters.length ? `changes requested (CHANGES_REQUESTED) by ${namesEn(requesters)} still stand` : "a change request (CHANGES_REQUESTED) still stands";
 export const noReviewEn = (noteEn: string) => `no review: ${noteEn}`;
 export const reviewStaleEn = (oldHead: string, noteEn: string) => `the only review is on an earlier commit ${oldHead}: ${noteEn}`;
-export const behindEn = () => "behind base. Rebase it";
+export const behindEn = () => "behind base. Merge origin/main and push with a plain git push";
 export const dirtyEn = () => "conflicts with base. Resolve the conflicts";
 export const blockedEn = (unresolvedThreads?: number) =>
   unresolvedThreads

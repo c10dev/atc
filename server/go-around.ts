@@ -1,7 +1,7 @@
 import { inSequence, pullKey } from "./landing.ts";
 import type { Clearance, PullRequest, Snapshot, TrafficEvent } from "./model.ts";
 
-// GO AROUND(ATC-128): PR이 base와 충돌(DIRTY)하거나 뒤처졌을 때(BEHIND), 또는 LAND 문구가 "앞 PR 머지 뒤 rebase"라고 한 그 앞 PR이
+// GO AROUND(ATC-128): PR이 base와 충돌(DIRTY)하거나 뒤처졌을 때(BEHIND), 또는 LAND 문구가 "앞 PR 머지 뒤 origin/main 병합"이라고 한 그 앞 PR이
 // 머지됐을 때, 그 PR의 STAND를 쥔 세션에 줄 행동 지시. 순수 함수만 둔다. atc는 감지하고 알릴 뿐 충돌을 스스로 풀지 않는다.
 // 설계: controller/CLAUDE.md "GO AROUND", docs/dispatch.md "LANDING SEQUENCE".
 
@@ -108,7 +108,7 @@ export function goAroundOf(
 ): GoAround | null {
   const conflict = conflictOf(p);
   const aheadNr = Number(x.lastLand?.text.match(AHEAD)?.[1]) || null;
-  // 앞 PR이 열린 목록에서 사라졌다 = 머지. LAND 글이 "앞 PR 머지 뒤 rebase"라고 했던 PR만
+  // 앞 PR이 열린 목록에서 사라졌다 = 머지. LAND 글이 "앞 PR 머지 뒤 origin/main 병합"이라고 했던 PR만
   const prevMerged = !conflict && p.landing === "CLEARED" && aheadNr != null && !x.pulls.some((o) => o.repo === p.repo && o.number === aheadNr);
   const reason: GoAroundReason | null = conflict ?? (prevMerged ? "prevMerged" : null);
   if (!reason) return null;

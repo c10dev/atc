@@ -38,14 +38,14 @@ function sessionLabel(s: Session | undefined, id: string) {
 }
 
 // CLEARED PR에 줄 LAND 문구(영어, ATC-126). TOWER는 이 글을 그대로 `atcctl issue … LAND -- <landText>`로 보낸다.
-// 순서(repoSeq)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다 — 다른 저장소의 머지는 rebase가 필요 없다.
-// 첫 번째는 지금 LANDING 가능, 그 뒤는 바로 앞 PR 머지 뒤 rebase. AIRPORT·FLIGHT가 없으면 괄호를 뺀다.
+// 순서(repoSeq)와 앞 PR은 같은 저장소·base의 CLEARED PR 안에서만 센다 — 다른 저장소의 머지는 병합이 필요 없다.
+// 첫 번째는 지금 LANDING 가능, 그 뒤는 바로 앞 PR 머지 뒤 origin/main 병합·평범한 push. AIRPORT·FLIGHT가 없으면 괄호를 뺀다.
 // p3: 해결·답글된 Codex P3 지적이 남은 채 CLEARED인 PR(ATC-28). 막지는 않지만 LAND 글에 남긴다
 export function landTextOf(repoSeq: number, airport: string | null, pr: number, flight: string | null, prevPr: number | null, p3 = 0): string {
   const head = `LANDING sequence ${repoSeq}${airport ? ` (${airport})` : ""}: PR #${pr}${flight ? ` (${flight})` : ""}.`;
   const note = p3 ? ` Codex P3 findings left: ${p3}. They are resolved or answered. They do not block landing.` : "";
   if (prevPr == null) return `${head} Clear to LAND now. Check that base is current before you merge.${note}`;
-  return `${head} Rebase and LAND after the PR ahead (#${prevPr}) merges.${note}`;
+  return `${head} After the PR ahead (#${prevPr}) merges, merge origin/main, push with a plain git push, then LAND.${note}`;
 }
 
 export function buildBrief(

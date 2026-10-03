@@ -71,7 +71,7 @@ CLEARED TO LAND 조건 — 모두 PR의 **최신 커밋(head)** 기준이다.
 | CI 체크가 모두 통과(NEUTRAL·SKIPPED도 통과) | `checks-pending`(진행 중), `checks-failed`(실패), `no-checks`(체크 없음) |
 | head 커밋에 PR 작성자도 Codex도 아닌 리뷰어의 리뷰, 또는 head 커밋 뒤에 달린 Codex 👍. head에 Codex 지적이 있으면 그 뒤 Codex 👍나 사람 APPROVED가 있어야 함 | `no-review`(리뷰 없음), `review-stale`(이전 커밋에만 리뷰), `review-findings`(head에 Codex 지적) |
 | 변경 요청(CHANGES_REQUESTED)이 남아 있지 않음 | `changes-requested` |
-| main에서 벗어나지 않음 | `behind`(rebase 필요), `dirty`(충돌), `blocked`(보호 규칙), `merge-unknown`(GitHub이 계산 중) |
+| main에서 벗어나지 않음 | `behind`(origin/main 병합 필요), `dirty`(충돌), `blocked`(보호 규칙), `merge-unknown`(GitHub이 계산 중) |
 | 그 STAND에 LOSS OF SEPARATION이 없음 | `los` |
 
 - 새로 push하면 head가 바뀌어 CI와 리뷰를 다시 본다. 예전 커밋에서 받은 초록불과 리뷰는 세지 않는다.

@@ -32,7 +32,7 @@ Wait until DELTA finishes
 
 ## GO AROUND: base와 어긋난 PR
 
-PR이 base와 충돌하거나(`dirty`) 뒤처지거나(`behind`), LAND 문구가 "앞 PR 머지 뒤 rebase"라고 한 그 앞 PR이 머지되면 atc는 그 PR의 STAND를 쥔 팀에 `GO AROUND`를 보낸다(ATC-128). 알림(INFO)이 아니라 **행동 지시**다. 문구는 서버가 만들고 TOWER는 그대로 보낸다. 어느 머지가 원인인지, 그 PR들과 함께 고친 파일, 할 일이 들어 있다:
+PR이 base와 충돌하거나(`dirty`) 뒤처지거나(`behind`), LAND 문구가 "앞 PR 머지 뒤 origin/main 병합"이라고 한 그 앞 PR이 머지되면 atc는 그 PR의 STAND를 쥔 팀에 `GO AROUND`를 보낸다(ATC-128). 알림(INFO)이 아니라 **행동 지시**다. 문구는 서버가 만들고 TOWER는 그대로 보낸다. 어느 머지가 원인인지, 그 PR들과 함께 고친 파일, 할 일이 들어 있다:
 
 ```
 GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 merged. Shared files: server/fleet.ts, server/model.ts. Merge origin/main into the branch, resolve, run the checks, push with a plain git push. Keep the merged PR's behaviour. If the two PRs change the same behaviour differently, answer UNABLE with the reason.
@@ -56,15 +56,15 @@ FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 ·
 
 ## LAND와 LANDING 막힘 알림
 
-- `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 받는 쪽은 그 PR의 STAND를 쥔 팀이다. 문구는 atc 서버가 만들고 TOWER는 그대로 보낸다. 번호는 같은 저장소·같은 base의 CLEARED PR 안에서 센 순번이다. 다른 저장소의 PR이 머지돼도 rebase할 필요가 없어서다:
+- `LAND`는 **CLEARED TO LAND**인 PR에만 나간다([개념](concepts.md)의 LANDING SEQUENCE). 받는 쪽은 그 PR의 STAND를 쥔 팀이다. 문구는 atc 서버가 만들고 TOWER는 그대로 보낸다. 번호는 같은 저장소·같은 base의 CLEARED PR 안에서 센 순번이다. 다른 저장소의 PR이 머지돼도 병합할 필요가 없어서다:
 
   ```
   LANDING sequence 1 (VCDO): PR #389 (VOC52). Clear to LAND now. Check that base is current before you merge.
-  LANDING sequence 2 (VCDO): PR #393 (VOC191). Rebase and LAND after the PR ahead (#389) merges.
+  LANDING sequence 2 (VCDO): PR #393 (VOC191). After the PR ahead (#389) merges, merge origin/main, push with a plain git push, then LAND.
   LANDING sequence 1 (TNNS): PR #21. Clear to LAND now. Check that base is current before you merge.
   ```
 
-  1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 rebase하고 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
+  1번은 바로 머지해도 된다. 2번부터는 같은 저장소의 바로 앞 PR이 머지되기를 기다렸다가 `origin/main`을 병합하고 평범한 `git push`로 올린 뒤 LANDING한다. FLIGHT가 없는 PR은 괄호 부분이 빠진다.
 - MCC AIRPORT(ATCC)의 PR은 `LAND`를 받지 않는다(ATC-151). 그 저장소의 착륙은 MCC(`land`·`land+rts` 모드에서 `auto`·`flagged` 등급)나 SUPERVISOR(`user` 등급, ESCALATE·HOLD, `shadow`·`rts` 모드, 등급을 아직 모를 때)의 몫이라 브리핑의 `landBy`가 `mcc`·`supervisor`이고 `landText`가 `null`이다. 충돌(GO AROUND)은 그대로 팀에 간다. 다른 AIRPORT는 위와 같다. AIRPORTS 화면에서 "팀 머지"를 끈 AIRPORT(예: 팀이 머지하지 않는 앱 저장소)도 `landBy`가 `supervisor`라 `LAND`가 나가지 않는다(ATC-154).
 - APPROACH인 PR은 `LAND`를 받지 않는다. CAPTAIN이 손써야 할 막힘(CI 실패, head 리뷰 없음, Codex 한도, 변경 요청 등)이 새로 생기면 TOWER가 `INFO`로 알린다:
 

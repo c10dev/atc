@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { goAroundEvents, goAroundOf, goAroundTextOf, sharedFiles } from "./go-around.ts";
 import { landTextOf } from "./controller.ts";
 import { fixTextOf } from "./fix.ts";
+import * as en from "./landing-en.ts";
 import { responseOf } from "./response.ts";
 import type { Clearance, LandingBlockCode, PullRequest, Snapshot } from "./model.ts";
 
@@ -124,8 +125,8 @@ test("브리핑 goAround(prevMerged): LAND 문구의 앞 PR이 사라진 CLEARED
 });
 
 // 나가는 GO AROUND·FIX 본문은 AIRPORT 팀이 자기 세션에서 SUPERVISOR 승인 없이 할 수 있는 일만 청한다(ATC-350): force·rebase 말이 없다.
-// RELAY는 이 본문을 그대로 싣는다. LAND 본문의 "rebase"는 GO AROUND 판정이 읽는 표지라 여기 포함하지 않는다.
-test("GO AROUND·FIX 본문에 force·rebase가 없다", () => {
+// RELAY는 이 본문을 그대로 싣는다. LAND·INFO 본문도 같은 말을 쓰지 않는다(ATC-497). GO AROUND 판정은 "PR ahead (#n)"만 읽는다.
+test("GO AROUND·FIX·LAND·INFO 본문에 force·rebase가 없다", () => {
   const bad = /--force|force-with-lease|force[- ]push|rebase/i;
   const texts: string[] = [];
   for (const reason of ["dirty", "behind", "prevMerged"] as const) {
@@ -137,6 +138,16 @@ test("GO AROUND·FIX 본문에 force·rebase가 없다", () => {
       texts.push(fixTextOf({ ...base, findings: { source, by: "MCC INSPECTION", text: "P0: x", from: null, ...f } }));
     }
   }
-  assert.ok(texts.length >= 18);
+  // LAND 본문(첫 순서·뒤 순서·P3 메모)과 모든 막힘 코드의 INFO 본문(ATC-497)
+  texts.push(landTextOf(1, "ATC", 5, "ATC-5", null), landTextOf(2, "ATC", 6, "ATC-6", 5), landTextOf(3, null, 7, null, 6, 2));
+  const blocksEn = [
+    en.noChecksEn(), en.checksPendingEn(["a"]), en.checksFailedEn(["a"]), en.draftEn(), en.changesRequestedEn(["a"]), en.changesRequestedEn([]),
+    en.noReviewEn("n"), en.reviewStaleEn("abc1234", "n"), en.behindEn(), en.dirtyEn(), en.blockedEn(), en.blockedEn(2), en.mergeUnknownEn(), en.losEn(),
+    en.codexFindingsEn("abc1234", "P1 1"), en.codexFindingsEn("abc1234", null), en.codexP3OpenEn("abc1234", 2, 1), en.carriedFindingsEn("REVIEW", "abc1234"),
+    en.stackedEn({ number: 6, baseRefName: "x" }, null, "main"), en.stackedEn({ number: 6, baseRefName: "x" }, { base: 5, chain: [5, 6] }, "main"),
+  ];
+  for (const b of blocksEn) texts.push(en.infoTextOf(4, [b])!);
+  texts.push(en.infoTextOf(4, blocksEn)!);
+  assert.ok(texts.length >= 40);
   for (const t of texts) assert.doesNotMatch(t, bad, t);
 });
