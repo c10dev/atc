@@ -226,15 +226,15 @@ function CrewChange({ registration, change, mode, onChanged }: { registration: s
           {copy === "ok" ? "복사함" : copy === "select" ? "본문을 선택해 둠 — Ctrl+C로 복사" : ""}
         </span>
         {stage === "pending" && approval && (
-          <button type="button" className="fl-btn primary" onClick={approve} disabled={busy !== null}>
+          <button type="button" className="btn is-primary" onClick={approve} disabled={busy !== null}>
             {busy === "approve" ? "처리 중…" : "승인 — OCC가 보냄"}
           </button>
         )}
-        <button type="button" className={`fl-btn${approval && stage === "pending" ? "" : " primary"}`} onClick={doCopy}>
+        <button type="button" className={`btn${approval && stage === "pending" ? "" : " is-primary"}`} onClick={doCopy}>
           복사
         </button>
         {canDeliver && (
-          <button type="button" className="fl-btn" onClick={() => post("delivered")} disabled={busy !== null}>
+          <button type="button" className="btn" onClick={() => post("delivered")} disabled={busy !== null}>
             {busy === "delivered" ? "처리 중…" : "전달함"}
           </button>
         )}

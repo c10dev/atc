@@ -50,22 +50,13 @@
   margin-top: auto;
   padding-top: var(--space-2);
 }
-.fl-btn {
-  height: 28px;
-  padding: 0 var(--space-3);
-  background: transparent; /* 카드와 같다: 투명 바탕, 1px line-strong 테두리(ATC-317) */
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  font: 600 var(--text-sm) var(--sans);
-  cursor: pointer;
-}
-.fl-btn:hover {
-  background: var(--panel-3);
-}
-.fl-btn.primary {
-  border-color: var(--radar);
-  color: var(--radar);
+/* 공용 .btn(30px)을 FLEET 화면 안에서는 옆의 입력(.fl-input 28px)과 같은 키로 둔다 */
+.fleet .btn,
+.fp .btn,
+.cr .btn,
+.fc-change .btn,
+.fl-control .btn {
+  --btn-h: 28px;
 }
 .fl-check {
   display: flex;
@@ -150,9 +141,6 @@
   color: var(--text);
   font: var(--text-sm) / 1.5 var(--mono);
   resize: vertical;
-}
-.fl-btn.danger {
-  color: var(--alert);
 }
 .fl-actions {
   flex-wrap: wrap;

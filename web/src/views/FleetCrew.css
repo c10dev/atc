@@ -151,7 +151,7 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
-.fc-change .fl-btn:disabled {
+.fc-change .btn:disabled {
   color: var(--faint);
   cursor: default;
 }

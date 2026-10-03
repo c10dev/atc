@@ -41,7 +41,7 @@ export function RelayBox({
   pr?: number | null;
   text?: string | null; // 미리 채울 글(PR 서랍: 리뷰 지적의 FIX 본문)
   kind?: RelayKind;
-  btnClass: string; // 이 화면의 버튼 클래스(fl-btn, dr-btn)
+  btnClass: string; // 이 화면의 버튼 클래스(btn, dr-btn)
   notesFlight?: string | null; // 있으면 "이슈 댓글 넣기"가 그 FLIGHT의 댓글을 불러온다
   disabledWhy?: string | null;
 }) {

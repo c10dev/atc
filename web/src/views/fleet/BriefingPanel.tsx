@@ -27,10 +27,10 @@ export function BriefingPanel({ registration, text, opener, onClose }: { registr
         aria-label={`${registration} CREW BRIEFING 본문`}
       />
       <div className="fl-actions">
-        <button className="fl-btn" onClick={close}>
+        <button className="btn" onClick={close}>
           닫기
         </button>
-        <button className="fl-btn primary" onClick={copy}>
+        <button className="btn is-primary" onClick={copy}>
           {copied ? "복사됨" : "복사"}
         </button>
       </div>

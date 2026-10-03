@@ -34,10 +34,10 @@ export function ReportLine({ r }: { r: Report }) {
       <span className="fl-report-mark mono">JEV REPORT</span> {REPORT_LABEL[r.class]} <span className="faint">· 결정 필요 {pct(r.decisionP)}</span>{" "}
       <span className="faint">· 확률 {REPORT_CLASSES.map((c) => `${REPORT_LABEL[c]} ${pct(r.probabilities[c])}`).join(", ")}</span>{" "}
       <span className="fl-report-btns" role="group" aria-label="분류가 맞나">
-        <button className={`fl-btn${mark === "right" ? " is-on" : ""}`} aria-pressed={mark === "right"} onClick={() => send("right")}>
+        <button className={`btn${mark === "right" ? " is-on" : ""}`} aria-pressed={mark === "right"} onClick={() => send("right")}>
           맞음
         </button>
-        <button className={`fl-btn${mark === "wrong" ? " is-on" : ""}`} aria-pressed={mark === "wrong"} onClick={() => send("wrong")}>
+        <button className={`btn${mark === "wrong" ? " is-on" : ""}`} aria-pressed={mark === "wrong"} onClick={() => send("wrong")}>
           틀림
         </button>
       </span>
