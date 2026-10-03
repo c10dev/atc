@@ -49,6 +49,13 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 - 금지 사항(main 체크아웃, stash, 운영 상태)은 루트 `CLAUDE.md` "작업 위치".
 - 끝난 워크트리는 `git worktree remove <경로>`나 `ExitWorktree action=remove`로 치운다.
 
+### 클라우드 세션 (`CLAUDE_CODE_REMOTE=true`, `docs/cloud.ko.md`)
+
+- STAND는 세션의 clone이다: `EnterWorktree`·`cp -al` 없이 `claude/atc-<n>-<짧은 이름>` 브랜치에서 한다. Node 24와 `npm ci`는 시작 hook이 해 둔다.
+- 명세는 FLIGHT PLAN·프롬프트 글에서 읽는다(`localhost:7700` 없음). Linear 커넥터가 켜져 있으면 읽기만 한다.
+- `SendMessage`가 없으니 8절 보고(같은 고정 머리)는 세션 마지막 글과 PR 코멘트에 쓴다.
+- Playwright MCP가 없다: 화면 FLIGHT는 로컬에서 한다. 못 하면 `BLOCKED`에 적는다.
+
 ## 3. 구현
 
 - 방법 skill(파일럿 ATC-282, 가져온 것은 `THIRD_PARTY_NOTICES.md`): FLIGHT가 버그·실패하는 테스트·회귀이면 코드를 바꾸기 전에 Skill 도구로 `diagnosing-bugs`를 부른다. 그 단계(feedback loop → 재현·최소화 → 가설 → fix)는 이 흐름 안에서 돌고 STAND·검증·PR·보고 흐름은 바뀌지 않는다.

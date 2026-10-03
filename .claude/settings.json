@@ -19,6 +19,11 @@
             "type": "command",
             "command": "n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"$n\" \"$f\" start --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] || exit 0; n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; \"$n\" \"$CLAUDE_PROJECT_DIR/hooks/cloud-setup.mjs\"; exit 0",
+            "timeout": 300
           }
         ]
       }

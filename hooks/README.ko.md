@@ -236,6 +236,7 @@ SUPERVISOR가 `~/.claude/settings.json`에 아래를 넣는다(절대 경로). `
 | `shell.mjs` | `workTargets(command)` — 명령 위치의 `cd`·`git -C` 대상을 돌려주는 작은 셸 토크나이저(완전한 파서가 아님). 따옴표, `;` `&` `\|` `(` `)` `` ` `` `$(`, heredoc, `VAR=…`와 `if`·`then`·`time` 같은 앞 단어를 처리하고 `bash -c "…"` 안을 두 단계까지 본다. `git` 전역 옵션만 보므로 `git commit -C <commit>`은 경로가 아니다 |
 | `shell.test.mjs` | 잡아야 하는 것과 건너뛰어야 하는 것 사례(`npm test`) |
 | `rules-drift.mjs` | rules-drift hook(`start`, `check`)과 서버가 FLEET에 다시 쓰는 순수 함수(`statusOf`, `readRecords`, `readSource`) |
+| `cloud-setup.mjs` | Claude Code cloud 세션용 SessionStart hook(ATC-452): `CLAUDE_CODE_REMOTE=true`이면 필요할 때 Node 24를 내려받고 `npm ci`를 돌린다. 그 밖에서는 아무것도 하지 않는다. 늘 exit 0 |
 | `rules-drift.d.mts` | `rules-drift.mjs`의 타입 선언 |
 | `rules-drift.test.mjs` | 변경 없음, diff 한 번 뒤 확인됨, 새 세션과 resume, fail open, diff 상한, `--ref`, 정리(`npm test`) |
 | `health.mjs` | health hook. stdin으로 이벤트를 받아 `health/<sessionId>.jsonl`에 한 줄을 덧붙인다 |
