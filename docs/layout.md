@@ -65,7 +65,7 @@ Read from `origin/main` (`f44a9bb`) and read-only state on 2026-10-02 ~07:30Z.
 | FIDS | read-only board by Linear state | nothing of its own | FLIGHTS (board view) |
 | RADAR | read-only session, STAND and FLIGHT lines | nothing of its own; its alerts already reach the ALERT line | FLIGHTS (radar view) |
 | RADIO | read-only radio log, rewind | diagnosis | FLIGHTS (a FLIGHT's thread in its drawer, the full log as a sub-view) |
-| METRICS | OPERATIONS, LEAKS, FUEL | results | METRICS |
+| METRICS | OPERATIONS, LEAKS, TOUCHES, FUEL | results | METRICS |
 | NETWORK | read-only ROUTE map, targets, 28-day trends | results | METRICS |
 | AIRPORTS | open, rename, close, team merge switch | rare maintenance; the switch is K3 | settings |
 | GLOBE | read-only globe | ambient | view mode, out of the tab row |
@@ -79,7 +79,7 @@ Read from `origin/main` (`f44a9bb`) and read-only state on 2026-10-02 ~07:30Z.
 | RELEASE | `#release` | fire | The candidates: READY Backlog issues, agent proposals (SCHEDULE NEW, DUTY drafts), and Todo issues that are not released. Firing = Todo + priority + the declared K effects, recorded as a release (ATC-362), with recent releases by channel. |
 | FLIGHTS | `#flights` | watch, per FLIGHT | One set of FLIGHTs from Todo to IN, with stage dots and the PR's landing state. <br>• Views: list (FOLLOW rows, default), board (FIDS), radar (RADAR). <br>• Per-FLIGHT brakes (CANCEL, RECALL) sit on the row and in the drawer. <br>• The FLIGHT drawer shows that FLIGHT's radio thread. The full RADIO log is the RADIO screen (`#radio`, Z4). |
 | FLEET | `#fleet` | maintenance, per-AIRCRAFT brakes | As today, with the ATC-280 card and control sessions. FLEET PLAN becomes a record line, not an approval. |
-| METRICS | `#metrics` | read results | OPERATIONS, LEAKS, MISFIRE for every automatic lane (DISPATCH, SCHEDULE, FLEET PLAN), FUEL, and NETWORK (ROUTE progress, trends). |
+| METRICS | `#metrics` | read results | OPERATIONS, LEAKS, TOUCHES (SUPERVISOR touches per landed PR by UTC day, ATC-512), MISFIRE for every automatic lane (DISPATCH, SCHEDULE, FLEET PLAN), FUEL, and NETWORK (ROUTE progress, trends). |
 
 Outside the tab row:
 - GLOBE as a full-screen view mode, from a header button (`#globe` still opens it)
@@ -146,7 +146,7 @@ Order rationale (decision D3): firing has no home and is used every day, so it c
 
 ### Y5 as built (ATC-380)
 
-- METRICS has five sub-views, chosen by the address (`web/src/views/Metrics.tsx`): `#metrics` OPERATIONS, `#metrics/leaks` LEAKS, `#metrics/misfire` MISFIRE, `#metrics/fuel` FUEL, `#metrics/network` NETWORK. NETWORK is no longer a tab; `#network` opens `#metrics/network` (`web/src/legacy-hash.ts`). `Network.tsx` is unchanged and rendered inside METRICS.
+- METRICS has six sub-views, chosen by the address (`web/src/views/Metrics.tsx`): `#metrics` OPERATIONS, `#metrics/leaks` LEAKS, `#metrics/touches` TOUCHES, `#metrics/misfire` MISFIRE, `#metrics/fuel` FUEL, `#metrics/network` NETWORK. NETWORK is no longer a tab; `#network` opens `#metrics/network` (`web/src/legacy-hash.ts`). `Network.tsx` is unchanged and rendered inside METRICS.
 - **MISFIRE** (`views/MetricsMisfire.tsx`, pure rows in `web/src/misfire-rows.ts`) takes the block that sat under OPERATIONS and covers every automatic lane for the last 7 days: one row per lane (switch, what the server did, MISFIRE, share; FLEET PLAN also shows failed applies), then the DISPATCH daily lines (`/api/dispatch/misfire`, unchanged) and the latest 10 SCHEDULE and FLEET PLAN misfires (`/api/autonomy/auto`, unchanged). No server change.
 - The single-lane landings block (ATC-386) stays in OPERATIONS.
 - Menu bar and server links to `#network`: none existed in `web/src`, `server` or `menubar`; only old bookmarks reach it.
@@ -337,7 +337,7 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
   - **FLIGHTS:** `snapshot.tickets` grouped under their AIRPORT (code, repository name, count). A FLIGHT is shown when it is triage, unstarted or started, or a live session holds it; the backlog is left out as in the FLIGHTS list, and finished ones (completed, canceled, duplicate) from the last 7 days sit behind `끝난 FLIGHT n` in each group. Order: live first, then started before unstarted, then priority, then key. A filled dot means a live session (`occupantsOf`). Choosing one sets `#flight/<KEY>`, which opens the drawer as before.
   - **FLEET:** `GET /api/fleet` (the call FLEET makes), with the status of a live session taken from the snapshot, under the AIRCRAFT's base AIRPORT, with a state word (AIRBORNE, IDLE, NORDO, ABSENT). Choosing one sets `#fleet/<REGISTRATION>`, and FLEET now also opens that row on `hashchange` (it only did on first load).
   - **RELEASE (ATC-423, decided 2026-10-03, Q7):** a section index, not the READY list (the list stays on the screen). Three items with their counts from `GET /api/releases`: 후보 (the issues the tree marks `fire`, plus the SCHEDULE NEW proposals), Todo 발권 전 (the tree's `release` rows) and 최근 발권 (the recent releases). Choosing one sets `#release/<candidates|unreleased|recent>` and the screen scrolls to that section; the section split is `partitionRelease` in `web/src/sidebar-rows.ts`, the same function the screen uses. The rail badge (READY count) is unchanged.
-  - **METRICS:** OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK, the open one marked `aria-current`.
+  - **METRICS:** OPERATIONS, LEAKS, TOUCHES, MISFIRE, FUEL, NETWORK, the open one marked `aria-current`.
   - **HOME:** the to-do list filtered by kind (ATC-422): 전체, QUEUE (the decisions), ALERT, STUCK, EFFECT, DONE (the approved CLOSEs to set Done by hand), each with its count, from `GET /api/supervisor/queue` (the call HOME makes). Kinds with no item are not listed. Choosing one sets `#home/<kind>` and HOME filters by it (`homeFilterOf` in `web/src/sidebar-rows.ts`); 전체 is `#home`.
 - **One server addition, no new route.** `Ticket.airport` (an AIRPORT code or null) is set in `server/snapshot.ts` with `airportOfTicket`, the rule DISPATCH already uses (project mapping first, then the team default). The web had no way to know a FLIGHT's AIRPORT, and a second rule in the screen would break principle 4. It is not stored anywhere.
 - **Fold.** The top-bar button (`aria-expanded`, `aria-controls`) folds and unfolds it; the choice is kept in this browser under `atc.sidebar` (`localStorage`, wrapped in try/catch, the sidebar is open when it cannot be read).

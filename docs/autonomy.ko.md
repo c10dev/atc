@@ -180,6 +180,24 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 
 기록은 `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since`와, ATC-362 릴리스 기록이 생기기 전까지 `null`인 `release` 칸을 담는다. 어느 통제가 섰는지는 `leaks.ts`의 `CONTROLS` 표가 정한다. 통제가 서면 거기 플래그만 고치고, 그 뒤의 새 leak은 "통제 있음"으로 간다.
 
+### PR 하나당 SUPERVISOR 손길 구현 (ATC-512)
+
+읽기만 한다. METRICS → TOUCHES(`#metrics/touches`, `GET /api/touches?days=14`, 순수 계산 `server/touches.ts`, 읽기 `server/touches-run.ts`)는 UTC 하루마다 착륙한 PR 수, 범주별 SUPERVISOR 손길, 착륙 PR 하나당 손길(착륙이 없는 날은 `—`)을 보인다. 조절하는 것이 없어서 스위치도 misfire 카운터도 없고, 새로 남기는 기록도 없다. 원칙 1의 물음, 곧 릴리스 뒤 사람 단계가 줄어드는가에 답한다.
+
+**gate인가 leak인가.** 화면이 정하지 않고 2절과 원칙 1을 옮긴다. 남는 세 gate(K1~K3)는 릴리스 때 선언한 효과로 한 번 승인하므로(6절) gate 쪽 범주는 **release** 하나다. 나머지 범주는 릴리스 뒤에 사람이 거친 단계, 곧 **leak**이다. K3 파일의 머지는 아직 가를 수 없어서(머지 기록이 없다) `merge`는 기록이 생길 때까지 leak 쪽에 둔다.
+
+| 범주 | 쪽 | 읽는 곳 |
+|---|---|---|
+| release | gate | `releases.jsonl`의 `release` 줄 |
+| merge | leak | 기록 없음(GitHub에서 한 머지는 줄이 남지 않는다. MCC·AUTOLAND 머지는 기계가 한다) |
+| Linear hand edit | leak | 기록 없음 |
+| FLEET/CONTROL action | leak | `fleet-plan.jsonl`에서 `SUPERVISOR`의 `approve`(FLEET PLAN 카드만. CONTROL 버튼은 줄이 남지 않는다) |
+| DUTY message | leak | 기록 없음 |
+| RELAY | leak | `relays.jsonl`의 `create` 줄(ATC-465와 같은 거름) |
+| card decision | leak | `proposals.jsonl`의 `approve`와 `schedule.jsonl`의 `approve`·`verdict` 가운데 `via`가 `auto`·`crosscheck`가 아닌 것(ATC-465는 `auto`가 아닌 것을 센다. 이 화면은 기계인 `crosscheck`도 뺀다) |
+
+소스가 없는 범주는 0이 아니라 `not recorded`로 보이고 합계에서 빠진다. **착륙 PR**은 `mcc.jsonl`의 `land`(`result: ok`)와 `autoland.jsonl`의 `merge`(`result: ok`)를 PR당 하루 한 번 센 것이다. GitHub에서 손으로 머지한 PR은 세지 않으므로, 손 머지가 있던 날은 PR당 값이 높게 보인다. 날은 UTC(`00:00:00Z`는 새 날)이다. ATC-465의 기록과 거름을 다시 쓰고 둘째 기록을 만들지 않는다. 기록이 없는 범주(DUTY 메시지, Linear 손 편집, GitHub 머지)에 줄을 더하는 일은 따로 잇는 후속 작업이다.
+
 ### 사람 없는 SCHEDULE·FLEET PLAN (ATC-370)
 
 P3·P5 행을 자른다(K3, 2026-10-02 SUPERVISOR 승인: "live first"). `server/autonomy-auto.ts`(순수)가 정하고 `server/autonomy-auto-run.ts`가 읽고 쓴다. 둘 다 서버 안에서만 돈다(바꾸는 HTTP 길도 `atcctl` 명령도 없다).
