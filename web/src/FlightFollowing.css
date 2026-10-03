@@ -1,0 +1,60 @@
+/* FLIGHT 서랍의 따라가기 절(ATC-492). 면 한 단계, 색은 :root 토큰만 */
+.ff {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.ff p {
+  margin: 0;
+}
+.ff-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.ff-stuck,
+.ff-issue.is-warn {
+  color: var(--amber);
+}
+.ff-issue {
+  color: var(--muted);
+}
+.ff-pull {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.ff-times {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11em, 1fr));
+  gap: var(--space-1) var(--space-3);
+}
+.ff-times li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--faint);
+  min-width: 0;
+}
+.ff-times li.is-done {
+  color: var(--text);
+}
+.ff-times li.is-now {
+  color: var(--radar);
+}
+.ff-hist {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.ff-hist summary {
+  cursor: pointer;
+}
+.ff-hist ol {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}

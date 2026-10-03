@@ -5,6 +5,7 @@ import { flightNumber } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { timeAgo } from "../derive.ts";
+import { clock, STAGE_LABEL } from "../../../server/follow-view.ts";
 import { BlockList, LandingBadge } from "./Teams.tsx";
 import "./Follow.css";
 import { apiGet, apiSend } from "../api.ts";
@@ -23,10 +24,8 @@ export interface FollowData {
 }
 
 const SHORT: Record<FollowStage, string> = { todo: "TODO", proposed: "PROP", approved: "APPR", sent: "SENT", readback: "RB", pr: "PR", ci: "CLR", landed: "ON", deployed: "IN" };
-const LONG: Record<FollowStage, string> = { todo: "Todo", proposed: "제안", approved: "승인", sent: "발송", readback: "READBACK", pr: "PR", ci: "CLEARED", landed: "착륙(ON)", deployed: "배포(IN)" };
 const MIN_GAP_MS = 10_000; // 스냅샷 이벤트가 잦아도 10초에 한 번만 다시 읽는다
 
-const clock = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 async function postFollow(parent: string, on: boolean): Promise<string | null> {
   try {
@@ -82,12 +81,12 @@ export function useFollowBoard(refreshKey: string) {
 function Dots({ row, stages }: { row: FollowRow; stages: FollowStage[] }) {
   const stuck = row.stuck?.stage ?? null;
   return (
-    <span className="fw-dots" role="img" aria-label={`단계 ${row.current ? LONG[row.current] : "없음"}${row.stuck ? ` · 막힘: ${row.stuck.text}` : ""}`}>
+    <span className="fw-dots" role="img" aria-label={`단계 ${row.current ? STAGE_LABEL[row.current] : "없음"}${row.stuck ? ` · 막힘: ${row.stuck.text}` : ""}`}>
       {stages.map((s) => {
         const c = row.stages[s];
         const cls = c.na ? "is-na" : s === row.current ? (row.finished ? "is-done is-now" : "is-now") : c.done ? "is-done" : "";
         return (
-          <span key={s} className={`fw-dot ${cls}${s === stuck ? " is-stuck" : ""}`} title={`${LONG[s]}${c.na ? " — 없음" : c.at ? ` ${clock(c.at)}` : c.done ? " ✓" : ""}`}>
+          <span key={s} className={`fw-dot ${cls}${s === stuck ? " is-stuck" : ""}`} title={`${STAGE_LABEL[s]}${c.na ? " — 없음" : c.at ? ` ${clock(c.at)}` : c.done ? " ✓" : ""}`}>
             {c.na ? <i className="fw-na" aria-hidden="true">—</i> : <i className="dot" data-shape={cls ? undefined : "ring"} aria-hidden="true" />}
             <small>{SHORT[s]}</small>
           </span>
