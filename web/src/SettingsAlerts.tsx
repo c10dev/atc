@@ -6,7 +6,6 @@ import { inApp } from "./host.ts";
 import { disableSound, enableNotify, enableSound, previewSound, previewVoice, resumeSound, stopSound, updatePrefs, useAlerts } from "./alerts-runtime.ts";
 import type { Save } from "./SettingsServer.tsx";
 import { ALERT_GROUPS, GROUP_LABEL, SOUND_LABEL, SOUND_NAMES } from "./supervisor-alerts.ts";
-import "./alerts.css";
 import { apiGet } from "./api.ts";
 import { Segmented } from "./kit/Segmented.tsx";
 
@@ -125,7 +124,7 @@ function BrowserAlertsSettings({ save }: { save: Save }) {
           onChange={(on) => void (on ? enableSound() : disableSound())}
         />
         {prefs.sound && audio !== "running" && (
-          <button className="alert-unlock" onClick={() => void resumeSound()}>
+          <button className="btn alert-unlock" onClick={() => void resumeSound()}>
             소리 꺼짐 — 눌러서 켜기
           </button>
         )}
@@ -137,10 +136,10 @@ function BrowserAlertsSettings({ save }: { save: Save }) {
                 <input type="checkbox" checked={prefs.sounds[n]} onChange={(e) => updatePrefs((p) => ({ ...p, sounds: { ...p.sounds, [n]: e.target.checked } }))} />
                 {SOUND_LABEL[n]}
               </label>
-              <IconButton className="alert-preview" onClick={() => previewSound(n)} label={`${SOUND_LABEL[n]} 들어 보기`} icon={Play} />
+              <IconButton className="btn" onClick={() => previewSound(n)} label={`${SOUND_LABEL[n]} 들어 보기`} icon={Play} />
             </div>
           ))}
-          <button className="alert-preview" onClick={stopSound}>
+          <button className="btn" onClick={stopSound}>
             ■ 그치기
           </button>
         </fieldset>
@@ -214,7 +213,7 @@ function BrowserAlertsSettings({ save }: { save: Save }) {
                 </option>
               ))}
             </select>
-            <button className="alert-preview" onClick={() => void listen()} aria-label="목소리 미리 듣기">
+            <button className="btn" onClick={() => void listen()} aria-label="목소리 미리 듣기">
               미리 듣기
             </button>
           </label>

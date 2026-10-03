@@ -316,7 +316,7 @@
   min-width: 0;
   color: var(--muted);
 }
-.fl-other .config-btn {
+.fl-other .btn {
   margin-left: auto;
 }
 /* LAUNCH ACCOUNT(ATC-239): 설정이 켜져 있을 때만 머리에 작게 */

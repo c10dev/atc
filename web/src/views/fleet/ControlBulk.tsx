@@ -63,7 +63,7 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
         <h3 className="label">
           {BULK_LABEL[op]} <em>{done ? "결과" : "미리 보기"}</em>
         </h3>
-        <button type="button" className="config-btn" onClick={onClose} disabled={busy}>
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
           닫기
         </button>
       </div>
@@ -96,7 +96,7 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
               <p className="fl-bulk-drift" role="status">
                 <b>ACCOUNT drift</b> {plan.drift.map((d) => `${d.name} ${d.from} ≠ ${d.to}`).join(" · ")}{" "}
                 {op !== "align" && (
-                  <button type="button" className="config-btn" onClick={() => setOp("align")} disabled={busy}>
+                  <button type="button" className="btn" onClick={() => setOp("align")} disabled={busy}>
                     ALIGN만 보기
                   </button>
                 )}
@@ -123,7 +123,7 @@ export function BulkPanel({ op: first, onClose, onDone }: { op: BulkOp; onClose:
               </label>
             )}
             <div className="fl-c-actions">
-              <button type="button" className={`config-btn ${op === "stop" ? "is-danger" : "is-primary"}`} onClick={() => void run()} disabled={busy || plan.running || runnable.length === 0}>
+              <button type="button" className={`btn ${op === "stop" ? "is-danger" : "is-primary"}`} onClick={() => void run()} disabled={busy || plan.running || runnable.length === 0}>
                 {busy ? "실행 중…" : `${BULK_LABEL[op]} 실행 (${runnable.length}개)`}
               </button>
               {runnable.length === 0 && <span className="faint"> 할 것이 없다</span>}
@@ -140,11 +140,11 @@ export function BulkBar({ onOpen, disabled }: { onOpen: (op: BulkOp) => void; di
   return (
     <div className="fl-bulk-bar" role="group" aria-label="CONTROL SESSIONS 일괄 동작">
       {(["launch", "restart"] as const).map((op) => (
-        <button key={op} type="button" className="config-btn" onClick={() => onOpen(op)} disabled={disabled}>
+        <button key={op} type="button" className="btn" onClick={() => onOpen(op)} disabled={disabled}>
           {BULK_LABEL[op]}
         </button>
       ))}
-      <button type="button" className="config-btn" onClick={() => onOpen("align")} disabled={disabled} title="ACCOUNT가 어긋난 세션만 intended ACCOUNT로 옮긴다">
+      <button type="button" className="btn" onClick={() => onOpen("align")} disabled={disabled} title="ACCOUNT가 어긋난 세션만 intended ACCOUNT로 옮긴다">
         {BULK_LABEL.align}
       </button>
     </div>
@@ -157,7 +157,7 @@ export function RecoveryBanner({ onLaunchAll }: { onLaunchAll?: () => void }) {
     <p className="fl-bulk-recovery" role="alert">
       <b>관제 세션이 하나도 떠 있지 않음</b> — 호스트가 재부팅됐거나 모두 멈췄다. TOWER → OCC → MCC → CROSSCHECK → REVIEW 순서로 띄운다.{" "}
       {onLaunchAll && (
-        <button type="button" className="config-btn is-primary" onClick={onLaunchAll}>
+        <button type="button" className="btn is-primary" onClick={onLaunchAll}>
           LAUNCH ALL 미리 보기
         </button>
       )}

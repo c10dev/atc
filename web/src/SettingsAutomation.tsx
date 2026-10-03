@@ -84,7 +84,7 @@ function GroundStopRow({ stop, check, refresh }: { stop: ServerSettings["autolan
         GROUND STOP <code className="config-env">{stop.airport}</code>
       </dt>
       <dd>
-        <button className="config-btn is-danger" onClick={() => void clear()} disabled={busy}>
+        <button className="btn is-danger" onClick={() => void clear()} disabled={busy}>
           풀기
         </button>
       </dd>

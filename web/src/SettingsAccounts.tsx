@@ -170,16 +170,16 @@ export function AccountsBlock() {
           <input className="mono" aria-label="ACCOUNT 라벨" placeholder="acct-1" maxLength={24} value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
           <input className="mono" aria-label="설정 폴더" placeholder="/home/…/.claude-acct-1" maxLength={400} value={r.configDir} onChange={(e) => set(i, { configDir: e.target.value })} />
           <input className="mono acct-cap" aria-label="ACCOUNT별 세션 상한" title="이 ACCOUNT의 백그라운드 세션 상한(비우면 기계 전체 상한만)" placeholder="상한" inputMode="numeric" maxLength={3} value={r.maxLaunched} onChange={(e) => set(i, { maxLaunched: e.target.value.replace(/\D/g, "") })} />
-          <button type="button" className="config-btn" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+          <button type="button" className="btn" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
             삭제
           </button>
         </div>
       ))}
       <div className="acct-actions">
-        <button type="button" className="config-btn" onClick={() => setRows([...rows, { label: "", configDir: "", maxLaunched: "" }])}>
+        <button type="button" className="btn" onClick={() => setRows([...rows, { label: "", configDir: "", maxLaunched: "" }])}>
           + ACCOUNT
         </button>
-        <button type="button" className="config-btn is-primary" disabled={!dirty || saving} onClick={save}>
+        <button type="button" className="btn is-primary" disabled={!dirty || saving} onClick={save}>
           저장
         </button>
         {error && <span className="settings-hint acct-err"> {error}</span>}
@@ -210,7 +210,7 @@ function PlanUsage({ plan, view, busy, running, onRefresh }: { plan: string | nu
             {source} · <span className="tn">{ageText(now - Date.parse(view.at))}</span> 전{view.stale ? " · 오래됨" : ""}
           </span>
         )}
-        <button type="button" className="config-btn" disabled={busy} onClick={onRefresh} title="이 폴더에서 claude -p /usage를 돌려 한도를 다시 읽는다(모델 호출 없음, 약 4초). 5분 안에는 다시 읽지 않는다">
+        <button type="button" className="btn" disabled={busy} onClick={onRefresh} title="이 폴더에서 claude -p /usage를 돌려 한도를 다시 읽는다(모델 호출 없음, 약 4초). 5분 안에는 다시 읽지 않는다">
           {running ? "읽는 중…" : "REFRESH"}
         </button>
       </div>
@@ -249,7 +249,7 @@ function MemoryLine({ view, sharing, onShare }: { view: MemoryFolderView | undef
     <div className="acct-chips">
       <StatusChip tone={view.status === "shared" ? "ok" : view.status === "conflict" ? "bad" : "mute"}>{view.status === "shared" ? "MEMORY shared ✓" : view.status === "conflict" ? "MEMORY conflict" : "MEMORY separate"}</StatusChip>
       {view.status !== "shared" && (
-        <button type="button" className="config-btn" disabled={sharing} onClick={onShare} title="빈 memory 폴더를 ~/.claude 것으로 잇는다. 파일이 든 폴더는 건드리지 않는다">
+        <button type="button" className="btn" disabled={sharing} onClick={onShare} title="빈 memory 폴더를 ~/.claude 것으로 잇는다. 파일이 든 폴더는 건드리지 않는다">
           SHARE MEMORY
         </button>
       )}
@@ -320,7 +320,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
   if (!open)
     return (
       <div className="acct-actions">
-        <button type="button" className="config-btn is-primary" onClick={start}>
+        <button type="button" className="btn is-primary" onClick={start}>
           ADD ACCOUNT
         </button>
         <span className="settings-hint">폴더를 만들고 settings.json을 복사하고 등록한다. 로그인은 그다음 그 줄의 LOGIN으로.</span>
@@ -368,10 +368,10 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
         </>
       )}
       <div className="acct-actions">
-        <button type="button" className="config-btn is-primary" disabled={!p || busy || !label.trim() || dirty} onClick={add}>
+        <button type="button" className="btn is-primary" disabled={!p || busy || !label.trim() || dirty} onClick={add}>
           {busy ? "만드는 중…" : "만들고 등록"}
         </button>{" "}
-        <button type="button" className="config-btn" onClick={() => setOpen(false)}>
+        <button type="button" className="btn" onClick={() => setOpen(false)}>
           닫기
         </button>
         {/* 왜 못 누르는지(사유)는 화면에 — disabled 버튼의 title에만 두지 않는다(ATC-418) */}
@@ -402,7 +402,7 @@ function AddAccount({ dirty, folders, onAdded }: { dirty: boolean; folders: Fold
               </p>
               <p className="settings-hint">
                 터미널로 하려면 <code className="mono">{done.loginCommand}</code>{" "}
-                <button type="button" className="config-btn" onClick={() => copy(done.loginCommand)}>
+                <button type="button" className="btn" onClick={() => copy(done.loginCommand)}>
                   복사
                 </button>{" "}
                 (URL은 <kbd>c</kbd>로 복사) 뒤 그 폴더로 <code className="mono">claude</code>를 한 번 연다.
@@ -474,7 +474,7 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
     <div className="acct-login">
       {(!view || s === "failed") && (
         <>
-          <button type="button" className="config-btn is-primary" disabled={busy} onClick={start}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={start}>
             {busy ? "시작하는 중…" : s === "failed" ? "다시 LOGIN" : "LOGIN"}
           </button>
           {s === "failed" && view?.error && <span className="settings-hint acct-err"> {view.error}</span>}
@@ -488,10 +488,10 @@ function LoginPanel({ label, onDone }: { label: string; onDone: (v: LoginView) =
           </p>
           <div className="acct-edit">
             <input className="mono" aria-label={`${label} 로그인 코드`} placeholder="코드" autoComplete="off" spellCheck={false} maxLength={2048} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && code.trim() && void submit()} />
-            <button type="button" className="config-btn is-primary" disabled={busy || !code.trim()} onClick={submit}>
+            <button type="button" className="btn is-primary" disabled={busy || !code.trim()} onClick={submit}>
               {busy ? "확인하는 중…" : "확인"}
             </button>
-            <button type="button" className="config-btn" disabled={busy} onClick={cancel}>
+            <button type="button" className="btn" disabled={busy} onClick={cancel}>
               취소
             </button>
           </div>
@@ -688,7 +688,7 @@ function LaunchModelRow() {
         <p className="settings-hint">
           AIRCRAFT별(FLEET 카드의 고치기에서 정한다):{" "}
           {overrides.map(([reg, model]) => (
-            <button key={reg} type="button" className="acct-model-chip mono" disabled={saving} title={`${reg}의 LAUNCH MODEL을 지운다`} aria-label={`${reg} ${model} 지우기`} onClick={() => void change({ aircraft: { [reg]: null } })}>
+            <button key={reg} type="button" className="chip" disabled={saving} title={`${reg}의 LAUNCH MODEL을 지운다`} aria-label={`${reg} ${model} 지우기`} onClick={() => void change({ aircraft: { [reg]: null } })}>
               {reg} {model} ×
             </button>
           ))}

@@ -211,11 +211,11 @@ export function ControlSessions({ snapshot, attached, selected = null, onSelect 
     <div className="fl-c-detail">
       <div className="fl-c-actions">
         {r.action?.kind === "stop" ? (
-          <button className="config-btn is-danger" onClick={() => void act(r.name, "stop", r.action?.kind === "stop" ? r.action.tmux : null)} disabled={busy !== null}>
+          <button className="btn is-danger" onClick={() => void act(r.name, "stop", r.action?.kind === "stop" ? r.action.tmux : null)} disabled={busy !== null}>
             STOP
           </button>
         ) : r.action?.kind === "launch" ? (
-          <button className="config-btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled}>
+          <button className="btn is-primary" onClick={() => void act(r.name, "launch")} disabled={busy !== null || r.action.disabled}>
             LAUNCH
           </button>
         ) : (
@@ -370,7 +370,7 @@ export function ControlSessions({ snapshot, attached, selected = null, onSelect 
                   {o.job?.detail || <span className="faint">—</span>}
                 </span>
                 {o.account && <span className="fl-r-acct mono">{o.account}</span>}
-                <button className="config-btn is-danger" onClick={() => void stopOther(o)} disabled={busy !== null} aria-label={`${o.name} STOP`}>
+                <button className="btn is-danger" onClick={() => void stopOther(o)} disabled={busy !== null} aria-label={`${o.name} STOP`}>
                   STOP
                 </button>
               </li>
