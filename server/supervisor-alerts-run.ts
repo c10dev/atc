@@ -25,6 +25,7 @@ import { capIdleNow } from "./dispatch-launch.ts";
 import { stoppedAirports } from "./auto-revert-run.ts";
 import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { sinceLookNow } from "./since-look-run.ts";
+import { todoNow } from "./queue-todo.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
 
 // SUPERVISOR alerts(ATC-87)의 읽기와 상태. 계산은 supervisor-alerts.ts(순수). 여기는 파일을 읽어 입력을 모으고 지난 key 집합을 든다.
@@ -207,7 +208,8 @@ export function summaryNow(s: Snapshot, now = Date.now()): SupervisorSummary {
     working: workingOf(s.sessions.filter((x) => x.status !== "dead"), (name) => registrationOf(name, teamPattern), CONTROL_SESSIONS.map((c) => c.name)),
     at: new Date(now).toISOString(),
   });
-  return { ...base, sinceLook: sinceLookNow(s, items, now) }; // ATC-383: 발권 기록·OOOI는 5초 캐시 안에서만 읽는다
+  const todo = todoNow();
+  return { ...base, ...(todo === null ? {} : { todo }), sinceLook: sinceLookNow(s, items, now) }; // ATC-383: 발권 기록·OOOI는 5초 캐시 안에서만 읽는다
 }
 
 // 스냅샷이 새로 나올 때 부른다(runSupervisorAlerts 뒤에). 내용이 바뀌었을 때만 새 요약을 돌려준다(첫 번은 늘 돌려준다)

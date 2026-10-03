@@ -10,6 +10,7 @@ import type { QueueInput } from "./supervisor-queue.ts";
 const T0 = Date.parse("2026-10-01T06:00:00Z");
 const at = (min: number) => new Date(T0 + min * 60_000).toISOString();
 const ms = (min: number) => T0 + min * 60_000;
+const P = { action: "open" as const, label: "x" };
 const item = (o: Partial<LeakItem>): LeakItem => ({ kind: "PROPOSAL", key: "P-1", since: at(0), title: "ASSIGN ATC-1 → TEAM_A", hash: "#dispatch", ...o });
 
 test("classify: K3·brake·breaker는 exempt, 나머지는 gate 행과 통제를 단다", () => {
@@ -101,9 +102,9 @@ test("leakItemsOf: FLIGHT와 착륙 이유, 승인 프롬프트를 붙인다", (
   } as unknown as QueueInput;
   const out = leakItemsOf(
     [
-      { kind: "PROPOSAL", key: "P-1", since: null, title: "t", hash: "" },
-      { kind: "LANDING", key: "atc#5@abc", since: null, title: "t", hash: "" },
-      { kind: "NEEDS YOU", key: "s1", since: null, title: "t", hash: "" },
+      { kind: "PROPOSAL", key: "P-1", since: null, title: "t", hash: "", primary: P },
+      { kind: "LANDING", key: "atc#5@abc", since: null, title: "t", hash: "", primary: P },
+      { kind: "NEEDS YOU", key: "s1", since: null, title: "t", hash: "", primary: P },
     ],
     inp,
   );
@@ -176,6 +177,6 @@ test("BACKLOG(ATC-401): 제안이 SUPERVISOR의 발권을 기다리면 leak으�
   const v = classify(item({ kind: "BACKLOG", key: "ATC-3", title: "ATC-3 ← DUTY REVIEW R-0007", hash: "#release" }));
   assert.ok(v.leak && v.gate === "P16" && v.control.id === "C14");
   const inp = { proposals: [], schedule: { mode: "approval", ops: [] }, sessions: [], pulls: [] } as unknown as QueueInput;
-  const [li] = leakItemsOf([{ kind: "BACKLOG", key: "ATC-3", since: at(0), title: "x", hash: "#release" }], inp);
+  const [li] = leakItemsOf([{ kind: "BACKLOG", key: "ATC-3", since: at(0), title: "x", hash: "#release", primary: P }], inp);
   assert.equal(li!.flight, "ATC-3");
 });

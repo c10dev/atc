@@ -5,6 +5,7 @@ import { type AutoSwitch, parseAutoSwitch } from "./autonomy-auto.ts";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
+import { appendEffectLine, readEffectLines, VERDICTS_FILE } from "./effect-store.ts";
 import { loadMcc } from "./mcc.ts";
 import { isAutoApproved, misfireOf } from "./misfire.ts";
 import { milestonesNow } from "./milestones-run.ts";
@@ -19,7 +20,7 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // EFFECT CHECK의 읽고 쓰기(ATC-402). 규칙은 effect-check.ts(순수). 평결은 effect-verdicts.jsonl에 추가만 한다(FLIGHT마다 하나, 그 뒤 SUPERVISOR의 표시 줄).
 // 끄는 스위치는 effect-check.json의 `on`(on·off, 없으면 on). 바꾸는 길은 설정 창뿐이다(SUPERVISOR 자격이 있는 요청만, atcctl 명령은 없다).
 const DAY = 86_400_000;
-export const VERDICTS_FILE = () => join(config.stateDir, "effect-verdicts.jsonl");
+export { appendEffectLine, readEffectLines, VERDICTS_FILE };
 const SWITCH_FILE = () => join(config.stateDir, "effect-check.json");
 export const TICK_MS = 10 * 60_000;
 const MAX_FETCH = 15; // 한 주기에 Linear에서 읽는 본문 수
@@ -38,23 +39,6 @@ export function saveEffectSwitch(v: AutoSwitch, file = SWITCH_FILE()) {
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ on: v }, null, 2) + "\n");
   renameSync(tmp, file);
-}
-
-export function readEffectLines(file = VERDICTS_FILE()): EffectLine[] {
-  if (!existsSync(file)) return [];
-  const out: EffectLine[] = [];
-  for (const l of readFileSync(file, "utf8").split("\n")) {
-    if (!l) continue;
-    try {
-      const r = JSON.parse(l);
-      if (r?.v === 1 && (r.ev === "verdict" || r.ev === "mark") && typeof r.flight === "string") out.push(r);
-    } catch {}
-  }
-  return out;
-}
-export function appendEffectLine(line: EffectLine, file = VERDICTS_FILE()) {
-  mkdirSync(dirname(file), { recursive: true });
-  appendFileSync(file, JSON.stringify(line) + "\n");
 }
 
 // ── 측정할 것을 모으기 ──

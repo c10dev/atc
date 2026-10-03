@@ -9,6 +9,12 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
 import { allClearances } from "./clearances.ts";
 import { allProposals } from "./proposals.ts";
+import { closeManualOf, closePrOf } from "./close-manual.ts";
+import { foldEffects } from "./effect-check.ts";
+import { readEffectLines } from "./effect-store.ts";
+import { followNow } from "./follow-run.ts";
+import { setTodo } from "./queue-todo.ts";
+import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { candidateTeamsOf } from "./dispatch.ts";
 import { readReviewLines } from "./duty-review-store.ts";
 import { filedProposalsOf, proposalSourcesOf } from "./release-proposals.ts";
@@ -34,10 +40,33 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   const st = await updateStatus().catch(() => null);
   const relays = allRelays();
   const clearances = allClearances();
+  // HOME의 한 목록(ATC-454): 읽기만 한다. 보드를 못 만들어도 다른 줄은 그대로
+  const scheduleOps = loadScheduleOps();
+  let follow: QueueInput["follow"];
+  try {
+    const f = followNow(s, now);
+    follow = { bundles: f.bundles.filter((b) => !b.folded), dispatchMode: f.dispatchMode };
+  } catch {
+    follow = undefined;
+  }
+  let effects: QueueInput["effects"];
+  try {
+    effects = foldEffects(readEffectLines());
+  } catch {
+    effects = undefined;
+  }
+  const closes = closeManualOf(scheduleOps, s.tickets, now).map((x) => {
+    const t = s.tickets.find((y) => y.key === x.flight);
+    return { id: x.id, flight: x.flight ?? null, statusAt: x.statusAt, url: t?.url ?? null, pr: closePrOf(x) };
+  });
   return {
+    alerts: currentAlerts(),
+    follow,
+    effects,
+    closes,
     proposals: allProposals(),
     autoDispatch: loadDispatchConfig().autoDispatch === "on",
-    schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
+    schedule: { mode: loadScheduleMode(), ops: scheduleOps },
     fleetPlan: openFleetPlanNow(now),
     pulls: (s.pulls ?? []).map((p) => {
       const d = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false);
@@ -58,14 +87,16 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
 
 let cache: { at: number; epoch: number; view: SupervisorQueue } | null = null;
 
+// 지금의 큐(5초 캐시). 센 개수는 SUPERVISOR SUMMARY의 todo가 읽는다(ATC-454)
+export async function queueViewNow(s: Snapshot, updateStatus: () => Promise<UpdateStatus | null>, now = Date.now()): Promise<SupervisorQueue> {
+  if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return cache.view;
+  const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
+  cache = { at: now, epoch: queueEpoch(), view };
+  setTodo(view.count);
+  return view;
+}
+
 export function mountSupervisorQueue(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, events: () => readonly TrafficEvent[] = () => []) {
   eventsOf = events;
-  app.get("/api/supervisor/queue", async (c) => {
-    const now = Date.now();
-    if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return c.json(cache.view);
-    const s = await getSnapshot();
-    const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
-    cache = { at: now, epoch: queueEpoch(), view };
-    return c.json(view);
-  });
+  app.get("/api/supervisor/queue", async (c) => c.json(await queueViewNow(await getSnapshot(), updateStatus)));
 }

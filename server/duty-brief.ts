@@ -79,7 +79,9 @@ export function dutyBriefOf(inp: DutyBriefInput, maxChars: number = DEFAULT_BRIE
     .filter(([, n]) => n > 0)
     .map(([k, n]) => `${k} ${n}`)
     .join(" · ");
-  const oldest = [...inp.queue.items]
+  // ALERT 줄은 아래 ALERTS 구역이 이미 싣는다(ATC-454). 개수에는 들어가지만 줄은 한 번만
+  const notAlert = inp.queue.items.filter((i) => i.kind !== "ALERT");
+  const oldest = [...notAlert]
     .sort((a, b) => (a.since ?? "￿").localeCompare(b.since ?? "￿"))
     .slice(0, QUEUE_ROWS)
     .map((i) => `  ${i.kind} ${i.key} — ${oneLine(i.title, 100)} (waiting ${ago(i.since, now)})`);
@@ -98,7 +100,7 @@ export function dutyBriefOf(inp: DutyBriefInput, maxChars: number = DEFAULT_BRIE
   // 자를 때는 뒤쪽 구역부터 줄을 덜어 낸다(결정은 맨 위라 맨 마지막에)
   const sections: Section[] = [
     { name: "DECISIONS", lines: [`STANDING DECISIONS ${all.length} (set by the SUPERVISOR; the only rules in force)`, ...decisionRows] },
-    { name: "QUEUE", lines: [`QUEUE ${inp.queue.count}${counts ? ` · ${counts}` : ""}`, ...oldest, ...(inp.queue.count > oldest.length ? [`  … ${inp.queue.count - oldest.length} more in GET /api/supervisor/queue`] : [])] },
+    { name: "QUEUE", lines: [`QUEUE ${inp.queue.count}${counts ? ` · ${counts}` : ""}`, ...oldest, ...(notAlert.length > oldest.length ? [`  … ${notAlert.length - oldest.length} more in GET /api/supervisor/queue`] : [])] },
     { name: "ALERTS", lines: [`ALERTS ${inp.alerts.length} needing action`, ...alertRows, ...(inp.alerts.length > alertRows.length ? [`  … ${inp.alerts.length - alertRows.length} more`] : [])] },
     { name: "ORPHAN PRS", lines: [`PRs WITHOUT A FLIGHT ${(inp.orphanPrs ?? []).length} (no issue linked by branch name; a GO AROUND or FIX is waiting)`, ...(inp.orphanPrs ?? []).map((o) => `  ${o.repo}#${o.pr}`)] },
     { name: "REVERT", lines: [`AUTO-REVERT ${(inp.revert ?? []).length} recent`, ...(inp.revert ?? []).map((l) => `  ${oneLine(l, 200)}`)] },
