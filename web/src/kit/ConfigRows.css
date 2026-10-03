@@ -1,0 +1,121 @@
+/* 설정 창과 FLEET 세션 표가 함께 쓰는 값 행·메모·연결 줄(ATC-430, docs/design-system.md L2 "행"). 의미 토큰만 쓴다. main.tsx가 불러서 설정 창이 닫혀 있어도 FLEET에서 쓴다. */
+.settings-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+/* 서버 설정 행: 이름 + 환경 변수 / 값 / 설명 */
+.config-rows {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.config-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.config-row dt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.config-row dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.config-value {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 편집 중에는 입력 칸이 행 전체 폭을 쓴다 */
+.config-row.is-editing {
+  border-color: var(--line-strong);
+}
+.config-row .config-edit {
+  grid-column: 1 / -1;
+  justify-content: stretch;
+  margin-top: var(--space-2);
+}
+.config-edit input,
+.config-edit select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.config-edit input.mono {
+  font-family: var(--mono);
+}
+.config-edit input[aria-invalid="true"] {
+  border-color: var(--alert);
+}
+.config-edit .config-value {
+  flex: 1;
+  max-width: none;
+}
+.config-unit {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.config-note.is-error,
+.config-note .is-error {
+  color: var(--alert);
+}
+.config-note {
+  grid-column: 1 / -1;
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.config-env {
+  font: var(--text-2xs) var(--mono);
+  font-weight: 400;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.config-row .tone-ok {
+  color: var(--radar);
+}
+.config-row .tone-bad {
+  color: var(--alert);
+}
+.conn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.conn-meta {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.conn-error {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--alert) 45%, transparent);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--alert);
+}

@@ -1,0 +1,652 @@
+/* 설정 창(ATC-430, S6): 창, 왼쪽 메뉴·찾기, 서버·AUTOLAND·MCC gate·테마 카드·AUTOMATION·ACCOUNTS·PLAN·USAGE.
+   버튼은 kit/Button.css의 .btn, 칩·태그는 kit/chips.css, 값 행은 kit/ConfigRows.css. 이 창 안의 버튼은 한 단계 작게(--btn-h). */
+.settings .btn {
+  --btn-h: 26px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+.config-edit .btn {
+  --btn-h: 30px;
+}
+/* ── 설정 창: 가운데 넓은 모달, 왼쪽 메뉴 + 오른쪽 내용 ─────────────────────────── */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--space-8) var(--space-4);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(3px);
+}
+.settings {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 100%);
+  height: min(760px, 100%);
+  min-height: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--settings-bg, var(--panel-3));
+  box-shadow: var(--settings-shadow, var(--shadow-3));
+  color: var(--text);
+  overflow: hidden;
+}
+.settings-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.settings-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3);
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  overflow: auto;
+}
+.settings-main {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-2) var(--space-6) var(--space-3);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.settings-title {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.18em;
+}
+.settings-title em {
+  margin-left: var(--space-2);
+  font: 400 var(--text-sm) var(--sans);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.settings-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+.settings-close:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+/* 한 구역: 위 구분선, 찾기로 간 구역은 잠깐 밝힌다 */
+.settings-section {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+}
+.settings-section:first-of-type {
+  border-top: 0;
+}
+.settings-section .label {
+  margin-bottom: var(--space-2);
+}
+.settings-foot {
+  margin: var(--space-0-5) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+/* 설정 창 왼쪽 메뉴와 찾기 */
+.settings-search {
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-3);
+  color: var(--text);
+  font: 400 var(--text-sm) var(--sans);
+}
+.settings-search:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
+}
+.settings-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+.settings-menu-item {
+  display: contents;
+}
+.settings-menu-group {
+  margin: var(--space-3) 0 var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+  border-top: 1px solid var(--line);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.18em;
+  color: var(--faint);
+}
+.settings-menu button,
+.settings-hits button {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.settings-menu button b,
+.settings-hits button b {
+  font: 700 var(--text-xs) var(--mono);
+  letter-spacing: 0.12em;
+}
+.settings-menu button span,
+.settings-hits button span,
+.settings-hits button em {
+  font-size: var(--text-2xs);
+  font-style: normal;
+  color: var(--faint);
+}
+.settings-menu button:hover,
+.settings-hits button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.settings-menu button[aria-selected="true"] {
+  background: var(--panel-3);
+  color: var(--tab-on);
+  box-shadow: inset 2px 0 0 var(--tab-on), inset 0 0 0 1px var(--line-strong);
+}
+.settings-hits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-hits button em {
+  color: var(--cyan);
+}
+.settings-hits-none {
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.settings-section.is-found {
+  --found: color-mix(in srgb, var(--tab-on) 10%, transparent);
+  background: var(--found);
+  box-shadow: 0 0 0 var(--space-2) var(--found);
+}
+/* 폰: 창이 화면을 채우고 메뉴는 위로(찾기 + 가로로 넘기는 분류) */
+@media (max-width: 720px) {
+  .settings-backdrop {
+    padding: 0;
+  }
+  .settings {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .settings-nav {
+    min-width: 0;
+    padding: var(--space-2) var(--space-4);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+  .settings-menu {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .settings-menu button {
+    width: auto;
+    white-space: nowrap;
+  }
+  .settings-menu button span,
+  .settings-menu-group {
+    display: none;
+  }
+  .settings-menu button[aria-selected="true"] {
+    box-shadow: inset 0 -2px 0 var(--tab-on), inset 0 0 0 1px var(--line-strong);
+  }
+  .settings-hits {
+    max-height: 40vh;
+    overflow: auto;
+  }
+  .settings-main {
+    padding: var(--space-2) var(--space-4) var(--space-3);
+  }
+}
+/* AUTOLAND 모드마다 한 줄 경고(ATC-34). 지금 모드를 진하게 */
+.autoland-modes {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 var(--space-3);
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.autoland-modes b {
+  font-family: var(--mono);
+  margin-right: var(--space-1);
+}
+.autoland-modes .is-current {
+  color: var(--text);
+}
+/* MCC SHADOW GATE(ATC-49): DISPATCH 진입 점검(.dp-gate)과 같은 판. 설정 창 폭(400px)에 맞춰 기준을 값 옆에 좁게 */
+.mcc-gate {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+}
+.mcc-gate .label {
+  margin: 0 0 var(--space-1);
+}
+.mcc-gate ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mcc-gate > ul > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 64px;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+}
+.mcc-gate > ul > li:first-child {
+  border-top: 0;
+}
+.mcc-gate-value {
+  font: 700 var(--text-md) var(--mono);
+  text-align: right;
+}
+.mcc-gate-target {
+  font: var(--text-xs) var(--mono);
+  color: var(--faint);
+}
+.mcc-gate-state {
+  font: 700 var(--text-xs) var(--mono);
+  white-space: nowrap;
+}
+.mcc-gate .s-pass .mcc-gate-state {
+  color: var(--radar);
+}
+.mcc-gate .s-fail .mcc-gate-state {
+  color: var(--alert);
+}
+.mcc-gate .s-insufficient .mcc-gate-state {
+  color: var(--faint);
+}
+.mcc-gate-note {
+  margin: 0;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.mcc-gate .mcc-gate-misses li {
+  display: flex;
+  gap: var(--space-1-5);
+  align-items: baseline;
+  min-width: 0;
+  padding: var(--space-0-5) 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.mcc-gate-misses a {
+  font-family: var(--mono);
+  color: var(--cyan);
+}
+.mcc-gate-misses b {
+  flex: none;
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.mcc-gate-misses .k-reverted-would-land b {
+  color: var(--alert);
+}
+.mcc-gate-misses span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.config-list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.agent-row {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.agent-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.agent-row-head .type {
+  --type-bg: var(--text);
+  --type-ink: var(--bg);
+  margin: 0;
+  background: var(--type-bg);
+  color: var(--type-ink);
+}
+.agent-count {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.agent-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  min-width: 0;
+}
+.callsigns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.callsigns b {
+  font: 700 var(--text-sm) var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--tab-on);
+}
+.theme-cards {
+  display: grid;
+  gap: var(--space-2);
+}
+.theme-card {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-theme-card);
+  background: var(--theme-card-bg, var(--panel-2));
+  text-align: left;
+  cursor: pointer;
+}
+.theme-card:hover {
+  border-color: var(--line-strong);
+}
+.theme-card[aria-checked="true"] {
+  border-color: var(--tab-on);
+  box-shadow: inset 0 0 0 1px var(--tab-on);
+}
+.theme-swatch {
+  grid-row: span 2;
+  display: flex;
+  height: 34px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+}
+.theme-swatch i {
+  flex: 1;
+}
+.theme-swatch i:first-child {
+  flex: 2;
+}
+.theme-name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.theme-name b {
+  margin-right: var(--space-1-5);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--tab-on);
+}
+.theme-note {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+/* AUTOMATION 탭(ATC-131): 지금 정책 한 줄, ⚠ 모드는 호박색, 나머지 모드 경고는 접음 */
+.automation-line {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  font: var(--text-xs) var(--mono);
+  color: var(--muted);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.automation-line b {
+  color: var(--text);
+}
+.automation-line .is-warn,
+.automation-line .is-warn b,
+.config-note.is-warn,
+.config-row .tone-warn {
+  color: var(--amber);
+}
+.mode-others {
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+.mode-others summary {
+  cursor: pointer;
+  margin: var(--space-1) 0;
+}
+/* ACCOUNTS 블록(ATC-146) */
+.acct-folder {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.acct-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.acct-chips .chip, .acct-model-pick .chip { margin: 0 var(--space-1) var(--space-1) 0; }
+.acct-registry { margin-top: var(--space-4); }
+.acct-registry em { font: 400 var(--text-2xs) var(--sans); font-style: normal; letter-spacing: 0; color: var(--faint); }
+.acct-launch-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-1) 0; font-size: var(--text-sm); }
+.acct-launch-row > span { min-width: 6.5em; color: var(--muted); }
+.acct-launch-row select {
+  max-width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.acct-model-pick { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); max-width: 100%; }
+.acct-model-pick select,
+.acct-model-pick input {
+  max-width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.acct-edit input,
+.acct-add input:not([type="checkbox"]),
+.acct-login input {
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.acct-edit input.mono,
+.acct-add input.mono,
+.acct-login input.mono { font-family: var(--mono); }
+.acct-edit .btn,
+.acct-actions .btn { --btn-h: 28px; }
+.acct-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
+.acct-warn { margin: var(--space-0-5) 0 0; padding-left: var(--space-4); color: var(--amber); }
+.acct-edit { display: flex; gap: var(--space-1-5); margin: var(--space-1) 0; }
+.acct-edit input:nth-of-type(2) { flex: 1; min-width: 0; }
+.acct-cap { width: 5em; }
+.acct-err { color: var(--alert); }
+.apply-now { margin: var(--space-1-5) 0; }
+.apply-now.is-compact { display: inline-block; margin: 0 0 0 var(--space-2); }
+.apply-now-panel { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel-2); max-width: 60rem; font-size: var(--text-sm); }
+.apply-now-group ul { margin: var(--space-0-5) 0 var(--space-2); padding-left: 1.2em; }
+.apply-now-group li { margin: var(--space-0-5) 0; overflow-wrap: anywhere; }
+.acct-add { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.acct-add h4 { margin: 0 0 var(--space-1-5); }
+.acct-home { width: 10em; }
+.acct-env { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-1-5) 0; padding: var(--space-1-5) var(--space-2); border: 1px solid var(--line); }
+.acct-env legend { padding: 0 var(--space-1); }
+.acct-env label { display: inline-flex; align-items: center; gap: var(--space-1); }
+.acct-done { margin-top: var(--space-2); }
+.acct-add .mono, .acct-folder .mono { overflow-wrap: anywhere; }
+.acct-login { margin: var(--space-1) 0 var(--space-0-5); }
+/* PLAN · USAGE(ATC-348): 요금제와 한도 창마다 쓴 몫. 보통 수준은 무채색, INFO부터 amber, HOLD부터 alert(서버가 정한 수준) */
+.acct-usage { display: grid; gap: var(--space-1); }
+.acct-usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.acct-usage-head .btn { --btn-h: 24px; margin-left: auto; }
+.acct-plan { font: 700 var(--text-sm) var(--mono); letter-spacing: 0.06em; }
+.acct-usage-src { font-size: var(--text-xs); color: var(--faint); }
+.acct-usage-src.is-stale { color: var(--muted); }
+.acct-usage-list { display: grid; grid-template-columns: max-content minmax(60px, 1fr) auto; gap: var(--space-1) var(--space-2); margin: 0; padding: 0; list-style: none; }
+/* 줄마다 같은 칸: 라벨 폭과 막대 길이가 ACCOUNT 안에서 맞는다 */
+.acct-usage-list li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font-size: var(--text-sm);
+}
+.acct-usage-name { max-width: 16ch; font: 600 var(--text-xs) var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-usage-bar { height: 6px; border-radius: var(--radius-pill); background: var(--panel-3); overflow: hidden; }
+.acct-usage-bar > span { display: block; height: 100%; border-radius: inherit; background: currentColor; color: var(--muted); }
+.acct-usage-list .lv-info .acct-usage-bar > span { color: var(--amber); }
+.acct-usage-list .lv-hold .acct-usage-bar > span { color: var(--alert); }
+.acct-usage-list .lv-info .acct-usage-nums b { color: var(--amber); }
+.acct-usage-list .lv-hold .acct-usage-nums b { color: var(--alert); }
+.acct-usage-nums { color: var(--muted); white-space: nowrap; }
+.acct-usage-nums b { font-weight: 600; color: var(--text); }
+.acct-usage-unknown { margin: 0; }
+@media (max-width: 480px) {
+  .acct-usage-list { grid-template-columns: max-content minmax(40px, 1fr); }
+  .acct-usage-nums { grid-column: 1 / -1; white-space: normal; }
+}
+.acct-login p { margin: var(--space-0-5) 0; }
+/* night 테마는 --settings-bg 같은 값만 정한다(styles.css의 night 블록). 이 파일에는 테마 규칙이 없다 */
+
+/* 알림 구역(SettingsAlerts) */
+.alert-checks {
+  border: 0;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.alert-checks legend {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  padding: 0 0 var(--space-1);
+}
+.alert-checks label,
+.alert-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.alert-checks:disabled {
+  opacity: 0.55;
+}
+.alert-sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.alert-range {
+  margin-top: var(--space-2);
+}
+.alert-range input {
+  flex: 1;
+}
+/* 음성 콜아웃(ATC-140): 목소리 고르기 */
+.alert-range select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+}
+.alert-quiet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.alert-msg {
+  color: var(--amber);
+}
+.alert-unlock.btn {
+  margin-top: var(--space-2);
+  color: var(--amber);
+  border-color: var(--amber);
+}

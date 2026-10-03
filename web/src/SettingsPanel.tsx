@@ -11,6 +11,7 @@ import { AlertsSettings } from "./SettingsAlerts.tsx";
 import { LandingSettings, OperationsSettings } from "./SettingsAutomation.tsx";
 import { AgentSettings, LinearSettings, useServerSettings } from "./SettingsServer.tsx";
 import { Segmented } from "./kit/Segmented.tsx";
+import "./SettingsPanel.css";
 
 // 왼쪽 메뉴. group이 있는 분류는 그 묶음 제목 아래에 모인다(AUTOMATION = SUPERVISOR 정책 스위치)
 const TABS: readonly { id: SettingsTab; label: string; sub: string; group?: string }[] = [

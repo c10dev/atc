@@ -108,14 +108,14 @@ export function ApplyNow({ refreshKey, onDone, compact = false }: { refreshKey?:
   const waiting = plan?.rows.filter((r) => r.action === "after-flight" || r.action === "wait-safe").length ?? 0;
   return (
     <div className={`apply-now${compact ? " is-compact" : ""}`}>
-      <button type="button" className="config-btn" disabled={busy} onClick={() => void show()} aria-expanded={open}>
+      <button type="button" className="btn" disabled={busy} onClick={() => void show()} aria-expanded={open}>
         {busy && !open ? "읽는 중…" : "APPLY NOW"}
       </button>
       {pending && (
         <span className="settings-hint">
           {" "}
           기다리는 APPLY: {[pending.aircraft && `AIRCRAFT → ${pending.aircraft}`, pending.control && `관제 → ${pending.control}`].filter(Boolean).join(", ")}{" "}
-          <button type="button" className="config-btn" disabled={busy} onClick={() => void cancelPending()}>
+          <button type="button" className="btn" disabled={busy} onClick={() => void cancelPending()}>
             취소
           </button>
         </span>
@@ -162,11 +162,11 @@ export function ApplyNow({ refreshKey, onDone, compact = false }: { refreshKey?:
           )}
           <div className="acct-edit">
             {!outcome && (
-              <button type="button" className="config-btn is-primary" disabled={busy || plan.running || (movable === 0 && waiting === 0)} onClick={() => void apply()}>
+              <button type="button" className="btn is-primary" disabled={busy || plan.running || (movable === 0 && waiting === 0)} onClick={() => void apply()}>
                 {busy ? "옮기는 중…(세션마다 한 번에 하나)" : `확인 — 지금 ${movable}개 옮기고 ${waiting}개는 기다린다`}
               </button>
             )}
-            <button type="button" className="config-btn" disabled={busy} onClick={() => setOpen(false)}>
+            <button type="button" className="btn" disabled={busy} onClick={() => setOpen(false)}>
               {outcome ? "닫기" : "취소"}
             </button>
           </div>

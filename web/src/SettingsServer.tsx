@@ -256,10 +256,10 @@ export function EditRow({
           <span className="config-value tone-warn">
             {input.kind === "select" ? (input.labels?.[value] ?? value) : value} → {input.kind === "select" ? (input.labels?.[draft] ?? draft) : draft}
           </span>
-          <button className="config-btn is-danger" onClick={() => void submit(true)} disabled={busy} autoFocus>
+          <button className="btn is-danger" onClick={() => void submit(true)} disabled={busy} autoFocus>
             {busy ? "저장 중" : `${input.kind === "select" ? (input.labels?.[draft] ?? draft) : draft}로 올리기`}
           </button>
-          <button className="config-btn" onClick={cancel} disabled={busy} onKeyDown={onKey}>
+          <button className="btn" onClick={cancel} disabled={busy} onKeyDown={onKey}>
             취소
           </button>
         </dd>
@@ -289,10 +289,10 @@ export function EditRow({
             />
           )}
           {unit && <span className="config-unit">{unit}</span>}
-          <button className="config-btn is-primary" onClick={() => void submit()} disabled={busy}>
+          <button className="btn is-primary" onClick={() => void submit()} disabled={busy}>
             {busy ? "저장 중" : "저장"}
           </button>
-          <button className="config-btn" onClick={cancel} disabled={busy}>
+          <button className="btn" onClick={cancel} disabled={busy}>
             취소
           </button>
         </dd>
@@ -302,7 +302,7 @@ export function EditRow({
             {input.kind === "select" ? (input.labels?.[value] ?? value) : value}
             {unit && ` ${unit}`}
           </span>
-          <button className="config-btn" onClick={() => setDraft(value)} aria-label={`${label} 편집`}>
+          <button className="btn" onClick={() => setDraft(value)} aria-label={`${label} 편집`}>
             편집
           </button>
         </dd>
@@ -367,31 +367,31 @@ function SecretRow({ label, env, isSet, save }: { label: string; env: string; is
             aria-label="새 API 키"
             aria-invalid={Boolean(error)}
           />
-          <button className="config-btn is-primary" onClick={() => void run({ apiKey: draft })} disabled={busy || !draft.trim()}>
+          <button className="btn is-primary" onClick={() => void run({ apiKey: draft })} disabled={busy || !draft.trim()}>
             {busy ? "저장 중" : "저장"}
           </button>
-          <button className="config-btn" onClick={reset} disabled={busy}>
+          <button className="btn" onClick={reset} disabled={busy}>
             취소
           </button>
         </dd>
       ) : mode === "confirm-delete" ? (
         <dd className="config-edit">
           <span className="config-value tone-bad">Linear 연결이 끊깁니다</span>
-          <button className="config-btn is-danger" onClick={() => void run({ apiKey: null })} disabled={busy} autoFocus>
+          <button className="btn is-danger" onClick={() => void run({ apiKey: null })} disabled={busy} autoFocus>
             {busy ? "삭제 중" : "삭제"}
           </button>
-          <button className="config-btn" onClick={reset} disabled={busy}>
+          <button className="btn" onClick={reset} disabled={busy}>
             취소
           </button>
         </dd>
       ) : (
         <dd>
           <span className={`config-value tone-${isSet ? "ok" : "bad"}`}>{isSet ? "설정됨" : "없음"}</span>
-          <button className="config-btn" onClick={() => setMode("edit")}>
+          <button className="btn" onClick={() => setMode("edit")}>
             {isSet ? "바꾸기" : "입력"}
           </button>
           {isSet && (
-            <button className="config-btn" onClick={() => setMode("confirm-delete")}>
+            <button className="btn" onClick={() => setMode("confirm-delete")}>
               삭제
             </button>
           )}
@@ -458,7 +458,7 @@ function AgentRow({
 }
 
 export function StatusChip({ tone, children }: { tone: "ok" | "bad" | "mute"; children: ReactNode }) {
-  return <span className={`status-chip tone-${tone}`}>{children}</span>;
+  return <span className="tag" data-tone={tone === "ok" ? "radar" : tone === "bad" ? "alert" : undefined}>{children}</span>;
 }
 
 export function EditNote() {

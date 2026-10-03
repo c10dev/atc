@@ -3,6 +3,7 @@ import { awayOperations } from "../../../server/away.ts";
 import type { AirportStatus, Snapshot } from "../../../server/model.ts";
 import { callsign } from "../aviation.ts";
 import "./Airports.css";
+import { TableScroll } from "../kit/TableScroll.tsx";
 import { apiSend, type ApiMethod } from "../api.ts";
 
 const statusLabel = { open: "OPEN", closed: "CLOSED", missing: "MISSING" } as const;
@@ -109,7 +110,8 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
       <h2 className="label">
         AIRPORTS <em>{airports?.length ?? "…"}</em>
       </h2>
-      <table className="apt-table">
+      <TableScroll label="AIRPORTS">
+      <table className="kit-table apt-table">
         <thead>
           <tr>
             <th>코드</th>
@@ -165,7 +167,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
                 <td>{a.name}</td>
                 <td className="mono apt-path-cell" title={a.id}>
                   {a.repo}
-                  {!a.discovered && a.status !== "missing" && <span className="apt-tag">수동</span>}
+                  {!a.discovered && a.status !== "missing" && <span className="tag apt-tag">수동</span>}
                 </td>
                 <td>
                   <span className={`apt-status s-${a.status}`}>{statusLabel[a.status]}</span>
@@ -228,6 +230,7 @@ export function Airports({ snapshot }: { snapshot: Snapshot }) {
           })}
         </tbody>
       </table>
+      </TableScroll>
     </section>
   );
 }
