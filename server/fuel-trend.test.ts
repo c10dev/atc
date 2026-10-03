@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type PriceTable, parsePriceTable } from "./fuel-cost.ts";
 import type { FuelRecord } from "./fuel.ts";
-import { changeOf, changeText, coverageOf, localDayStart, noCompareText, previousLabel, trendScanDays, tzName, tzOffsetOf, usageTrend } from "./fuel-trend.ts";
+import { changeOf, changeText, coverageOf, leverageOf, leverageText, localDayStart, noCompareText, previousLabel, trendScanDays, tzName, tzOffsetOf, usageTrend } from "./fuel-trend.ts";
 
 // ATC-389: USAGE TREND. 합성 기록만 쓴다(~/.claude를 읽지 않는다)
 const TABLE = parsePriceTable({
@@ -167,4 +167,31 @@ test("usageTrend.today: 기본은 UTC 하루", () => {
   const t = run([rec({ t: ago(20) })]);
   assert.equal(t.today.tzOffsetMin, 0);
   assert.equal(t.today.current.from, "2026-10-02T00:00:00.000Z");
+});
+
+test("leverageOf: 가동 시간 ÷ 흐른 시간. 기록 전 시간은 분모에서 뺀다", () => {
+  const H = 3_600_000;
+  assert.equal(leverageOf(12 * 24, 0, 24 * H, 0), 1); // 5분 칸 288개 = 24시간 ÷ 24시간
+  assert.equal(leverageOf(12 * 48, 0, 24 * H, 12 * H), 4); // 48시간 ÷ 기록이 있는 12시간
+  assert.equal(leverageOf(10, 0, 24 * H, null), null);
+  assert.equal(leverageOf(10, 0, 24 * H, 24 * H), null);
+  assert.equal(leverageOf(0, 0, 24 * H, 0), 0);
+});
+
+test("usageTrend: leverage는 기간마다, 변화도 change.leverage로", () => {
+  // 서브에이전트마다 따로 센다: 같은 5분에 240개 = 20시간, 120개 = 10시간
+  const crew = (n: number, d: number) => Array.from({ length: n }, (_, i) => rec({ t: ago(d), sidechain: true, agent: `a${d}-${i}` }));
+  const t = run([...crew(240, 1), ...crew(120, 8), rec({ t: ago(30) })]);
+  assert.equal(t.current.leverage, 0.12); // 20h ÷ 168h
+  assert.equal(t.previous.leverage, 0.06);
+  assert.equal(t.change.leverage, 1);
+  assert.equal(t.weeks.length, 2);
+  assert.equal(t.weeks[1].leverage, 0.12);
+  assert.equal(t.current.elapsedHours, 168);
+  assert.equal(t.weeks[0].elapsedHours, 168); // 30일 전 기록이 있어 앞 주도 다 덮인다
+
+});
+
+test("leverageText: 한 자리 소수, 10 넘으면 정수", () => {
+  assert.deepEqual([4.69, 0, 12.4, 1234.5, null].map(leverageText), ["×4.7", "×0.0", "×12", "×1,235", "—"]);
 });
