@@ -65,12 +65,12 @@ export function SinceLook({ refreshKey }: { refreshKey: string }) {
       <div className="since-look-row">
         <span className="since-look-label">SINCE LAST LOOK</span>
         {KINDS.filter((k) => items(k).length > 0).map((k) => (
-          <button key={k} className={`since-look-chip${k === "waiting" ? " is-waiting" : ""}`} aria-expanded={open === k} onClick={() => setOpen(open === k ? null : k)}>
+          <button key={k} className={`chip since-look-chip${k === "waiting" ? " is-waiting" : ""}`} aria-expanded={open === k} onClick={() => setOpen(open === k ? null : k)}>
             {LABEL[k]} <b>{items(k).length}</b>
           </button>
         ))}
         <button
-          className="since-look-seen"
+          className="btn since-look-seen"
           onClick={async () => {
             await seen();
             setOpen(null);

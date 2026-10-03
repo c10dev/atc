@@ -209,7 +209,7 @@ export function AtfmAlert({ atfm, now }: { atfm: AtfmState; now: number }) {
         <h2 className="label" id="atfm-alert-title">
           ATFM <em>{enforced ? `실제 GROUND STOP ${enforced}` : "main CI 실패"}</em>
         </h2>
-        <button className="dp-btn atfm-off" onClick={allOff} disabled={busy} title="모든 스위치를 그림자로, 수동 GROUND STOP은 끔">
+        <button className="btn atfm-off" onClick={allOff} disabled={busy} title="모든 스위치를 그림자로, 수동 GROUND STOP은 끔">
           ATFM OFF
         </button>
       </header>
@@ -242,7 +242,7 @@ export function AtfmPanel({ atfm, now, alertShown }: { atfm: AtfmState; now: num
           ATFM <em>3단계 · 그림자 운용{enforced ? ` · 실제 GROUND STOP ${enforced}` : ""}</em>
         </h2>
         {!alertShown && (
-          <button className="dp-btn atfm-off" onClick={allOff} disabled={busy} title="모든 스위치를 그림자로, 수동 GROUND STOP은 끔">
+          <button className="btn atfm-off" onClick={allOff} disabled={busy} title="모든 스위치를 그림자로, 수동 GROUND STOP은 끔">
             ATFM OFF
           </button>
         )}
@@ -429,7 +429,7 @@ function GroundStopSection({ atfm, now }: { atfm: AtfmState; now: number }) {
               <time className="faint atfm-at" dateTime={m.at}>
                 {timeAgo(m.at, now)}
               </time>
-              <button className="dp-btn atfm-mini" disabled={busy} aria-label={`${m.airport} 수동 GROUND STOP 풀기`} onClick={() => act(`/api/atfm/stops/${encodeURIComponent(m.airport)}/release`, {})}>
+              <button className="btn atfm-mini" disabled={busy} aria-label={`${m.airport} 수동 GROUND STOP 풀기`} onClick={() => act(`/api/atfm/stops/${encodeURIComponent(m.airport)}/release`, {})}>
                 풀기
               </button>
             </li>
@@ -524,7 +524,7 @@ function ManualForm({ airports, busy, onSubmit }: { airports: string[]; busy: bo
         ))}
       </select>
       <input className="dp-input atfm-reason" aria-label="사유" placeholder="사유 (예: 배포 동결)" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
-      <button type="submit" className="dp-btn atfm-mini t-stop" disabled={busy || !pick}>
+      <button type="submit" className="btn is-danger atfm-mini" disabled={busy || !pick}>
         선언
       </button>
     </form>

@@ -9,7 +9,10 @@ import {
   flightGroups,
   type FlightInput,
   groupByAirport,
-  HOME_ANCHORS,
+  HOME_FILTERS,
+  homeFilterCounts,
+  homeFilterOf,
+  homeFilterOfKind,
   matchesQuery,
   METRICS_ITEMS,
   metricsSubOf,
@@ -134,11 +137,27 @@ test("RELEASE 묶음: AIRPORT별, 우선순위 먼저, 검색", () => {
 
 test("METRICS 하위 화면과 HOME 닻: 이름·주소가 고정이고 검색이 거른다", () => {
   assert.deepEqual(METRICS_ITEMS.map((m) => m.label), ["OPERATIONS", "LEAKS", "MISFIRE", "FUEL", "NETWORK"]);
-  assert.deepEqual(HOME_ANCHORS.map((a) => a.label), ["TO DO"]); // BRAKES는 아래 패널 탭으로 갔다(ATC-455)
+  assert.deepEqual(HOME_FILTERS.map((a) => a.label), ["전체", "QUEUE", "ALERT", "STUCK", "EFFECT", "DONE"]);
   assert.deepEqual(filterLabeled(METRICS_ITEMS, "fuel").map((m) => m.id), ["fuel"]);
-  assert.equal(filterLabeled(HOME_ANCHORS, "").length, 1);
+  assert.equal(filterLabeled(HOME_FILTERS, "").length, 6);
   assert.equal(metricsSubOf("#metrics"), "ops");
   assert.equal(metricsSubOf("#metrics/leaks"), "leaks");
   assert.equal(metricsSubOf("#metrics/nope"), "ops");
   assert.equal(metricsSubOf("#home"), "ops");
+});
+
+test("HOME 거름(ATC-422): kind별로 나뉘고 수가 붙고 항목 없는 거름은 빠지며 전체가 기본이다", () => {
+  assert.equal(homeFilterOfKind("PROPOSAL"), "queue");
+  assert.equal(homeFilterOfKind("HUMAN CHECK"), "queue");
+  assert.equal(homeFilterOfKind("ALERT"), "alert");
+  assert.equal(homeFilterOfKind("STUCK"), "stuck");
+  assert.equal(homeFilterOfKind("EFFECT"), "effect");
+  assert.equal(homeFilterOfKind("CLOSE"), "done");
+  const items = [{ kind: "PROPOSAL" }, { kind: "LANDING" }, { kind: "ALERT" }, { kind: "ALERT" }, { kind: "CLOSE" }];
+  assert.deepEqual(homeFilterCounts(items).map((f) => [f.id, f.count]), [["all", 5], ["queue", 2], ["alert", 2], ["done", 1]]);
+  assert.deepEqual(homeFilterCounts([]).map((f) => [f.id, f.count]), [["all", 0]]);
+  assert.equal(homeFilterOf("#home"), "all");
+  assert.equal(homeFilterOf("#home/alert"), "alert");
+  assert.equal(homeFilterOf("#home/nope"), "all");
+  assert.equal(homeFilterOf("#release/alert"), "alert"); // 주소의 첫 마디는 보지 않는다: 호출하는 쪽이 HOME에서만 부른다
 });

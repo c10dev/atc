@@ -213,12 +213,12 @@ export function HumanRow({ pr, idx, nameOf }: { pr: PullRequest; idx: Index; nam
               placeholder="본 것(FAIL은 필수)"
               aria-label={`#${pr.number} 메모`}
             />
-            <button className="hc-btn is-pass" onClick={() => void record("pass")} disabled={busy}>
+            <button className="btn is-primary" onClick={() => void record("pass")} disabled={busy}>
               PASS
             </button>
             {/* 왜 못 누르는지(FAIL은 메모가 필요함)를 화면에 보인다 — title에만 두지 않는다(원칙 11) */}
             {!note.trim() && <span className="hc-why faint">FAIL은 메모가 필요함</span>}
-            <button className="hc-btn is-fail" onClick={() => void record("fail")} disabled={busy || !note.trim()}>
+            <button className="btn is-danger" onClick={() => void record("fail")} disabled={busy || !note.trim()}>
               FAIL
             </button>
           </>

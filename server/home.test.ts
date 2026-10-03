@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf } from "../web/src/home-rows.ts";
+import { homeNeedOf, prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf } from "../web/src/home-rows.ts";
 import { proposalAskOf } from "./duty-card.ts";
 import { type FollowInput, followRowOf } from "./follow.ts";
 import type { Milestones } from "./milestones.ts";
@@ -78,4 +78,11 @@ test("SCHEDULE을 나눈 뒤(ATC-378): LATE WAYPOINTS 한 줄, 아무것도 없�
   assert.equal(prNameOf({ repo: "/p/vocado_nextjs", number: 400 }), "vocado_nextjs#400");
   assert.deepEqual(scheduleHomeOf(null), { slips: [], closeManual: [] });
   assert.deepEqual(scheduleHomeOf({ mode: "approval", slips: null, closeManual: [] }), { slips: [], closeManual: [] }, "마일스톤을 못 읽어도(null) 그릴 것 없음");
+});
+
+test("homeNeedOf: 서버가 준 need가 이기고, 없으면 종류별 한 문장(모든 종류에 있다)", () => {
+  assert.equal(homeNeedOf({ kind: "ALERT", need: "look" }), "look");
+  const kinds = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "BACKLOG"];
+  for (const k of kinds) assert.notEqual(homeNeedOf({ kind: k }), k, k);
+  assert.equal(homeNeedOf({ kind: "NEW KIND" }), "NEW KIND");
 });

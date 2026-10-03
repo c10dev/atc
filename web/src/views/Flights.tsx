@@ -4,6 +4,7 @@ import type { Index } from "../derive.ts";
 import { TabLoading } from "../lazyTab.tsx";
 import { VIEWS, type FlightsView, viewOfHash } from "../legacy-hash.ts";
 import { Follow } from "./Follow.tsx";
+import { LateWaypoints } from "./LateWaypoints.tsx";
 import { FlightsLanding, Teams } from "./Teams.tsx";
 import "./Flights.css";
 
@@ -35,6 +36,7 @@ export function Flights({ snapshot, idx, now, refreshKey }: { snapshot: Snapshot
       </nav>
       {view === "list" && (
         <>
+          <LateWaypoints refreshKey={refreshKey} now={now} />
           <Follow refreshKey={refreshKey} now={now} pulls={snapshot.pulls ?? []} />
           <FlightsLanding snapshot={snapshot} idx={idx} />
           <details className="fl-strips">
