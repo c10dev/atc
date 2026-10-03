@@ -22,8 +22,8 @@ export function TodoRow({
   tag: string;
   tone?: TodoTone;
   subject: string;
-  need: string;
-  age: string;
+  need: ReactNode;
+  age: ReactNode;
   action: ReactNode;
   open: boolean;
   onToggle: () => void;

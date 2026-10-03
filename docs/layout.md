@@ -230,7 +230,7 @@ N = notifications (Linear, GitHub, atc), ? = search, [=] = sidebar fold, * = liv
 - **Sidebar (next to the rail, folds).**
   - The list inside the selected screen:
     - FLIGHTS and FLEET: FLIGHTs and AIRCRAFT grouped under their AIRPORT, a dot for a live session
-    - RELEASE: READY by AIRPORT
+    - RELEASE: a section index (candidates, Todo before release, recent releases), each with its count (ATC-423)
     - RADIO: stations (control sessions, AIRCRAFT) as filters
     - METRICS: its sub-views
     - HOME: QUEUE and ALERTS as anchors
@@ -336,7 +336,7 @@ The header unit of the refactor plan (S8, ATC-432) waits for Z1: its stylesheet 
 - **What each screen lists.**
   - **FLIGHTS:** `snapshot.tickets` grouped under their AIRPORT (code, repository name, count). A FLIGHT is shown when it is triage, unstarted or started, or a live session holds it; the backlog is left out as in the FLIGHTS list, and finished ones (completed, canceled, duplicate) from the last 7 days sit behind `끝난 FLIGHT n` in each group. Order: live first, then started before unstarted, then priority, then key. A filled dot means a live session (`occupantsOf`). Choosing one sets `#flight/<KEY>`, which opens the drawer as before.
   - **FLEET:** `GET /api/fleet` (the call FLEET makes), with the status of a live session taken from the snapshot, under the AIRCRAFT's base AIRPORT, with a state word (AIRBORNE, IDLE, NORDO, ABSENT). Choosing one sets `#fleet/<REGISTRATION>`, and FLEET now also opens that row on `hashchange` (it only did on first load).
-  - **RELEASE:** `GET /api/releases` `ready` (the call the rail badge makes), grouped by the AIRPORT of each ticket. Choosing one opens its FLIGHT drawer.
+  - **RELEASE (ATC-423, decided 2026-10-03, Q7):** a section index, not the READY list (the list stays on the screen). Three items with their counts from `GET /api/releases`: 후보 (the issues the tree marks `fire`, plus the SCHEDULE NEW proposals), Todo 발권 전 (the tree's `release` rows) and 최근 발권 (the recent releases). Choosing one sets `#release/<candidates|unreleased|recent>` and the screen scrolls to that section; the section split is `partitionRelease` in `web/src/sidebar-rows.ts`, the same function the screen uses. The rail badge (READY count) is unchanged.
   - **METRICS:** OPERATIONS, LEAKS, MISFIRE, FUEL, NETWORK, the open one marked `aria-current`.
   - **HOME:** the to-do list filtered by kind (ATC-422): 전체, QUEUE (the decisions), ALERT, STUCK, EFFECT, DONE (the approved CLOSEs to set Done by hand), each with its count, from `GET /api/supervisor/queue` (the call HOME makes). Kinds with no item are not listed. Choosing one sets `#home/<kind>` and HOME filters by it (`homeFilterOf` in `web/src/sidebar-rows.ts`); 전체 is `#home`.
 - **One server addition, no new route.** `Ticket.airport` (an AIRPORT code or null) is set in `server/snapshot.ts` with `airportOfTicket`, the rule DISPATCH already uses (project mapping first, then the team default). The web had no way to know a FLIGHT's AIRPORT, and a second rule in the screen would break principle 4. It is not stored anywhere.

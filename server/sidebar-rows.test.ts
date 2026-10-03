@@ -17,7 +17,10 @@ import {
   METRICS_ITEMS,
   metricsSubOf,
   NO_AIRPORT,
-  releaseGroups,
+  partitionRelease,
+  RELEASE_SECTIONS,
+  releaseSectionCounts,
+  releaseSectionOf,
 } from "../web/src/sidebar-rows.ts";
 
 const AIRPORTS = [
@@ -122,17 +125,25 @@ test("AIRCRAFT 묶음: 퇴역은 빼고, 비행 중 → 쉬는 중 → NORDO →
   assert.equal(aircraftStateWord("absent"), "ABSENT");
 });
 
-test("RELEASE 묶음: AIRPORT별, 우선순위 먼저, 검색", () => {
-  const items = [
-    { key: "ATC-30", title: "low", priority: 4, airport: "ATCC" },
-    { key: "ATC-31", title: "urgent", priority: 1, airport: "ATCC" },
-    { key: "VOC-5", title: "other repo", priority: 0, airport: "VCDO" },
-    { key: "XXX-1", title: "no airport", priority: 2, airport: null },
-  ];
-  const g = releaseGroups(items, AIRPORTS, "");
-  assert.deepEqual(g.map((x) => x.code), ["ATCC", "VCDO", NO_AIRPORT]);
-  assert.deepEqual(g[0]!.rows.map((r) => r.key), ["ATC-31", "ATC-30"]);
-  assert.deepEqual(releaseGroups(items, AIRPORTS, "voc").map((x) => x.rows.map((r) => r.key)), [["VOC-5"]]);
+test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 가르고 수를 센다", () => {
+  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["후보", "Todo 발권 전", "최근 발권"]);
+  interface R {
+    key: string;
+    fire: "fire" | "release" | null;
+    children: R[];
+  }
+  const row = (key: string, fire: R["fire"], children: R[] = []): R => ({ key, fire, children });
+  const tree = [{ rows: [row("A-1", "fire", [row("A-2", null, [row("A-3", "release")])]), row("A-4", "release")] }, { rows: [row("B-1", "fire")] }];
+  const p = partitionRelease(tree);
+  assert.deepEqual(p.candidates.map((r) => r.key), ["A-1", "B-1"]);
+  assert.deepEqual(p.unreleased.map((r) => r.key), ["A-3", "A-4"]);
+  assert.deepEqual(p.rest.map((r) => r.key), ["A-2"]);
+  // 후보 수에는 SCHEDULE NEW 제안이 더해지고, 최근 발권은 기록 수
+  assert.deepEqual(releaseSectionCounts({ tree, proposals: [{}, {}], recent: [{}] }).map((x) => x.count), [4, 2, 1]);
+  assert.deepEqual(releaseSectionCounts(null).map((x) => x.count), [0, 0, 0]);
+  assert.equal(releaseSectionOf("#release/unreleased"), "unreleased");
+  assert.equal(releaseSectionOf("#release"), null);
+  assert.equal(releaseSectionOf("#release/x"), null);
 });
 
 test("METRICS 하위 화면과 HOME 닻: 이름·주소가 고정이고 검색이 거른다", () => {

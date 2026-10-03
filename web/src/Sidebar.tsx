@@ -22,8 +22,8 @@ import {
   matchesQuery,
   METRICS_ITEMS,
   metricsSubOf,
-  releaseGroups,
-  type ReleaseInput,
+  releaseSectionCounts,
+  releaseSectionOf,
 } from "./sidebar-rows.ts";
 import type { Snapshot } from "../../server/model.ts";
 import "./Sidebar.css";
@@ -84,10 +84,6 @@ function useJson<T>(path: string | null, refreshKey: string, pick: (j: unknown) 
   return v;
 }
 
-const releaseOf = (j: unknown): { key: string; title: string; priority: number }[] => {
-  const ready = (j as { ready?: unknown })?.ready;
-  return Array.isArray(ready) ? (ready as { key: string; title: string; priority: number }[]) : [];
-};
 const aircraftOf = (j: unknown): { registration: string; callsign: string; status: string; base: string | null; retired?: boolean }[] => {
   const a = (j as { aircraft?: unknown })?.aircraft;
   return Array.isArray(a) ? (a as { registration: string; callsign: string; status: string; base: string | null; retired?: boolean }[]) : [];
@@ -97,7 +93,7 @@ const radioOf = (j: unknown): Transmission[] => {
   return Array.isArray(t) ? (t as Transmission[]) : [];
 };
 const NONE_RADIO: Transmission[] = [];
-const NONE_RELEASE: ReturnType<typeof releaseOf> = [];
+const NONE_RELEASE: ReturnType<typeof releaseSectionCounts> = [];
 const queueKindsOf = (j: unknown): { kind: string }[] => {
   const items = (j as { items?: { kind?: unknown }[] } | null)?.items;
   return Array.isArray(items) ? items.map((i) => ({ kind: String(i.kind ?? "") })) : [];
@@ -176,12 +172,9 @@ export function Sidebar({
   }, [snapshot, idx]);
   const flightGs = useMemo(() => (screen === "flights" ? flightGroups(flights, airports, query, now) : []), [screen, flights, airports, query, now]);
 
-  const releaseRows = useJson(screen === "release" ? "/api/releases" : null, refreshKey, releaseOf, NONE_RELEASE);
-  const airportOfKey = useMemo(() => new Map((snapshot?.tickets ?? []).map((t) => [t.key, t.airport ?? null])), [snapshot?.tickets]);
-  const releaseGs = useMemo(
-    () => (screen === "release" ? releaseGroups(releaseRows.map((r): ReleaseInput => ({ key: r.key, title: r.title, priority: r.priority, airport: airportOfKey.get(r.key) ?? null })), airports, query) : []),
-    [screen, releaseRows, airportOfKey, airports, query],
-  );
+  // RELEASE: 구역 색인(후보 · Todo 발권 전 · 최근 발권)과 수. 화면과 같은 GET /api/releases, 새 길 없음(ATC-423)
+  const releaseItems = filterLabeled(useJson(screen === "release" ? "/api/releases" : null, refreshKey, releaseSectionCounts, NONE_RELEASE), query);
+  const releaseSection = releaseSectionOf(hash);
 
   const fleetRows = useJson(screen === "fleet" ? "/api/fleet" : null, refreshKey, aircraftOf, NONE_AIRCRAFT);
   const fleetGs = useMemo(() => {
@@ -272,22 +265,17 @@ export function Sidebar({
       empty
     );
   } else if (screen === "release") {
-    body = releaseGs.length ? (
-      releaseGs.map((g) => (
-        <section className="sb-group" key={g.code} aria-label={`${g.code} ${g.name ?? ""}`.trim()}>
-          <GroupHead g={g} extra={<span className="sb-count mono">{g.rows.length}</span>} />
-          <ul className="sb-list">
-            {g.rows.map((r) => (
-              <li key={r.key}>
-                <button type="button" className="sb-item" onClick={() => go(`flight/${r.key}`, onPick)} title={`${r.key} · ${r.title}`}>
-                  <span className="sb-key mono">{flightNumber(r.key)}</span>
-                  <span className="sb-title">{r.title}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))
+    body = releaseItems.length ? (
+      <ul className="sb-list">
+        {releaseItems.map((f) => (
+          <li key={f.id}>
+            <button type="button" className="sb-item" aria-current={releaseSection === f.id ? "location" : undefined} onClick={() => go(f.hash, onPick)}>
+              <span className="sb-key mono">{f.label}</span>
+              <span className="sb-count mono">{f.count}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     ) : (
       empty
     );
