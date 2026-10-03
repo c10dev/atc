@@ -160,7 +160,7 @@ describe("browser-gate-cli", { concurrency: 4 }, () => {
   test("세션이 끝났는데 Chrome이 남아 있으면 문이 내리고 슬롯을 놓고 기록한다", async () => {
     const dir = fresh();
     const env = envOf(dir, fakeChrome(dir, 60_000), { ATC_BROWSER_SLOTS: "1", ATC_BROWSER_WATCH_MS: "200" });
-    // 부모(MCP 서버 구실)가 껍데기를 띄우고, Chrome이 뜬 것을 본 뒤 죽는다(고정 시간이면 부하가 높을 때 껍데기가 뜨기 전에 죽는다, ATC-523)
+    // 부모(MCP 서버 구실)가 껍데기를 띄우고, Chrome이 뜬 것(pids 파일)을 본 뒤에 죽는다. 부모가 먼저 죽으면 껍데기가 처음부터 고아라 세션이 끝난 것을 알아볼 기준이 없다(고정 시간이면 부하가 높을 때 그렇게 된다, ATC-523)
     const parent = spawnSync(process.execPath, ["-e", `require("child_process").spawn(process.execPath,[${JSON.stringify(CLI)}],{stdio:"ignore",detached:true}).unref();const i=setInterval(()=>{if(require("fs").existsSync(${JSON.stringify(join(dir, "pids"))})){clearInterval(i);setTimeout(()=>process.exit(0),100)}},20);setTimeout(()=>process.exit(1),30000)`], { env, encoding: "utf8" });
     assert.equal(parent.status, 0);
     let ended = false;

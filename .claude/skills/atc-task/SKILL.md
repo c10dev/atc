@@ -70,7 +70,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 
 ## 5. 검증
 
-- 루트 `CLAUDE.md` "검증"의 세 검사를 모두 통과시킨다.
+- 루트 `CLAUDE.md` "검증"의 세 검사를 게이트 명령으로 돌려 모두 통과시킨다(게이트가 없다고 보고될 때만 맨 명령). 전송 실패는 시험 실패가 아니고, PR 본문과 보고에는 얻은 종료 코드와 출력을 쓴다.
 - 끝까지 확인할 때는 Skill 도구로 `test-server`를 부른다(ATC-357). 직접 띄우는 규칙은 루트 `CLAUDE.md` "검증". 확인이 실제 PR 자료를 필요로 할 때만 `ATC_GITHUB`를 빼고, 그때는 짧게만 돌린다.
 - 화면을 바꿨으면 Playwright로 4개 폭(390, 768, 1280, 1600) × 3개 테마(`radar`, `night`, `cockpit`)를 본다. 가로 넘침이 없는지도 확인한다.
 - 화면 FLIGHT(`web/`나 ANNUNCIATOR 화면을 바꾸는 FLIGHT)는 PR 전에 Skill 도구로 `ui-review`(mode `diff`)를 부른다(ATC-293, 가져온 규칙은 `THIRD_PARTY_NOTICES.md`). 그 출력 블록을 PR 본문의 `docs/design-language.md` 5절 점검표 답 옆에 그대로 붙이고, Blocker는 고치거나 보고의 `BLOCKED`에 적는다. 디자인 언어가 정한 값은 결함이 아니고, `CONFLICT`로 표시된 가져온 규칙은 따르지 않고 블록의 "Conflicts seen"에만 적는다.

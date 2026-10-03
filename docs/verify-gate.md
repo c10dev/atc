@@ -10,7 +10,7 @@ node server/verify-gate-cli.ts -- npx tsc --noEmit -p .
 node server/verify-gate-cli.ts -- npx vite build
 ```
 
-Run from the STAND as usual. When the LAN desktop is reachable, these three commands run there instead (see "Remote execution"); the caller cannot tell from the result except through the run record. The command starts in the caller's working directory with stdin, stdout and stderr connected as they are, and the gate exits with the command's own exit code (a command killed by a signal gives 128 plus the signal number, like a shell). A command that is not run through the gate behaves exactly as before. Nothing in `CLAUDE.md` or the skills calls the gate yet; adopting it there is a `user`-tier change.
+Run from the STAND as usual. When the LAN desktop is reachable, these three commands run there instead (see "Remote execution"); the caller cannot tell from the result except through the run record. The command starts in the caller's working directory with stdin, stdout and stderr connected as they are, and the gate exits with the command's own exit code (a command killed by a signal gives 128 plus the signal number, like a shell). A command that is not run through the gate behaves exactly as before. Root `CLAUDE.md` "Verification" and `atc-task` section 5 tell sessions to run the three checks through the gate and to use the plain command only when the gate is reported unavailable (ATC-519). A transport failure of a remote run (exit 75 or 76, a local fallback) is not a test failure; a session reports the exit code and output it got and never uses `ssh` or `scp` itself.
 
 ## What it does
 

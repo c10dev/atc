@@ -17,7 +17,7 @@ Only the rules that sessions changing atc's code (team sessions, ENGINEERING, se
 
 ## Verification
 
-- `npm test`, `npx tsc --noEmit -p .` and `npx vite build` must all pass. Test pure functions with `node:test`.
+- `npm test`, `npx tsc --noEmit -p .` and `npx vite build` must all pass. Run the three through `node server/verify-gate-cli.ts -- <command>` (VERIFY GATE, `docs/verify-gate.md`); use the plain command only when the gate is reported unavailable. Do not use `ssh` or `scp` yourself. A gate transport failure (exit 75 or 76, a local fallback) is not a test failure. Report the exit code and output you got, wherever it ran. Test pure functions with `node:test`.
 - To check the server, use the skill `test-server` (7702-7799, temporary state folder, `ATC_GITHUB=off`). If you start one by hand, save the PID to a file and stop it only with `kill "$(cat <pid file>)"`. Never kill by name or pattern (`pkill`, `killall`, `kill $(pgrep …)`), and never touch a process you did not start or production 7700 (2026-09-29 incident; `hooks/kill-guard.mjs` blocks it).
 - Do not message real team sessions during a test. Do not copy or print `.env.local`.
 - atc is a public repository. No screenshots on PRs, issues or branches (not blurred, not on an images-only branch). Describe what you saw in the PR body in words.

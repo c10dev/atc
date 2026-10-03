@@ -158,6 +158,14 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - **Stopped** needs at least one FLIGHT at that AIRPORT in QUEUE to CLEARED whose holder is not `SUPERVISOR`; otherwise the same silence is `congested` with the SUPERVISOR holder. A cell whose FLIGHTs are all on the to-do list has `flights: []` and `todoGroup`; a partly listed cell keeps its rows with `todo` pointing at the item.
 - To-do order: WARNING, SUPERVISOR-held stuck (STUCK, LANDING, HUMAN CHECK of a FLIGHT whose holder is SUPERVISOR), CAUTION and other STUCK, the rest; oldest first. LANDING and HUMAN CHECK items have no `since` in the queue, so their age comes from the PR (`readyAt`, else `createdAt`). Items group when kind and button label match; ALERT, STUCK, EFFECT, CLOSE and ARRIVED group only when level and need text match too (pilot's discretion).
 
+### H4 as built (ATC-503)
+
+- HOME draws the to-do list from `GET /api/flow` joined by `key` to the supervisor queue items: the flow decides order, grouping and the five-line fold, the queue items still draw each row, button and detail. `web/src/views/HomeTodo.tsx` (HOME only) and `web/src/home-todo.ts` (pure helpers, tested in `server/home-todo.test.ts`); `kit/TodoRow` is not changed.
+- A group row is `[kind tag] [n건] [groupNeed] [최장 6h] [펼치기 n]`. The only button expands; there is no batch action. The server's `groupNeed` is shown as sent (`user 등급 PR` is not part of it, see the PR's pilot's discretion). Expanded, each item is the normal row with its own button.
+- The fold line is the server's `todoRest.text` with a `펼치기 n` button that shows the folded lines in the same order. A kind filter from the sidebar re-groups only that kind with the same rule (`groupLines`, tested equal to the server's `todoLines`) and does not fold.
+- The link of a flow-board cell (`todoGroup`, a group key or an item key) is `openTodoGroup(key)` in `home-todo.ts` (a window event): HOME expands the group or the folded rest, opens the row if it is an item, scrolls to it and moves focus to the group's button or the row.
+- No `/api/flow` (503 before the first snapshot): HOME draws the queue one line each, as before.
+
 ## 6. Risks
 
 - **The block-code table drifts.** A new block code with no entry is classified `ATC` and counted. The test that fails on an unmapped code is the guard.
