@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
+import { allDecisions } from "./decision-card-run.ts";
+import { answerLineOf, isDecisionRole, unackedAnswers } from "./decision-card.ts";
 import { isRole, ROLES } from "./squelch.ts";
 import { type Fetcher, gatherInputs } from "./squelch-run.ts";
 import { actionable, occKeysOf, persistentKeysOf } from "./tick.ts";
@@ -62,8 +64,12 @@ export function mountTick(app: Hono, deps: { get?: Fetcher; seenFile?: () => str
           } catch {}
         }
       }
+      // SUPERVISOR가 DECISION 카드에 답했다(ATC-352): 세션이 읽고 `atcctl decision ack`할 때까지 할 일이다
+      const answered = isDecisionRole(role) ? unackedAnswers(allDecisions(), role).map(answerLineOf) : [];
+      const act = a.act || answered.length > 0;
+      const reasons = answered.length ? [...a.reasons, "decision-answered"] : a.reasons;
       // 세션이 읽을 브리핑: TOWER는 brief 그대로(cursor 포함), 나머지는 역할이 읽는 것들
-      return c.json({ role, ...a, brief: role === "tower" ? inputs.brief : inputs });
+      return c.json({ role, ...a, act, reasons, ...(answered.length ? { answers: answered } : {}), brief: role === "tower" ? inputs.brief : inputs });
     } catch (e) {
       return c.json({ role, act: true, reasons: ["error"], info: 0, brief: null, error: e instanceof Error ? e.message : String(e) });
     }

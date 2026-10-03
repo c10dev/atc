@@ -103,6 +103,8 @@ const AGENT_WRITE: readonly RegExp[] = [
   new RegExp(`^/api/duty/charters/${S}/seen$`),
   /^\/api\/duty\/(card|note|charter|stand|stand-done|linear)$/,
   /^\/api\/following\/ack$/,
+  /^\/api\/decisions(\/default)?$/, // DECISION 카드를 올린다(ATC-352): 답은 SUPERVISOR 자격이 필요한 /answer뿐이다
+  new RegExp(`^/api/decisions/${S}/(withdraw|ack)$`),
   /^\/api\/mcc\/(rts|(inspect|escalate|land)\/\d+)$/,
   new RegExp(`^/api/landing/review/${S}/\\d+$`),
   new RegExp(`^/api/relay/${S}/(issued|undeliverable)$`),

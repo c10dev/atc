@@ -90,6 +90,16 @@ If the body or comments leave the start to a person, put a HOLD without a prereq
 
 A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. A person (President or the SUPERVISOR for now) chose the team ([`../docs/fleet.md`](../docs/fleet.md)). The old name `lane:TEAM_X` is still honored until 2026-10-10, with a note in the exclusion reason to change it. Adding or changing a `tail:` is a SCHEDULE `TAIL` draft (`schedule.md` "Before a TAIL"). If the body names a team ("TEAM_E가 …") but there is no label, say so in the note, and draft a TAIL once the SUPERVISOR confirms the assignment.
 
+## SUPERVISOR decisions go on a card (ATC-352)
+
+- **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log and record it with `node ../controller/atcctl.mjs decision default occ <key> --what '<the decision, one line>' --chose '<the default you took>'` (goes to the FLIGHT RECORDER; no card).
+- Only for a K1–K3 decision: `node ../controller/atcctl.mjs decision file occ <key> --ask '<question the SUPERVISOR reads, in Korean>' --option '<option 1>' --option '<option 2>' [--pr <number> --head <sha>]` files one QUEUE card (kind DECISION). 2 to 6 options, one line each. The same decision always gets the same `<key>` (for a PR: `pr#<number>@<head>`). A `<key>` is filed once and answers `ALREADY FILED` afterwards. Do not ask the same thing again. Filing a card is all it does: it approves, sends and merges nothing.
+- K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
+- Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
+- The SUPERVISOR's answer arrives in the next tick brief as a `DECISION DC-xxxx … ANSWERED by SUPERVISOR` line (`TICK ACT`, REASONS `decision-answered`). Act on it, then mark it read with `node ../controller/atcctl.mjs decision ack occ <DC-xxxx>`. Withdraw a decision that is no longer needed with `decision withdraw occ <DC-xxxx>`. `decision list occ` shows open cards and unread answers.
+- Tool-approval prompts (permission_prompt) are out of scope for this rule.
+
 ## OCC LOG
 
 One or two lines at the end of each pass: IDs of proposals given notes and the CAUTION reasons, proposals put on HOLD with their prerequisite FLIGHTs, SCHEDULE draft IDs written (or that `LIMIT` was hit), AD HOC FLIGHT draft IDs from the CHARTER DESK, WAYPOINT gap draft IDs and the criteria skipped (a person decides, or a similar FLIGHT), TARGET and ROUTE draft IDs, WAYPOINT draft IDs and the FLIGHTs skipped, WAYPOINT slips and ROUTEs without WAYPOINTs reported, differences found in flight following, and (2b) FLIGHT PLANs sent, READBACKs received and declines, CREW CHANGEs sent and their READBACKs. If nothing happened, "특이 사항 없음" ("nothing to report").

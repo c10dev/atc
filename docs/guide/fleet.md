@@ -40,6 +40,8 @@ FLEET PLAN 아래 **AIRCRAFT** 블록은 기본이 목록이다. AIRCRAFT 한 �
 - **승인 프롬프트에 서 있는 세션**은 Claude Code가 `working`으로 적고 `needs`에 `approve Write: …`를 함께 적는다(`blocked`가 아니다). 이때는 `NEEDS YOU`가 아니라 `PENDING · approve Write: …`(파란색)가 줄·카드(경보 띠)에 붙고, 10분이 지나면 SUPERVISOR 알림이 CAUTION으로 오른다. 그 세션에게 가는 호출이 답을 못 받고 있으면 바로 오르고 글에 `1 call waiting (FLIGHT PLAN D-0336)`처럼 적힌다. 승인은 늘 SUPERVISOR가 그 세션에서 한다. atc는 아무것도 보내지 않는다.
 - **AIRCRAFT는 사람에게 도구 승인을 묻지 않는다**(ATC-369). atc가 띄우는 AIRCRAFT에는 policy hook이 실려, 프롬프트가 뜰 호출을 hook이 정한다: STAND 안의 알려진 안전한 동작은 허용, 나머지(Claude 설정 폴더 쓰기, STAND 밖 쓰기, 운영 상태 …)는 거절하고 class별로 센다. FLEET 머리에 `PENDING 0 · DENIED 24h n · STALE STOP on`이 보이고, PENDING이 0이 아니면 파랗게 바뀐다. 또 FLIGHT가 머지·ARRIVED인데 PENDING·HUNG으로 30분 남은 AIRCRAFT는 서버가 멈춘다(기본 on, 끄는 곳은 설정 → OPERATIONS → STALE STOP, 당신만). 카드의 job 한 줄은 `… · last known, 17 h ago`처럼 나이와 함께 보인다.
 
+**관제 세션은 이 상태로 끝나면 안 됩니다.** TOWER·OCC·MCC·CROSSCHECK·DUTY는 사람의 결정이 필요하면 `blocked`로 멈추지 않고 SUPERVISOR QUEUE에 **DECISION 카드**를 올린 뒤 하던 일을 계속합니다(카드는 아래 QUEUE에서 선택지를 눌러 답합니다. 답은 그 세션의 다음 tick으로 갑니다). 그래도 `blocked`로 기다리는 관제 세션이 있으면 NEEDS YOU가 아니라 ALERTS의 **WARNING** `RULE BREACH — 관제 세션 …`으로 뜹니다. 규칙을 어긴 것이니, 세션을 다시 돌려 규칙을 읽히면 됩니다.
+
 ## 세션이 멈췄을 때: AIRCRAFT health
 
 세션이 사용 한도나 API 오류로 멈추거나, 승인을 기다리거나, 지시에 대답하지 않으면 atc가 까닭을 읽고 코드를 붙인다. 멈춘 순간을 세션이 직접 알려 주므로(hook), 승인 대기 같은 것은 30분을 기다리지 않고 바로 보인다. FLYING 칸 앞에 `HOLD · LIMIT until 07:40Z`, `PENDING approval 12m`, `CONTEXT — RESTART` 같은 표시가 보이고, 마우스를 올리면 오류 한 줄과 다음 할 일이 나온다. 노란 표시는 사람이 볼 일(ALERT), 파란 표시는 참고(INFO)다.

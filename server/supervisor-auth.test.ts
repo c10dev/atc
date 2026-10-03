@@ -154,7 +154,7 @@ test("every write that controller/atcctl.mjs makes is still allowed without the 
   const paths = new Set<string>();
   for (const m of src.matchAll(/(?:call\("POST", |method: "POST", path: )([`"])(\/api\/[^`"]*)\1/g)) paths.add(m[2]!);
   assert.ok(paths.size >= 30, `found only ${paths.size} POST paths`);
-  const ops = ["readback", "roger", "unable", "standby", "cancel", "undeliverable", "issued", "411", "x"];
+  const ops = ["readback", "roger", "unable", "standby", "cancel", "undeliverable", "issued", "withdraw", "ack", "411", "x"];
   for (const p of paths) {
     const base = p.replace(/\$\{[^}]*\}/g, "x");
     const candidates = p.includes("${") && /\$\{[^}]*\}$/.test(p) ? ops.map((op) => p.replace(/\$\{[^}]*\}$/, op).replace(/\$\{[^}]*\}/g, "x")) : [base];

@@ -54,6 +54,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 - 공개 저장소다: vocado 내부 사항, 비밀, 스크린샷이 없어야 한다.
 - 기록은 추가만 하는 JSONL, 설정·등록부는 원자적으로 바꿔 쓰는 JSON. **운영 상태 형식을 바꾸거나 되돌리기 어려운 변경이면 ESCALATE**한다. 검토에서 의심이 남아도 ESCALATE. 이미 쓰는 스위치 설정에서 배포되는 순간 배포 경로나 운영 상태에 새 자동 동작을 켜는 변경(예: `mcc.json`이 이미 `land+rts`인데 RTS를 스스로 시작하는 서버 타이머)도 ESCALATE — 언제 켤지는 SUPERVISOR가 고른다.
 - PR 본문과 ATC 이슈가 말한 일을 하고, 그 밖의 일은 하지 않는가.
+- **지우기 규칙**(ATC-495, 패킷의 `removal`): 작업 지시서가 이름 붙이지 않은 사용자에게 보이는 기능(화면 구역·뷰·버튼·화면이 그리는 필드, 그 기능만 쓰던 스타일시트·컴포넌트)을 diff가 지우면 `escalate`(`ESCALATE: removes <무엇>, not named in the work order`). PR 본문의 `Removed:` 줄이 없거나 diff와 다르면(`none`인데 지움) P1. 작업 지시서 글이 패킷에 없으면(`removal.workOrder: missing`) 그렇다고 적고 이 점은 pass하지 않는다. `removal.rule`이 `off`면(SUPERVISOR 스위치 `removalGuard`) 지우기 때문에 ESCALATE하지 않고 `Removed:` 줄 P1도 달지 않는다.
 
 등급은 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄. `pass`에도 본 범위와 P2를 적는다. diff가 잘렸으면(`diffTruncated`) 본 범위를 적고 pass하지 않는다(P1 "diff가 잘려 X를 확인하지 못함"). 4000자 이내.
 
@@ -77,6 +78,15 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 ### 새로 시작했을 때(atc가 다시 띄운 세션)
 
 이전 대화는 이어지지 않는다. 그래도 잃는 것이 없게 상태는 모두 서버에 있다. 첫 바퀴는 `mcc queue`를 읽고 그 출력이 말하는 대로 한다. LOG에 이전 바퀴가 있다고 가정하지 않는다. INSPECTION은 head마다 기록되어 있어 이미 한 PR은 `inspection`에 보이고, 하던 중이던 PR은 다시 INSPECTION한다(비용만 든다). RTS가 돌고 있으면(`rts.why` "RTS 진행 중") 그대로 두고 지켜본다.
+
+## SUPERVISOR의 결정은 카드로 (ATC-352)
+
+- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 (이 세션에는 `decision` 명령이 없어 FLIGHT RECORDER 줄은 OCC·TOWER 세션만 남긴다) 카드로는 올리지 않는다.
+- PR에 대한 K1–K3 결정은 이미 카드다: `mcc escalate <PR> -- '<사유>'`로 user 등급으로 올린다. PR이 아닌 K1–K3 결정은 MCC LOG 줄에 적고 기본값으로 진행한다. 카드는 OCC나 TOWER가 올린다. 이 세션의 guard는 `atcctl decision`을 허용하지 않는다(바꾸려면 guard 변경이라 SUPERVISOR 승인이 필요하다).
+- K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
+- SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
+- 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
 
 ## MCC LOG
 

@@ -26,6 +26,7 @@ ATC-<n> 배정은 두 갈래로 온다. 어느 쪽이든 CAPTAIN이 그 메시�
 - 흔한 애매함(이름, 화면 위치, 기본값, 문구, 명세의 작은 틀림)은 스스로 합리적인 기본값을 고르고 계속 간다. 고른 것과 이유는 PR 본문의 "Pilot's discretion" 절과 보고에 적는다.
 - 멈춰서 먼저 묻는 것은 SUPERVISOR가 정할 일뿐이다: guard의 막는 조건, 운영 상태·기록 형식(`~/.local/state/atc/`)을 되돌리기 어렵게 바꾸는 것, 승인 게이트·브랜치 보호, 비용이나 외부에 쓰는 동작, 명세의 목표 자체가 맞지 않아 보일 때.
 - 물을 때는 한 번에 모아 묻고, 답을 기다리는 동안 그 결정에 걸리지 않는 부분은 계속 만든다.
+- **기존 기능을 지우는 것은 재량이 아니다**(ATC-495): 작업 지시서가 이름 붙이지 않았는데 이 작업이 기존 화면 구역·뷰·버튼·화면이 그리는 필드를 지우거나 납작하게 만들게 되면 지키거나 `BLOCKED`에 적어 일을 맡긴 세션이 정하게 한다(그 답에 걸리지 않는 부분은 계속 만든다). 지시서가 이름 붙인 지우기는 그대로 한다. 지시서는 화면이 하는 일의 전부가 아니니, 고치는 화면은 `origin/main`에서 먼저 읽는다.
 
 ## 2. 작업 위치
 
@@ -80,6 +81,7 @@ git diff --name-only origin/main...HEAD | node deploy/landing-tier.mjs
 
 - PR 제목 끝은 `(ATC-<n>)`, 본문 첫 줄은 `Fixes ATC-<n>`이다. 후속 PR은 `Refs ATC-<n>`.
 - 본문에 요약, 명세와 다르게 한 점, PILOT'S DISCRETION으로 고른 기본값, 등급, 시험 계획(`[x]` 체크)을 적는다.
+- **`Removed:` 줄**(ATC-495): 본문에 `Removed: <이 diff가 지우는 사용자에게 보이는 것, `;`로 나눠>` 한 줄. 없으면 `Removed: none`. 지시서가 이름 붙인 지우기는 어느 줄이 요구했는지 적는다. 줄이 없거나 diff와 다르면 MCC INSPECTION이 P1, 이름 없는 지우기는 ESCALATE(`docs/mcc.md` 4.1).
 - **"Behavior change" 절**(ATC-360, `user`·ESCALATE PR): SUPERVISOR가 diff를 읽지 않고 동작이 무엇이 바뀌는지 보게 하는 그림이다. 절 안에 ``` 코드 블록 하나: `BEFORE`와 `AFTER` 두 줄(또는 mermaid `flowchart`)에 트리거 → 단계 → 결과를 화살표로 잇고 바뀐 곳에 `*`를 붙인다. PR 서랍은 코드 블록을 그대로 보여 준다. 동작이 바뀌지 않으면 한 줄 `Behavior change: none`. 그림은 diff와 같아야 한다. 예:
 
   ````
@@ -107,7 +109,7 @@ BLOCKED none | <막힌 점 한 줄씩>
 
 - `TESTS` 줄은 늘 쓴다. 코드나 테스트가 바뀌지 않은 PR(문서·설정·CI만)은 숫자를 지어내지 말고 `TESTS n/a`로 쓴다(ATC-209): `TESTS n/a · tsc ✓ · build ✓`. 받은 OCC는 `--tests n/a`로 그대로 기록한다. 코드가 바뀐 PR은 늘 `<통과>/<전체>`다.
 - 첫 줄의 `→ OCC`는 FLIGHT PLAN으로 받았을 때, 직접 지시면 `→ ENGINEERING`(사용자에게는 같은 꼴로 대화에 쓴다). PR이 없는 SURVEY·CHECK FLIGHT는 `PR #<번호>` 대신 `RESULT <링크>`를 쓴다.
-- `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
+- `TIER`는 6절 등급, `DISCRETION`은 PILOT'S DISCRETION으로 고른 것의 수(줄마다 무엇을 왜), `BLOCKED`는 막힌 점이나 SUPERVISOR가 결정할 일이다. 지우기 물음(위 PILOT'S DISCRETION)도 여기에 적는다. tsc나 build가 실패했으면 ✓ 대신 ✗와 이유를 적는다.
 - 고정 줄 뒤 자유 요약에는: 한 일 3~5개, 명세와 다르게 한 점, `flagged`면 바뀐 관제 규칙, 검증 결과(시험 서버와 Playwright에서 확인한 것을 글로), PR 링크.
 
 같은 파일을 고치는 다른 ATC 작업이 먼저 머지되면, `origin/main`을 병합하고(rebase 없이) 맨 `git push`로 다시 올린 뒤 알린다. `GO AROUND`·`FIX`는 루트 `CLAUDE.md` "교신"의 행동 지시이고, 검증은 5절이다.

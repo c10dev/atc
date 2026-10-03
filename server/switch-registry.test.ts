@@ -36,10 +36,10 @@ test("내장 스위치: key가 겹치지 않고, 기본값은 지금 읽는 값�
 test("선언의 순서: 정책 한 줄은 lineOrder, 저장은 applyOrder, 설정 창은 order", () => {
   assert.deepEqual(
     modeSegments(switchRegistry.views()).map((x) => x.key).slice(0, 7),
-    ["autolandMode", "autolandReviewedSecurity", "mccMode", "mccKApproval", "judgesJev", "fuelHold", "reviewSecurity"],
+    ["autolandMode", "autolandReviewedSecurity", "mccMode", "mccKApproval", "removalGuard", "judgesJev", "fuelHold"],
   );
   assert.deepEqual(switchRegistry.decls.slice(0, 4).map((d) => d.key), ["reviewSecurity", "fuelHold", "autoApprove", "autoApproveLaunch"]);
-  assert.deepEqual(switchRegistry.views().filter((v) => v.group === "landing").map((v) => v.key), ["autolandMode", "autolandReviewedSecurity", "mccMode", "mccKApproval", "migrateRehearsal", "autoRevert", "reviewSecurity", "codexLane"]);
+  assert.deepEqual(switchRegistry.views().filter((v) => v.group === "landing").map((v) => v.key), ["autolandMode", "autolandReviewedSecurity", "mccMode", "mccKApproval", "removalGuard", "migrateRehearsal", "autoRevert", "reviewSecurity", "codexLane"]);
 });
 
 test("GET /api/settings는 선언된 스위치를 싣는다(지금 값, 값 목록, ⚠ 모드, 값마다 경고, 줄)", async () => {

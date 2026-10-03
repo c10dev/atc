@@ -65,6 +65,8 @@ export function classify(i: LeakItem): Verdict {
       return leak("P16", "C14"); // 제안이 SUPERVISOR의 발권을 기다린다(ATC-401). 센다: 기다림이 보이게
     case "GO":
       return exempt("K3", "P8");
+    case "DECISION":
+      return exempt("K3", null); // K1~K3 결정만 카드가 된다(ATC-352): 사람이 정하는 일이라 leak이 아니다
     // HOME의 한 목록에 더한 종류(ATC-454)는 승인 단계가 아니라 SUPERVISOR가 읽는 신호다. 통제로 없앨 사람의 한 걸음이 아니므로 leak으로 세지 않는다
     case "ALERT":
     case "STUCK":

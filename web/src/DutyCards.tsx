@@ -433,12 +433,47 @@ function RelayOffer({ item }: { item: QueueItem }) {
   );
 }
 
+// DECISION(ATC-352): 관제 세션이 올린 결정 하나. 옵션 버튼 하나를 누르면 답이 되고(덧붙일 글은 선택), 답은 그 세션의 다음 tick 브리핑으로 간다
+function DecisionAnswer({ item, onDone }: { item: QueueItem; onDone: (outcome: string) => void }) {
+  const d = item.decision;
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!d) return null;
+  const answer = async (choice: number) => {
+    setBusy(true);
+    setErr(null);
+    const r = await post(`/api/decisions/${encodeURIComponent(d.id)}/answer`, { choice, ...(note.trim() ? { text: note.trim() } : {}) });
+    setBusy(false);
+    if (!r.ok) return void setErr(r.error ?? "실패");
+    onDone("답함");
+  };
+  return (
+    <div className="hd" role="group" aria-label={`${d.id} 결정`}>
+      <p className="hd-title">
+        {d.role.toUpperCase()}{d.pr ? ` · PR #${d.pr.number}${d.pr.head ? ` @${d.pr.head.slice(0, 7)}` : ""}` : ""}
+      </p>
+      <p className="hd-how">{d.ask}</p>
+      <input className="du-reason" type="text" value={note} maxLength={600} placeholder="덧붙일 말(선택, 한국어도 됨)" aria-label="덧붙일 말" onChange={(e) => setNote(e.target.value)} />
+      <div className="du-actions">
+        {d.options.map((o, n) => (
+          <button key={n} type="button" className="dr-btn" disabled={busy} onClick={() => void answer(n)}>
+            {o}
+          </button>
+        ))}
+      </div>
+      {err && <p className="du-err">{err}</p>}
+    </div>
+  );
+}
+
 // 카드와 QUEUE 줄이 같이 쓰는 버튼 칸
 export function Actions({ item, actions, onDone }: { item: QueueItem; actions: CardAction[]; onDone: (outcome: string) => void }) {
   return (
     <>
       {item.hand && <HandDelivery item={item} onDone={onDone} />}
       {item.offer && <RelayOffer item={item} />}
+      {item.decision && <DecisionAnswer item={item} onDone={onDone} />}
       {actions.map((a, n) =>
         a.type === "link" ? (
           <div className="du-actions" key={n}>

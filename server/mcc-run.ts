@@ -45,6 +45,7 @@ import { isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.t
 import { fromThisApp } from "./origin.ts";
 import { assertGithubOn } from "./github-switch.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
+import { type FileChange, removalEscalationsOf, removalPacketOf, removalStatsOf } from "./removal-rule.ts";
 
 // MCC 실행부(docs/mcc.md). MCC 세션은 atcctl로 읽고 판단만 한다. GitHub 쓰기와 RTS 시작은 여기서만 한다:
 // findings의 PR 댓글, 정확한 head 머지(sha, land·land+rts 모드), systemctl --user start --no-block atc-rts(rts·land+rts 모드).
@@ -98,6 +99,14 @@ export function setKApproval(mode: "on" | "off") {
   appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, kApproval: mode, detail: `kApproval ${cfg.kApproval} → ${mode}` });
 }
 
+// 지우기 규칙 스위치(ATC-495): 설정 창에서 SUPERVISOR만(PUT /api/settings의 removalGuard, fromThisApp). 바꾼 것은 mcc.jsonl에 mode 줄로 남긴다
+export function setRemovalGuard(mode: "on" | "off") {
+  const cfg = loadMcc();
+  if (cfg.removalGuard === mode) return;
+  saveMcc({ ...cfg, removalGuard: mode });
+  appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, removalGuard: mode, detail: `removalGuard ${cfg.removalGuard} → ${mode}` });
+}
+
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
 export function airportOf(s: Snapshot) {
   const cfg = loadMcc();
@@ -108,6 +117,7 @@ export function airportOf(s: Snapshot) {
   if (!slug) throw new MccError(`${cfg.airport}의 GitHub 저장소를 아직 모름 — atc가 GitHub을 읽은 뒤(90초 안) 다시`, 409);
   const mainCi: CiState = !main?.sha ? "none" : main.state === "success" ? "ok" : main.state === "pending" ? "pending" : main.state === "none" ? "none" : "failed";
   const stop = s.atfm.groundStops.find((g) => g.airport === cfg.airport && g.kind === "stop" && g.enforced && g.land !== false);
+  removalSlug = slug;
   return { cfg, repo: a.repo, slug, defaultBranch: main?.branch ?? "main", main: main?.sha ?? null, mainReadAt: main?.at ?? null, mainCi, groundStop: stop ? stop.text : null, groundStopTrigger: stop ? stop.trigger : null };
 }
 
@@ -189,6 +199,15 @@ const fetchPull = async (slug: string, n: number) => JSON.parse(await gh(["api",
 // 바뀐 파일 이름. 이름을 바꾼 파일은 옛 이름도 함께 준다(previous_filename): 목록에 든 파일을 옮겨도 옛 이름이 보인다. 지운 파일은 filename에 그대로 있다
 const fetchFiles = async (slug: string, n: number) =>
   (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", ".[] | .filename, (.previous_filename // empty)"])).split("\n").filter(Boolean);
+// 바뀐 파일의 이름과 상태(added·modified·removed·renamed). 지우기 규칙(ATC-495)이 지운 파일을 본다
+const fetchFileChanges = async (slug: string, n: number): Promise<FileChange[]> =>
+  (await gh(["api", "--paginate", `repos/${slug}/pulls/${n}/files?per_page=100`, "--jq", '.[] | .filename + "\t" + .status']))
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => {
+      const [filename = "", status = ""] = l.split("\t");
+      return { filename, status };
+    });
 // 이 커밋의 CI 체크(이름이 ciCheck인 check run). 다시 돌았으면 마지막 것
 async function fetchCi(slug: string, sha: string, name: string): Promise<CiState> {
   const rows = (await gh(["api", `repos/${slug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}&per_page=20`, "--jq", ".check_runs[] | [.status, (.conclusion // \"\"), (.started_at // \"\")] | @tsv"]))
@@ -354,6 +373,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const rts = rtsState(records);
       const deployed = deployedHead();
       // SHADOW GATE 한 줄(atcctl mcc queue 위쪽에 보이게)
+      void refreshRemovalHeads().catch(() => {}); // 지우기 규칙의 오작동 수가 보는 머지 head 캐시(ATC-495). 실패해도 큐는 그대로
       const gate = await gateOf(s).then((g) => g.line + (g.error ? ` (${g.error})` : "")).catch((e) => `SHADOW GATE 계산 실패 — ${errText(e)}`);
       return c.json({
         mode: ap.cfg.mode,
@@ -383,6 +403,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const ap = airportOf(s);
       const pr = await fetchPull(ap.slug, n);
       const files = await fetchFiles(ap.slug, n);
+      const changes = await fetchFileChanges(ap.slug, n);
       const { tier, reasons } = await tierOfFiles(files);
       const diff = capText(await gh(["api", `repos/${ap.slug}/pulls/${n}`, "-H", "Accept: application/vnd.github.diff"]), DIFF_MAX);
       const key = s.pulls.find((p) => p.repo === ap.repo && p.number === n)?.ticketKey ?? null;
@@ -409,6 +430,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         kApproval: tier === "user" ? (() => { const v = kVerdictOf(s, key, tierEntryOf({ tier, reasons }, files), airportOf(s).cfg.kApproval); return v.ok ? { ok: true, release: v.release, flight: v.flight, channel: v.channel } : { ok: false, code: v.code, why: v.why }; })() : null,
         files,
         flight,
+        // 지우기 규칙(ATC-495): `Removed:` 줄, 지운 파일, 작업 지시서가 패킷에 있는지, 규칙이 켜졌는지. 판정은 inspector가 한다
+        removal: removalPacketOf({ rule: ap.cfg.removalGuard, body: pr.body ?? "", files: changes, workOrderText: flight && !("error" in flight) ? ((flight.description as { text?: string } | undefined)?.text ?? null) : null }),
         diff: diff.text,
         diffTruncated: diff.truncated,
         diffChars: diff.chars,
@@ -561,6 +584,23 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
     appendMccRecord({ op: b.hold ? "hold" : "unhold", at: new Date().toISOString(), pr });
     return c.json({ holds });
   });
+}
+
+// 지우기 규칙의 오작동 수(ATC-495): 지우기로 ESCALATE한 PR을 SUPERVISOR가 같은 head 그대로 착륙시킨 수(최근 7일)와 지우기 ESCALATE의 총수.
+// 머지된 head는 SHADOW GATE와 같은 닫힌 PR 목록 캐시(readMergedHeads)에서 읽는다. 설정 창은 동기로 읽으므로 캐시만 보고, 갱신은 MCC 큐를 읽을 때 한다
+let removalSlug: string | null = null;
+export async function refreshRemovalHeads(): Promise<void> {
+  if (!removalSlug) return;
+  const esc = removalEscalationsOf(readMccRecords());
+  if (!esc.length) return;
+  await readMergedHeads(removalSlug, esc.map((e) => e.pr), Date.now() - 7 * 86_400_000);
+}
+export function removalGuardData(now = Date.now()) {
+  const records = readMccRecords();
+  const mccLanded = new Set<string>();
+  for (const r of records) if (r.op === "land" && r.result === "ok") mccLanded.add(`${r.pr}@${r.head}`);
+  const heads = (removalSlug && mergedHeads.get(removalSlug)) || new Map<number, string>();
+  return { ...removalStatsOf(removalEscalationsOf(records), heads, mccLanded, now), headsKnown: removalSlug !== null };
 }
 
 // K 승인으로 착륙한 PR의 날짜별 수(ATC-391): 설정 창 MCC 줄 아래. 기록만 읽는다

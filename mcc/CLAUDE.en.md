@@ -54,6 +54,7 @@ The standard the inspector applies (`../CLAUDE.md`; change this section and `ins
 - Public repository: no vocado internals, secrets or screenshots.
 - Records are append-only JSONL; settings and registries are atomically rewritten JSON. **A change to an operating-state format, or one that is hard to revert, is ESCALATEd.** So is anything that leaves a doubt, and so is a change that turns on a new automatic action over the deploy path or operating state the moment it deploys, under switch settings already in use (for example a server timer that starts RTS when `mcc.json` is already `land+rts`): the SUPERVISOR chooses when that goes live.
 - The PR does what its body and the ATC issue say, and nothing else.
+- **Removal rule** (ATC-495, the packet's `removal`): a diff that removes a user-visible feature the work order does not name (a screen section, view, button, a field the screen draws, or a stylesheet or component only that feature used) is `escalate` (`ESCALATE: removes <thing>, not named in the work order`). A PR body with no `Removed:` line, or one that is false against the diff (`none` while something is deleted), is P1. When the work order text is not in the packet (`removal.workOrder: missing`), say so and do not pass on this point. When `removal.rule` is `off` (the SUPERVISOR switch `removalGuard`), do not escalate for removal and do not P1 the `Removed:` line.
 
 Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1 → `pass`; otherwise `findings`. One line per finding: `P1 file:line — what is wrong and why`. A `pass` also states what was read and any P2. If the diff was cut (`diffTruncated`), state what was read and don't pass (P1 "diff cut, X not checked"). At most 4,000 characters.
 
@@ -77,6 +78,15 @@ Either way don't restart yourself (no `/clear`, no exit); the passes keep runnin
 ### After a fresh start (a session atc relaunched)
 
 The earlier conversation is not carried over, and nothing is lost because all state is in the server. Read `mcc queue` in the first pass and do what it says; don't assume earlier passes are in the LOG. INSPECTIONs are recorded per head, so a PR already inspected shows `inspection`, and a PR that was mid-INSPECTION is inspected again (cost only). If an RTS is running (`rts.why` "RTS 진행 중") leave it and watch.
+
+## SUPERVISOR decisions go on a card (ATC-352)
+
+- **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log (you have no `decision` command, so the FLIGHT RECORDER line comes only from OCC and TOWER sessions). It never becomes a card.
+- A K1–K3 decision about a PR is already a card: `mcc escalate <PR> -- '<reason>'` raises it to the user tier. For a K1–K3 decision that is not about a PR, say so in your MCC LOG line and carry on with the default; OCC or TOWER files the card. This session's guard does not allow `atcctl decision` (changing that is a guard change that needs the SUPERVISOR's approval).
+- K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
+- Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
+- Tool-approval prompts (permission_prompt) are out of scope for this rule.
 
 ## MCC LOG
 

@@ -8,7 +8,7 @@ export const alertLevelLabel: Record<AlertLevel, string> = { warning: "WARNING",
 
 // orphan(NORDO STAND)은 그 STAND의 FLIGHT가 ARRIVED·CANCELLED면 정리만 하면 되는 ADVISORY, 아니면(FLIGHT 없음 포함) CAUTION
 export function alertLevel(
-  a: Pick<Alert, "kind" | "workspacePath">,
+  a: Pick<Alert, "kind" | "workspacePath"> & { key?: string },
   idx: { wsByPath: ReadonlyMap<string, { ticketKey: string | null }>; ticketByKey: ReadonlyMap<string, Pick<Ticket, "stateType">> },
 ): AlertLevel {
   switch (a.kind) {
@@ -21,6 +21,7 @@ export function alertLevel(
       return type === "completed" || type === "canceled" ? "advisory" : "caution";
     }
     case "health":
+      return a.key?.startsWith("health|CONTROL-BLOCKED|") ? "warning" : "caution"; // 관제 세션이 blocked로 끝난 규칙 위반(ATC-352)
     case "no-workspace":
     case "unattended":
       return "caution";
