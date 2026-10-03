@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/kill-guard.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/kill-guard.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" || exit 2",
+            "command": "n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; f=\"$CLAUDE_PROJECT_DIR/hooks/kill-guard.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/kill-guard.mjs; \"$n\" \"$f\" || exit 2",
             "timeout": 5
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" start --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "command": "n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"$n\" \"$f\" start --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
             "timeout": 5
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "command": "n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"$n\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"/home/c10/.nvm/versions/node/v24.19.0/bin/node\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
+            "command": "n=/home/c10/.nvm/versions/node/v24.19.0/bin/node; [ -x \"$n\" ] || n=node; f=\"$CLAUDE_PROJECT_DIR/hooks/rules-drift.mjs\"; [ -f \"$f\" ] || f=/home/c10/projects/atc/hooks/rules-drift.mjs; \"$n\" \"$f\" check --ref origin/main --files CLAUDE.md,AGENTS.md,docs/design-language.md,.claude/skills/atc-task/SKILL.md; exit 0",
             "timeout": 5
           }
         ]
