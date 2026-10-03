@@ -673,6 +673,7 @@ K3: Claude Code auto-mode classifier가 FLIGHT에 무엇을 바꾸게 둘지 정
 - **기록.** FLIGHT RECORDER의 `launch` 줄에 `flight`와 `k3: { release, stand, entries }`가 남는다.
 - **PARKED(ATC-487).** 후보 팀의 Backlog 이슈 가운데 `blockedBy`가 없고 atc가 직접 올린 것(DUTY REVIEW·SCHEDULE NEW 제안)도 아닌 이슈는 어느 화면에도 없었다. RELEASE 화면에 접힌 절 `PARKED`(기본 닫힘, 머리에 수)가 생겨 key·제목·우선순위·나이·올린 쪽·K 줄·`Sequence:` 줄(막지도 숨기지도 않는다)과 함께 보인다. 상위 이슈, 끝난 이슈, 다른 팀, 나무의 줄, 제안은 싣지 않는다. 줄에는 READY 줄과 같은 **발권** 단추가 있다: 클릭 한 번이 `POST /api/releases/fire` 한 번이고 Origin 검사, 우선순위 0 거절, K3 길(allow 항목은 이 클릭에서만)이 같다. 이 절은 스스로 발권하거나 옮기지 않고 SUPERVISOR QUEUE에 줄을 더하지 않는다. 이슈를 "park"하려면 그대로 둔다. 끄는 스위치 `dispatch.json`의 `releaseParked`(기본 켜짐, 설정 창에서만): 끄면 절이 사라지고 엔드포인트가 PARKED 이슈를 다시 거절한다. 절의 오작동 카운터: 지난 7일에 PARKED에서 발권한 이슈가 24시간 안에 Canceled·Duplicate가 된 수.
 - **K3 hold(ATC-398).** `## K effects`에 `K3` 줄이 있는데 항목 없이 떠날 FLIGHT는 보내지 않는다. planner가 이유와 고치는 길을 붙여 제외한다: 읽히지 않는 줄은 "not a declaration"(줄을 고친다), `screen`·`duty-chat`이 아닌 발권(또는 그 뒤 본문이 바뀜)은 "release on the screen". 같은 이유가 HOME 알림과, 쏘기 전 RELEASE 줄에 보인다. 스위치 `dispatch.json`의 `k3Hold`(기본 켜짐, 설정 창에서만), 오작동 카운터는 `GET /api/releases`의 `k3Hold.nuisance`·`k3Hold.miss`. [autonomy.ko.md](autonomy.ko.md) C9.
+- **K3는 새 LAUNCH가 필요(ATC-509).** 발권된 K3 FLIGHT는 새로 띄운 AIRCRAFT만 받는다. 받을 ABSENT AIRCRAFT가 없으면 `unserved`에 `why: "no-aircraft"`와 `k3: true`로 남고, 제외 사유는 "K3: needs a fresh LAUNCH"와 고치는 길(쉬는 AIRCRAFT를 STOP하거나 `k3Relaunch`를 켠다, 설정 창, 기본 꺼짐)을 말한다. 켜면 FLEET PLAN이 `K3 RELAUNCH` 카드를 낸다([fleet.ko.md](fleet.ko.md) "K3 RELAUNCH, 만든 것").
 
 ## 착륙만 기다리는 PR은 AIRCRAFT의 슬롯을 쓰지 않는다 (ATC-387)
 

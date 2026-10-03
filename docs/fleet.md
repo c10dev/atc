@@ -971,6 +971,15 @@ ATC-69 guessed the window because transcripts drop `[1m]`. ATC-85 lets a session
 - **Step 0, what else a desktop transcript says about its window.** Checked on the 207 transcripts on this machine (2026-09-29). `compactMetadata` has `trigger`, `preTokens`, `postTokens`, `durationMs` and no window. Auto compactions of 200k sessions fire at 167k–178k and of 1M sessions at 968k–974k, which looks like a window signal, but it is not exact and is **not used**: the compaction right after TEAM_J's switch fired at 324,404 (the earlier model's conversation), and proxied models fire elsewhere (394k, 796k). `usage` has no window field (`context_management` is empty, `iterations` is `[]`). The CLI picker also writes display names such as `Opus 5.5 (1M context)` (`Kept model as …`), which is not an id and is left alone. The statusline input carries `context_window.context_window_size` and `model.id` (read from the Claude Code 2.1.284 binary).
 - **Tier.** The hook and the record format in the state folder (`fuel/<sessionId>.jsonl`, still numbers and a model id only) are `user` tier. Old lines (`rate_limits` only) are read as before.
 
+### K3 RELAUNCH as built (ATC-509)
+
+A FLEET PLAN kind that stops an idle AIRCRAFT and launches it again for one K3 FLIGHT. Why and the rules: [autonomy.md](autonomy.md) "C9 as built: K3 RELAUNCH". Card text: "STOP <REGISTRATION> and LAUNCH it for <FLIGHT>".
+
+- **When** (`k3RelaunchOf`, pure, `server/fleet-plan.ts`). Switch `k3Relaunch` on; an unserved FLIGHT with `k3` (reason `no-aircraft`, K3 entries from the screen or DUTY chat release); no ABSENT AIRCRAFT at its AIRPORT that can take it; not under GROUND STOP. The AIRCRAFT: based there, background session, `idle`, not NORDO, no STAND or FLIGHT, no open PR, not at LIMIT, ACCOUNT not under FUEL hold, TYPE RATING and CREW fit. One card per FLIGHT, one AIRCRAFT: the longest idle, then REGISTRATION.
+- **Approval** is by the switch itself (`approvalModeOf`: `k3Relaunch` on means approval), not by FLEET PLAN's `mode`; there is no `auto`. Steps: `stop`, `launch` (with `flight`, so the entries come from `k3OfFlight`), both with the card id as `proposal`. Before the STOP the server checks the release still grants the allow; if not, nothing is stopped.
+- **Expiry.** The FUEL hold expiry applies as to LAUNCH. A card closes when its condition no longer holds (including the switch turned off).
+- **LAUNCH panel.** `POST /api/fleet/:registration/launch` with `flight` builds the K3 entries too (the same `k3OfFlight` as a launch card), so a K3 FLIGHT typed into the panel is launched with its allow when its release is on the screen or in DUTY chat.
+
 ### 8.7 FLEET PLAN step 3: approval
 
 Status: built (2026-09-28), SUPERVISOR decisions recorded below. Section 8.6 built the shadow: atc proposes and the SUPERVISOR agrees or disagrees, and nothing moves. Step 3 lets the SUPERVISOR's approval run the proposal. Each proposal is still approved by a person, one at a time. Automatic STOP stays step 4, off by default.

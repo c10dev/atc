@@ -349,6 +349,17 @@ A FLIGHT whose work order has a K3 effect leaves with the classifier allow for t
 - **Off switch.** `k3Hold` in `dispatch.json`, on by default, changed only in the settings window (K3 HOLD, `fromThisApp`; no `atcctl` command). A broken file reads as on.
 - **Misfire counter** (RELEASE screen header; `GET /api/releases`, `k3Hold`): *nuisance* is a hold on a FLIGHT whose `K3` line declared no effect (`K3: none`); *miss* is a K3 FLIGHT that departed without an allow (its `launch` line has no `k3`) and whose AIRCRAFT stopped on a classifier denial (session health `DENIED`), within 7 days.
 
+### C9 as built: K3 RELAUNCH (ATC-509)
+
+A running session cannot take a new `--settings`, so a released K3 FLIGHT is served only by a freshly launched AIRCRAFT (an ABSENT one, through a DISPATCH launch card). When the AIRPORT has none, the SUPERVISOR used to stop an idle AIRCRAFT by hand and wait out RESTARTING.
+
+- **Reason.** The unserved FLIGHT now says so in words: "K3: needs a fresh LAUNCH", plus the one-line fix (STOP an idle AIRCRAFT, or turn on `k3Relaunch`). It is the DISPATCH exclusion text and `unserved[].k3`.
+- **Card.** With `k3Relaunch` on, FLEET PLAN proposes `K3 RELAUNCH` ("STOP <REGISTRATION> and LAUNCH it for <FLIGHT>") when the FLIGHT has K3 entries (`k3LaunchOf`), its AIRPORT has no ABSENT AIRCRAFT that can take it, and one AIRCRAFT there is idle (background session, not NORDO), has no open PR, no STAND, is not at LIMIT and is not under a FUEL hold. One AIRCRAFT per card: the longest idle. No such AIRCRAFT, no card.
+- **Approve.** The approval re-checks, then checks that the release still grants the allow (same body hash) **before the STOP**, then STOPs and LAUNCHes through `launchAircraft` with the entries of `k3OfFlight` (the same function `launchForCard` uses). The two FLIGHT RECORDER lines (`stop`, `launch`) carry the card id in `proposal`.
+- **Off switch.** `k3Relaunch` in `dispatch.json`, **off by default**, changed only in the settings window (K3 RELAUNCH, `fromThisApp`; no `atcctl` command). A broken file reads as off. With off, nothing changes except the reason text.
+- **Misfire counter** (RELEASE screen header, shown once the switch is on or a count is above 0; `GET /api/releases`, `k3Relaunch`), 7 days: *approved* cards; *expired* and *rejected* cards; *stop only* is a STOP of a card that was not followed by a successful LAUNCH line with the same card id within `launchCardTimeoutMin`.
+- **FLEET LAUNCH button.** `POST /api/fleet/:registration/launch` with a `flight` now builds the same K3 entries as a launch card (`k3OfFlight`: same `k3LaunchOf`, same hash check, only a screen or DUTY chat release). Without a valid release the LAUNCH is what it was.
+
 ## 6. The three kept gates, declared at release
 
 Under the arrow (principles 1, 4 and 10) a K1–K3 effect is approved once, when the SUPERVISOR releases the FLIGHT, not at merge. The release declares the effect, and the release record (C18) binds the approval to a hash of the declaration (principle 7). After release a floor compares the built content with the declaration. A FLIGHT whose built change goes beyond it (an undeclared K path, a wider change, a statement the floor cannot classify) stops and comes back as a new arrow with the built content attached; that new arrow is the card. Nothing waits on the SUPERVISOR at merge time. The release stays minimal: the destination and the declared K effects, no path list and no per-FLIGHT budget (caps are C11).

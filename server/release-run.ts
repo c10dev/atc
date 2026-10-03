@@ -12,6 +12,8 @@ import { isReady } from "./detail.ts";
 import { candidateTeamsOf, isCandidateTicket, loadDispatchConfig } from "./dispatch.ts";
 import { type K3Status, k3StatusOf } from "./k3-allow.ts";
 import { k3MisfiresNow } from "./k3-hold-run.ts";
+import { k3RelaunchMisfiresNow } from "./k3-relaunch-run.ts";
+import type { K3RelaunchMisfires } from "./k3-relaunch.ts";
 import { moveFlight } from "./flight-state-run.ts";
 import { type Snapshot, type Ticket, parentKeysOf } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -60,6 +62,7 @@ export interface ReleaseDeps {
   discard?: (key: string, from: string, reason: string) => Promise<MoveOutcome & { warning?: string }>;
   files?: () => FilesInFlight | null; // 파일 겹침 자료(ATC-456 같은 파일 칸). 시험이 채운다(없으면 DISPATCH가 모은 캐시)
   parkedOn?: () => boolean; // PARKED 스위치(releaseParked). 시험이 채운다(없으면 dispatch.json)
+  k3RelaunchMisfires?: () => K3RelaunchMisfires; // 시험이 채운다(없으면 FLEET PLAN 카드와 기록에서 센다)
   k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
 type MoveOutcome = { ok: true } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
@@ -183,6 +186,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
+    k3Relaunch: { mode: loadDispatchConfig().k3Relaunch ?? "off", ...(d.k3RelaunchMisfires ? d.k3RelaunchMisfires() : k3RelaunchMisfiresNow(d.now().getTime())) },
     gate: { mode: d.gateMode(), on: releaseGateOn(d.gateMode(), view.armedAt), armedAt: view.armedAt },
     tree: tree.groups,
     ready,
