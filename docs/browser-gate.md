@@ -44,3 +44,19 @@ Environment overrides: `ATC_BROWSER_SLOTS`, `ATC_BROWSER_WAIT_LIMIT_SEC`, `ATC_B
 ## Record and misfire counter
 
 Each line of `runs.jsonl`: `t`, `where` (`local`), `cwd` (which STAND asked), `waited`, `waitedMs`, `ranMs`, `exit`, and when they apply `busy`, `endedWithSession`, `killed`, `fallback`. The BROWSER GATE block of the settings window shows, for all time and the last 7 days: requests, requests that waited, longest wait, busy answers, slots released after the session ended, and direct starts (gate broken).
+
+## Other AIRPORT repos (ATC-526)
+
+A Playwright Chromium started by a script in another repo on this host goes through the same gate when the script points its browser executable at the gated launcher. It takes a slot from the same N slots, the same queue and the same counters as the MCP-launched Chrome, and gets the same `BUSY:` answer past the wait limit. Nothing about Playwright or the other repo changes beyond setting the executable.
+
+Find the launcher with the CLI of the atc production checkout:
+
+```bash
+node <atc checkout>/server/browser-gate-cli.ts --print-launcher   # prints …/deploy/browser-gate/chromium-gated
+```
+
+Then set it in that repo's own script, for example `chromium.launch({ executablePath: "<launcher path>" })`, or `launchOptions.executablePath` in a Playwright config. `--print-config` prints the same path inside an MCP config.
+
+- **Which repo.** Each record in `browser/runs.jsonl` carries `repo`, the top folder name of the folder the browser was started from (a STAND counts as its main repo; the full path is never recorded). The BROWSER GATE block of the settings window shows requests per repo folder name, all time and last 7 days.
+- **Per-repo settings.** `repos.json` in the gate folder (see [verify-gate.md](verify-gate.md), "Other AIRPORT repos") may give a repo its own real Chrome: `{ "<repo folder name>": { "browserExecutable": "/absolute/path/to/chrome" } }`. Order: `ATC_BROWSER_REAL`, then the repo's entry, then `realExecutable` in `browser/config.json`, then Playwright's cache. Slots, queue and wait limit stay shared.
+- **Same rules.** Switch `browserGate` (SUPERVISOR only, default on) and fail-open (`fallback`) are unchanged.

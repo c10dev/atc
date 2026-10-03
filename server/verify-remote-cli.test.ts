@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import { after, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parseRuns } from "./verify-gate.ts";
@@ -49,6 +49,8 @@ function setup(opts: { remoteJson?: unknown; config?: unknown; env?: Record<stri
   writeFileSync(join(repo, ".env"), "SECRET=1");
   writeFileSync(join(repo, "a.txt"), "x");
   spawnSync("git", ["init", "-q", repo]);
+  // 이 임시 저장소는 atc가 아니다(ATC-526): 데스크톱에 가려면 gate 폴더의 repos.json 허용 목록에 적혀 있어야 한다
+  writeFileSync(join(gate, "repos.json"), JSON.stringify({ [basename(repo)]: { remoteCommands: [["npm", "test"], ["npx", "tsc", "--noEmit", "-p", "."], ["npx", "vite", "build"]] } }));
   const log = join(gate, "calls.log");
   writeFileSync(log, "");
   const env: NodeJS.ProcessEnv = { ...process.env, ATC_GATE_DIR: gate, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_LOG: log, ...opts.env };

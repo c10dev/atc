@@ -32,13 +32,22 @@ import {
   waitDecision,
   waitMessage,
 } from "./browser-gate.ts";
-import type { Ticket } from "./verify-gate.ts";
+import { repoEntryOf, UNKNOWN_REPO } from "./gate-repo.ts";
+import { gateDirOf, type Ticket } from "./verify-gate.ts";
+import { readRepos, repoContext } from "./verify-remote-run.ts";
 
 const POLL_MS = pollMsOf(process.env.ATC_GATE_POLL_MS);
 const BUSY = 200; // 락 시도 껍데기가 "자리 없음"을 알리는 코드(알림 바이트가 오지 않았을 때만 뜻이 있다)
 const NOTICE_FD = 5; // 3·4번은 Playwright의 디버깅 파이프라 Chrome까지 넘긴다
 
 const argv = process.argv.slice(2);
+const LAUNCHER = fileURLToPath(new URL("../deploy/browser-gate/chromium-gated", import.meta.url));
+
+// 다른 저장소의 스크립트가 launchOptions.executablePath에 넣을 껍데기 경로(ATC-526)
+if (argv[0] === "--print-launcher") {
+  process.stdout.write(LAUNCHER + "\n");
+  process.exit(0);
+}
 
 if (argv[0] === "--print-config") {
   let base: unknown = {};
@@ -50,15 +59,21 @@ if (argv[0] === "--print-config") {
       process.exit(1);
     }
   }
-  const wrapper = fileURLToPath(new URL("../deploy/browser-gate/chromium-gated", import.meta.url));
-  process.stdout.write(JSON.stringify(mergeMcpConfig(base, wrapper), null, 2) + "\n");
+  process.stdout.write(JSON.stringify(mergeMcpConfig(base, LAUNCHER), null, 2) + "\n");
   process.exit(0);
 }
 
 const startedAt = Date.now();
 const startPpid = process.ppid;
 const dir = browserDirOf();
-const watchMs = Number(process.env.ATC_BROWSER_WATCH_MS) > 0 ? Number(process.env.ATC_BROWSER_WATCH_MS) : WATCH_MS;
+// 어느 저장소의 Playwright가 불렀나(ATC-526): 기록에는 맨 위 폴더 이름만 남긴다. 못 알면 unknown
+let ctx = { key: UNKNOWN_REPO, isOwn: false };
+try {
+  ctx = repoContext(process.cwd());
+} catch {
+  // 저장소를 못 알아도 문은 돈다
+}
+const watchMs =Number(process.env.ATC_BROWSER_WATCH_MS) > 0 ? Number(process.env.ATC_BROWSER_WATCH_MS) : WATCH_MS;
 let child: ChildProcess | null = null;
 let ticketPath: string | null = null;
 let endedWithSession = false;
@@ -66,6 +81,9 @@ let signalled = false;
 
 // 진짜 Chrome: 설정·환경이 정한 것, 없으면 Playwright 캐시에서 revision이 가장 큰 chromium
 function realExecutable(cfg: BrowserGateConfig): string | null {
+  if (process.env.ATC_BROWSER_REAL) return cfg.realExecutable; // 환경이 가장 먼저
+  const own = repoEntryOf(readRepos(gateDirOf()), ctx.key).browserExecutable; // 저장소별 설정(ATC-526)
+  if (own) return own;
   if (cfg.realExecutable) return cfg.realExecutable;
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== "0" ? process.env.PLAYWRIGHT_BROWSERS_PATH : join(process.env.HOME || homedir(), ".cache", "ms-playwright");
   try {
@@ -101,7 +119,7 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 function writeRun(p: Pick<BrowserRun, "waited" | "waitedMs" | "ranMs" | "exit"> & Partial<BrowserRun>) {
-  const run: BrowserRun = { t: new Date(startedAt).toISOString(), where: BROWSER_WHERE, cwd: process.cwd(), ...p };
+  const run: BrowserRun = { t: new Date(startedAt).toISOString(), where: BROWSER_WHERE, cwd: process.cwd(), repo: ctx.key, ...p };
   try {
     appendFileSync(join(dir, "runs.jsonl"), JSON.stringify(run) + "\n"); // 한 줄은 PIPE_BUF 안이라 겹쳐 써도 안 섞인다
   } catch {

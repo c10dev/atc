@@ -511,6 +511,27 @@ interface VerifyGateData {
   testConcurrency: number;
   where: string;
   remote: { mode: "on" | "off"; configured: boolean; probeSec: number };
+  repos?: RepoCount[];
+}
+// 저장소별 실행 수(ATC-526): 폴더 이름만. 기록이 없으면 줄을 그리지 않는다
+interface RepoCount {
+  repo: string;
+  total: number;
+  last7d: number;
+}
+function RepoCounts({ repos, noun }: { repos?: RepoCount[]; noun: string }) {
+  if (!repos || repos.length === 0) return null;
+  return (
+    <li>
+      저장소별 {noun}(전체 / 최근 7일):{" "}
+      {repos.map((r, i) => (
+        <span key={r.repo}>
+          {i > 0 ? " · " : ""}
+          {r.repo} <b>{r.total}</b> / <b>{r.last7d}</b>
+        </span>
+      ))}
+    </li>
+  );
 }
 function VerifyGateStats({ d }: { d: VerifyGateData }) {
   const row = (label: string, c: GateCounts) => (
@@ -530,6 +551,7 @@ function VerifyGateStats({ d }: { d: VerifyGateData }) {
       {row("최근 7일", d.last7d)}
       {remoteRow("전체", d.total)}
       {remoteRow("최근 7일", d.last7d)}
+      <RepoCounts repos={d.repos} noun="실행" />
       <li className="faint">
         동시 {d.slots}건 · 기다림 한도 {Math.round(d.waitLimitSec / 60)}분 · node --test 프로세스 {d.testConcurrency}개 · 실행 위치 {d.where} · 원격 {d.remote.mode} · 데스크톱 접속 정보 {d.remote.configured ? "있음" : "없음"} · 닿는지 보는 한도 {d.remote.probeSec}초
       </li>
@@ -551,6 +573,7 @@ interface BrowserGateData {
   slots: number;
   waitLimitSec: number;
   where: string;
+  repos?: RepoCount[];
 }
 function BrowserGateStats({ d }: { d: BrowserGateData }) {
   const row = (label: string, c: BrowserCounts) => (
@@ -562,6 +585,7 @@ function BrowserGateStats({ d }: { d: BrowserGateData }) {
     <ul className="dp-misfire">
       {row("전체", d.total)}
       {row("최근 7일", d.last7d)}
+      <RepoCounts repos={d.repos} noun="요청" />
       <li className="faint">
         동시 {d.slots}개 · busy 답까지 {d.waitLimitSec}초 · 실행 위치 {d.where}
       </li>
