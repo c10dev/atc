@@ -1,0 +1,7 @@
+/* TOUCHES(ATC-512): gate 열을 leak 열과 선으로 가른다. 색·간격은 styles.css의 :root 토큰만 쓴다 */
+.mt-split {
+  border-left: 1px solid var(--line);
+}
+.mt-group {
+  text-align: center;
+}

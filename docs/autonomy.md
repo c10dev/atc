@@ -180,6 +180,24 @@ Counting only; no gate changes. `server/leaks.ts` (pure) decides for each SUPERV
 
 A record carries `kind`, `gate`, `control`, `controlBuilt`, `flight`, `since` and a `release` field that stays `null` until the ATC-362 release record exists. The `CONTROLS` table in `leaks.ts` says which controls are built; flip a flag there when a control lands and new leaks move to "its control exists".
 
+### SUPERVISOR touches per landed PR as built (ATC-512)
+
+Read-only. METRICS → TOUCHES (`#metrics/touches`, `GET /api/touches?days=14`; pure `server/touches.ts`, reads in `server/touches-run.ts`) shows, per UTC day, the PRs landed, the SUPERVISOR's touches by category, and touches per landed PR (`—` on a day with no landed PR). No switch and no misfire counter: nothing is controlled, and nothing new is recorded. It answers principle 1: are human steps after release going down?
+
+**Gate or leak.** The panel does not decide this; it copies section 2 and principle 1. The three kept gates (K1 to K3) are approved once, at release, as declared effects (section 6), so the one category on the gate side is **release**. Every other category is a human step after release, a **leak**. Merges of K3 files cannot be told apart yet (merges are not recorded), so `merge` sits on the leak side until a record exists.
+
+| Category | Side | Read from |
+|---|---|---|
+| release | gate | `releases.jsonl`, each `release` line |
+| merge | leak | not recorded (a merge done on GitHub leaves no line; MCC and AUTOLAND merges are machine) |
+| Linear hand edit | leak | not recorded |
+| FLEET/CONTROL action | leak | `fleet-plan.jsonl`, `approve` by `SUPERVISOR` (FLEET PLAN cards only; CONTROL buttons leave no line) |
+| DUTY message | leak | not recorded |
+| RELAY | leak | `relays.jsonl`, each `create` line (the ATC-465 filter) |
+| card decision | leak | `proposals.jsonl` `approve` and `schedule.jsonl` `approve`/`verdict` whose `via` is not `auto` or `atfm` (a missing `via` on an old line counts; the same filter for both files, as `humanOf` in `server/schedule.ts`). `crosscheck` is the SUPERVISOR's one-click agreement with CROSSCHECK, so it counts; ATC-465 counts `via` other than `auto`, this panel also leaves out `atfm` |
+
+A category with no source shows `not recorded`, never 0, and is left out of the totals. **Landed PRs** are `mcc.jsonl` `land` with `result: ok` and `autoland.jsonl` `merge` with `result: ok`, one per repository-and-number key per day, so a PR both records name counts once; a PR merged by hand on GitHub is not counted, so on a day with hand merges the per-PR figure reads high. Days are UTC (`00:00:00Z` belongs to the new day). It reuses the ATC-465 records and filters and adds no second record. A record for the unrecorded categories (a DUTY message, a Linear hand edit, a GitHub merge) is a separate follow-up.
+
 ### SCHEDULE and FLEET PLAN without a human (ATC-370)
 
 Rows P3 and P5 are cut (K3, approved by the SUPERVISOR on 2026-10-02: "live first"). `server/autonomy-auto.ts` (pure) decides, `server/autonomy-auto-run.ts` reads and writes; both run inside the server only (no HTTP route and no `atcctl` command changes them).
