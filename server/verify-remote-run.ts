@@ -3,15 +3,17 @@
 // 데스크톱에서 돌려받는 것은 명령의 출력(stdout·stderr)과 종료 코드뿐이고 호출자의 STAND에는 아무것도 쓰지 않는다.
 
 import { execFileSync, spawn } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type RepoEntry, REPOS_FILE, parseRepos, repoKeyOf } from "./gate-repo.ts";
 import {
+  ABSENT_MARK_FILE,
   cleanupScript,
   extractScript,
   filterFiles,
   MAX_FILE_BYTES,
+  parseAbsentMark,
   parseRemoteTarget,
   parseStatus,
   prepareScript,
@@ -21,6 +23,7 @@ import {
   REMOTE_COMMANDS,
   remoteShell,
   runScript,
+  skipProbe,
   splitZ,
   sshArgs,
   statusScript,
@@ -56,6 +59,40 @@ export function repoContext(cwd: string): { key: string; isOwn: boolean } {
   const common = commonDirOf(cwd);
   const own = commonDirOf(dirname(fileURLToPath(import.meta.url)));
   return { key: repoKeyOf(common, cwd), isOwn: common !== null && own !== null && common === own };
+}
+
+// 데스크톱이 없다고 본 시각의 기억(ATC-524). 읽다 틀리면 null이라 probe한다(fail-open). 주소는 담지 않고 시각만 담는다
+export function readAbsentMark(gateDir: string): number | null {
+  try {
+    return parseAbsentMark(readFileSync(join(gateDir, ABSENT_MARK_FILE), "utf8"));
+  } catch {
+    return null;
+  }
+}
+export function writeAbsentMark(gateDir: string, nowMs: number): void {
+  try {
+    const tmp = join(gateDir, `${ABSENT_MARK_FILE}.${process.pid}.tmp`);
+    writeFileSync(tmp, JSON.stringify({ at: nowMs }));
+    renameSync(tmp, join(gateDir, ABSENT_MARK_FILE));
+  } catch {
+    // 못 쓰면 기억만 없다: 다음 실행이 probe한다
+  }
+}
+export function clearAbsentMark(gateDir: string): void {
+  try {
+    unlinkSync(join(gateDir, ABSENT_MARK_FILE));
+  } catch {
+    // 없으면 됐다
+  }
+}
+
+// runOnDesktop에 넘길 기억 손잡이(ATC-524): window 안이면 probe를 건너뛰고, 닿으면 지우고, 없으면 적는다. absentMs가 0이면 읽지도 쓰지도 않는다
+export function absentMemory(gateDir: string, absentMs: number, now: () => number = Date.now): { skipProbe: boolean; onProbe: (present: boolean) => void } {
+  if (absentMs <= 0) return { skipProbe: false, onProbe: () => {} };
+  return {
+    skipProbe: skipProbe(readAbsentMark(gateDir), now(), absentMs),
+    onProbe: (present) => (present ? clearAbsentMark(gateDir) : writeAbsentMark(gateDir, now())),
+  };
 }
 
 // 지금 작업 폴더가 저장소 맨 위인가(npm test는 그곳에서 돈다)

@@ -4,7 +4,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type RepoCount, repoCounts } from "./gate-repo.ts";
-import { LOCAL_REASONS, type LocalReason, PROBE_SEC_DEFAULT } from "./verify-remote.ts";
+import { ABSENT_SEC_DEFAULT, LOCAL_REASONS, type LocalReason, PROBE_SEC_DEFAULT } from "./verify-remote.ts";
 
 export const GATE_WHERE = "local"; // 기록의 where 기본: 이 호스트. 데스크톱에서 돈 줄은 "desktop"(ATC-518)
 export const WAIT_LIMIT_EXIT = 75; // EX_TEMPFAIL: 기다림 한도 초과
@@ -25,6 +25,7 @@ export interface GateConfig {
   testConcurrency: number;
   remote: "on" | "off"; // 원격 실행 스위치(ATC-518, verifyRemote). 기본 on
   probeMs: number; // 데스크톱이 닿는지 보는 제한 시간
+  absentMs: number; // 데스크톱이 없다고 기억해 두는 시간(ATC-524). 0이면 기억하지 않는다
 }
 
 // 문의 폴더: 락·줄·기록·설정. 운영 상태 폴더(~/.local/state/atc)와 따로 둔다
@@ -48,6 +49,7 @@ export function parseGateConfig(raw: unknown, env: NodeJS.ProcessEnv = {}): Gate
     testConcurrency: intIn(env.ATC_GATE_TEST_CONCURRENCY ?? f.testConcurrency, 1, 64, TEST_CONCURRENCY_DEFAULT),
     remote: f.remote === "off" ? "off" : "on",
     probeMs: intIn(env.ATC_GATE_REMOTE_PROBE_SEC ?? f.remoteProbeSec, 1, 30, PROBE_SEC_DEFAULT) * 1000,
+    absentMs: intIn(env.ATC_GATE_REMOTE_ABSENT_SEC ?? f.remoteAbsentSec, 0, 3600, ABSENT_SEC_DEFAULT) * 1000,
   };
 }
 

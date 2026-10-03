@@ -27,7 +27,7 @@ The gate folder is `~/.local/state/atc-gate/` (`ATC_GATE_DIR` overrides it). It 
 
 | File | What |
 |---|---|
-| `config.json` | `mode` (written by the switch), optional `slots` (1–8), `waitLimitSec`, `testConcurrency` |
+| `config.json` | `mode` (written by the switch), optional `slots` (1–8), `waitLimitSec`, `testConcurrency`, `remoteProbeSec`, `remoteAbsentSec` |
 | `runs.jsonl` | one append-only line per gated run |
 | `slots/`, `queue/`, `bin/node` | slot locks, tickets, the node shim |
 
@@ -49,7 +49,7 @@ Only these three commands, matched word for word: `npm test`, `npx tsc --noEmit 
 
 ### Steps of one run
 
-1. **Reachability.** `ssh true` with a hard limit (default 3 s; `remoteProbeSec` in `config.json` or `ATC_GATE_REMOTE_PROBE_SEC`, 1–30). No answer: run locally (`desktop-absent`). After `wsl --shutdown` this costs at most the limit.
+1. **Reachability.** `ssh true` with a hard limit (default 3 s; `remoteProbeSec` in `config.json` or `ATC_GATE_REMOTE_PROBE_SEC`, 1–30). No answer: run locally (`desktop-absent`). After `wsl --shutdown` this costs at most the limit. An absent result is remembered for a short window (default 60 s; `remoteAbsentSec` in `config.json` or `ATC_GATE_REMOTE_ABSENT_SEC`, 0–3600, `0` turns the memory off) in `remote-absent.json` in the gate folder: runs inside the window skip the probe and run locally at once (still counted as `desktop-absent`), the first run after it probes again, and a probe that finds the desktop clears the memory. Only "absent" is remembered, never transport errors; a missing or unreadable file means probe as usual.
 2. **Send.** `tar` of the tracked and untracked source (`git ls-files -co --exclude-standard`) minus the exclusion list, streamed over ssh into `~/atc-verify/runs/<id>` on the desktop. Files over 20 MB are skipped.
 3. **Prepare.** On the desktop: a fresh empty `git init` and `git add -A` (some tests call `git ls-files`; no remote, no credentials, nothing from the caller's `.git`), and `node_modules` as hard links of a cache keyed by the hash of `package-lock.json` (one `npm ci` per lock file; the three newest caches are kept; run folders older than a day are pruned).
 4. **Run.** The fixed command with `ATC_GITHUB=off`. The script writes `.atc-started` before and `.atc-exit` after the command.

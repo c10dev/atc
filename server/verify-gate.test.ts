@@ -22,7 +22,7 @@ import {
 const run = (p: Partial<GateRun>): GateRun => ({ t: "2026-10-03T00:00:00.000Z", where: "local", cmd: "npm test", cwd: "/x", waited: false, waitedMs: 0, ranMs: 10, exit: 0, ...p });
 
 test("config: 기본값, 환경이 파일을 이긴다, 틀린 값은 기본값, 끄는 것은 정확히 off", () => {
-  assert.deepEqual(parseGateConfig(undefined), { mode: "on", slots: 2, waitLimitMs: 1_800_000, testConcurrency: 3, remote: "on", probeMs: 3000 });
+  assert.deepEqual(parseGateConfig(undefined), { mode: "on", slots: 2, waitLimitMs: 1_800_000, testConcurrency: 3, remote: "on", probeMs: 3000, absentMs: 60_000 });
   assert.equal(parseGateConfig({ mode: "OFF" }).mode, "on");
   assert.equal(parseGateConfig({ mode: "off" }).mode, "off");
   assert.equal(parseGateConfig({ slots: 4 }).slots, 4);

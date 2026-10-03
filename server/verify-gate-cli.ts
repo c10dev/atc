@@ -31,7 +31,7 @@ import {
   waitMessage,
 } from "./verify-gate.ts";
 import { depsKey, remoteListFor, repoEntryOf, UNKNOWN_REPO } from "./gate-repo.ts";
-import { atRepoRoot, readRemoteTarget, readRepos, repoContext, sshTransport } from "./verify-remote-run.ts";
+import { absentMemory, atRepoRoot, readRemoteTarget, readRepos, repoContext, sshTransport } from "./verify-remote-run.ts";
 import { type LocalReason, lostMessage, newRunId, REMOTE_COMMANDS, routeOf, runOnDesktop } from "./verify-remote.ts";
 
 const POLL_MS = pollMsOf(process.env.ATC_GATE_POLL_MS);
@@ -213,7 +213,8 @@ async function tryDesktop(cfg: GateConfig, target: NonNullable<ReturnType<typeof
   }
   const id = newRunId(startedAt, process.pid, randomBytes(2).toString("hex"));
   const transport = sshTransport({ target, cwd: process.cwd(), connectTimeoutSec: Math.ceil(cfg.probeMs / 1000), commands: repoCommands, onChild: (c) => (remoteChild = c) });
-  const r = await runOnDesktop({ argv, id, hash, transport, probeMs: cfg.probeMs });
+  const memory = absentMemory(dir, cfg.absentMs); // 최근에 없다고 봤으면 probe를 건너뛴다(ATC-524)
+  const r = await runOnDesktop({ argv, id, hash, transport, probeMs: cfg.probeMs, ...memory });
   if (r.where === "local") {
     localReason = r.reason;
     if (r.reason === "transport-error") process.stderr.write(`[atc verify-gate] the desktop run could not start${r.error ? ` (${r.error.replace(/\s+/g, " ").slice(0, 200)})` : ""}; running locally\n`);

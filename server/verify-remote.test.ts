@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { countRuns, type GateRun, parseGateConfig } from "./verify-gate.ts";
 import {
@@ -26,6 +29,8 @@ import {
   statusScript,
   validRunId,
 } from "./verify-remote.ts";
+import { ABSENT_MARK_FILE, parseAbsentMark, skipProbe } from "./verify-remote.ts";
+import { absentMemory } from "./verify-remote-run.ts";
 
 // ATC-518: 순수 부분과 가짜 전송 수단. 실제 데스크톱에는 닿지 않는다(ssh도 부르지 않는다)
 
@@ -290,4 +295,107 @@ test("세기: 데스크톱 실행, 전송 실패, 데스크톱에서 명령 실�
 test("세기: 모르는 사유는 세지 않는다", () => {
   const c = countRuns([line({ localReason: "weird" as never })]);
   assert.deepEqual(c.localFallbacks, { "desktop-absent": 0, "transport-error": 0, "not-listed": 0, "switch-off": 0 });
+});
+
+// ATC-524: 없다고 본 것을 잠깐 기억한다. 게이트 폴더는 임시 폴더로 시험한다
+const absentRun = async (dir: string, absentMs: number, now: number, s: Script) => {
+  const f = fake(s);
+  const m = absentMemory(dir, absentMs, () => now);
+  const r = await runOnDesktop({ argv: ["npm", "test"], id: "abc123-1-ab", hash: "0123456789abcdef", transport: f.t, probeMs: 1000, ...m });
+  return { r, calls: f.calls };
+};
+const tmpGate = () => mkdtempSync(join(tmpdir(), "atc-absent-"));
+
+test("없다고 본 뒤 window 안의 실행은 probe를 건너뛰고, 지난 뒤 첫 실행은 다시 probe한다", async () => {
+  const dir = tmpGate();
+  try {
+    const first = await absentRun(dir, 60_000, 1_000_000, { probe: false });
+    assert.deepEqual(first.calls, ["probe"]);
+    const within = await absentRun(dir, 60_000, 1_030_000, { probe: false });
+    assert.deepEqual(within.calls, []);
+    assert.deepEqual(within.r, { where: "local", reason: "desktop-absent", syncMs: 0 });
+    const after = await absentRun(dir, 60_000, 1_060_000, { probe: true });
+    assert.equal(after.calls[0], "probe"); // window 끝: 다시 probe하고 돌아왔으면 데스크톱을 쓴다
+    assert.equal(after.r.where, "desktop");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("닿는다고 본 probe는 기억을 지운다", async () => {
+  const dir = tmpGate();
+  try {
+    await absentRun(dir, 60_000, 1_000_000, { probe: false });
+    assert.equal(existsSync(join(dir, ABSENT_MARK_FILE)), true);
+    await absentRun(dir, 60_000, 1_060_000, { probe: true });
+    assert.equal(existsSync(join(dir, ABSENT_MARK_FILE)), false);
+    const next = await absentRun(dir, 60_000, 1_061_000, { probe: true });
+    assert.equal(next.calls[0], "probe");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("전송 오류는 기억을 시작하지 않는다(없다고 본 것만 기억한다)", async () => {
+  const dir = tmpGate();
+  try {
+    const r = await absentRun(dir, 60_000, 1_000_000, { sync: { ok: false } });
+    assert.equal("reason" in r.r && r.r.reason, "transport-error");
+    assert.equal(existsSync(join(dir, ABSENT_MARK_FILE)), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("0이면 기억을 끈다: 파일을 쓰지도 읽지도 않는다", async () => {
+  const dir = tmpGate();
+  try {
+    await absentRun(dir, 0, 1_000_000, { probe: false });
+    assert.equal(existsSync(join(dir, ABSENT_MARK_FILE)), false);
+    writeFileSync(join(dir, ABSENT_MARK_FILE), JSON.stringify({ at: 1_000_000 })); // 있어도 0이면 무시
+    const r = await absentRun(dir, 0, 1_001_000, { probe: false });
+    assert.deepEqual(r.calls, ["probe"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("기억 파일이 깨졌거나 미래 시각이면 평소대로 probe한다", async () => {
+  const dir = tmpGate();
+  try {
+    for (const text of ["", "{", "null", '{"at":"x"}', '{"at":-1}', '{"at":9999999999999}']) {
+      writeFileSync(join(dir, ABSENT_MARK_FILE), text);
+      const r = await absentRun(dir, 60_000, 1_000_000, { probe: false });
+      assert.deepEqual(r.calls, ["probe"], text);
+    }
+    assert.equal(parseAbsentMark("{"), null);
+    assert.equal(skipProbe(null, 5, 60_000), false);
+    assert.equal(skipProbe(10, 5, 60_000), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("건너뛴 실행도 desktop-absent 횟수에 센다", async () => {
+  const dir = tmpGate();
+  try {
+    const runs: GateRun[] = [];
+    for (const at of [1_000_000, 1_010_000, 1_020_000]) {
+      const r = await absentRun(dir, 60_000, at, { probe: false });
+      assert.equal(r.r.where, "local");
+      runs.push({ t: "x", where: "local", cmd: "npm test", cwd: "/", waited: false, waitedMs: 0, ranMs: 1, exit: 0, localReason: "desktop-absent" });
+    }
+    assert.equal(countRuns(runs).localFallbacks["desktop-absent"], 3); // 첫 실행만 probe했고 둘은 건너뛰었다
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("설정: remoteAbsentSec·ATC_GATE_REMOTE_ABSENT_SEC, 기본 60초, 0은 끔, 틀린 값은 기본", () => {
+  assert.equal(parseGateConfig({}).absentMs, 60_000);
+  assert.equal(parseGateConfig({ remoteAbsentSec: 0 }).absentMs, 0);
+  assert.equal(parseGateConfig({ remoteAbsentSec: 120 }).absentMs, 120_000);
+  assert.equal(parseGateConfig({ remoteAbsentSec: -1 }).absentMs, 60_000);
+  assert.equal(parseGateConfig({ remoteAbsentSec: 99999 }).absentMs, 60_000);
+  assert.equal(parseGateConfig({ remoteAbsentSec: 120 }, { ATC_GATE_REMOTE_ABSENT_SEC: "0" }).absentMs, 0);
 });
