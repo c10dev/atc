@@ -100,8 +100,8 @@ test("STAND 경로가 든 ALERT는 문구 끝에 STAND 이름을 붙인다(ATC-1
 // ---- SCHEDULE 판정(ATC-162) ----
 const sop = (id: string, status: string, over: Record<string, unknown> = {}) => ({ id, kind: "TAIL", flight: "ATC-146", status, statusAt: "2026-09-30T01:00:00Z", ...over }) as NonNullable<AlertsInput["schedule"]>["ops"][number];
 
-test("SCHEDULE: approval 모드에서 열린 작업(draft·agreed·disagreed)마다 CALL 항목, key 형식은 pending|schedule|<id>", () => {
-  const out = supervisorAlertsOf(base({ schedule: { mode: "approval", ops: [sop("S-0001", "draft"), sop("S-0002", "agreed", { kind: "CLASSIFY" }), sop("S-0003", "disagreed", { kind: "NEW", flight: null })] } }));
+test("SCHEDULE: approval 모드에서 draft마다 CALL 항목, key 형식은 pending|schedule|<id>", () => {
+  const out = supervisorAlertsOf(base({ schedule: { mode: "approval", ops: [sop("S-0001", "draft"), sop("S-0002", "draft", { kind: "CLASSIFY" }), sop("S-0003", "draft", { kind: "NEW", flight: null })] } }));
   assert.deepEqual(keys(out), ["pending|schedule|S-0001", "pending|schedule|S-0002", "pending|schedule|S-0003"]);
   const [a] = out;
   assert.deepEqual([a.group, a.level, a.cue, a.aircraft, a.flight, a.link, a.since, a.ask], ["pending", "advisory", "call", null, "ATC-146", "#home", "2026-09-30T01:00:00Z", "tail"]);
