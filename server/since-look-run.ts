@@ -16,13 +16,13 @@ import type { SupervisorAlert } from "./supervisor-alerts.ts";
 const FILE = () => join(config.stateDir, "since-look.json");
 export const CACHE_MS = 5_000;
 
-export function readLook(now = Date.now()): string {
+export function readLook(now = Date.now(), persist = true): string {
   try {
     const j = JSON.parse(readFileSync(FILE(), "utf8")) as { at?: unknown };
     if (typeof j.at === "string" && Number.isFinite(Date.parse(j.at))) return j.at;
   } catch {} // 없거나 깨짐: 지금부터 센다
   const at = new Date(now).toISOString();
-  if (!existsSync(FILE())) writeLook(at);
+  if (persist && !existsSync(FILE())) writeLook(at);
   return at;
 }
 
@@ -38,8 +38,9 @@ function writeLook(at: string) {
 let cache: { at: number; look: string; value: SinceLook } | null = null;
 
 // 알림 목록(items)에서 막힘(follow|stuck)과 SUPERVISOR 대기(cue call)를 읽고, 발권 기록과 OOOI에서 본 뒤의 일을 센다
-export function sinceLookNow(s: Pick<Snapshot, "pulls" | "airports">, items: readonly SupervisorAlert[], now = Date.now()): SinceLook {
-  const look = readLook(now);
+// persist=false: 마커 파일이 없어도 만들지 않는다(GET /api/flow는 상태 폴더에 쓰지 않는다, ATC-499)
+export function sinceLookNow(s: Pick<Snapshot, "pulls" | "airports">, items: readonly SupervisorAlert[], now = Date.now(), persist = true): SinceLook {
+  const look = readLook(now, persist);
   if (cache && cache.look === look && now - cache.at < CACHE_MS) return cache.value;
   let releases: { flight: string; at: string }[] = [];
   let milestones: ReturnType<typeof milestonesNow> = new Map();

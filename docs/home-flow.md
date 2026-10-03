@@ -149,6 +149,15 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 | H6 [ATC-504](https://linear.app/vocado/issue/ATC-504) | Later: grouping into `kit/TodoRow` for RELEASE and the DUTY drawer | H4 |
 | H7 | Later, in the atc-app project: ANNUNCIATOR reads `/api/flow` | H1 |
 
+### H1 as built (ATC-499)
+
+- `GET /api/flow` (read only, `server/home-flow-run.ts`) returns `FlowView { at, verdict, line, holder?, worst?, sinceLook?, airports[ { code, name, verdict, reason?, holder?, thresholdMin, sinceOnMin, landings12h, cells[ { stage, count, oldestMin, stuck, tone, holder?, holderShort?, note?, todoGroup?, flights[] } ] } ], todo[], todoLines[], todoRest }`. `todo` is the whole ordered list (grouped items carry `group` and `groupNeed`); `todoLines` is the list after grouping, at most 5 lines (a group is one line with its `items`); `todoRest` is `{ count, text }` for the folded `나머지 n건 BACKLOG 3 …`. No 24-hour history.
+- One pure function, `flowViewOf` in `server/home-flow.ts`, with `node:test` in `server/home-flow.test.ts`. The route only gathers existing reads: FOLLOW rows (`followInputOf`, shared with `GET /api/follow`), PRs with the landing owner from the cached MCC tiers, LOGBOOK landings, `atfm` ground stops and main CI, the SUPERVISOR QUEUE (same 5 s cache) and SINCE LAST LOOK (without creating the marker file). No new GitHub or Linear call, no write to the state folder.
+- The landing threshold is an input (`thresholds[code]`, floor 30 min, default floor for every AIRPORT); H2 (ATC-501) supplies the rolling p90.
+- **Holder of a FLIGHT** (4.2): a PR's holder is `SUPERVISOR` only when it is waiting on HUMAN CHECK or is CLEARED with `landBy` supervisor; before that its first block code decides (`BLOCK_HOLDER`, one table, a test fails when a `LANDING_BLOCK_CODES` entry is missing; an unknown code is `ATC` and flagged `miss`). Before a PR the follow.md 3.3 stuck code decides (unknown code: `ATC`), else the stage (QUEUE `ATC`, OUT `AIRCRAFT`, landed `ATC`). A FLIGHT blocked by another FLIGHT on the board inherits its holder (stuck if the blocker is stuck) and the cell note names the blocker.
+- **Stopped** needs at least one FLIGHT at that AIRPORT in QUEUE to CLEARED whose holder is not `SUPERVISOR`; otherwise the same silence is `congested` with the SUPERVISOR holder. A cell whose FLIGHTs are all on the to-do list has `flights: []` and `todoGroup`; a partly listed cell keeps its rows with `todo` pointing at the item.
+- To-do order: WARNING, SUPERVISOR-held stuck (STUCK, LANDING, HUMAN CHECK of a FLIGHT whose holder is SUPERVISOR), CAUTION and other STUCK, the rest; oldest first. LANDING and HUMAN CHECK items have no `since` in the queue, so their age comes from the PR (`readyAt`, else `createdAt`). Items group when kind and button label match; ALERT, STUCK, EFFECT, CLOSE and ARRIVED group only when level and need text match too (pilot's discretion).
+
 ## 6. Risks
 
 - **The block-code table drifts.** A new block code with no entry is classified `ATC` and counted. The test that fails on an unmapped code is the guard.

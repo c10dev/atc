@@ -7,7 +7,7 @@ import type { Hono } from "hono";
 import { applyGroundStops } from "./atfm.ts";
 import { config } from "./config.ts";
 import { landedOf, loadDispatchConfig, mccAirportNow, planDispatch, readFlightHistory } from "./dispatch.ts";
-import { arrowsBundleOf, type FollowFile, FOLLOW_STAGES, followBoardOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
+import { arrowsBundleOf, type FollowFile, type FollowInput, FOLLOW_STAGES, followBoardOf, parseFollowBody, parseFollowFile, toggleParent } from "./follow.ts";
 import { followingNow } from "./following.ts";
 import { loadFleet } from "./fleet.ts";
 import { loadLogbook } from "./logbook.ts";
@@ -41,8 +41,8 @@ export function saveFollow(f: FollowFile, file = FILE()) {
   renameSync(tmp, file);
 }
 
-export function followNow(s: Snapshot, now = Date.now()) {
-  const parents = loadFollow().parents;
+// FOLLOW 줄을 만드는 입력(parents 빼고). HOME 흐름판(flow-run.ts)도 같은 입력으로 FLIGHT 줄을 만든다(ATC-499)
+export function followInputOf(s: Snapshot, now = Date.now()): Omit<FollowInput, "parents"> {
   const proposals = allProposals();
   const milestones = milestonesNow(s, now);
   const logbook = loadLogbook();
@@ -65,7 +65,7 @@ export function followNow(s: Snapshot, now = Date.now()) {
   // MCC AIRPORT에서 SUPERVISOR가 머지할 PR(캐시된 등급만 읽는다, GitHub를 부르지 않는다). 등급을 모르면 merge 칩을 내지 않는다
   const land = mccLandInfoCached(s);
   const userPulls = new Set<number>(land ? [...land.tiers].filter(([, v]) => v.tier === "user").map(([n]) => n).concat(land.escalated) : []);
-  const rest = {
+  return {
     tickets: s.tickets,
     proposals,
     pulls: s.pulls,
@@ -80,6 +80,11 @@ export function followNow(s: Snapshot, now = Date.now()) {
     cardWaits: crossAccountCardWaitsOf(proposals, s, loadDispatchConfig().teamPattern), // ATC-458
     now,
   };
+}
+
+export function followNow(s: Snapshot, now = Date.now()) {
+  const parents = loadFollow().parents;
+  const rest = followInputOf(s, now);
   const manual = followBoardOf({ parents, ...rest });
   // ATC-382: 발권한 FLIGHT는 FOLLOW 클릭 없이 따라간다(SUPERVISOR의 화살표). 손으로 따라가는 번들에 이미 줄이 있는 FLIGHT는 거기에만 둔다
   const held = new Set(manual.flatMap((b) => b.rows.map((r) => r.key)));
