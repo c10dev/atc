@@ -122,10 +122,10 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
 
   if (brief === null) return <span className="du-hint">불러오는 중…</span>;
   const row = brief === "error" ? undefined : brief.open.find((p) => p.id === id);
-  if (brief === "error" || !row) return <a className="dr-btn" href="#fleet">FLEET에서 보기</a>;
+  if (brief === "error" || !row) return <a className="btn" href="#fleet">FLEET에서 보기</a>;
   const approval = brief.mode === "approval";
   const manual = isManual(row);
-  if (approval && manual) return <a className="dr-btn" href="#fleet">FLEET에서 보기</a>; // atc가 실행하지 않는 제안: FLEET 탭의 "했음"
+  if (approval && manual) return <a className="btn" href="#fleet">FLEET에서 보기</a>; // atc가 실행하지 않는 제안: FLEET 탭의 "했음"
 
   const run = async () => {
     if (!ask) return;
@@ -153,10 +153,10 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
           <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />
         )}
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
             확인
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
             취소
           </button>
         </div>
@@ -167,15 +167,15 @@ function FleetPlanButtons({ id, onDone }: { id: string; onDone: () => void }) {
   return (
     <>
       <div className="du-actions">
-        <button type="button" className="dr-btn" onClick={() => setAsk("disagree")}>
+        <button type="button" className="btn" onClick={() => setAsk("disagree")}>
           {approval ? "거절" : "반대"}
         </button>
         {approval ? (
-          <button type="button" className="dr-btn is-primary" disabled={row.stale} onClick={() => setAsk("approve")}>
+          <button type="button" className="btn is-primary" disabled={row.stale} onClick={() => setAsk("approve")}>
             승인(실행)
           </button>
         ) : (
-          <button type="button" className="dr-btn is-primary" onClick={() => setAsk("agree")}>
+          <button type="button" className="btn is-primary" onClick={() => setAsk("agree")}>
             동의
           </button>
         )}
@@ -221,10 +221,10 @@ function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["ca
         </p>
         {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
             확인
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
             취소
           </button>
         </div>
@@ -234,10 +234,10 @@ function ProposalButtons({ id, card, onDone }: { id: string; card: QueueItem["ca
   return (
     <>
       <div className="du-actions">
-        <button type="button" className="dr-btn" onClick={() => setAsk("reject")}>
+        <button type="button" className="btn" onClick={() => setAsk("reject")}>
           거절
         </button>
-        <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+        <button type="button" className="btn is-primary" onClick={() => setAsk("approve")}>
           승인
         </button>
       </div>
@@ -280,10 +280,10 @@ function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onD
         <p className="du-hint">{scheduleAskOf(id, ask, kind)}</p>
         {ask === "reject" && <input className="du-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="이유(선택)" aria-label="이유(선택)" maxLength={500} />}
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
             확인
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
+          <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(null), setErr(null))}>
             취소
           </button>
         </div>
@@ -293,10 +293,10 @@ function ScheduleButtons({ id, title, onDone }: { id: string; title: string; onD
   return (
     <>
       <div className="du-actions">
-        <button type="button" className="dr-btn" onClick={() => setAsk("reject")}>
+        <button type="button" className="btn" onClick={() => setAsk("reject")}>
           거절
         </button>
-        <button type="button" className="dr-btn is-primary" onClick={() => setAsk("approve")}>
+        <button type="button" className="btn is-primary" onClick={() => setAsk("approve")}>
           {network ? "동의" : "승인"}
         </button>
       </div>
@@ -325,17 +325,17 @@ function UpdateButton({ onDone }: { onDone: () => void }) {
         <div className="du-confirm" role="group" aria-label="업데이트 확인">
           <p className="du-hint">서비스를 새 버전으로 배포하고 재시작합니다.</p>
           <div className="du-actions">
-            <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void run()}>
+            <button type="button" className="btn is-primary" disabled={busy} onClick={() => void run()}>
               확인
             </button>
-            <button type="button" className="dr-btn" disabled={busy} onClick={() => (setAsk(false), setErr(null))}>
+            <button type="button" className="btn" disabled={busy} onClick={() => (setAsk(false), setErr(null))}>
               취소
             </button>
           </div>
         </div>
       ) : (
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" onClick={() => setAsk(true)}>
+          <button type="button" className="btn is-primary" onClick={() => setAsk(true)}>
             업데이트
           </button>
         </div>
@@ -352,7 +352,7 @@ function CopyButton({ value, label, what }: { value: string; label: string; what
   return (
     <button
       type="button"
-      className="dr-btn"
+      className="btn"
       aria-label={`${what} 복사`}
       onClick={async () => {
         try {
@@ -400,12 +400,12 @@ function HandDelivery({ item, onDone }: { item: QueueItem; onDone: () => void })
         {h.card.command && <CopyButton value={h.card.command} label="명령 복사" what="attach 명령" />}
         {h.text && <CopyButton value={h.text} label="글 복사" what="글" />}
         {h.card.step === "launch" && (
-          <a className="dr-btn" href="#fleet">
+          <a className="btn" href="#fleet">
             FLEET에서 LAUNCH
           </a>
         )}
         {markable && (
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void mark()}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void mark()}>
             손으로 전했음
           </button>
         )}
@@ -426,7 +426,7 @@ function RelayOffer({ item }: { item: QueueItem }) {
       <p className="hd-how">{o.to ? `${o.to}가 이 FLIGHT를 날았다. 다른 AIRCRAFT를 고를 수 있다` : "이 FLIGHT를 난 AIRCRAFT를 모른다. REGISTRATION을 쓴다"}</p>
       <pre className="hd-cmd mono">{o.text}</pre>
       <div className="du-actions">
-        <RelayBox to={o.to} editableTo type={o.type} stand={o.stand} flight={o.flight} pr={o.pr} text={o.text} btnClass="dr-btn" />
+        <RelayBox to={o.to} editableTo type={o.type} stand={o.stand} flight={o.flight} pr={o.pr} text={o.text} btnClass="btn" />
       </div>
     </div>
   );
@@ -441,7 +441,7 @@ export function Actions({ item, actions, onDone }: { item: QueueItem; actions: C
       {actions.map((a, n) =>
         a.type === "link" ? (
           <div className="du-actions" key={n}>
-            <a className="dr-btn" href={a.hash}>
+            <a className="btn" href={a.hash}>
               {a.label}
             </a>
           </div>
@@ -498,6 +498,32 @@ export function DutyCard({ it, ctx }: { it: Extract<ChatItem, { kind: "card" }>;
   );
 }
 
+// 아직 SUPERVISOR의 결정을 기다리는 초안인가(확정·버림·until 경과 전). 카드와 오른쪽 패널이 같은 규칙을 쓴다
+export function draftPending(it: Extract<ChatItem, { kind: "draft" }>, ctx: CardCtx): boolean {
+  if (it.draftKind === "retire") return false;
+  const isCharter = it.draftKind === "charter";
+  const sd = isCharter ? ctx.charters?.charters.find((c) => c.from === it.draft)?.id : ctx.decisions?.confirmedDrafts[it.draft];
+  const dismissed = ctx.decisions?.dismissed.includes(it.draft) ?? false;
+  const expired = it.until !== null && Date.parse(it.until) <= ctx.now;
+  return (isCharter ? ctx.decisions !== null && ctx.charters !== null : ctx.decisions !== null) && !sd && !dismissed && !expired;
+}
+
+// 아직 기다리는 카드와 초안, 최신이 먼저(오른쪽 패널). 같은 큐 줄을 가리키는 카드는 가장 새 것 하나만 센다
+export function waitingOf(items: readonly ChatItem[], ctx: CardCtx): ChatItem[] {
+  const seen = new Set<string>();
+  const out: ChatItem[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind === "card") {
+      const k = cardKey(it);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (cardViewOf(it, ctx.items, ctx.handled.has(k), ctx.airports).state === "live") out.push(it);
+    } else if (it.kind === "draft" && draftPending(it, ctx)) out.push(it);
+  }
+  return out;
+}
+
 // note·charter 초안. charter는 읽기만 하는 흐린 카드(확정은 D5). note는 SUPERVISOR가 확정하거나 버린다(D4): 확정은 decisions.jsonl에 적고,
 // 버림은 초안에 버렸다는 줄만 붙인다. 버튼은 이 화면의 apiGet(Origin 검사)이고 DUTY가 누를 수 없다
 export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; ctx: CardCtx }) {
@@ -519,7 +545,7 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
     ctx.reloadDecisions();
     ctx.reloadCharters();
   };
-  const pending = (it.draftKind === "note" ? ctx.decisions !== null : ctx.decisions !== null && ctx.charters !== null) && !sd && !dismissed && !expired;
+  const pending = draftPending(it, ctx);
   const confirmPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/confirm` : "/api/duty/decisions";
   const dismissPath = isCharter ? `/api/duty/charters/${encodeURIComponent(it.draft)}/dismiss` : `/api/duty/drafts/${encodeURIComponent(it.draft)}/dismiss`;
   return (
@@ -536,10 +562,10 @@ export function DraftCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }
       {!sd && !dismissed && expired && <p className="du-hint">until이 지났습니다</p>}
       {pending && (
         <div className="du-actions">
-          <button type="button" className="dr-btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft })}>
+          <button type="button" className="btn is-primary" disabled={busy} onClick={() => void act(confirmPath, isCharter ? {} : { draft: it.draft })}>
             확정
           </button>
-          <button type="button" className="dr-btn" disabled={busy} onClick={() => void act(dismissPath, {})}>
+          <button type="button" className="btn" disabled={busy} onClick={() => void act(dismissPath, {})}>
             버림
           </button>
         </div>
@@ -577,7 +603,7 @@ function DecisionsCard({ it, ctx }: { it: Extract<ChatItem, { kind: "draft" }>; 
             </p>
             {d.until && <p className="du-hint mono">until {d.until}</p>}
             <div className="du-actions">
-              <button type="button" className="dr-btn" disabled={busy === d.id} onClick={() => void retire(d.id)}>
+              <button type="button" className="btn" disabled={busy === d.id} onClick={() => void retire(d.id)}>
                 해제
               </button>
             </div>

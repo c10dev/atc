@@ -70,7 +70,7 @@ test("불러오는 줄은 Loading으로: Empty에 불러오는 글이 남지 않
   }
   assert.deepEqual(bad, [], "Empty에 불러오는 글");
   assert.match(read("lazyTab.tsx"), /<Loading className="tab-loading">화면 불러오는 중…<\/Loading>/);
-  assert.match(read("DutyDrawer.tsx"), /<Loading className="du-thinking">DUTY가 답하는 중…<\/Loading>/);
+  assert.match(read("DutyChat.tsx"), /<Loading className="du-thinking">DUTY가 답하는 중…<\/Loading>/);
   assert.match(read("views/fleet/LaunchPanel.tsx"), /<Lights \/>/);
   assert.match(read("views/fleet/Card.tsx"), /<Lights \/>/);
   // 글은 그대로: 버튼의 "띄우는 중…" 라벨과 UpdateBar 점은 바뀌지 않았다
