@@ -37,6 +37,7 @@ export interface AutolandConfig {
   applicationCheck: string; // GROUND STOP을 거는 main의 post-merge 체크 이름
   holds: AutolandHold[]; // SUPERVISOR가 HOLD한 PR: merge가 머지하지 않는다
   reviewedSecurity: ReviewedSecurity; // 머지 리뷰 pass가 보안 게이트 PR의 위임 근거가 되나(ATC-328). 설정 창에서만 바꾼다
+  handoff?: "on" | "off"; // AUTOLAND가 SUPERVISOR에게 넘긴 PR을 착륙 판정(landBy)에 반영하나(ATC-513). 없으면 on. 설정 창에서만 바꾼다
   supervisorGraceMinutes?: number; // SUPERVISOR 몫 CLEARED PR이 갱신 대기열을 막는 시간(ATC-331). 없으면 15분. 옛 파일도 읽힌다
 }
 
@@ -118,6 +119,7 @@ export function parseAutoland(raw: unknown): AutolandConfig {
     applicationCheck: typeof r.applicationCheck === "string" && r.applicationCheck.trim() ? r.applicationCheck.trim() : d.applicationCheck,
     holds,
     reviewedSecurity: pick(r.reviewedSecurity, REVIEWED_SECURITY, d.reviewedSecurity),
+    ...(r.handoff === "off" || r.handoff === "on" ? { handoff: r.handoff } : {}),
     ...(typeof r.supervisorGraceMinutes === "number" && Number.isFinite(r.supervisorGraceMinutes) && r.supervisorGraceMinutes >= 0 ? { supervisorGraceMinutes: r.supervisorGraceMinutes } : {}),
   };
 }
@@ -157,7 +159,7 @@ export function saveAutolandState(st: AutolandState, file = STATE_FILE()) {
 // 기록 한 줄(autoland.jsonl, 추가만). 갱신·머지·결과·GROUND STOP·스위치·HOLD를 모두 남긴다
 export interface AutolandRecord {
   at: string;
-  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request" | "migrate";
+  op: "update" | "merge" | "settle" | "groundstop" | "groundstop-clear" | "mode" | "reviewed-security" | "merge-review" | "hold" | "unhold" | "skip" | "review-request" | "migrate" | "handoff";
   mode: AutolandMode;
   airport?: string;
   slug?: string;
@@ -340,6 +342,7 @@ export interface AutolandView {
   pulls: Record<string, PullTag>; // pullKey → 표시
   holds: string[]; // HOLD한 pullKey
   exclusions: Record<string, string | null>; // merge 모드: CLEARED PR의 제외 사유(null이면 위임됨)
+  exclusionHeads?: Record<string, string>; // exclusions를 낸 PR의 head(ATC-513): 옛 head의 판정을 새 head에 쓰지 않게. 옛 스냅샷에는 없다
 }
 
 const sha7 = (s: string) => s.slice(0, 7);
@@ -396,6 +399,7 @@ export function planAutoland({ cfg, airports, pulls, st, exclusionOf, now = Date
       else if (p.landing === "CLEARED" && cfg.mode === "merge") {
         const why = exclusionOf(p);
         view.exclusions[pullKey(p)] = why;
+        (view.exclusionHeads ??= {})[pullKey(p)] = p.head;
         tag(p, why ? "supervisor" : "delegated", why ? `SUPERVISOR 머지 — ${why}` : "AUTOLAND merge 대상");
       } else if (p.landing === "CLEARED" && isHeld(cfg, p)) tag(p, "supervisor", "HOLD");
       // 이 head에 낸 재리뷰 요청(ATC-38). 리뷰가 붙으면(needsReview 아님) 지운다

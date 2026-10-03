@@ -92,13 +92,24 @@ export interface Info {
   clearance: string | null;
 }
 const MARK = /\[blocks: ([a-z0-9,-]+)\]\s*$/;
-export function infoOf(p: PullRequest, x: { clearances: readonly Clearance[]; holders: number }): Info | null {
-  if (p.landing !== "APPROACH") return null;
-  const live = p.blocks.filter((b) => !b.findings && !QUIET_CODES.has(b.code));
-  if (!live.length) return null;
-  const codes = [...new Set(live.map((b) => b.code))].sort();
-  const text = `${infoTextOf(p.number, live.map((b) => b.en))} [blocks: ${codes.join(",")}]`;
-  const last = x.clearances.findLast((c) => c.type === "INFO" && !c.cancelledAt && c.at >= p.createdAt && sameStand(c, p));
+// handoff(ATC-513): AUTOLAND가 CLEARED PR을 SUPERVISOR에게 넘겼다. 팀이 할 일은 없다는 INFO를 head마다 한 번만 보낸다(표지가 `autoland-<head 7자리>`라 같은 head에는 다시 가지 않는다)
+export const handoffInfoText = (n: number) => `PR #${n} is CLEARED, but AUTOLAND handed it to the SUPERVISOR to merge. Nothing for the team to do; no LAND will come.`;
+export function infoOf(p: PullRequest, x: { clearances: readonly Clearance[]; holders: number; handoff?: boolean }): Info | null {
+  let text: string;
+  let codes: string[];
+  if (x.handoff && p.landing === "CLEARED") {
+    codes = [`autoland-${p.head.slice(0, 7)}`];
+    text = `${handoffInfoText(p.number)} [blocks: ${codes.join(",")}]`;
+  } else {
+    if (p.landing !== "APPROACH") return null;
+    const live = p.blocks.filter((b) => !b.findings && !QUIET_CODES.has(b.code));
+    if (!live.length) return null;
+    codes = [...new Set(live.map((b) => b.code))].sort();
+    text = `${infoTextOf(p.number, live.map((b) => b.en))} [blocks: ${codes.join(",")}]`;
+  }
+  const infos = (c: Clearance) => c.type === "INFO" && !c.cancelledAt && c.at >= p.createdAt && sameStand(c, p);
+  // handoff는 이 head의 표지가 붙은 INFO가 하나라도 나갔으면 이미 나간 것(그 뒤에 다른 INFO가 나가도 다시 보내지 않는다)
+  const last = x.handoff && p.landing === "CLEARED" ? x.clearances.findLast((c) => infos(c) && c.text.includes(`[blocks: ${codes[0]}]`)) : x.clearances.findLast(infos);
   // 마지막 INFO가 이 코드를 모두 알렸으면 이미 나간 것(표지가 없는 옛 INFO는 알 수 없어 다시 보낸다)
   const told = new Set(last?.text.match(MARK)?.[1]?.split(",") ?? []);
   if (last && codes.every((c) => told.has(c))) return { text, action: "sent", clearance: last.id };

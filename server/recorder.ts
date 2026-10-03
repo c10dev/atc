@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { HandoffRecord } from "./autoland-handoff.ts";
 import { config } from "./config.ts";
 import { inSequence } from "./landing.ts";
 import type { Milestone } from "./milestones.ts";
@@ -73,6 +74,9 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
   | { t: string; kind: "policy"; op: "bg-memory-cap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "verify-gate-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "autoland-handoff-mode"; by: string; from: string; to: string }
+  // AUTOLAND가 SUPERVISOR에게 넘긴 PR(ATC-513): mark(처음 넘김, head마다), done(머지 또는 머지 없이 닫힘), land-sent(넘긴 PR에 팀으로 LAND가 나감, 0이어야 한다). autoland-handoff.jsonl과 같은 줄
+  | ({ kind: "handoff" } & HandoffRecord)
   | { t: string; kind: "policy"; op: "verify-remote-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "browser-gate-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "scope-oom"; unit: string; total: number; delta: number } // 백그라운드 session scope 안의 OOM kill(ATC-505): cgroup memory.events의 oom_kill가 늘 때마다 한 줄
