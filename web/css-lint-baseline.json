@@ -13,7 +13,7 @@
     "color-literal": 16,
     "radius-literal": 3,
     "spacing-literal": 32,
-    "token-family": 24
+    "token-family": 26
   },
   "web/src/views/Docs.css": {
     "font-size-em": 4

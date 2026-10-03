@@ -100,7 +100,7 @@ function Dots({ row, stages }: { row: FollowRow; stages: FollowStage[] }) {
 // 다음 할 일 칩: release만 버튼(기존 상태 길), 나머지는 이미 있는 화면으로 가는 링크
 function NextChip({ row, next, busy, moved, onRelease }: { row: FollowRow; next: FollowNext; busy: boolean; moved: boolean; onRelease: (row: FollowRow) => void }) {
   // 옮겼는데 Linear 읽기가 아직 Backlog이면 칩을 되살리지 않는다(다시 누르면 서버가 409로 막는다)
-  if (next.kind === "release" && moved) return <span className="tag">Todo로 옮김</span>;
+  if (next.kind === "release" && moved) return <span className="tag fw-moved">Todo로 옮김</span>;
   if (next.kind === "release")
     return (
       <button type="button" className="btn fw-next" disabled={busy} onClick={() => onRelease(row)} aria-label={`${row.key}를 Todo로 옮기기`}>

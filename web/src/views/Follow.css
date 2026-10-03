@@ -144,6 +144,10 @@
 .fw-stuck {
   color: var(--amber);
 }
+/* .tag는 대문자로 바꾸므로 한글 섞인 글은 원래 글자대로 둔다 */
+.tag.fw-moved {
+  text-transform: none;
+}
 /* 다음 할 일: 공용 .btn(링크도 같다). 줄 높이에 맞춰 키만 줄인다 */
 .btn.fw-next {
   --btn-h: 22px;

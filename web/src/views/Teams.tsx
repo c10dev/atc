@@ -14,7 +14,7 @@ import {
   flightPhase,
 } from "../aviation.ts";
 import { OpenFlight } from "../FlightLink.tsx";
-import { activeFirst, hasActiveClaim, type Index, isGateCleanup, sortSessions, timeAgo } from "../derive.ts";
+import { activeFirst, hasActiveClaim, type Index, isGateCleanup, isStripVisible, sortSessions, timeAgo } from "../derive.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { attachCommandOf } from "../../../server/session-origin.ts";
 import { ActivityLine, AirportCode, AwayTag, NeedsYou, PendingApproval, SessionPlace } from "../badges.tsx";
@@ -54,13 +54,13 @@ export function FlightsLanding({ snapshot, idx }: { snapshot: Snapshot; idx: Ind
 }
 
 // 기본(PARKED 숨김)으로 스트립에 보이는 AIRCRAFT 수. FLIGHTS의 접기 머리글이 개수를 말한다(design-language 4.3)
-export const stripCount = (snapshot: Snapshot, idx: Index) => sortSessions(snapshot.sessions, idx).filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id) || s.job?.state === "blocked").length;
+export const stripCount = (snapshot: Snapshot, idx: Index) => sortSessions(snapshot.sessions, idx).filter((s) => isStripVisible(s, idx)).length;
 
 // 세션마다 스트립(AIRCRAFT bay). FLIGHTS의 목록 보기에서는 접힌 칸에 든다(ATC-379)
 export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; now: number }) {
   const [showAll, setShowAll] = useState(false);
   const all = sortSessions(snapshot.sessions, idx);
-  const visible = showAll ? all : all.filter((s) => s.status === "busy" || idx.claimsBySession.has(s.id) || s.job?.state === "blocked") // blocked job은 PARKED여도 보인다(NEEDS YOU, ATC-99);
+  const visible = showAll ? all : all.filter((s) => isStripVisible(s, idx)); // blocked job은 PARKED여도 보인다(NEEDS YOU, ATC-99)
   const hidden = all.length - visible.length;
   const nameOf = (id: string) => {
     const s = idx.sessionById.get(id);
@@ -117,7 +117,7 @@ export function Teams({ snapshot, idx, now }: { snapshot: Snapshot; idx: Index; 
       })}
       {cleanup.length > 0 && (
         <div className="bay">
-          <Fold title="GATE CLEANUP" count={cleanup.length} defaultOpen={false}>
+          <Fold title="GATE CLEANUP" count={cleanup.length} defaultOpen={false} level={3}>
             <p className="faint">쥔 STAND가 모두 ARRIVED·취소된 FLIGHT의 것인 AIRCRAFT. 워크트리를 치우면 사라진다.</p>
             <div className="bay-rail">
             {cleanup.map((s) => (
@@ -226,7 +226,7 @@ function Strip({
                     </div>
                   )}
                 </div>
-                <div className="st-cell">
+                <div className="st-cell st-cell-route">
                   <span className="st-cap">ROUTE</span>
                   <div className="st-route" title={ticket?.title}>
                     {ticket?.title ?? <span className="st-none">AD HOC — 티켓 없는 작업</span>}
@@ -642,14 +642,14 @@ function LandingSequence({
       {cleared.length > 0 && <ol className="ls-list">{cleared.map(row)}</ol>}
       {approach.length > 0 && (
         <div className="ls-group">
-          <Fold title="APPROACH PR" summary={`${approach.length}개 · 막는 조건이 남음`} defaultOpen={false}>
+          <Fold title="APPROACH PR" summary={`${approach.length}개 · 막는 조건이 남음`} defaultOpen={false} level={3}>
             <ol className="ls-list">{approach.map(row)}</ol>
           </Fold>
         </div>
       )}
       {drafts.length > 0 && (
         <div className="ls-group is-draft">
-          <Fold title="DRAFT PR" summary={`${drafts.length}개 · LANDING SEQUENCE에 들지 않음`} defaultOpen={false}>
+          <Fold title="DRAFT PR" summary={`${drafts.length}개 · LANDING SEQUENCE에 들지 않음`} defaultOpen={false} level={3}>
             <ol className="ls-list">{drafts.map(row)}</ol>
           </Fold>
         </div>

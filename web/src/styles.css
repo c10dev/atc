@@ -229,6 +229,21 @@ button {
 .activity-ago {
   font-variant-numeric: tabular-nums !important;
 }
+/* 작은 기종·종류 칸(설정의 서버 목록, 에이전트 줄)과 값 없음 글. 스트립은 st-agent·st-none을 쓴다(ATC-424) */
+.type {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--paper-ink);
+  color: var(--paper);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+  vertical-align: 3px;
+}
+.none {
+  color: var(--paper-muted);
+  font-weight: 400;
+}
 .muted {
   color: var(--muted);
 }
