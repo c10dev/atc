@@ -364,7 +364,32 @@ function MigrateRows({ sw, save }: { sw: SwitchView; save: Save }) {
   );
 }
 // 기본 줄(EditRow 하나) 대신 자기 줄을 그리는 스위치. 키는 스위치 key
-const CUSTOM_ROWS: Record<string, (sw: SwitchView, save: Save) => ReactNode> = { migrateRehearsal: (sw, save) => <MigrateRows sw={sw} save={save} /> };
+// DUTY 컨텍스트 CAP(ATC-496, docs/duty.md): 머리줄의 `context 365k/…k`가 쓰는 CAP. 비우면(0) 모델로 정한다([1m]이면 1000k, 아니면 250k)
+type DutyCapData = { cap: number; source: "duty.json" | "model" | "default"; note: string | null; model: string | null; configured: number | null };
+const CAP_SOURCE: Record<DutyCapData["source"], string> = { "duty.json": "duty.json의 cap", model: "모델로 정함([1m])", default: "기본값" };
+function DutyCapRow({ sw, save }: { sw: SwitchView; save: Save }) {
+  const d = sw.data as DutyCapData | undefined;
+  if (!d) return null;
+  return (
+    <>
+      <EditRow
+        label="DUTY CAP"
+        env="duty.cap"
+        value={d.configured === null ? "0" : String(Math.round(d.configured / 1000))}
+        unit="k 토큰"
+        note={`지금 CAP ${kOf(d.cap)} (${CAP_SOURCE[d.source]})${d.model ? ` · 모델 ${d.model}` : " · 모델 아직 모름"} · 0이면 모델로 정한다`}
+        input={{ kind: "number", min: 0, max: 1000 }}
+        onSave={(t) => save({ [sw.key]: Number(t) === 0 ? null : Number(t) * 1000 })}
+      />
+      {d.note && <p className="settings-hint acct-err">⚠ {d.note}</p>}
+    </>
+  );
+}
+
+const CUSTOM_ROWS: Record<string, (sw: SwitchView, save: Save) => ReactNode> = {
+  migrateRehearsal: (sw, save) => <MigrateRows sw={sw} save={save} />,
+  dutyCap: (sw, save) => <DutyCapRow sw={sw} save={save} />,
+};
 
 // 스위치 줄 뒤에 붙는, 자기 데이터가 있는 화면. 키는 스위치 key
 // DUTY REVIEW 기록(ATC-396): 마지막 점검과 하루 세기(점검, 만든 제안, 발권된 제안, 버려진 제안)

@@ -13,6 +13,7 @@ export interface DutyConfig {
   briefMaxChars: number;
   briefDecisions: number;
   charter: CharterMode; // D5: DUTY가 만든 CHARTER REQUEST를 OCC가 읽는 정도. off(기본) · shadow · on
+  cap?: unknown; // ATC-496: 컨텍스트 CAP(토큰). 있는 그대로 둔다 — 범위·형식 검사와 기본값은 duty-cap.ts의 dutyCapOf
   l1: boolean; // D7a: DUTY STAND(duty-*)와 Linear 쓰기 길을 여는 스위치. 기본 꺼짐. 설정 → OPERATIONS → DUTY L1(ATC-349, SUPERVISOR 전용)이나 duty.json으로 바꾼다
   // REVIEW(ATC-396): 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작한다. 스위치는 SUPERVISOR만(설정 창). 기본 켜짐(live first). DUTY가 꺼져 있으면 돌지 않는다
   review: boolean;
@@ -45,6 +46,7 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     briefMaxChars: briefMaxCharsOf(o.briefMaxChars),
     briefDecisions: briefDecisionsOf(o.briefDecisions),
     charter: charterModeOf(o.charter),
+    ...(o.cap !== undefined && o.cap !== null ? { cap: o.cap } : {}),
     l1: o.l1 === true,
     review: o.review !== false,
     reviewEveryMin: reviewNum(o.reviewEveryMin, REVIEW_DEFAULTS.everyMin, REVIEW_RANGES.everyMin),

@@ -187,6 +187,7 @@ tick마다 `web/dist/index.html`도 본다(mtime이나 크기가 바뀌었을 �
 | `GET /api/dispatch/proposals/:id` | 제안 하나와 지금 모드(send-guard용) |
 | `POST /api/dispatch/mode` | `{mode: "shadow" \| "approval"}` 전환(`dispatch.json`에 저장) |
 | `GET /api/dispatch/flight/:key` | Linear에서 티켓 본문과 댓글(읽기 전용) |
+| `PUT /api/settings` `{dutyCap}` | DUTY CAP(ATC-496): `duty.json`의 `cap`, 50,000~1,000,000 사이의 정수 토큰이거나 `null`(지움). SUPERVISOR만(이 화면의 Origin). 원자적으로 쓰고 FLIGHT RECORDER에 `duty-cap` `{by, from, to}` 한 줄. `GET /api/duty/status`가 효과 있는 `cap`, `capSource`(`"duty.json" \| "model" \| "default"`), `capNote`(파일의 잘못된 `cap`을 무시한 까닭, 아니면 null)를 준다. `cap`이 없으면 마지막으로 본 모델 id가 `[1m]`으로 끝날 때 1,000,000, 아니면 250,000(`dutyCapOf`, `server/duty-cap.ts`) |
 | `GET /api/duty/brief` | DUTY L0(ATC-219): atc가 아는 것의 한 장 글 요약(`{v, at, chars, truncated, text}`), `duty.briefMaxChars`까지. 읽기 전용 |
 | `POST /api/duty/card` `{kind, key}` | DUTY 초안: `<kind>/<key>`가 지금 SUPERVISOR QUEUE의 줄일 때만 받는다. 상태 폴더의 `duty-drafts.jsonl`에 한 줄을 붙일 뿐 밖으로 나가는 것은 없다 |
 | `POST /api/duty/note` `{text, until?}` | DUTY 초안: 정해 둘 결정의 제안(`decisions.jsonl`은 D4). `duty-drafts.jsonl`에 붙인다 |

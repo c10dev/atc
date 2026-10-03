@@ -2,6 +2,7 @@
 // 외부에 나가는 동작: `claude` 프로세스를 띄우고 stdin에 글을 쓴다(deploy/landing-tier.mjs SIDE_EFFECT에 올라 있는 파일).
 // 기본은 꺼짐(duty.json enabled). 꺼져 있으면 프로세스를 띄우지 않고, 켜진 프로세스도 끈다.
 // 계산은 순수 조각에 있다: duty-stream.ts(파서), duty-machine.ts(상태 기계), duty-log.ts(기록·그림 검사), duty-config.ts(설정).
+import { record } from "./recorder.ts";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -11,6 +12,7 @@ import type { Context, Hono } from "hono";
 import { dutyArgvOf } from "../duty/spawn.mjs";
 import { accountFolders } from "./accounts.ts";
 import { accountNotice } from "./duty-chat.ts";
+import { type DutyCapSource, dutyCapOf, dutyCapValid } from "./duty-cap.ts";
 import { canResumeOn, effectiveDutyFolder } from "./duty-account.ts";
 import { cleanEnv } from "./clean-env.ts";
 import { config } from "./config.ts";
@@ -21,7 +23,7 @@ import type { DraftLine } from "./duty-drafts.ts";
 import { createDutyParser, type DutyEvent, type DutyRate, type DutyTurnUsage } from "./duty-stream.ts";
 import { fromThisApp } from "./origin.ts";
 
-export const DUTY_CAP_DEFAULT = 250_000; // 컨텍스트 CAP(CONTROL RECYCLE의 관제 세션 기본과 같은 값). 이 CAP으로 스스로 재시작하는 것은 아직 없다(NEW SHIFT는 손으로)
+// 컨텍스트 CAP은 duty.json의 cap 또는 모델에서 정한다(duty-cap.ts, ATC-496). 이 CAP으로 스스로 재시작하는 것은 아직 없다(NEW SHIFT는 손으로)
 const IDLE_TICK_MS = 30_000;
 const CLOSE_GRACE_MS = 10_000; // stdin을 닫은 뒤 이만큼 안에 안 끝나면 SIGTERM
 const BODY_MAX = 8 * 1024 * 1024; // 그림(base64)을 싣는 JSON 본문 상한
@@ -35,6 +37,8 @@ export interface DutyStatus {
   model: string | null;
   context: number | null;
   cap: number;
+  capSource: DutyCapSource; // ATC-496: cap이 어디서 왔나
+  capNote: string | null; // duty.json의 cap을 무시했으면 그 까닭
   costUsd: number | null;
   rates: DutyRate[];
   queued: number;
@@ -122,6 +126,7 @@ export class DutyRuntime {
 
   status(): DutyStatus {
     const cfg = this.o.loadConfig();
+    const cap = dutyCapOf(cfg, this.last.model);
     return {
       enabled: cfg.enabled,
       state: this.s.phase,
@@ -130,7 +135,9 @@ export class DutyRuntime {
       sessionId: this.s.sessionId ? this.s.sessionId.slice(0, 8) : null,
       model: this.last.model,
       context: this.last.context,
-      cap: DUTY_CAP_DEFAULT,
+      cap: cap.cap,
+      capSource: cap.source,
+      capNote: cap.ignored,
       costUsd: this.last.costUsd,
       rates: this.last.rates,
       queued: this.s.queue.length,
@@ -377,10 +384,20 @@ export function duty(): DutyRuntime {
 }
 
 // 설정 창의 DUTY 스위치: duty.json에 쓰고 실행 중인 프로세스에 반영한다
-export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review" | "l1">>): Promise<DutyConfig> {
+export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | "account" | "idleMin" | "charter" | "review" | "l1" | "cap">>): Promise<DutyConfig> {
   const prev = loadDutyConfig();
   const next = saveDutyConfig(patch);
   await duty().configChanged(prev, next);
+  return next;
+}
+
+// 컨텍스트 CAP(ATC-496): duty.json의 cap을 바꾼다(null이면 지운다). 값이 그대로면 아무것도 쓰지 않는다. 바꾸면 FLIGHT RECORDER에 한 줄
+export async function setDutyCap(cap: number | null, by = "SUPERVISOR", rec: typeof record = record): Promise<DutyConfig> {
+  const prev = loadDutyConfig();
+  const from = dutyCapValid(prev.cap) ? prev.cap : null;
+  if (from === cap) return prev;
+  const next = await setDutyConfig({ cap: cap ?? undefined });
+  rec({ t: new Date().toISOString(), kind: "duty-cap", by, from, to: cap });
   return next;
 }
 
