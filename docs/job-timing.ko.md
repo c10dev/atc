@@ -15,7 +15,7 @@ atc 서버는 쉬지 않고 도는 주기 일에 CPU를 쓴다: 2초 스냅샷 �
 | `tick:leaks`, `tick:effect-check`, `tick:duty-review`, `tick:duty-run`, `tick:readability`, `tick:skill-calls` | 레지스트리 잡이 아닌 `*-run`의 타이머 |
 | `fuel:watch-event`, `fuel:fullWalk`, `fuel:applyDirty`, `fuel:scan` | 대화 기록 `fs.watch` 이벤트, 전체 걷기, 바뀐 것만 다시 stat, FUEL 읽기(`server/fuel-tree.ts`, `server/fuel-run.ts`) |
 | `agents-json` | `claude agents --json` 한 번(`server/agents-cache.ts`): `runs`가 spawn 수, `wallMs`가 걸린 시계 시간. 자식의 CPU는 서버의 것이 아니라 이 수에 없다 |
-| `http:<METHOD> /api/<이름>` | 길 묶음별 요청. 스트림 길은 `wallMs`가 연결 시간이다 |
+| `http:<METHOD> <길 패턴>` | 맞은 길 패턴별 요청(예: `http:GET /api/dispatch/flight/:key`). 모르는 길은 `/api/*` 하나로 모여 엉뚱한 요청이 이름을 다 쓰지 못한다. 스트림 길은 `wallMs`가 연결 시간이다 |
 
 구간마다 `cpu`(이 프로세스의 `userMs`·`systemMs`, `process.cpuUsage()`)도 실어 출처 합과 프로세스 전체를 견줄 수 있고, `dropped`(아래)도 싣는다.
 

@@ -5,6 +5,7 @@ import { readFileSync, statSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { routePath } from "hono/route";
 import { streamSSE } from "hono/streaming";
 import { mountAirports } from "./airports.ts";
 import { mountAtfm } from "./atfm-run.ts";
@@ -83,7 +84,7 @@ import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountJobTiming } from "./job-timing-run.ts";
-import { timed } from "./job-timing.ts";
+import { jobTimer, timed } from "./job-timing.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
 import { mountStuckUnserved } from "./stuck-unserved-run.ts";
 import { mountStopCheck } from "./control-stop-check-run.ts";
@@ -187,7 +188,14 @@ const app = new Hono();
 
 // SUPERVISOR 자격(ATC-373): /api 아래 쓰기는 에이전트가 쓰는 길(atcctl 등, supervisor-auth.ts의 허용 목록) 말고는 모두 SUPERVISOR의 비밀을 요구한다. 어느 라우트보다 먼저 건다
 app.use("/api/*", supervisorGate());
-app.use("/api/*", (c, next) => timed(`http:${c.req.method} ${c.req.path.split("/").slice(0, 3).join("/")}`, next)); // 경로별 요청 수·시간(ATC-525). 스트림 길은 wallMs가 연결 시간이다
+app.use("/api/*", async (c, next) => {
+  const t0 = performance.now();
+  try {
+    await next();
+  } finally {
+    jobTimer.span(`http:${c.req.method} ${routePath(c, -1)}`, performance.now() - t0); // 맞은 길의 패턴으로 센다(모르는 길은 "/api/*" 하나로 모인다). 스트림 길은 wallMs가 연결 시간이다(ATC-525)
+  }
+});
 app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // 이 요청의 자격이 맞는지(valid·invalid·missing·unpaired·insecure). 해시와 비밀은 싣지 않는다
 
 const getSnapshot = async () => current ?? (current = await buildSnapshot());

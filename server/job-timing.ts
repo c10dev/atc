@@ -48,13 +48,18 @@ export function createTimer(now: () => number = () => performance.now(), cpuNow:
   };
 
   const timer = {
+    // 켜고 끌 때 구간을 비운다: 꺼져 있던 시간이 다시 켠 뒤 한 구간에 섞이지 않게
     setEnabled(on: boolean) {
+      if (on === enabled) return;
       enabled = on;
+      sources = new Map();
+      since = now();
+      cpuSince = cpuNow();
     },
     get enabled() {
       return enabled;
     },
-    // fn을 그대로 돌려주고 시간만 잰다. 던져도 시간은 센다. Promise를 돌려주면 끝난 때 wallMs도 센다(원래 Promise를 그대로 돌려준다)
+    // fn의 값을 그대로 돌려주고 시간만 잰다. 던져도 시간은 센다. Promise면 끝난 때 wallMs도 세고, 거절은 그대로 호출한 쪽에 전한다(처리 없이 버려지던 거절은 여전히 처리 안 된 거절이다)
     timed<T>(name: string, fn: () => T): T {
       if (!enabled) return fn();
       const t0 = now();
@@ -69,7 +74,16 @@ export function createTimer(now: () => number = () => performance.now(), cpuNow:
       timer.note(name, sync);
       if (result && typeof (result as { then?: unknown }).then === "function") {
         const done = () => timer.noteWall(name, now() - t0);
-        (result as unknown as Promise<unknown>).then(done, done);
+        return (result as unknown as Promise<unknown>).then(
+          (v) => {
+            done();
+            return v;
+          },
+          (e) => {
+            done();
+            throw e;
+          },
+        ) as T;
       }
       return result;
     },
@@ -79,6 +93,12 @@ export function createTimer(now: () => number = () => performance.now(), cpuNow:
       s.runs++;
       s.ms += ms;
       if (ms > s.maxMs) s.maxMs = ms;
+    },
+    // 이미 끝난 길의 시계 시간 하나(HTTP 요청): 실행 한 번과 wallMs를 센다
+    span(name: string, ms: number) {
+      if (!enabled) return;
+      timer.note(name, 0);
+      timer.noteWall(name, ms);
     },
     noteWall(name: string, ms: number) {
       const s = slot(name);

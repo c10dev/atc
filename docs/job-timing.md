@@ -15,7 +15,7 @@ Each source has a name. Per 5-minute window the server keeps, for every name: `r
 | `tick:leaks`, `tick:effect-check`, `tick:duty-review`, `tick:duty-run`, `tick:readability`, `tick:skill-calls` | the `*-run` timers that are not registry jobs |
 | `fuel:watch-event`, `fuel:fullWalk`, `fuel:applyDirty`, `fuel:scan` | transcript `fs.watch` events, the full tree walk, the dirty re-stat, and the FUEL scan (`server/fuel-tree.ts`, `server/fuel-run.ts`) |
 | `agents-json` | one `claude agents --json` run (`server/agents-cache.ts`): `runs` is the spawn count, `wallMs` its wall time. The child's own CPU is not the server's and is not in this number |
-| `http:<METHOD> /api/<name>` | requests per route group. For streaming routes `wallMs` is the connection time |
+| `http:<METHOD> <route pattern>` | requests per matched route pattern (for example `http:GET /api/dispatch/flight/:key`); an unknown path falls into `/api/*`, so stray requests cannot use up names. For streaming routes `wallMs` is the connection time |
 
 Each window also carries `cpu` (`userMs`, `systemMs` of this process from `process.cpuUsage()`) so the sum of sources can be compared with the process total, and `dropped` (see below).
 

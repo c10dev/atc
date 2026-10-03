@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,16 +28,48 @@ test("timed: 던져도 시간은 세고 그대로 던진다", () => {
   assert.equal(tm.take().sources.boom.runs, 1);
 });
 
-test("timed: Promise는 같은 Promise를 돌려주고 끝난 때 wallMs를 센다, 거절해도 센다", async () => {
+test("timed: Promise 값은 그대로, 끝난 때 wallMs를 센다", async () => {
   const tm = createTimer(undefined, cpu);
-  const p = Promise.resolve(7);
-  assert.equal(tm.timed("p", () => p), p);
-  await p;
-  await assert.rejects(tm.timed("r", () => Promise.reject(new Error("no"))), /no/);
-  await new Promise((r) => setImmediate(r));
+  assert.equal(await tm.timed("p", () => Promise.resolve(7)), 7);
   const w = tm.take();
+  assert.equal(w.sources.p.runs, 1);
   assert.equal(w.sources.p.wallRuns, 1);
-  assert.equal(w.sources.r.wallRuns, 1);
+});
+
+test("timed: 거절은 그대로 호출한 쪽에 닿고(처리 안 한 호출은 처리 안 된 거절 그대로), 시간은 센다", async () => {
+  const tm = createTimer(undefined, cpu);
+  await assert.rejects(tm.timed("r", () => Promise.reject(new Error("no"))), /no/);
+  assert.equal(tm.take().sources.r.wallRuns, 1);
+  // void로 버린 호출은 켜도 꺼도 처리 안 된 거절이 한 번 올라온다(별도 프로세스: 시험 러너가 그 이벤트를 가로챈다)
+  for (const on of [true, false]) {
+    const code = `import { createTimer } from ${JSON.stringify(new URL("./job-timing.ts", import.meta.url).href)};
+const t = createTimer(); t.setEnabled(${on});
+let n = 0; process.on("unhandledRejection", () => n++);
+void t.timed("x", () => Promise.reject(new Error("drop")));
+setTimeout(() => { process.stdout.write(String(n)); }, 30);`;
+    const out = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+    assert.equal(out.stdout.trim(), "1", `on=${on} ${out.stderr}`);
+  }
+});
+
+test("setEnabled: 켜고 끌 때 구간을 비워 꺼져 있던 시간이 섞이지 않는다", () => {
+  const tm = createTimer(clock(0, 0, 1, 100, 0, 5), cpu);
+  tm.timed("a", () => 0); // since=0, t0=0, 끝=1
+  tm.setEnabled(false); // 구간을 비우고 since=101
+  tm.setEnabled(true); // 이미 꺼진 뒤 켠다: since=101
+  assert.deepEqual(tm.take().sources, {});
+});
+
+test("span: 켜져 있을 때만 요청 하나를 센다", () => {
+  const tm = createTimer(() => 1, cpu);
+  tm.span("http:GET /api/x", 12);
+  tm.setEnabled(false);
+  tm.span("http:GET /api/y", 1);
+  tm.setEnabled(true);
+  tm.span("http:GET /api/z", 3);
+  const w = tm.take();
+  assert.deepEqual(Object.keys(w.sources), ["http:GET /api/z"]);
+  assert.equal(w.sources["http:GET /api/z"].wallMs, 3);
 });
 
 test("꺼져 있으면 재지 않고 fn만 돈다", () => {
