@@ -395,7 +395,7 @@ export async function setDutyConfig(patch: Partial<Pick<DutyConfig, "enabled" | 
 export async function setDutyCap(cap: number | null, by = "SUPERVISOR", rec: typeof record = record): Promise<DutyConfig> {
   const prev = loadDutyConfig();
   const from = dutyCapValid(prev.cap) ? prev.cap : null;
-  if (from === cap) return prev;
+  if (prev.cap === undefined ? cap === null : prev.cap === cap) return prev; // 파일에 든 잘못된 cap도 null로 지울 수 있다
   const next = await setDutyConfig({ cap: cap ?? undefined });
   rec({ t: new Date().toISOString(), kind: "duty-cap", by, from, to: cap });
   return next;

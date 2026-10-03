@@ -71,7 +71,10 @@ test("setDutyCap: duty.json에 원자적으로 쓰고 다른 칸은 그대로, �
   await setDutyCap(null, "SUPERVISOR", rec);
   assert.equal("cap" in onDisk(), false, "null이면 칸을 지운다");
   await setDutyCap(null, "SUPERVISOR", rec); // 그대로
-  assert.deepEqual(lines.map((l) => (l.kind === "duty-cap" ? [l.by, l.from, l.to] : null)), [["SUPERVISOR", null, 400_000], ["SUPERVISOR", 400_000, null]]);
+  writeFileSync(file(), JSON.stringify({ enabled: false, cap: 5 }));
+  await setDutyCap(null, "SUPERVISOR", rec); // 파일의 잘못된 cap은 null로 지운다
+  assert.equal("cap" in onDisk(), false);
+  assert.deepEqual(lines.map((l) => (l.kind === "duty-cap" ? [l.by, l.from, l.to] : null)), [["SUPERVISOR", null, 400_000], ["SUPERVISOR", 400_000, null], ["SUPERVISOR", null, null]]);
 });
 
 test("PUT /api/settings dutyCap: 범위 밖·문자열은 400, 이 화면 밖 요청은 403, 값은 바뀌지 않는다", async () => {
