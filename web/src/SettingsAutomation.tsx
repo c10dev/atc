@@ -497,6 +497,11 @@ interface GateCounts {
   waitLimitFails: number;
   fallbacks: number;
   killedReleases: number;
+  desktopRuns: number;
+  transportFailed: number;
+  remoteCommandFails: number;
+  localFallbacks: Record<"desktop-absent" | "transport-error" | "not-listed" | "switch-off", number>;
+  lostMidway: number;
 }
 interface VerifyGateData {
   total: GateCounts;
@@ -505,6 +510,7 @@ interface VerifyGateData {
   waitLimitSec: number;
   testConcurrency: number;
   where: string;
+  remote: { mode: "on" | "off"; configured: boolean; probeSec: number };
 }
 function VerifyGateStats({ d }: { d: VerifyGateData }) {
   const row = (label: string, c: GateCounts) => (
@@ -512,12 +518,20 @@ function VerifyGateStats({ d }: { d: VerifyGateData }) {
       {label} 실행 <b>{c.runs}</b> · 줄 섬 <b>{c.waited}</b> · 가장 긴 기다림 <b>{Math.round(c.longestWaitMs / 1000)}초</b> · 한도 실패 <b>{c.waitLimitFails}</b> · 바로 실행(문 고장) <b>{c.fallbacks}</b> · 죽은 명령이 놓은 슬롯 <b>{c.killedReleases}</b>
     </li>
   );
+  // 데스크톱 실행(ATC-518): 0도 보여 "한 번도 안 일어났다"와 구분한다
+  const remoteRow = (label: string, c: GateCounts) => (
+    <li>
+      {label} 데스크톱 <b>{c.desktopRuns}</b> · 전송 실패 <b>{c.transportFailed}</b> · 데스크톱에서 명령 실패 <b>{c.remoteCommandFails}</b> · 도중에 잃음 <b>{c.lostMidway}</b> · 로컬로 돈 사유: 데스크톱 없음 <b>{c.localFallbacks["desktop-absent"]}</b> · 전송 오류 <b>{c.localFallbacks["transport-error"]}</b> · 목록에 없음 <b>{c.localFallbacks["not-listed"]}</b> · 스위치 꺼짐 <b>{c.localFallbacks["switch-off"]}</b>
+    </li>
+  );
   return (
     <ul className="dp-misfire">
       {row("전체", d.total)}
       {row("최근 7일", d.last7d)}
+      {remoteRow("전체", d.total)}
+      {remoteRow("최근 7일", d.last7d)}
       <li className="faint">
-        동시 {d.slots}건 · 기다림 한도 {Math.round(d.waitLimitSec / 60)}분 · node --test 프로세스 {d.testConcurrency}개 · 실행 위치 {d.where}
+        동시 {d.slots}건 · 기다림 한도 {Math.round(d.waitLimitSec / 60)}분 · node --test 프로세스 {d.testConcurrency}개 · 실행 위치 {d.where} · 원격 {d.remote.mode} · 데스크톱 접속 정보 {d.remote.configured ? "있음" : "없음"} · 닿는지 보는 한도 {d.remote.probeSec}초
       </li>
     </ul>
   );
