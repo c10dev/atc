@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useSettings } from "./settings.ts";
+import "./SplitFlap.css";
 
 // Solari 안내판의 글자 드럼. 판은 이 순서로만 넘어간다.
 const DRUM = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-./";
