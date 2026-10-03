@@ -724,7 +724,7 @@ One confirmed click brings the control sessions (TOWER, OCC, MCC, REVIEW) to a k
 
 ### RESTARTING as built (ATC-91)
 
-A desktop `/clear` ends the session and gives the next one a new id; the name carries over. For a while the AIRCRAFT has no session, and FLEET showed `absent`, DISPATCH dropped its approved proposals ([dispatch.md](dispatch.md) 6.4). ATC-91 makes that gap a state: `RESTARTING`, for up to `restartGraceMin` (default 30, `dispatch.json`).
+A desktop `/clear` ends the session and gives the next one a new id; the name carries over. For a while the AIRCRAFT has no session, and FLEET showed `absent`, DISPATCH dropped its approved proposals ([dispatch.md](dispatch.md) 6.4). ATC-91 makes that gap a state: `RESTARTING`, for up to `restartGraceMin` (default 30, `dispatch.json`; `0` turns RESTARTING off and nothing is read for it; a negative or non-number falls back to 30). How long a launch card waits for its new session is a separate setting, `launchCardTimeoutMin` (ATC-507, default 30, positive only, never off; [dispatch.md](dispatch.md) 6.4).
 
 **Step 0, on real files (2026-09-29).**
 

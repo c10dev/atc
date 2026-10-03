@@ -787,7 +787,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 ### RESTARTING as built (ATC-91)
 
-데스크톱의 `/clear`는 세션을 끝내고 다음 세션에 새 id를 준다. 이름은 이어진다. 한동안 AIRCRAFT에 세션이 없어서 FLEET는 `absent`를 보였고 DISPATCH는 승인된 제안을 닫았다([dispatch.ko.md](dispatch.ko.md) 6.4). ATC-91은 그 틈을 하나의 상태로 만든다: `RESTARTING`, 최대 `restartGraceMin`(기본 30, `dispatch.json`).
+데스크톱의 `/clear`는 세션을 끝내고 다음 세션에 새 id를 준다. 이름은 이어진다. 한동안 AIRCRAFT에 세션이 없어서 FLEET는 `absent`를 보였고 DISPATCH는 승인된 제안을 닫았다([dispatch.ko.md](dispatch.ko.md) 6.4). ATC-91은 그 틈을 하나의 상태로 만든다: `RESTARTING`, 최대 `restartGraceMin`(기본 30, `dispatch.json`. `0`이면 RESTARTING을 끄고 그것을 위해 아무것도 읽지 않는다. 음수·숫자가 아닌 값은 30). launch 카드가 새 세션을 기다리는 시간은 따로 `launchCardTimeoutMin`(ATC-507, 기본 30, 양수만, 끌 수 없다, [dispatch.ko.md](dispatch.ko.md) 6.4)이다.
 
 **Step 0, 실제 파일에서(2026-09-29).**
 

@@ -10,7 +10,7 @@ import { fleetView } from "./fleet.ts";
 import { fleetRows, fleetStatusOf } from "./fleet-status.ts";
 import type { Session, Snapshot, Ticket } from "./model.ts";
 import { fold, type Op, recentPairsOf, regOfProposal, reservedOf, restartingWhyOf, syncOps, waitingOf } from "./proposals.ts";
-import { DEFAULT_RESTART_GRACE_MIN, type EndedSession, normalEndOf, RESTARTING_TEXT, restartingOf } from "./restarting.ts";
+import { DEFAULT_LAUNCH_CARD_TIMEOUT_MIN, DEFAULT_RESTART_GRACE_MIN, type EndedSession, normalEndOf, RESTARTING_TEXT, restartingOf } from "./restarting.ts";
 import { readEndedSessions } from "./sources/claude.ts";
 
 // AIRCRAFT identity survives /clear(ATC-91). TEAM_I, 2026-09-29: D-0068을 01:40:31Z에 만들었고(세션 04a9a868…), SUPERVISOR가 TEAM_I에서 /clear를 했다
@@ -136,6 +136,8 @@ test("restartingOf: 정상으로 끝난 세션이 restartGraceMin 안이고 같�
   assert.deepEqual(run([ended()]), [{ registration: "TEAM_I", name: "TEAM_I", sessionId: OLD, since: iso("01:41:20"), until: iso("02:11:20") }]);
   assert.deepEqual(run([ended()], [], at("02:11:19")).length, 1);
   assert.deepEqual(run([ended()], [], at("02:11:20")), []); // 유예 끝
+  assert.deepEqual(restartingOf([ended()], [], now, 0), []); // restartGraceMin 0이면 RESTARTING을 끈다(ATC-507)
+  assert.deepEqual(restartingOf([ended({ endedAt: at("01:45:30") })], [], now, 0), []); // 시계가 조금 앞선 기록도
   assert.deepEqual(run([ended({ normalEnd: false })]), []); // 오류·승인 대기·응답 도중에 끝난 것은 health가 다룬다
   assert.deepEqual(run([ended({ name: "President" })]), []); // TEAM이 아닌 세션
   assert.deepEqual(run([ended()], [{ name: "Team I", status: "idle" }]), []); // 같은 REGISTRATION의 세션이 이미 떴다(`Team I`도)
@@ -201,14 +203,21 @@ test("readEndedSessions: 세션 파일이 없고 최근에 쓴 대화 기록만,
   assert.deepEqual(readEndedSessions(new Set(), Date.now(), 30 * 60_000, [join(root, "no-such-dir")]), []);
 });
 
-test("restartGraceMin: dispatch.json에서 읽고 양수가 아니면 기본 30분", () => {
+test("restartGraceMin은 0이면 끔(0 이상), launchCardTimeoutMin은 양수만. 아니면 기본 30분", () => {
   const dir = mkdtempSync(join(tmpdir(), "atc-cfg-"));
   try {
     const f = join(dir, "dispatch.json");
     assert.equal(loadDispatchConfig(f).restartGraceMin, DEFAULT_RESTART_GRACE_MIN);
-    for (const [v, want] of [[45, 45], [0, 30], [-5, 30], ["x", 30]] as const) {
+    for (const [v, want] of [[45, 45], [0, 0], [-5, 30], ["x", 30]] as const) {
       writeFileSync(f, JSON.stringify({ restartGraceMin: v }));
       assert.equal(loadDispatchConfig(f).restartGraceMin, want);
+      assert.equal(loadDispatchConfig(f).launchCardTimeoutMin, 30); // restartGraceMin은 launch 카드의 시간을 옮기지 않는다
+    }
+    assert.equal(loadDispatchConfig(f).launchCardTimeoutMin, DEFAULT_LAUNCH_CARD_TIMEOUT_MIN);
+    for (const [v, want] of [[10, 10], [0, 30], [-5, 30], ["x", 30]] as const) {
+      writeFileSync(f, JSON.stringify({ launchCardTimeoutMin: v }));
+      assert.equal(loadDispatchConfig(f).launchCardTimeoutMin, want);
+      assert.equal(loadDispatchConfig(f).restartGraceMin, DEFAULT_RESTART_GRACE_MIN);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
