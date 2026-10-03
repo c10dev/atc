@@ -37,6 +37,14 @@ test("읽지 못한 레인은 줄을 내지 않는다", () => {
   assert.deepEqual(laneRowsOf({ total: { approvals: 1, misfires: 0, share: 0 } }, null).map((r) => r.lane), ["DISPATCH"]);
 });
 
+test("LANDING GAP 레인(ATC-501): 에피소드가 한 일, MISFIRE는 스스로 풀린 막힘, 읽지 못하면 줄이 없다", () => {
+  const gap = { switch: "on", episodes: 4, closed: 3, misfires: 1, share: 1 / 3 };
+  const row = laneRowsOf(null, null, gap)[0]!;
+  assert.deepEqual([row.lane, row.switch, row.applied, row.misfires, row.share], ["LANDING GAP", "on", 4, 1, 1 / 3]);
+  assert.deepEqual(laneRowsOf(null, auto(), gap).map((r) => r.lane), ["SCHEDULE", "FLEET PLAN", "LANDING GAP"]);
+  assert.deepEqual(laneRowsOf(null, auto(), null).map((r) => r.lane), ["SCHEDULE", "FLEET PLAN"]);
+});
+
 test("최근 misfire는 앞의 n건, 사유 이름이 모두 있다", () => {
   const recent = Array.from({ length: 15 }, (_, i) => ({ at: `2026-10-02T0${i % 10}:00:00Z`, kind: "schedule" as const, id: `S-${i}`, why: "undone" as const, what: "CLASSIFY" }));
   assert.equal(recentLinesOf(auto({ recent })).length, 10);

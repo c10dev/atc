@@ -1,12 +1,14 @@
 // GET /api/flow(ATC-499, docs/home-flow.md 3.6): HOME 흐름판의 판정·칸·주체·묶은 할 일. 읽기만 한다.
 // 계산은 home-flow.ts(순수). 여기는 이미 있는 읽기 길(FOLLOW 입력, 스냅샷, 캐시된 MCC 등급, LOGBOOK, SUPERVISOR QUEUE, SINCE LAST LOOK)에서 모으기만 한다:
-// GitHub·Linear를 따로 부르지 않고 상태 폴더에 쓰지 않는다. 기준(착륙 없음 분)은 입력이다 — 지금은 floor 30분이고 AIRPORT별 p90은 H2(ATC-501)가 넣는다.
+// GitHub·Linear를 따로 부르지 않고 상태 폴더에 쓰지 않는다. 기준(착륙 없음 분)은 입력이다 — AIRPORT별 지난 7일 p90과 스위치는 landing-gap.ts(ATC-501)가 넣는다.
 import type { Hono } from "hono";
 import { candidateTeamsOf, isCandidateTicket, loadDispatchConfig } from "./dispatch.ts";
 import { followInputOf } from "./follow-run.ts";
 import { followRowOf } from "./follow.ts";
 import { type FlowInput, type FlowPullIn, flowViewOf } from "./home-flow.ts";
 import { landDecisionOf } from "./land-by.ts";
+import { gapThresholdsOf } from "./landing-gap.ts";
+import { loadGapSwitch } from "./landing-gap-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import { mccLandInfoCached } from "./mcc-run.ts";
 import { type Snapshot, parentKeysOf } from "./model.ts";
@@ -14,6 +16,11 @@ import { sinceLookNow } from "./since-look-run.ts";
 import { supervisorQueueNow } from "./supervisor-queue-run.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
 import type { UpdateStatus } from "./update.ts";
+
+export interface FlowDeps {
+  updateStatus: () => Promise<UpdateStatus | null>;
+  alerts: () => readonly SupervisorAlert[];
+}
 
 // 스냅샷과 기록에서 순수 함수의 입력을 모은다(읽기만)
 export async function flowInputNow(s: Snapshot, updateStatus: () => Promise<UpdateStatus | null>, alerts: () => readonly SupervisorAlert[], now: number): Promise<FlowInput> {
@@ -35,6 +42,11 @@ export async function flowInputNow(s: Snapshot, updateStatus: () => Promise<Upda
     const c = airportOfRepo(m.repo);
     return c ? [c] : [];
   });
+  // 착륙 간격 기준(ATC-501): AIRPORT별 지난 7일 p90(바닥 30분). 스위치가 off거나 간격이 8개 미만이면 그 AIRPORT는 간격 규칙이 없다
+  const gaps = gapThresholdsOf(s.airports.map((a) => a.code), landings, now);
+  const sw = loadGapSwitch();
+  const thresholds = Object.fromEntries(Object.entries(gaps).map(([code, g]) => [code, g.thresholdMin]));
+  const noGapRule = sw === "off" ? s.airports.map((a) => a.code) : Object.entries(gaps).filter(([, g]) => !g.rule).map(([code]) => code);
   const queue = (await supervisorQueueNow(async () => s, updateStatus, now).catch(() => null))?.items ?? [];
   const look = sinceLookNow(s, alerts(), now, false);
   return {
@@ -43,6 +55,8 @@ export async function flowInputNow(s: Snapshot, updateStatus: () => Promise<Upda
     rows,
     pulls,
     landings,
+    thresholds,
+    noGapRule,
     stops,
     mainRed,
     queue,
