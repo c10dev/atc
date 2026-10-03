@@ -6,6 +6,7 @@ import { usd } from "../../../server/fuel-view.ts";
 import { apiGet } from "../api.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { Loading } from "../kit/Loading.tsx";
+import { TableScroll } from "../kit/TableScroll.tsx";
 
 // USAGE TREND(ATC-389, docs/fuel.md "USAGE TREND as built"): 에이전트를 얼마나 쓰는지 어제·지난 같은 기간·최근 주와 견준다. 읽기만 한다.
 // 값과 변화율은 서버(/api/fuel/trend)가 셈하고 여기서는 보이기만 한다. FUEL 개요의 기간·새로고침을 따른다.
@@ -231,12 +232,12 @@ function Weeks({ data }: { data: TrendData }) {
         {w.coverage === 0 ? " · 기록 전" : w.coverage < 1 ? ` · 기록 ${cov(w)}` : ""}
         {w.coverage > 0 ? ` · LEVERAGE ${leverageText(w.leverage)} · 요청 ${count(w.requests)} · AIRCRAFT ${w.aircraft} · PR ${w.prs}` : ""}
       </p>
-      <button type="button" className="mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
+      <button type="button" className="btn mf-linkbtn" aria-expanded={table} onClick={() => setTable((v) => !v)}>
         {table ? "표 닫기" : "표로 보기"}
       </button>
       {table && (
-        <div className="mf-scroll">
-          <table className="mf-table">
+        <TableScroll label="주별 표">
+          <table className="kit-table mf-table">
             <thead>
               <tr>
                 <th>주(UTC)</th>
@@ -266,7 +267,7 @@ function Weeks({ data }: { data: TrendData }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </div>
   );

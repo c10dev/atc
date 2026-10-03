@@ -15,55 +15,30 @@
 .dispatch .bf .label {
   margin: 0;
 }
-.bf-range {
-  display: inline-flex;
-  padding: var(--space-0-5);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-}
-.bf-range button {
-  padding: var(--space-0-5) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-  font: 600 var(--text-xs) var(--sans);
-  cursor: pointer;
-}
 .bf-tools {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-left: auto;
 }
-.bf-range button[aria-checked="true"] {
-  background: var(--panel-3);
-  color: var(--text);
-}
-
-/* 지표 × 종류 표. 좁은 폭에서도 세 칸이 들어가게 지표 이름은 줄바꿈한다 */
+/* 지표 × 종류 표: 바탕은 .kit-table. 좁은 폭에서도 세 칸이 들어가게 칸 너비를 고정하고 지표 이름은 줄바꿈한다 */
 .bf-table {
-  width: 100%;
   max-width: 720px;
   margin-top: var(--space-2);
-  border-collapse: collapse;
   table-layout: fixed;
 }
 .bf-table th,
 .bf-table td {
   padding: var(--space-1) var(--space-2);
-  border-top: 1px solid var(--line);
-  text-align: right;
   vertical-align: baseline;
-}
-.bf-table thead th {
-  border-top: 0;
 }
 .bf-table th[scope="row"] {
   width: 46%;
+  background: none;
   color: var(--muted);
-  font-weight: 400;
-  text-align: left;
+  font: 400 var(--text-sm) var(--sans);
+  letter-spacing: 0;
+  white-space: normal;
   cursor: help;
 }
 .bf-table td {

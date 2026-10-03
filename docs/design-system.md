@@ -101,7 +101,7 @@ Rules:
 
 - `web/src/kit/Table.css` (`.kit-table`): the base table: header row, row divider, `tabular-nums`, and `.num` on `th` and `td` for right-aligned numbers (Craft 3.5.7). It reads `--layer` and `--layer-hover`; no domain token, literal or screen class. `web/src/kit/TableScroll.tsx` (`.kit-scroll`) is the one scroll region for a wide table: a named `role="region"` with a tab stop.
 - `mx-table` (METRICS DAILY and MISFIRE, NETWORK) and the NETWORK-only `Scroll` / `.nw-scroll` / `.mx-scroll` are gone; screens keep only layout (`.nw-table` turns the collapse off so row heads can stick). The ROUTE map line uses `.kit-scroll` as well.
-- Three tables are still separate styles: `apt-table`, `bf-table`, `mf-table`; they move to the base in later units. `fids-table` moved in ATC-425: it carries `.kit-table` inside `.kit-scroll` and keeps its departure-board look through its own rules in `views/Tickets.css`.
+- One table is still a separate style: `apt-table`; it moves to the base in a later unit. `mf-table` (six FUEL tables) and `bf-table` (the VECTORS · DIRECT comparison) moved in ATC-429: each carries `.kit-table` inside `.kit-scroll` and keeps only what differs (sortable header buttons and group rows for FUEL; fixed column widths and wrapped row labels for the comparison). The METRICS and VECTORS · DIRECT period and grouping switches use `Segmented`, which now also takes number values. The METRICS sub-view switch (`.mx-sub`) stays a tab strip: it navigates between views (`role="tab"`, hash routes), which a radio group would misdescribe. `fids-table` moved in ATC-425: it carries `.kit-table` inside `.kit-scroll` and keeps its departure-board look through its own rules in `views/Tickets.css`.
 
 ### L2 Patterns
 
