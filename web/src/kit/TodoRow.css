@@ -23,6 +23,26 @@
 .kit-todo.is-open {
   background: var(--layer-hover);
 }
+/* 기다림·진행 중인 줄: 사람이 할 일이 아니라 옅게(ATC-494) */
+.kit-todo.is-quiet .kit-todo-tag,
+.kit-todo.is-quiet .kit-todo-main,
+.kit-todo.is-quiet .kit-todo-need {
+  color: var(--faint);
+}
+/* 중첩: 막는 이슈 밑에 막힌 이슈. 들여쓰기는 깊이마다 줄어 390px에서도 3단이 들어간다 */
+.kit-todo-nest {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0 0 0 var(--space-4);
+  list-style: none;
+}
+.kit-todo-nest .kit-todo-nest {
+  padding-left: var(--space-3);
+}
+.kit-todo-nest .kit-todo-nest .kit-todo-nest {
+  padding-left: var(--space-2);
+}
 .kit-todo-bar {
   position: absolute;
   top: 0;
