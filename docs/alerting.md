@@ -9,6 +9,9 @@ Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197
   - **ATC-327** (PENDING approval that lasts) is not part of this plan and stays as built.
 - **Kept alive:** **A1b** ([ATC-203](https://linear.app/vocado/issue/ATC-203)) widens `control|down` to any cause and adds `host|memory`. It was not built under ATC-195: it is a standalone FLIGHT, released on 2026-10-03. Its "as built" record will go to its own PR, not to this document.
 - **Cancelled:** **A3–A7** (ATC-198, 199, 200, 201, 202): the MASTER light, the QUEUE and LOG header readouts, notifications by destination, summary v2 and the atc-app change.
+- **A2 and A8:** never filed as issues (the issues under ATC-195 are 197 to 203 only), and not planned.
+  - **A2** (Q1 and A1 share one source): Q1 ([ATC-194](https://linear.app/vocado/issue/ATC-194)) was finished separately on 2026-09-30, and HOME reads it.
+  - **A8** (guide rewrite): the layout PRs change the guide screen by screen.
 - **Replaced by layout.md:**
   - **QUEUE and ALERTS** are sections of HOME (`#home`). ALERTS there are the WARNING and CAUTION items whose `dest` is `alerts`.
   - **The header bell** moved to the sidebar header as the notifications icon ([ATC-447](https://linear.app/vocado/issue/ATC-447)), grouped by source (Linear, GitHub, atc).
