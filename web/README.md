@@ -88,4 +88,5 @@ Themes are sets of CSS tokens under `:root[data-theme="…"]` in `styles.css`; `
 | `src/badges.tsx`, `src/badges.css` | Small shared domain badges: AIRPORT code, OUTSTATION tag, session place, status dot, priority mark |
 | `src/kit/` | Shared building blocks (L1 primitives): `Icon.tsx` (`Icon`, `IconButton`), `useDialog.ts` and `dialog-focus.ts` (dialog focus rules). One `.css` per primitive, a `.tsx` only where behaviour needs one ([design-system.md](../docs/design-system.md)) |
 | `src/styles.css`, `src/views/*.css` | Theme tokens and styles |
+| `src/App.tsx`, `src/App.css`, `src/AlertLive.tsx`, `src/alert-live.ts` | The top bar and the notice rows under it (ticker, ALERT list, NEW VERSION and UPDATE bars, tab error) with their CSS, and the screen-reader announcements of new alerts |
 | `src/views/*.tsx` | One file per tab. FLEET is a folder, `src/views/fleet/`, one file per part (page shell, status list, card, FUEL, ENTRY INTO SERVICE, LAUNCH and CREW BRIEFING panels, editor) with its CSS next to it |

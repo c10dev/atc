@@ -13,12 +13,12 @@ export function NewVersionBar({ own, server }: { own: string; server: string | n
       {show && (
         <div className="new-version-bar">
           <span className="new-version-text">
-            <i aria-hidden />새 버전이 배포됨
+            <i className="new-version-dot" aria-hidden />새 버전이 배포됨
           </span>
-          <button className="new-version-reload" onClick={() => location.reload()}>
+          <button type="button" className="btn is-primary" onClick={() => location.reload()}>
             새로고침
           </button>
-          <button className="new-version-close" onClick={() => setDismissed(server ?? null)} aria-label="새 버전 알림 닫기">
+          <button type="button" className="btn new-version-close" onClick={() => setDismissed(server ?? null)} aria-label="새 버전 알림 닫기">
             닫기
           </button>
         </div>

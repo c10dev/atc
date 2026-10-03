@@ -38,7 +38,7 @@ export class TabBoundary extends Component<BoundaryProps, { error: unknown }> {
               : "화면 파일을 받지 못했다 — 새 버전이 배포됐거나 서버에 잠시 닿지 않았다. 새로고침해 본다."
             : String((error as Error)?.message ?? error)}
         </p>
-        <button className="new-version-reload" onClick={() => location.reload()}>
+        <button type="button" className="btn is-primary" onClick={() => location.reload()}>
           새로고침
         </button>
       </div>
