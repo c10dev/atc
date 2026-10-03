@@ -36,7 +36,7 @@ export function goAroundTextOf(x: { reason: GoAroundReason; pr: number; head: st
         ? `${who} conflicts with base${after}.`
         : `${who} is behind base${after}.`;
   const files = x.shared.length ? ` Shared files: ${x.shared.slice(0, MAX_FILES).join(", ")}${x.shared.length > MAX_FILES ? ` (+${x.shared.length - MAX_FILES} more)` : ""}.` : "";
-  return `GO AROUND: ${cause}${files} Merge origin/main and resolve the conflicts. Run the checks. Then push with --force-with-lease only. Keep the behaviour of the merged PR. If the two PRs change the same behaviour in different ways, answer UNABLE with the reason.`;
+  return `GO AROUND: ${cause}${files} Merge origin/main and resolve the conflicts. Run the checks. Then push with a plain git push. Keep the behaviour of the merged PR. If the two PRs change the same behaviour in different ways, answer UNABLE with the reason.`;
 }
 
 // 두 스냅샷 사이의 GO AROUND 이벤트. events.ts의 diffLanding 쪽에서 부른다.

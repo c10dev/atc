@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { goAroundEvents, goAroundOf, goAroundTextOf, sharedFiles } from "./go-around.ts";
 import { landTextOf } from "./controller.ts";
+import { fixTextOf } from "./fix.ts";
 import { responseOf } from "./response.ts";
 import type { Clearance, LandingBlockCode, PullRequest, Snapshot } from "./model.ts";
 
@@ -43,7 +44,7 @@ test("landing.conflict는 그 사이 머지된 PR과 함께 고친 파일을 싣
   assert.deepEqual(e.merged, [3]);
   assert.deepEqual(e.shared, ["b.ts"]);
   assert.match(e.message!, /^GO AROUND: PR #4 \(ATC-4\) head moved12 conflicts with base after #3 merged\. Shared files: b\.ts\./);
-  assert.match(e.message!, /--force-with-lease only.*answer UNABLE with the reason\.$/);
+  assert.match(e.message!, /plain git push.*answer UNABLE with the reason\.$/);
   // 목록을 못 읽었으면 공유 파일은 비고 문구에서 빠진다
   const [u] = goAroundEvents(snap([pr(3), pr(4)]), snap([pr(4, ["behind"], { head: "moved12345" })]));
   assert.deepEqual(u.shared, []);
@@ -68,7 +69,7 @@ test("GO AROUND 문구: 행동과 UNABLE 조건이 들어 있고, 파일이 많�
   const t = goAroundTextOf({ reason: "dirty", pr: 7, head: "abcdef0123", flight: null, merged: [3, 4], shared: Array.from({ length: 10 }, (_, i) => `f${i}.ts`) });
   assert.match(t, /^GO AROUND: PR #7 head abcdef0 conflicts with base after #3, #4 merged\./);
   assert.match(t, /\(\+2 more\)/);
-  assert.match(t, /Merge origin\/main and resolve the conflicts. Run the checks/);
+  assert.match(t, /Merge origin\/main and resolve the conflicts. Run the checks. Then push with a plain git push/);
   assert.match(goAroundTextOf({ reason: "prevMerged", pr: 7, head: "abcdef0123", flight: "ATC-7", merged: [6], shared: [] }), /the PR ahead of it in the LANDING SEQUENCE \(#6\) has merged/);
 });
 
@@ -120,4 +121,22 @@ test("브리핑 goAround(prevMerged): LAND 문구의 앞 PR이 사라진 CLEARED
   assert.equal(goAroundOf(pr(5, [], { head: "n5abcdef01" }), ctx({ pulls: [p], lastLand: land, clearances: [done] }))!.action, "sent");
   // 첫 순서(앞 PR 없음)의 LAND는 무관
   assert.equal(goAroundOf(p, ctx({ pulls: [p], lastLand: clearance({ type: "LAND", text: landTextOf(1, "ATC", 5, "ATC-5", null) }) })), null);
+});
+
+// 나가는 GO AROUND·FIX 본문은 AIRPORT 팀이 자기 세션에서 SUPERVISOR 승인 없이 할 수 있는 일만 청한다(ATC-350): force·rebase 말이 없다.
+// RELAY는 이 본문을 그대로 싣는다. LAND 본문의 "rebase"는 GO AROUND 판정이 읽는 표지라 여기 포함하지 않는다.
+test("GO AROUND·FIX 본문에 force·rebase가 없다", () => {
+  const bad = /--force|force-with-lease|force[- ]push|rebase/i;
+  const texts: string[] = [];
+  for (const reason of ["dirty", "behind", "prevMerged"] as const) {
+    for (const merged of [[], [3, 5]]) texts.push(goAroundTextOf({ reason, pr: 4, head: "abcdef1234", flight: "ATC-4", merged, shared: ["a.ts"] }));
+  }
+  const base = { pr: 4, head: "abcdef1234", flight: "ATC-4", url: "https://example.com/pr/4", en: "review findings" };
+  for (const source of ["mcc", "review", "codex", "carried"] as const) {
+    for (const f of [{ counts: [1, 0, 2] as [number, number, number] }, { counts: null }, { counts: [0, 0, 0] as [number, number, number], p3Only: true as const }]) {
+      texts.push(fixTextOf({ ...base, findings: { source, by: "MCC INSPECTION", text: "P0: x", from: null, ...f } }));
+    }
+  }
+  assert.ok(texts.length >= 18);
+  for (const t of texts) assert.doesNotMatch(t, bad, t);
 });
