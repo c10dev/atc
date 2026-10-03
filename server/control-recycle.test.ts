@@ -183,11 +183,11 @@ test("projectDirName: Claude Code 폴더 이름 규칙", () => {
 
 // ── 행동 ──
 const row = { id: "abc123", pid: 4242, account: "acct-2" };
-function fakes(o: Partial<{ stopOk: boolean; launchOk: boolean; alive: number; rows: (n: number) => object[] }> = {}) {
+function fakes(o: Partial<{ stopOk: boolean; stopUnverified: boolean; launchOk: boolean; alive: number; rows: (n: number) => object[] }> = {}) {
   const calls: string[] = [];
   let polls = 0;
   const d: ActDeps = {
-    stop: async (n) => (calls.push(`stop ${n}`), o.stopOk === false ? { ok: false, error: "claude stop 실패" } : { ok: true }),
+    stop: async (n) => (calls.push(`stop ${n}`), o.stopUnverified ? { ok: false, unverified: true, error: "claude stop은 종료 코드 0이었지만 job state.json이 done" } : o.stopOk === false ? { ok: false, error: "claude stop 실패" } : { ok: true }),
     rowsOf: async () => (polls++, (o.rows ? o.rows(polls) : []) as never),
     pidAlive: () => polls <= (o.alive ?? 0),
     launch: async (n, acc) => (calls.push(`launch ${n} ${acc}`), o.launchOk === false ? { ok: false, error: "not trusted" } : { ok: true, jobId: "def456" }),
@@ -226,6 +226,16 @@ test("performRecycle: STOP 실패면 LAUNCH하지 않고 세션은 그대로", a
   assert.equal(r.result, "stop-failed");
   assert.equal(r.ok, false);
   assert.deepEqual(calls, ["stop TOWER"]);
+});
+
+test("performRecycle(ATC-521): claude stop은 성공했지만 job이 stopped가 아니면 LAUNCH하지 않고 stop-unverified(stop-failed와 다른 사유)", async () => {
+  const { d, calls } = fakes({ stopUnverified: true });
+  const r = await performRecycle(d, row, "MCC", 200_000, "x");
+  assert.equal(r.result, "stop-unverified");
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? "", /종료 코드 0/);
+  assert.deepEqual(calls, ["stop MCC"]);
+  assert.match(recycleAlertTextOf(r).text, /확인하지 못해 새 세션을 띄우지 않음/);
 });
 
 test("performRecycle(ATC-175): 확인하지 못해도 LAUNCH를 시도한다 — 성공하면 새 세션이 돈다고 말한다", async () => {

@@ -663,6 +663,10 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
 - **API** (`server/session-control.ts`): `GET /api/control/sessions` (`{daemonInService, sessions: [{name, dir, prompt, launch: "bg" | null, blocked, live}], accounts}`), `POST /api/control/:name/launch`, `POST /api/control/:name/stop`, both SUPERVISOR-only (this screen's Origin). Pure parts: `controlLaunchPlanOf`, `launchBlockOf`, `controlStopTargetOf`, `controlRowsOf`, `isControlRow`.
 - **Record.** FLIGHT RECORDER `{kind: "control", op: "launch" | "stop", session, by: "SUPERVISOR", ok, jobId, tmux, cwd, permissionMode, error}` (`permissionMode` since ATC-76): `jobId` for background sessions, `tmux` for tmux ones (the session on launch, `<session> <pane>` on stop).
 
+##### CONTROL STOP is verified (ATC-521)
+
+A STOP of a background control session is recorded `ok: true` only when the job's `state.json` reads `stopped` within about 20 s of `claude stop` exiting 0; otherwise the record is `ok: false` with its own reason, a WARNING `control|unverified|…` is raised, and RECYCLE launches no replacement. A second WARNING, `control|duplicate|<session>`, fires when two live jobs carry one control name (the text names the job ids and ACCOUNTs; STALE rows are not counted). One switch, default on, in the settings window (OPERATIONS, CONTROL STOP CHECK, SUPERVISOR only), with its misfire counter. Details: [control-recycle.md](control-recycle.md) 5.
+
 ##### CONTROL SESSIONS on the FLEET tab, as built (ATC-130)
 
 - **Moved, not changed.** The block moved from the settings window's AGENTS tab to a FLEET section, `CONTROL SESSIONS`, under the AIRCRAFT list. It shows the same things: LAUNCH and STOP (same tmux confirm), badges, job state and NEEDS YOU, STALE rows, ACCOUNT labels, the daemon warning and the model note. The API and `session-control.ts` are unchanged, and LAUNCH and STOP stay SUPERVISOR-only.
