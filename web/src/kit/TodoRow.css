@@ -16,6 +16,7 @@
 }
 .kit-todo {
   position: relative;
+  container-type: inline-size; /* 줄 폭이 좁으면(아래 @container) 필요한 것이 둘째 줄로 내려온다: 화면 폭이 아니라 이 줄이 놓인 폭을 본다 */
   border-radius: var(--radius-md);
 }
 .kit-todo:hover,
@@ -35,7 +36,7 @@
 .kit-todo-line {
   position: relative;
   display: grid;
-  grid-template-columns: 7.5rem minmax(0, 13rem) minmax(0, 1fr) 4.5rem 8rem;
+  grid-template-columns: 7rem minmax(0, 12rem) minmax(0, 1fr) 4rem 9rem;
   align-items: center;
   column-gap: var(--space-3);
   min-height: var(--space-12);
@@ -88,21 +89,24 @@
   justify-content: flex-end;
 }
 .kit-todo-act .btn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .kit-todo-detail {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3) var(--space-3) calc(7.5rem + var(--space-3) * 2);
+  padding: var(--space-1) var(--space-3) var(--space-3) calc(7rem + var(--space-3) * 2);
   color: var(--muted);
   font: var(--text-sm) var(--sans);
 }
 .kit-todo-detail[hidden] {
   display: none;
 }
-@media (max-width: 640px) {
+@container (max-width: 720px) {
   .kit-todo-line {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) 4rem 9rem;
     grid-template-areas:
       "tag main age act"
       "need need need need";
@@ -126,5 +130,15 @@
   }
   .kit-todo-detail {
     padding-left: var(--space-3);
+  }
+}
+/* 폰 폭: 첫 줄은 태그 · 대상 · 나이, 둘째 줄은 필요한 것과 단추. 나이와 단추는 같은 칸이라 오른쪽 끝이 맞는다 */
+@container (max-width: 520px) {
+  .kit-todo-line {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tag main age"
+      "need need act";
+    align-items: center;
   }
 }
