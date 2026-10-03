@@ -15,7 +15,7 @@ atc 코드를 고치는 세션(팀 세션, ENGINEERING, 사용자와 직접 작�
 
 ## 검증
 
-- `npm test`, `npx tsc --noEmit -p .`, `npx vite build`가 모두 통과해야 한다. 순수 함수는 `node:test`로 테스트한다.
+- `npm test`, `npx tsc --noEmit -p .`, `npx vite build`가 모두 통과해야 한다. 세 명령은 `node server/verify-gate-cli.ts -- <명령>`(VERIFY GATE, `docs/verify-gate.md`)으로 돌리고, 게이트가 없다고 보고될 때만 맨 명령을 쓴다. `ssh`·`scp`는 직접 쓰지 않는다. 게이트의 전송 실패(종료 코드 75·76, 로컬 대체 실행)는 시험 실패가 아니다. 어디서 돌았든 얻은 종료 코드와 출력을 그대로 보고한다. 순수 함수는 `node:test`로 테스트한다.
 - 서버를 직접 확인할 때는 Skill `test-server`를 쓴다(7702-7799, 임시 상태 폴더, `ATC_GITHUB=off`). 직접 띄우면 PID를 파일에 저장하고 `kill "$(cat <pid 파일>)"`로만 끈다. `pkill`·`killall`·`kill $(pgrep …)`처럼 이름·패턴으로 죽이지 않고, 내가 띄우지 않은 프로세스와 운영 7700은 건드리지 않는다(`hooks/kill-guard.mjs`가 막는다).
 - 시험 중에 실제 팀 세션에 메시지를 보내지 않는다. `.env.local`은 복사하거나 출력하지 않는다.
 - atc는 공개 저장소다. PR·이슈·브랜치에 스크린샷을 올리지 않는다(흐림 처리·이미지 전용 브랜치도 안 된다). 확인한 화면은 PR 본문에 글로 적는다.

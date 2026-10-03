@@ -1,6 +1,5 @@
-import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import type { FlowAirport, FlowCell, FlowFlight, FlowStage, FlowView } from "../../../server/home-flow.ts";
-import { apiGet } from "../api.ts";
 import { ageText } from "../flow-age.ts";
 import { GLYPH, splitLine, STAGE_META, VERDICT_WORD } from "../flow-board.ts";
 import { OpenFlight } from "../FlightLink.tsx";
@@ -9,34 +8,7 @@ import "./HomeFlow.css";
 
 // HOME의 초점 판정 블록과 흐름판(ATC-502, docs/home-flow.md 3.2–3.4, 프로토타입 A3 "초점과 정렬").
 // 판정·칸·주체·문구는 모두 서버가 정한다(GET /api/flow). 화면은 글자를 나누고 그린다(design-language 원칙 4).
-// 색: 정상은 무채색이다(원칙 1의 HOME 예외). 정체 --amber ▲, 막힘 --alert ■ 뿐이고, 주체 태그는 중립 테두리·굵은 글이다.
-const MIN_GAP_MS = 10_000;
-
-export function useFlow(refreshKey: string): FlowView | null {
-  const [view, setView] = useState<FlowView | null>(null);
-  const last = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const wait = Math.max(0, last.current + MIN_GAP_MS - Date.now());
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      last.current = Date.now();
-      try {
-        const res = await apiGet("/api/flow");
-        if (res.ok) setView(await res.json());
-      } catch {
-        // 못 읽으면 지난 판정을 그대로 둔다
-      }
-    }, wait);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [refreshKey]);
-  return view;
-}
-
-export type TodoOpenRequest = { keys: string[]; n: number };
-
+// 데이터는 Home이 GET /api/flow에서 읽어 넘긴다(useFlow, HomeTodo.tsx). 색: 정상은 무채색이다(원칙 1의 HOME 예외). 정체 --amber ▲, 막힘 --alert ■ 뿐이고, 주체 태그는 중립 테두리·굵은 글이다.
 // 초점: 가장 나쁜 AIRPORT 하나가 이긴다. 제목(크게)과 숫자·이유 줄, 할 일 링크, SINCE LAST LOOK 한 줄(예전 따로 선 줄을 흡수)
 export function FocalVerdict({ view, sinceKey, onTodo }: { view: FlowView; sinceKey: string; onTodo: () => void }) {
   const { title, rest } = splitLine(view.line);

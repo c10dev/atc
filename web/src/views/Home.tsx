@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { alertLevelLabel, callsign } from "../aviation.ts";
 import type { QueueItem } from "../../../server/supervisor-queue.ts";
+import type { FlowView } from "../../../server/home-flow.ts";
 import type { PullRequest, Snapshot } from "../../../server/model.ts";
 import { openAlert } from "../alerts-runtime.ts";
 import { buildIndex, timeAgo } from "../derive.ts";
@@ -10,13 +11,15 @@ import { EffectRow, useEffects } from "../EffectVerdict.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
 import { homeNeedOf } from "../home-rows.ts";
+import { planOf } from "../home-todo.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
 import { homeFilterOf, homeFilterOfKind } from "../sidebar-rows.ts";
 import { AtfmAlert, useAtfm } from "./Atfm.tsx";
-import { todoKeysOf } from "../flow-board.ts";
 import { HumanRow } from "./HumanCheck.tsx";
-import { FlowBoard, FocalVerdict, type TodoOpenRequest, useFlow } from "./HomeFlow.tsx";
+import { openTodoGroup } from "../home-todo.ts";
+import { FlowBoard, FocalVerdict } from "./HomeFlow.tsx";
+import { HomeTodoLines, useFlow } from "./HomeTodo.tsx";
 import "./Home.css";
 
 // HOME(`#home`, ATC-377, ATC-422 S1b, ATC-502): 먼저 흐름이 막혔나(초점 판정 블록 + 흐름판, GET /api/flow), 그다음 내가 할 일이 있나. 순서대로: ATFM 알림(걸렸을 때), 초점 판정 블록(SINCE LAST LOOK 한 줄이 그 안에 있다), 흐름판, 할 일 목록.
@@ -38,37 +41,30 @@ function useHomeFilter() {
 export function Home({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
   const atfm = useAtfm(refreshKey);
   const flow = useFlow(refreshKey);
-  const [openReq, setOpenReq] = useState<(TodoOpenRequest & { id: number }) | null>(null);
-  const seq = useRef(0);
-  // 판의 `할 일 ↓`·`n건 모두 아래 할 일에 있다 ↓`: 할 일 목록으로 가서 그 줄(묶음이면 묶음의 줄)을 연다. 열쇠가 없으면 목록 머리로만 간다
-  const toTodo = (group?: string) => {
-    const keys = group && flow ? todoKeysOf(flow.todo, group) : [];
-    setOpenReq({ keys, n: keys.length, id: ++seq.current });
+  // `할 일 n ↓`: 할 일 목록 머리로 가서 초점을 둔다
+  const toTodo = () => {
+    const el = document.getElementById("home-todo");
+    el?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    el?.focus({ preventScroll: true });
   };
   return (
     <section className="home" aria-label="HOME">
       <AtfmAlert atfm={atfm} now={now} />
-      {flow && <FocalVerdict view={flow} sinceKey={snapshot.at.slice(0, 16)} onTodo={() => toTodo()} />}
-      {flow && <FlowBoard view={flow} onTodo={toTodo} />}
-      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} openReq={openReq} />
+      {flow && <FocalVerdict view={flow} sinceKey={snapshot.at.slice(0, 16)} onTodo={toTodo} />}
+      {flow && <FlowBoard view={flow} onTodo={openTodoGroup} />}
+      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} flow={flow} />
     </section>
   );
 }
 
-function TodoList({ refreshKey, now, snapshot, openReq }: { refreshKey: string; now: number; snapshot: Snapshot; openReq: (TodoOpenRequest & { id: number }) | null }) {
+function TodoList({ refreshKey, now, snapshot, flow }: { refreshKey: string; now: number; snapshot: Snapshot; flow: FlowView | null }) {
   const { queue, reload } = useQueue(refreshKey, true);
   const { view: effects, set: setEffects } = useEffects(null, refreshKey);
   const filter = useHomeFilter();
-  const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(new Set());
-  const top = useRef<HTMLDivElement>(null);
-  // 판에서 온 요청: 목록 머리로 가고, 가리킨 줄을 연다(초점은 그 목록으로)
-  useEffect(() => {
-    if (!openReq) return;
-    if (openReq.keys.length) setOpenKeys(new Set(openReq.keys));
-    top.current?.scrollIntoView({ block: "start" });
-    top.current?.focus({ preventScroll: true });
-  }, [openReq]);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const idx = useMemo(() => buildIndex(snapshot), [snapshot]);
+  const byKey = useMemo(() => new Map((queue?.items ?? []).map((i) => [`${i.kind}/${i.key}`, i])), [queue]);
+  const focusItem = useCallback((todoKey: string) => setOpenKey(todoKey), []);
   if (!queue) return null;
   if (queue.items.length === 0) return <Empty className="home-empty">할 일 없음</Empty>;
   const nameOf = (id: string) => {
@@ -81,43 +77,61 @@ function TodoList({ refreshKey, now, snapshot, openReq }: { refreshKey: string; 
     return (snapshot.pulls ?? []).find((p) => `${p.repo.replace(/\/+$/, "").split("/").pop()}#${p.number}` === id && p.uiChange && p.humanCheck);
   };
   const shown = filter === "all" ? queue.items : queue.items.filter((i) => homeFilterOfKind(i.kind) === filter);
+  // 항목 한 줄: 큐 항목 그대로(서버가 정한 단추 하나). 묶음 줄을 펼쳤을 때도 같은 줄이 나온다
+  const row = (i: QueueItem) => {
+    const rk = `${i.kind}/${i.key}`;
+    const open = openKey === rk;
+    const toggle = () => setOpenKey(open ? null : rk);
+    const hc = i.kind === "HUMAN CHECK" ? humanPull(i.key) : undefined;
+    const verdict = i.kind === "EFFECT" ? (effects?.verdicts ?? []).find((v) => v.flight === i.key) : undefined;
+    return (
+      <TodoRow
+        key={rk}
+        tag={i.level ? alertLevelLabel[i.level] : i.kind}
+        tone={i.level ?? null}
+        subject={i.title}
+        need={homeNeedOf(i)}
+        age={i.since ? timeAgo(i.since, now) : "—"}
+        open={open}
+        onToggle={toggle}
+        action={<RowAction item={i} open={open} toggle={toggle} />}
+        detail={
+          <ItemDetail item={i} onDone={reload}>
+            {hc && (
+              <ul className="hc-list">
+                <HumanRow pr={hc} idx={idx} nameOf={nameOf} />
+              </ul>
+            )}
+            {verdict && <EffectRow v={verdict} now={now} onView={(v) => { setEffects(v); reload(); }} />}
+          </ItemDetail>
+        }
+      />
+    );
+  };
+  // 묶음: 순서·묶음·5줄 접기는 서버(GET /api/flow). 큐에 없는 항목(방금 사라진 것)은 그리지 않는다. 흐름을 못 읽으면 큐를 한 줄씩 그린다
+  const plan = flow
+    ? planOf(flow, filter === "all" ? null : (t) => {
+        const i = byKey.get(t.key);
+        return Boolean(i) && homeFilterOfKind(i!.kind) === filter;
+      })
+    : null;
   return (
-    <div className="home-list" id="home-todo" ref={top} tabIndex={-1}>
+    <div className="home-list" id="home-todo" tabIndex={-1}>
       <SectionHead count={shown.length}>할 일</SectionHead>
       {shown.length === 0 ? (
         <Empty>이 종류의 할 일 없음</Empty>
+      ) : plan ? (
+        <HomeTodoLines
+          plan={plan}
+          onFocusItem={focusItem}
+          renderItem={(t) => {
+            const i = byKey.get(t.key);
+            return i ? row(i) : null;
+          }}
+        />
       ) : (
         <ul className="home-rows" aria-label="할 일">
-          {shown.map((i) => {
-            const rk = `${i.kind}/${i.key}`;
-            const open = openKeys.has(rk);
-            const toggle = () => setOpenKeys(open ? new Set() : new Set([rk]));
-            const hc = i.kind === "HUMAN CHECK" ? humanPull(i.key) : undefined;
-            const verdict = i.kind === "EFFECT" ? (effects?.verdicts ?? []).find((v) => v.flight === i.key) : undefined;
-            return (
-              <TodoRow
-                key={rk}
-                tag={i.level ? alertLevelLabel[i.level] : i.kind}
-                tone={i.level ?? null}
-                subject={i.title}
-                need={homeNeedOf(i)}
-                age={i.since ? timeAgo(i.since, now) : "—"}
-                open={open}
-                onToggle={toggle}
-                action={<RowAction item={i} open={open} toggle={toggle} />}
-                detail={
-                  <ItemDetail item={i} onDone={reload}>
-                    {hc && (
-                      <ul className="hc-list">
-                        <HumanRow pr={hc} idx={idx} nameOf={nameOf} />
-                      </ul>
-                    )}
-                    {verdict && <EffectRow v={verdict} now={now} onView={(v) => { setEffects(v); reload(); }} />}
-                  </ItemDetail>
-                }
-              />
-            );
-          })}
+          {shown.map(row)}
         </ul>
       )}
     </div>

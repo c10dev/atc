@@ -158,10 +158,18 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - **Stopped** needs at least one FLIGHT at that AIRPORT in QUEUE to CLEARED whose holder is not `SUPERVISOR`; otherwise the same silence is `congested` with the SUPERVISOR holder. A cell whose FLIGHTs are all on the to-do list has `flights: []` and `todoGroup`; a partly listed cell keeps its rows with `todo` pointing at the item.
 - To-do order: WARNING, SUPERVISOR-held stuck (STUCK, LANDING, HUMAN CHECK of a FLIGHT whose holder is SUPERVISOR), CAUTION and other STUCK, the rest; oldest first. LANDING and HUMAN CHECK items have no `since` in the queue, so their age comes from the PR (`readyAt`, else `createdAt`). Items group when kind and button label match; ALERT, STUCK, EFFECT, CLOSE and ARRIVED group only when level and need text match too (pilot's discretion).
 
+### H4 as built (ATC-503)
+
+- HOME draws the to-do list from `GET /api/flow` joined by `key` to the supervisor queue items: the flow decides order, grouping and the five-line fold, the queue items still draw each row, button and detail. `web/src/views/HomeTodo.tsx` (HOME only) and `web/src/home-todo.ts` (pure helpers, tested in `server/home-todo.test.ts`); `kit/TodoRow` is not changed.
+- A group row is `[kind tag] [n건] [groupNeed] [최장 6h] [펼치기 n]`. The only button expands; there is no batch action. The server's `groupNeed` is shown as sent (`user 등급 PR` is not part of it, see the PR's pilot's discretion). Expanded, each item is the normal row with its own button.
+- The fold line is the server's `todoRest.text` with a `펼치기 n` button that shows the folded lines in the same order. A kind filter from the sidebar re-groups only that kind with the same rule (`groupLines`, tested equal to the server's `todoLines`) and does not fold.
+- The link of a flow-board cell (`todoGroup`, a group key or an item key) is `openTodoGroup(key)` in `home-todo.ts` (a window event): HOME expands the group or the folded rest, opens the row if it is an item, scrolls to it and moves focus to the group's button or the row.
+- No `/api/flow` (503 before the first snapshot): HOME draws the queue one line each, as before.
+
 ### H3 as built (ATC-502)
 
-- `web/src/views/HomeFlow.tsx` (+ `HomeFlow.css`) draws the focal verdict block and the flow board from `GET /api/flow`, polled with `refreshKey` at most every 10 s. `Home.tsx` puts them above the to-do list; the separate SinceLook row is gone and `SinceLook.tsx` renders the line inside the block (same `/api/since-look` and marker). Pure text helpers (`splitLine`, `todoKeysOf`, stage names) are in `web/src/flow-board.ts`.
-- Pilot's discretion: the block title is the part of the server's `line` before the first ` · `, the rest is the second line (the server sends one string, the text is not rewritten). The block does not draw a holder tag because the server's text already names the holder. The cell jump `n건 모두 아래 할 일에 있다 ↓` opens the to-do rows whose key (or group key) matches and moves focus to the list; until ATC-503 groups the list, a group opens all its rows (a click on a row opens only that row). Stack width is 560 px and the short holder tag starts under 760 px of container width.
+- `web/src/views/HomeFlow.tsx` (+ `HomeFlow.css`) draws the focal verdict block and the flow board from the `GET /api/flow` view that `Home.tsx` reads once (`useFlow`, shared with the H4 to-do list). `Home.tsx` puts them above the to-do list; the separate SinceLook row is gone and `SinceLook.tsx` renders the line inside the block (same `/api/since-look` and marker). Pure text helpers (`splitLine`, stage names) are in `web/src/flow-board.ts`.
+- Pilot's discretion: the block title is the part of the server's `line` before the first ` · `, the rest is the second line (the server sends one string, the text is not rewritten). The block does not draw a holder tag because the server's text already names the holder. `할 일 n ↓` scrolls to the to-do list (`#home-todo`) and moves focus there. Stack width is 560 px and the short holder tag starts under 760 px of container width.
 
 ## 6. Risks
 

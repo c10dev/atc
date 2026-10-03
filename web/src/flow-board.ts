@@ -16,8 +16,3 @@ export function splitLine(line: string): { title: string; rest: string } {
   const at = line.indexOf(" · ");
   return at < 0 ? { title: line, rest: "" } : { title: line.slice(0, at), rest: line.slice(at + 3) };
 }
-
-// 칸의 FLIGHT가 모두 가리키는 할 일: 묶음 열쇠(group)이거나 줄 하나의 key. 그 열쇠를 가진 줄의 key를 모두 돌려준다
-export function todoKeysOf(todo: readonly { key: string; group?: string | undefined }[], group: string): string[] {
-  return todo.filter((t) => t.key === group || t.group === group).map((t) => t.key);
-}
