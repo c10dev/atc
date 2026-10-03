@@ -717,6 +717,16 @@ ATC-251(accounts.md 5.6)의 후속이다. 그때는 계획이 AIRCRAFT를 이미
 - **보이는 사유.** 승인된 카드가 ACCOUNT 불일치로 기다리는 동안 FOLLOW 줄과 `GET /api/status`(`now`, 10분 뒤 `stuck`)는 `승인 n분 · 발송 없음` 대신 `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함`을 보인다(`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
 - **형식.** `dispatch.json`의 `crossAccountRelease`와 misfire 보기의 `crossAccount` 수는 추가 항목이다. `proposals.jsonl`은 바뀌지 않는다.
 
+## 막힘 알림이 받을 곳 없는 Todo의 사유를 말한다, as built (ATC-522)
+
+DISPATCH가 `plan.unserved`에 올린 Todo FLIGHT는 `follow|stuck`가 `제안 없이 Todo n분`과 "제외 사유를 확인한다"만 말했다. 이제 알림이 왜 못 받는지와 무엇이 풀어 주는지를 말한다.
+
+- **어느 알림.** `plan.unserved`에 있는 FLIGHT의 `todo-no-proposal` 막힘 표시(우선순위 있는 Todo, 제안 없이 30분)만. `FollowStuck.unserved`가 `why`, `airport`, `ratings`, `tails`, `k3`, 그 AIRPORT 소속 AIRCRAFT를 나른다(`stuckOf`, `server/follow.ts`). 다른 이유로 막힌 Todo(열린 제안, HOLD, 선행 FLIGHT, PREFLIGHT 제외)는 `unserved`가 없어 글과 다음 한 걸음이 그대로다.
+- **글과 다음 한 걸음**(`unservedStuckOf`, `server/stuck-unserved.ts`, 순수). 글은 `why`(`no-aircraft`, `unqualified`, `no-tail`)와 AIRPORT, 모자란 RATING을 적는다. 다음 한 걸음: 그 AIRPORT 소속 AIRCRAFT를 LAUNCH(세션 없는 ABSENT는 이름으로, 소속이 한 번도 없으면 "첫 LAUNCH", 모두 바쁘면 기다리거나 하나 더), `unqualified`면 그 RATING을 가진 AIRCRAFT, `no-tail`이면 그 팀. `k3`가 true면 `k3Relaunch`를 켜거나(이미 켜졌으면 K3 RELAUNCH 카드를 승인) 쉬는 AIRCRAFT를 STOP해 새 LAUNCH가 가능하게 한다.
+- **끄는 스위치.** `dispatch.json`의 `stuckUnserved`(기본 켜짐, 설정 → OPERATIONS → STUCK UNSERVED, SUPERVISOR만, `atcctl` 명령 없음, 바꾸면 `policy / stuck-unserved-mode`로 기록). 끄면 옛 글. 글만 바뀐다: 막거나 보내거나 숨기는 것은 없다.
+- **카운터.** 새 글로 올라온 알림마다 올라올 때 한 번 `policy / stuck-unserved`(`flight`, `why`, `airport`)를 기록한다. `GET /api/stuck-unserved?days=7`이 스위치와 수를 읽는다.
+- **형식.** `dispatch.json`의 `stuckUnserved`, 두 `policy` 기록 op, 알림 항목의 `unserved`는 덧붙은 것이다.
+
 ## DIRECT briefs (ATC-32)
 
 상태: 2026-09-28 구현. SUPERVISOR는 요즘 에이전트가 긴 템플릿과 단계별 지시보다, 분명한 목표와 꼭 필요한 제약, 한 번에 끝내도 된다는 허락이 있을 때 더 잘한다는 것을 봤다. atc는 이제 그렇게 일을 넘기고, 그게 실제로 나은지 잰다.

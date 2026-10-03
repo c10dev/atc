@@ -717,6 +717,16 @@ Follow-up to ATC-251 (accounts.md 5.6), which only made the card say `ACCOUNT �
 - **Visible reason.** While an approved card waits on an ACCOUNT mismatch, the FOLLOW line and `GET /api/status` (`now`, and `stuck` after 10 minutes) read `승인 n분 · ACCOUNT 불일치 — TEAM_H(acct-1) ≠ OCC(acct-3), OCC가 닿지 못함` instead of `승인 n분 · 발송 없음` (`FollowInput.cardWaits`, `crossAccountCardWaitsOf`).
 - **Formats.** `crossAccountRelease` in `dispatch.json` and a `crossAccount` count in the misfire view are additive. `proposals.jsonl` does not change.
 
+## A stuck alert names why a Todo FLIGHT is unserved, as built (ATC-522)
+
+A Todo FLIGHT that DISPATCH lists in `plan.unserved` used to raise `follow|stuck` with `제안 없이 Todo n분` and the generic next step "check the exclusion reason". The alert now says why and what unblocks it.
+
+- **Which alerts.** Only the `todo-no-proposal` stuck mark (Todo with a priority, no proposal, 30 min) on a FLIGHT that is in `plan.unserved`. `FollowStuck.unserved` carries `why`, `airport`, `ratings`, `tails`, `k3` and the AIRCRAFT based at that AIRPORT (`stuckOf`, `server/follow.ts`). A Todo that is stuck for another reason (an open proposal, a HOLD, a blocker, a PREFLIGHT exclusion) has no `unserved` and keeps its text and next step.
+- **Text and next step** (`unservedStuckOf`, `server/stuck-unserved.ts`, pure). The text names the `why` (`no-aircraft`, `unqualified`, `no-tail`), the AIRPORT and the missing RATING. The next step: LAUNCH an AIRCRAFT based at that AIRPORT (the named ABSENT one; "first LAUNCH" when none was ever based there; wait or one more when all are busy); for `unqualified` an AIRCRAFT with the RATING; for `no-tail` that team; when `k3` is true, turn on `k3Relaunch` (or approve the K3 RELAUNCH card when it is already on) or STOP a resting AIRCRAFT so a fresh LAUNCH is possible.
+- **Off switch.** `dispatch.json` `stuckUnserved` (`on` by default; Settings → OPERATIONS → STUCK UNSERVED; SUPERVISOR only, no `atcctl` command; the change is recorded as `policy / stuck-unserved-mode`). Off uses the old text. Only wording changes: nothing is blocked, sent or hidden.
+- **Counter.** Each alert that is raised with the new text records `policy / stuck-unserved` (`flight`, `why`, `airport`) once, when it appears. `GET /api/stuck-unserved?days=7` reads the switch and the count.
+- **Formats.** `stuckUnserved` in `dispatch.json`, the two `policy` record ops and `unserved` on the alert item are additive.
+
 ## DIRECT briefs (ATC-32)
 
 Status: built 2026-09-28. The SUPERVISOR observed that current agents do better with a clear goal, only the constraints that matter and permission to finish in one pass than with long templates and step-by-step instructions. atc now hands work over that way and measures whether it helps.

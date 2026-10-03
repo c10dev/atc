@@ -1,4 +1,5 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
+import { unservedStuckOf } from "./stuck-unserved.ts";
 import type { CanceledPr } from "./canceled-flight.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
 import { registrationOf } from "./registration.ts";
@@ -46,6 +47,7 @@ export interface SupervisorAlert {
   ask?: string;
   // 이 항목이 가는 곳(ATC-197). 클라이언트는 A3·A4 전까지 이 칸을 무시한다. key는 그대로다
   dest: AlertDest;
+  unserved?: { flight: string; why: string; airport: string }; // follow|stuck가 plan.unserved의 새 문구를 썼다(ATC-522). 센 수의 근거
 }
 
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
@@ -212,7 +214,7 @@ export interface AlertsInput {
   // 주인 없는 조건(ATC-385): 주인 없는 변경(unattended)·종료된 세션의 점유(orphan)가 afterMs(기본 UNOWNED_AFTER_MS) 넘게 그대로면 CAUTION 수에서 빠지고 한 줄(`alert|cleanup`)로 접힌다.
   // since: alertKeyOf → 처음 본 시각(ms). 접힌 key는 ended에 모은다(있으면). 없으면 접지 않는다. 변경은 지우지 않는다 — 알림에서 접을 뿐이다
   unowned?: { now: number; since: ReadonlyMap<string, number>; afterMs?: number; ended?: EndedKey[] };
-  follow?: { rows: FollowAlertRow[]; now: number }; // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
+  follow?: { rows: FollowAlertRow[]; now: number; stuckUnserved?: { k3Relaunch: boolean } }; // stuckUnserved가 있으면 스위치 on(ATC-522) // FOLLOW(ATC-278): follow.json에 든 번들의 줄. 없으면 follow 항목 없음
 }
 
 // 줄의 FLIGHT FOLLOWING 문제 가운데 알릴 것: warn만. await-supervisor는 결정 대기라 following 그룹이 queue로 보내고, landing-wait·health·stranded는 DUPLICATED로 뺀다
@@ -606,7 +608,19 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       if (r.ready && !r.finished) out.push({ ...base, key: `follow|ready|${r.key}`, level: "advisory", cue: "call", text: `${title(r)} — 풀 수 있음(READY)`, next: "FOLLOW 탭에서 Todo로 푼다", since: null });
       const stuck = stuckLineOf(r);
       if (stuck) {
-        out.push({ ...base, key: `follow|stuck|${r.key}|${stuck.stage}`, level: "caution", cue: null, text: `${title(r)} — 막힘: ${stuck.text}${stuck.more > 0 ? ` (외 ${stuck.more}건)` : ""}`, next: (stuck.code && (NEXT_BY_STUCK[stuck.code] ?? NEXT_BY_ISSUE[stuck.code])) || "FOLLOW 탭에서 그 FLIGHT를 확인한다", since: stuck.since });
+        // plan.unserved인 Todo FLIGHT(ATC-522): 스위치가 on이면 사유·AIRPORT·다음 한 걸음. 다른 막힘은 옛 문구
+        const un = inp.follow.stuckUnserved && stuck.code === "todo-no-proposal" ? r.stuck?.unserved : undefined;
+        const u = un ? unservedStuckOf(un, inp.follow.stuckUnserved!.k3Relaunch) : null;
+        out.push({
+          ...base,
+          key: `follow|stuck|${r.key}|${stuck.stage}`,
+          level: "caution",
+          cue: null,
+          text: `${title(r)} — 막힘: ${u ? u.text : stuck.text}${stuck.more > 0 ? ` (외 ${stuck.more}건)` : ""}`,
+          next: u ? u.next : (stuck.code && (NEXT_BY_STUCK[stuck.code] ?? NEXT_BY_ISSUE[stuck.code])) || "FOLLOW 탭에서 그 FLIGHT를 확인한다",
+          since: stuck.since,
+          ...(un ? { unserved: { flight: r.key, why: un.why, airport: un.airport } } : {}),
+        });
       }
       // 실패: GO AROUND, ROLLBACK 뒤에도 배포되지 않은 착륙, 되돌려진 ON. 한 줄에 사유를 모은다
       const why: string[] = [];

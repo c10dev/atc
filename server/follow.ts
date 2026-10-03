@@ -36,6 +36,7 @@ export interface FollowStuck {
   code: "todo-no-proposal" | "approved-not-sent" | "landed-not-deployed" | "sent-no-readback" | "undelivered" | "no-pr" | "pr-not-cleared" | "landing-wait";
   text: string;
   since: string | null;
+  unserved?: { why: "no-aircraft" | "unqualified" | "no-tail"; airport: string; ratings: string[]; tails: string[]; k3: boolean; at: { name: string; launch: boolean }[] }; // todo-no-proposal이고 DISPATCH가 plan.unserved에 올린 FLIGHT(ATC-522). 알림이 문구를 바꾸는 데 쓴다
 }
 
 export type FollowNextKind = "release" | "priority" | "approve" | "human-check" | "merge" | "look";
@@ -119,7 +120,7 @@ export interface FollowInput {
   milestones: ReadonlyMap<string, Milestones>;
   following: readonly FollowItem[];
   progress: Readonly<Record<string, FlightProgress>>;
-  plan: Pick<Plan, "hold" | "excluded" | "unserved"> | null;
+  plan: (Pick<Plan, "hold" | "excluded" | "unserved"> & Partial<Pick<Plan, "aircraft">>) | null;
   noDeploy: ReadonlySet<string>; // MCC AIRPORT가 아닌 곳의 FLIGHT: deployed가 없고 ON이 끝이다
   userPulls?: ReadonlySet<number>; // MCC AIRPORT에서 SUPERVISOR가 머지할 PR 번호(`user` 등급 또는 ESCALATE). 없으면 merge 칩이 없다
   airports?: readonly { code: string; repo: string }[]; // PR 서랍 주소(#pr/<AIRPORT>/<번호>)용
@@ -290,7 +291,9 @@ function stuckOf(c: StuckCtx): FollowStuck | null {
   // Todo + 우선순위 + 제안 없음. 선행 FLIGHT를 기다리는 HOLD와 지정 팀이 정해진(tail:) FLIGHT는 일부러 기다리는 것이라 막힘이 아니다
   if (t.stateType === "unstarted" && t.state === "Todo" && t.priority > 0 && !live && !c.tail && !c.standFree && !c.item?.stages.readback && !c.item?.stages.departed && !inp.plan?.hold.some((h) => h.flight === c.key)) {
     const since = [t.updatedAt, ...c.resets.map((r) => r.statusAt)].filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
-    if (since && now - Date.parse(since) >= STUCK_TODO_MIN * MIN) return { stage: "proposed", code: "todo-no-proposal", text: `제안 없이 Todo ${mins(since)}분`, since };
+    const un = inp.plan?.unserved?.find((x) => x.flight === c.key);
+    if (since && now - Date.parse(since) >= STUCK_TODO_MIN * MIN)
+      return { stage: "proposed", code: "todo-no-proposal", text: `제안 없이 Todo ${mins(since)}분`, since, ...(un ? { unserved: { why: un.why, airport: un.airport, ratings: un.ratings, tails: un.tails, k3: Boolean(un.k3), at: (inp.plan?.aircraft ?? []).filter((a) => a.airport === un.airport).map((a) => ({ name: a.name, launch: Boolean(a.launch) })) } } : {}) };
   }
   return null;
 }
