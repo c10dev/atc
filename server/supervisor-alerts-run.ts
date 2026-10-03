@@ -23,7 +23,8 @@ import { loadScheduleMode, loadScheduleOps } from "./schedule.ts";
 import { CONTROL_SESSIONS, controlDirOf, MAX_LAUNCHED } from "./session-control.ts";
 import { capIdleNow } from "./dispatch-launch.ts";
 import { stoppedAirports } from "./auto-revert-run.ts";
-import { type AlertEvent, alertKeyOf, controlDownOf, diffAlerts, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
+import { type AlertEvent, alertKeyOf, type ControlOp, controlDownOf, controlGoneOf, diffAlerts, mergeControlDown, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
+import { hostMemoryNow } from "./host-memory-run.ts";
 import { sinceLookNow } from "./since-look-run.ts";
 import { todoNow } from "./queue-todo.ts";
 import { summaryKey, summaryOf, type SupervisorSummary, workingOf } from "./supervisor-summary.ts";
@@ -52,6 +53,28 @@ const repositionAlertInputs = (rs: ReturnType<typeof readRecords>, now: number) 
     repositions: rs.flatMap((r) => (r.kind === "fleet" && r.op === "reposition" && r.from && r.to ? [{ t: r.t, aircraft: r.aircraft, from: r.from, to: r.to, ok: r.ok, by: r.by, stage: r.stage, error: r.error }] : [])),
     repositionFlaps: rs.flatMap((r) => (r.kind === "reposition" && r.op === "mode" && r.by === "auto" ? [{ t: r.t, reason: r.reason ?? "flapping" }] : [])),
   };
+};
+
+// 관제 세션마다 마지막으로 겪은 일(ATC-203): FLIGHT RECORDER의 control launch·stop·recycle 기록에서. SUPERVISOR의 STOP인지 가르는 데 쓴다.
+// 새 상태 파일은 없다: 처음 한 번 CONTROL_STOP_LOOKBACK_MS만큼 읽고, 그 뒤로는 지난번 읽은 시각부터만 읽어 메모리에 든다(서버를 다시 켜면 다시 읽는다)
+export const CONTROL_STOP_LOOKBACK_MS = 14 * 24 * 3_600_000;
+const controlLast = new Map<string, ControlOp>();
+let controlReadFrom = 0;
+function controlOpsNow(now: number): ReadonlyMap<string, ControlOp> {
+  const from = controlReadFrom || now - CONTROL_STOP_LOOKBACK_MS;
+  controlReadFrom = now - 10_000; // 겹쳐 읽어도 같은 줄이라 해가 없다
+  for (const r of readRecords(from)) {
+    if (r.kind !== "control" || (r.op !== "launch" && r.op !== "stop" && r.op !== "recycle")) continue;
+    if (r.op === "recycle" && (r.result === "would" || r.result === "would-wait")) continue; // 그림자 판정은 일어난 일이 아니다
+    const prev = controlLast.get(r.session);
+    if (!prev || prev.t <= r.t) controlLast.set(r.session, { t: r.t, op: r.op, by: r.by, ok: r.ok });
+  }
+  return controlLast;
+}
+// 시험이 기억을 비운다
+export const resetControlOps = () => {
+  controlLast.clear();
+  controlReadFrom = 0;
 };
 
 // 지금 돌고 있는 관제 세션 이름과 AIRCRAFT REGISTRATION(조건 항목 control|down, reposition|stuck이 "다시 떴나"를 볼 때 쓴다)
@@ -144,7 +167,12 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
     revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
     k3Holds: k3HoldsOf(s),
-    controlDown: controlDownOf(recyclesAll, running.control),
+    // RECYCLE이 멈춘 채인 것(이유가 분명)과 이유 불문 없는 것(ATC-203)을 세션마다 하나로
+    controlDown: mergeControlDown(
+      controlDownOf(recyclesAll, running.control),
+      controlGoneOf({ sessions: CONTROL_SESSIONS.filter((c) => c.launch === "bg" && !c.retired).map((c) => c.name), running: running.control, last: controlOpsNow(now), now }),
+    ),
+    hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     landBy: landByMap(s),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
