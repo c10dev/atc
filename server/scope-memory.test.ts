@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { memoryArgsOf, oomDeltasOf, oomKillOf, readScopeOom, scopeDirsOf, scopeOomTextOf } from "./scope-memory.ts";
+import { loadDispatchConfig } from "./dispatch.ts";
+import { memoryArgsOf, oomDeltasOf, oomKills7d, oomKillOf, oomStateOf, oomStep, readScopeOom, scopeDirsOf, scopeOomTextOf, sizeBytes } from "./scope-memory.ts";
 
 // 백그라운드 scope의 메모리 상한과 OOM 세기(ATC-505). 진짜 세션도 진짜 메모리 사용도 없다: 문자열과 임시 폴더만.
 // launchCommandOf의 상한 켜짐·꺼짐은 session-control.test.ts
@@ -54,5 +55,50 @@ test("cgroup 읽기: atc-claude-*.scope 폴더의 memory.events만(임시 폴더
     assert.deepEqual(readScopeOom(join(root, "missing")), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("합계는 7일 창에 갇히지 않는다: 8일 전에 기록한 scope의 kill을 다시 세지 않고, 7일 수에도 들지 않는다", () => {
+  const DAY = 86_400_000;
+  const now = Date.parse("2026-10-10T00:00:00Z");
+  const old = { t: new Date(now - 8 * DAY).toISOString(), unit: "atc-claude-1.scope", total: 3, delta: 3 };
+  const state = oomStateOf([old]);
+  // 8일 뒤에도 그 scope는 떠 있고 oom_kill은 그대로 3: 새 줄이 없다
+  assert.deepEqual(oomStep(state, [{ unit: "atc-claude-1.scope", kills: 3 }], now), []);
+  assert.equal(oomKills7d(state, now), 0);
+  // 하나 더 죽으면 그 하나만 센다
+  assert.deepEqual(oomStep(state, [{ unit: "atc-claude-1.scope", kills: 4 }], now).map((l) => [l.unit, l.total, l.delta]), [["atc-claude-1.scope", 4, 1]]);
+  assert.equal(oomKills7d(state, now), 1);
+  // 같은 관찰을 한 번 더 해도 다시 세지 않는다
+  assert.deepEqual(oomStep(state, [{ unit: "atc-claude-1.scope", kills: 4 }], now + 60_000), []);
+  assert.equal(oomKills7d(state, now + 60_000), 1);
+});
+
+test("크기: systemd 꼴만 바이트로, 틀리면 null", () => {
+  assert.equal(sizeBytes("20G"), 20 * 1024 ** 3);
+  assert.equal(sizeBytes("512M"), 512 * 1024 ** 2);
+  assert.equal(sizeBytes("100"), 100);
+  assert.equal(sizeBytes("0G"), null);
+  assert.equal(sizeBytes("20GB"), null);
+  assert.equal(sizeBytes("-1G"), null);
+  assert.equal(sizeBytes(""), null);
+});
+
+test("설정: 크기 둘은 모양을 보고, MemoryHigh가 MemoryMax보다 크면 MemoryHigh를 낮춘다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-scope-cfg-"));
+  try {
+    const load = (j: unknown) => {
+      const f = join(dir, "dispatch.json");
+      writeFileSync(f, JSON.stringify(j));
+      const c = loadDispatchConfig(f);
+      return [c.bgMemoryCap, c.bgMemoryHigh, c.bgMemoryMax];
+    };
+    assert.deepEqual(load({}), ["on", "20G", "24G"]);
+    assert.deepEqual(load({ bgMemoryHigh: "8G", bgMemoryMax: "16G", bgMemoryCap: "off" }), ["off", "8G", "16G"]);
+    assert.deepEqual(load({ bgMemoryHigh: "30G", bgMemoryMax: "24G" }), ["on", "24G", "24G"]); // 넘으면 의미가 없다
+    assert.deepEqual(load({ bgMemoryHigh: "30G" }), ["on", "24G", "24G"]); // 기본 Max(24G)보다 큰 High도
+    assert.deepEqual(load({ bgMemoryHigh: "lots", bgMemoryMax: "20GB" }), ["on", "20G", "24G"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

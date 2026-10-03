@@ -19,6 +19,13 @@ export function oomKillOf(eventsText: string): number {
   return m ? Number(m[1]) : 0;
 }
 
+const SIZE_UNIT: Record<string, number> = { "": 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 };
+// systemd 크기(`20G`)를 바이트로. 모양이 틀리면 null
+export function sizeBytes(s: string): number | null {
+  const m = /^([1-9]\d*)([KMGT]?)$/.exec(s);
+  return m ? Number(m[1]) * SIZE_UNIT[m[2]!]! : null;
+}
+
 export interface ScopeOom {
   unit: string; // atc-claude-<ms>.scope
   kills: number;
@@ -80,3 +87,35 @@ export function scopeOomTextOf(v: ScopeOomView, cap: "on" | "off"): string | nul
   return parts.length ? parts.join(" · ") : null;
 }
 
+
+// 기록한 OOM 합계의 상태(ATC-505): unit별 마지막 합계(기록 전체, 기간 제한 없음)와 늘어난 수의 시각 목록.
+// 7일 창에서만 합계를 세면 오래 사는 scope의 옛 kill을 창이 지난 뒤 다시 센다. 그래서 합계는 보관된 기록 전체로 한 번 채우고 이후에는 메모리에서 이어 간다
+export interface OomState {
+  totals: Map<string, number>;
+  events: { at: number; delta: number }[];
+}
+export interface OomLine {
+  t: string;
+  unit: string;
+  total: number;
+  delta: number;
+}
+export function oomStateOf(history: readonly OomLine[]): OomState {
+  const totals = new Map<string, number>();
+  const events: OomState["events"] = [];
+  for (const r of history) {
+    totals.set(r.unit, Math.max(totals.get(r.unit) ?? 0, r.total));
+    events.push({ at: Date.parse(r.t), delta: r.delta });
+  }
+  return { totals, events };
+}
+// 지금 scope들을 보고 새로 늘어난 줄을 돌려준다. 상태도 함께 앞으로 간다(순수가 아니라 state를 바꾼다: 같은 줄을 두 번 만들지 않게)
+export function oomStep(state: OomState, now: readonly ScopeOom[], at: number): OomLine[] {
+  const lines = oomDeltasOf(now, state.totals).map((d) => ({ t: new Date(at).toISOString(), ...d }));
+  for (const l of lines) {
+    state.totals.set(l.unit, l.total);
+    state.events.push({ at, delta: l.delta });
+  }
+  return lines;
+}
+export const oomKills7d = (state: OomState, at: number): number => state.events.filter((e) => at - e.at <= 7 * 86_400_000).reduce((n, e) => n + e.delta, 0);

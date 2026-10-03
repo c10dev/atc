@@ -1,3 +1,4 @@
+import { sizeBytes } from "./scope-memory.ts";
 import { DEFAULT_NOTES, type NotesConfig } from "./issue-notes.ts";
 import { DEFAULT_RESTART_GRACE_MIN, restartingReason } from "./restarting.ts";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -212,6 +213,14 @@ export function saveReleaseParked(mode: "on" | "off", file = CONFIG_FILE) {
   renameSync(tmp, file);
 }
 
+// scope 메모리 크기 둘(ATC-505): 모양이 틀리면 기본, MemoryHigh가 MemoryMax보다 크면 MemoryHigh를 MemoryMax로 낮춘다(넘으면 의미가 없다)
+function scopeMemoryOf(high: unknown, max: unknown, d: { bgMemoryHigh: string; bgMemoryMax: string }): { bgMemoryHigh: string; bgMemoryMax: string } {
+  const ok = (v: unknown, dflt: string) => (typeof v === "string" && sizeBytes(v) !== null ? v : dflt);
+  const m = ok(max, d.bgMemoryMax);
+  const h = ok(high, d.bgMemoryHigh);
+  return { bgMemoryHigh: (sizeBytes(h) ?? 0) > (sizeBytes(m) ?? 0) ? m : h, bgMemoryMax: m };
+}
+
 // bgMemoryCap만 바꿔 저장한다(설정 창, ATC-505). 다른 설정은 그대로 둔다
 export function saveBgMemoryCap(mode: "on" | "off", file = CONFIG_FILE) {
   let user: Record<string, unknown> = {};
@@ -327,8 +336,7 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       crossAccountRelease: user.crossAccountRelease === "off" ? "off" : "on",
       // scope 메모리 상한(ATC-505): 파일에 "off"라고 적었을 때만 끈다. 크기는 systemd 꼴(숫자 + K·M·G·T)만, 아니면 기본
       bgMemoryCap: user.bgMemoryCap === "off" ? "off" : "on",
-      bgMemoryHigh: typeof user.bgMemoryHigh === "string" && /^[1-9]\d*[KMGT]?$/.test(user.bgMemoryHigh) ? user.bgMemoryHigh : d.bgMemoryHigh,
-      bgMemoryMax: typeof user.bgMemoryMax === "string" && /^[1-9]\d*[KMGT]?$/.test(user.bgMemoryMax) ? user.bgMemoryMax : d.bgMemoryMax,
+      ...scopeMemoryOf(user.bgMemoryHigh, user.bgMemoryMax, d),
       // PARKED(ATC-487): 파일에 "off"라고 적었을 때만 끈다
       releaseParked: user.releaseParked === "off" ? "off" : "on",
     };

@@ -1,21 +1,23 @@
 import { readRecords, type RecordLine } from "./recorder.ts";
-import { oomDeltasOf, readScopeOom, type ScopeOomView } from "./scope-memory.ts";
+import { type OomState, oomKills7d, oomStateOf, oomStep, readScopeOom, type ScopeOomView } from "./scope-memory.ts";
 
 // SCOPE OOM 세기의 읽기(ATC-505, 계산은 scope-memory.ts). 쓰는 것은 jobs/scope-oom.ts가 recorder에 남기는 줄뿐이다.
-const WEEK = 7 * 86_400_000;
+// 합계는 보관된 기록 전체로 한 번 채우고(7일 창으로 채우면 오래 사는 scope의 옛 kill을 다시 센다) 이후 메모리에서 이어 간다. 1분마다 기록 파일을 다시 읽지 않는다
 type OomLine = Extract<RecordLine, { op: "scope-oom" }>;
 
-const oomLines = (now: number): OomLine[] => readRecords(now - WEEK).filter((r): r is OomLine => r.kind === "policy" && r.op === "scope-oom");
+let state: OomState | null = null;
+const stateNow = (): OomState => (state ??= oomStateOf(readRecords(0).filter((r): r is OomLine => r.kind === "policy" && r.op === "scope-oom")));
+// 시험이 비운다
+export const resetScopeOomState = () => {
+  state = null;
+};
 
-// 지금 늘어난 oom_kill를 recorder 줄로. 이미 기록한 합계(unit별 가장 큰 total)부터 센다
+// 지금 늘어난 oom_kill를 recorder 줄로
 export function scopeOomRecordsNow(now = Date.now()): OomLine[] {
-  const known = new Map<string, number>();
-  for (const r of oomLines(now)) known.set(r.unit, Math.max(known.get(r.unit) ?? 0, r.total));
-  const t = new Date(now).toISOString();
-  return oomDeltasOf(readScopeOom(), known).map((d) => ({ t, kind: "policy", op: "scope-oom", unit: d.unit, total: d.total, delta: d.delta }));
+  return oomStep(stateNow(), readScopeOom(), now).map((l) => ({ ...l, kind: "policy", op: "scope-oom" }));
 }
 
 // SUPERVISOR가 보는 수: 지난 7일에 기록된 OOM kill 합과, 지금 떠 있는 scope 수(GET /api/control/sessions의 scopeOom)
 export function scopeOomViewNow(now = Date.now()): ScopeOomView {
-  return { kills7d: oomLines(now).reduce((n, r) => n + r.delta, 0), scopes: readScopeOom().length };
+  return { kills7d: oomKills7d(stateNow(), now), scopes: readScopeOom().length };
 }
