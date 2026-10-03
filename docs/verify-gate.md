@@ -90,3 +90,20 @@ The three commands start no server of their own. The run sets `ATC_GITHUB=off`. 
 
 - **Switch** `verifyRemote` (Settings → OPERATIONS → VERIFY GATE, default `on`, SUPERVISOR only, recorded as `policy / verify-remote-mode`; stored as `remote` in `config.json`). `off`: everything runs locally through the gate as before (`switch-off`). The existing `verifyGate` switch off still means no queue and no record at all.
 - **Misfire counters** (next to the gate's, all time and last 7 days): runs on the desktop; remote runs that failed for transport reasons (fell back before start plus lost); remote runs whose command failed (non-zero, not a transport problem); local runs by reason (`desktop-absent`, `transport-error`, `not-listed`, `switch-off`); runs started on the desktop and lost midway.
+
+## Other AIRPORT repos (ATC-526)
+
+A session in any AIRPORT repo on this host can run its heavy commands through the same gate, from that repo's top folder: `node <atc checkout>/server/verify-gate-cli.ts -- <command>`. The command takes a slot from the same pool and runs behind the same `node` shim, so one repo's burst cannot starve the host or another repo's checks.
+
+- **Which repo.** The gate takes the repo's top folder name (`git rev-parse --git-common-dir`; a STAND counts as its main repo; not a git folder: the working folder's name). Run records carry it as `repo`, the folder name only, never the full path. Older lines have no `repo` and count as `unknown`.
+- **Local by default.** A repo that is not atc runs **locally, queued**, and never goes to the desktop, unless the command is on that repo's allow-list. The built-in three-command list belongs to atc only. A repo with no entry has an empty list (`localReason: not-listed`, and with remote execution off `switch-off`). Whether commands that need a database or other secrets may ever go to the desktop is a SUPERVISOR decision that this feature does not take: the allow-list is the only way a command goes remote, and an empty or missing list means none do. Commands that need a database stay local.
+- **Where it is configured.** `repos.json` in the gate folder (`~/.local/state/atc-gate/`, `ATC_GATE_DIR` overrides it), keyed by the repo's top folder name. The public repo knows only the file name:
+
+```json
+{ "<repo folder name>": { "remoteCommands": [["<word>", "<word>"]], "browserExecutable": "/absolute/path/to/chrome" } }
+```
+
+`remoteCommands` are matched word for word, like atc's own list (a prefix does not match). Bad entries are dropped. `browserExecutable` is for the BROWSER GATE ([browser-gate.md](browser-gate.md)). The file is read on every run; there is no cache to clear.
+- **What is sent.** The same exclusion list (`isExcluded`) filters every remote run: `.git`, `node_modules`, `.env*` and the other names above are never sent, whatever repo it is. The run needs a `package-lock.json` in the repo's top folder to prepare dependencies; without one it runs locally (`transport-error`). The desktop's dependency cache is keyed by the repo's folder name plus the lock hash, so two repos never share a cache; atc keeps its old key.
+- **Switches and fail-open.** Same switches (`verifyGate`, `verifyRemote`), SUPERVISOR only, default on. When the gate cannot work, the command runs directly and records `fallback`.
+- **Counters.** The VERIFY GATE block of the settings window adds a line per repo folder name: runs, all time / last 7 days.

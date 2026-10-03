@@ -4,6 +4,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { type RepoCount, repoCounts } from "./gate-repo.ts";
 import { exitCodeOf, mayTry, pollMsOf, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision } from "./verify-gate.ts";
 
 export { exitCodeOf, mayTry, pollMsOf, queuePosition, shouldAnnounce, WAIT_LIMIT_EXIT, waitDecision };
@@ -72,6 +73,7 @@ export interface BrowserRun {
   t: string; // 요청 시각
   where: string;
   cwd: string; // 요청한 쪽의 작업 폴더(어느 STAND인지)
+  repo?: string; // 요청한 저장소의 맨 위 폴더 이름(전체 경로 아님, ATC-526). 이 기능 이전 줄에는 없다
   waited: boolean; // 줄을 선 적이 있다
   waitedMs: number;
   ranMs: number; // 브라우저가 돈 시간
@@ -126,6 +128,7 @@ export interface BrowserGateView {
   slots: number;
   waitLimitSec: number;
   where: string;
+  repos: RepoCount[]; // 저장소별 요청 수(폴더 이름만, ATC-526)
   recent: BrowserRun[];
 }
 
@@ -136,6 +139,7 @@ export function browserGateView(runs: readonly BrowserRun[], cfg: BrowserGateCon
     slots: cfg.slots,
     waitLimitSec: cfg.waitLimitMs / 1000,
     where: BROWSER_WHERE,
+    repos: repoCounts(runs, nowMs),
     recent: runs.slice(-5).reverse(),
   };
 }

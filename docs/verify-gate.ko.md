@@ -93,3 +93,20 @@ gate 폴더는 `~/.local/state/atc-gate/`(`ATC_GATE_DIR`로 바꾼다). 운영 �
 
 - **스위치** `verifyRemote`(설정 → OPERATIONS → VERIFY GATE, 기본 `on`, SUPERVISOR만, `policy / verify-remote-mode`로 기록, `config.json`의 `remote`로 저장). `off`면 전부 전처럼 로컬 gate에서 돈다(`switch-off`). 기존 `verifyGate`를 끄면 줄도 기록도 없는 것은 그대로다.
 - **misfire 세기**(gate 것 옆, 전체와 최근 7일): 데스크톱에서 돈 실행, 전송 문제로 실패한 원격 실행(시작 전에 돌아선 것 + 잃은 것), 데스크톱에서 명령이 실패한 실행(0이 아님, 전송 문제 아님), 사유별 로컬 실행(`desktop-absent`, `transport-error`, `not-listed`, `switch-off`), 데스크톱에서 시작했다가 도중에 잃은 실행.
+
+## 다른 AIRPORT 저장소 (ATC-526)
+
+이 호스트의 어느 AIRPORT 저장소에서든 그 저장소 맨 위 폴더에서 `node <atc 체크아웃>/server/verify-gate-cli.ts -- <명령>`으로 무거운 명령을 같은 문에 세울 수 있다. 같은 슬롯 풀을 쓰고 같은 `node` 껍데기 뒤에서 돌아서, 한 저장소의 몰림이 호스트나 다른 저장소의 검사를 굶기지 않는다.
+
+- **어느 저장소.** gate는 저장소 맨 위 폴더 이름을 쓴다(`git rev-parse --git-common-dir`. STAND는 본 저장소로 센다. git 폴더가 아니면 작업 폴더 이름). 실행 기록에는 `repo`로 남고, 폴더 이름만이며 전체 경로는 없다. 이전 줄에는 `repo`가 없어 `unknown`으로 센다.
+- **기본은 로컬.** atc가 아닌 저장소는 **로컬에서 줄을 서서** 돌고, 그 저장소의 허용 목록에 있는 명령이 아니면 데스크톱으로 가지 않는다. 박힌 세 명령 목록은 atc만의 것이다. 항목이 없는 저장소는 목록이 비어 있다(`localReason: not-listed`, 원격 실행이 꺼져 있으면 `switch-off`). DB나 다른 비밀이 필요한 명령이 데스크톱에 가도 되는지는 SUPERVISOR가 정할 일이고 이 기능은 그것을 정하지 않는다: 허용 목록이 명령이 원격으로 가는 유일한 길이고, 목록이 비었거나 없으면 아무것도 가지 않는다. DB가 필요한 명령은 로컬에 남는다.
+- **어디에 적나.** gate 폴더(`~/.local/state/atc-gate/`, `ATC_GATE_DIR`로 바꾼다)의 `repos.json`이고, 저장소 맨 위 폴더 이름이 열쇠다. 공개 저장소는 파일 이름만 안다:
+
+```json
+{ "<저장소 폴더 이름>": { "remoteCommands": [["<낱말>", "<낱말>"]], "browserExecutable": "/절대/경로/chrome" } }
+```
+
+`remoteCommands`는 atc 목록처럼 낱말 하나까지 같아야 맞는다(접두어는 안 된다). 틀린 항목은 버린다. `browserExecutable`은 BROWSER GATE용이다([browser-gate.ko.md](browser-gate.ko.md)). 파일은 실행마다 읽는다. 비울 캐시는 없다.
+- **보내는 것.** 어느 저장소든 원격 실행마다 같은 제외 목록(`isExcluded`)을 거친다: `.git`, `node_modules`, `.env*`와 위의 다른 이름은 보내지 않는다. 의존을 준비하려면 저장소 맨 위 폴더에 `package-lock.json`이 있어야 하고, 없으면 로컬로 돈다(`transport-error`). 데스크톱의 의존 캐시 열쇠는 저장소 폴더 이름과 lock 해시라 두 저장소가 캐시를 나누지 않는다. atc는 옛 열쇠를 그대로 쓴다.
+- **스위치와 fail-open.** 같은 스위치(`verifyGate`, `verifyRemote`), SUPERVISOR만, 기본 켜짐. gate가 못 돌면 명령을 바로 돌리고 `fallback`을 남긴다.
+- **세기.** 설정 창의 VERIFY GATE 블록에 저장소 폴더 이름별 줄이 생긴다: 실행 수(전체 / 최근 7일).

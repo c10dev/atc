@@ -4,7 +4,9 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { type RepoEntry, REPOS_FILE, parseRepos, repoKeyOf } from "./gate-repo.ts";
 import {
   cleanupScript,
   extractScript,
@@ -16,6 +18,7 @@ import {
   REMOTE_CONFIG_FILE,
   type RemoteTarget,
   type RemoteTransport,
+  REMOTE_COMMANDS,
   remoteShell,
   runScript,
   splitZ,
@@ -29,6 +32,30 @@ export function readRemoteTarget(gateDir: string): RemoteTarget | null {
   } catch {
     return null;
   }
+}
+
+// 저장소별 설정(문 폴더의 repos.json, ATC-526). 없거나 틀리면 빈 설정 = 다른 저장소는 늘 로컬 줄에서
+export function readRepos(gateDir: string): Record<string, RepoEntry> {
+  try {
+    return parseRepos(JSON.parse(readFileSync(join(gateDir, REPOS_FILE), "utf8")));
+  } catch {
+    return {};
+  }
+}
+
+const commonDirOf = (cwd: string): string | null => {
+  try {
+    return execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+// 부른 곳이 어느 저장소인가: key는 맨 위 폴더 이름, isOwn은 이 문이 들어 있는 저장소(atc)인지(워크트리도 같은 공통 .git이라 own)
+export function repoContext(cwd: string): { key: string; isOwn: boolean } {
+  const common = commonDirOf(cwd);
+  const own = commonDirOf(dirname(fileURLToPath(import.meta.url)));
+  return { key: repoKeyOf(common, cwd), isOwn: common !== null && own !== null && common === own };
 }
 
 // 지금 작업 폴더가 저장소 맨 위인가(npm test는 그곳에서 돈다)
@@ -66,6 +93,7 @@ export interface SshTransportOptions {
   target: RemoteTarget;
   cwd: string; // 저장소 맨 위
   connectTimeoutSec: number;
+  commands?: readonly (readonly string[])[]; // 이 저장소의 허용 목록(ATC-526). 없으면 atc의 세 명령
   onChild?: (c: ReturnType<typeof spawn> | null) => void; // 신호가 오면 부른 쪽이 ssh를 죽일 수 있게
 }
 
@@ -97,7 +125,7 @@ export function sshTransport(o: SshTransportOptions): RemoteTransport {
     },
     run(id, argv) {
       return new Promise((resolve) => {
-        const c = ssh(runScript(id, argv), ["ignore", "inherit", "inherit"]); // 출력은 부른 쪽의 stdout·stderr로 그대로
+        const c = ssh(runScript(id, argv, o.commands ?? REMOTE_COMMANDS), ["ignore", "inherit", "inherit"]); // 출력은 부른 쪽의 stdout·stderr로 그대로
         o.onChild?.(c);
         c.on("error", () => resolve({ sshExit: 255 }));
         c.on("close", (code) => {

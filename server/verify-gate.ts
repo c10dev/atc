@@ -3,6 +3,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { type RepoCount, repoCounts } from "./gate-repo.ts";
 import { LOCAL_REASONS, type LocalReason, PROBE_SEC_DEFAULT } from "./verify-remote.ts";
 
 export const GATE_WHERE = "local"; // 기록의 where 기본: 이 호스트. 데스크톱에서 돈 줄은 "desktop"(ATC-518)
@@ -89,6 +90,7 @@ export interface GateRun {
   where: string;
   cmd: string;
   cwd: string;
+  repo?: string; // 부른 저장소의 맨 위 폴더 이름(전체 경로 아님, ATC-526). 이 기능 이전 줄에는 없다
   waited: boolean; // 줄을 선 적이 있다
   waitedMs: number;
   ranMs: number;
@@ -168,6 +170,7 @@ export interface GateView {
   testConcurrency: number;
   where: string;
   remote: { mode: "on" | "off"; configured: boolean; probeSec: number }; // configured: remote.json이 있고 모양이 맞다(주소는 화면에 보내지 않는다)
+  repos: RepoCount[]; // 저장소별 실행 수(폴더 이름만, ATC-526)
   recent: GateRun[]; // 최근 몇 건(기록의 실제 모양을 보인다)
 }
 
@@ -180,6 +183,7 @@ export function gateView(runs: readonly GateRun[], cfg: GateConfig, nowMs: numbe
     testConcurrency: cfg.testConcurrency,
     where: GATE_WHERE,
     remote: { mode: cfg.remote, configured: remoteConfigured, probeSec: cfg.probeMs / 1000 },
+    repos: repoCounts(runs, nowMs),
     recent: runs.slice(-5).reverse(),
   };
 }

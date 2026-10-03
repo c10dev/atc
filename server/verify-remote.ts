@@ -16,7 +16,7 @@ export const REMOTE_COMMANDS: readonly (readonly string[])[] = [
   ["npx", "vite", "build"],
 ];
 
-export const isRemoteCommand = (argv: readonly string[]): boolean => REMOTE_COMMANDS.some((c) => c.length === argv.length && c.every((w, i) => w === argv[i]));
+export const isRemoteCommand = (argv: readonly string[], list: readonly (readonly string[])[] = REMOTE_COMMANDS): boolean => list.some((c) => c.length === argv.length && c.every((w, i) => w === argv[i]));
 
 export type LocalReason = "desktop-absent" | "transport-error" | "not-listed" | "switch-off";
 export const LOCAL_REASONS: readonly LocalReason[] = ["desktop-absent", "transport-error", "not-listed", "switch-off"];
@@ -100,9 +100,10 @@ export const lockHash = (lockText: string): string => createHash("sha256").updat
 export type Route = { where: "desktop" } | { where: "local"; reason: LocalReason };
 
 // 순서가 뜻이다: 스위치가 꺼졌으면 무엇이든 로컬(이유 switch-off), 목록에 없으면 로컬(not-listed), 접속 정보가 없으면 데스크톱이 없는 것으로 본다
-export function routeOf(p: { remote: "on" | "off"; argv: readonly string[]; atRepoRoot: boolean; target: RemoteTarget | null }): Route {
+// commands: 이 저장소에서 데스크톱으로 가도 되는 명령(ATC-526). atc 자신은 REMOTE_COMMANDS, 다른 저장소는 repos.json의 목록(없으면 빈 목록 = 늘 로컬)
+export function routeOf(p: { remote: "on" | "off"; argv: readonly string[]; atRepoRoot: boolean; target: RemoteTarget | null; commands?: readonly (readonly string[])[] }): Route {
   if (p.remote === "off") return { where: "local", reason: "switch-off" };
-  if (!isRemoteCommand(p.argv) || !p.atRepoRoot) return { where: "local", reason: "not-listed" }; // 저장소 맨 위가 아니면 npm이 다른 곳에서 돈다
+  if (!isRemoteCommand(p.argv, p.commands ?? REMOTE_COMMANDS) || !p.atRepoRoot) return { where: "local", reason: "not-listed" }; // 저장소 맨 위가 아니면 npm이 다른 곳에서 돈다
   if (!p.target) return { where: "local", reason: "desktop-absent" };
   return { where: "desktop" };
 }
@@ -169,9 +170,9 @@ export function prepareScript(id: string, hash: string): string {
 }
 
 // 3) 실행: 시작 표를 남기고, 명령은 ATC_GITHUB=off로, 끝나면 종료 표를 남기고 같은 코드로 끝낸다. 명령 낱말은 목록의 것뿐이라 따옴표로 감싼다
-export function runScript(id: string, argv: readonly string[]): string {
+export function runScript(id: string, argv: readonly string[], commands: readonly (readonly string[])[] = REMOTE_COMMANDS): string {
   if (!validRunId(id)) throw new Error("bad run id");
-  if (!isRemoteCommand(argv)) throw new Error("command not on the remote list");
+  if (!isRemoteCommand(argv, commands)) throw new Error("command not on the remote list");
   return [NVM, BASE, `cd "$base/runs/${id}"`, `: > .atc-started`, `ATC_GITHUB=off ${argv.map(shq).join(" ")}`, `c=$?`, `echo "$c" > .atc-exit`, `exit "$c"`].join("; ");
 }
 

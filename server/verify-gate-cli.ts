@@ -30,8 +30,9 @@ import {
   waitDecision,
   waitMessage,
 } from "./verify-gate.ts";
-import { atRepoRoot, readRemoteTarget, sshTransport } from "./verify-remote-run.ts";
-import { type LocalReason, lockHash, lostMessage, newRunId, routeOf, runOnDesktop } from "./verify-remote.ts";
+import { depsKey, remoteListFor, repoEntryOf, UNKNOWN_REPO } from "./gate-repo.ts";
+import { atRepoRoot, readRemoteTarget, readRepos, repoContext, sshTransport } from "./verify-remote-run.ts";
+import { type LocalReason, lostMessage, newRunId, REMOTE_COMMANDS, routeOf, runOnDesktop } from "./verify-remote.ts";
 
 const POLL_MS = pollMsOf(process.env.ATC_GATE_POLL_MS);
 const BUSY = 200; // 락 시도 껍데기가 "자리 없음"을 알리는 코드(알림 바이트가 오지 않았을 때만 뜻이 있다)
@@ -49,6 +50,14 @@ let child: ChildProcess | null = null;
 let signalled: NodeJS.Signals | null = null;
 let ticketPath: string | null = null;
 let remoteChild: ChildProcess | null = null; // 데스크톱에서 도는 ssh(ATC-518). 신호는 이것에도 간다
+// 어느 저장소에서 불렸나(ATC-526): 기록에는 맨 위 폴더 이름만 남긴다. git을 못 읽으면 unknown, atc가 아닌 것으로 본다(데스크톱 목록이 비어 늘 로컬)
+let ctx = { key: UNKNOWN_REPO, isOwn: false };
+try {
+  ctx = repoContext(process.cwd());
+} catch {
+  // 저장소를 못 알아도 문은 돈다
+}
+let repoCommands: readonly (readonly string[])[] = [];
 let syncMsLocal = 0; // 데스크톱을 시도했다가 로컬로 돌아선 실행의 보내기 시간(기록에 남는다)
 let localReason: LocalReason | undefined; // 이 실행이 로컬에서 돈 사유(데스크톱을 쓰지 않았거나 못 썼다)
 
@@ -67,7 +76,7 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 function writeRun(p: Pick<GateRun, "waited" | "waitedMs" | "ranMs" | "exit"> & Partial<GateRun>) {
-  const run: GateRun = { t: new Date(startedAt).toISOString(), where: GATE_WHERE, cmd: cmdLabel(argv), cwd: process.cwd(), ...(localReason ? { localReason } : {}), ...(syncMsLocal ? { syncMs: syncMsLocal } : {}), ...p };
+  const run: GateRun = { t: new Date(startedAt).toISOString(), where: GATE_WHERE, cmd: cmdLabel(argv), cwd: process.cwd(), repo: ctx.key, ...(localReason ? { localReason } : {}), ...(syncMsLocal ? { syncMs: syncMsLocal } : {}), ...p };
   try {
     appendFileSync(join(dir, "runs.jsonl"), JSON.stringify(run) + "\n"); // 한 줄은 PIPE_BUF 안이라 겹쳐 써도 안 섞인다
   } catch {
@@ -197,13 +206,13 @@ function tryOnce(slotFile: string, env: NodeJS.ProcessEnv): Promise<Attempt> {
 async function tryDesktop(cfg: GateConfig, target: NonNullable<ReturnType<typeof readRemoteTarget>>): Promise<number | null> {
   let hash: string;
   try {
-    hash = lockHash(readFileSync(join(process.cwd(), "package-lock.json"), "utf8"));
+    hash = depsKey(ctx.key, ctx.isOwn, readFileSync(join(process.cwd(), "package-lock.json"), "utf8")); // 저장소마다 의존 캐시가 따로다
   } catch {
     localReason = "transport-error"; // lock이 없으면 데스크톱이 의존을 준비할 수 없다
     return null;
   }
   const id = newRunId(startedAt, process.pid, randomBytes(2).toString("hex"));
-  const transport = sshTransport({ target, cwd: process.cwd(), connectTimeoutSec: Math.ceil(cfg.probeMs / 1000), onChild: (c) => (remoteChild = c) });
+  const transport = sshTransport({ target, cwd: process.cwd(), connectTimeoutSec: Math.ceil(cfg.probeMs / 1000), commands: repoCommands, onChild: (c) => (remoteChild = c) });
   const r = await runOnDesktop({ argv, id, hash, transport, probeMs: cfg.probeMs });
   if (r.where === "local") {
     localReason = r.reason;
@@ -288,7 +297,9 @@ async function main(): Promise<number> {
     closeSync(probe);
     // 데스크톱(ATC-518): 고정된 검증 명령이고 스위치가 켜져 있고 닿을 때만. 아니면 사유를 달고 로컬 문으로 간다
     const target = readRemoteTarget(dir);
-    const route = routeOf({ remote: cfg.remote, argv, atRepoRoot: cfg.remote === "on" ? atRepoRoot(process.cwd()) : false, target });
+    // 데스크톱 허용 목록은 저장소별이다(ATC-526): atc는 박힌 세 명령, 다른 저장소는 repos.json의 목록뿐(없으면 늘 로컬 줄)
+    repoCommands = remoteListFor(ctx.isOwn, repoEntryOf(readRepos(dir), ctx.key), REMOTE_COMMANDS);
+    const route = routeOf({ remote: cfg.remote, argv, atRepoRoot: cfg.remote === "on" ? atRepoRoot(process.cwd()) : false, target, commands: repoCommands });
     if (route.where === "desktop" && target) {
       const exit = await tryDesktop(cfg, target);
       if (exit !== null) return exit;
