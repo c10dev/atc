@@ -275,6 +275,7 @@ export interface FlightDetail {
 export interface AircraftFlight {
   key: string;
   title: string | null;
+  canceled?: true; // Linear에서 취소된 FLIGHT(ATC-460): 날고 있는 것이 아니다. 목록에는 남기되 "취소됨"으로 보인다
   kept?: true; // 점유(claimTtl)가 지나 STAND는 안 쥐었지만 멈춘 AIRCRAFT의 FLIGHT로 남겨 둔 것(cut LIMIT·RESUME·STALLED)
   detail?: FlightDetail;
 }

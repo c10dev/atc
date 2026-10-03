@@ -1,3 +1,4 @@
+import { canceledKeysOf } from "./canceled-flight.ts";
 import type { AccountHold, Health } from "./health.ts";
 import { accountHoldOf, accountHolds } from "./health.ts";
 import type { Job } from "./job-state.ts";
@@ -57,6 +58,8 @@ export function liveViewOf(
   const liveNames = registrationNamesOf(live.map((x) => x.name), teamPattern);
   const holds = accountHolds(live.map((x) => ({ name: x.name, account: accountOf(x.name), health: x.health })), now);
   const title = (key: string) => s.tickets?.find((t) => t.key === key)?.title ?? null;
+  const canceled = canceledKeysOf(s.tickets);
+  const cx = (key: string) => (canceled.has(key) ? { canceled: true as const } : {});
   const out = new Map<string, AircraftLive>();
   for (const reg of registrations) {
     const session = live.find((x) => regOf(x.name) === reg);
@@ -67,8 +70,8 @@ export function liveViewOf(
       status: session ? session.status : "absent",
       flying,
       flights: [
-        ...flying.map((key) => ({ key, title: title(key), detail: flightDetailOf(s, key) })),
-        ...(session?.keptFlights ?? []).filter((k) => !flying.includes(k)).map((key) => ({ key, title: title(key), kept: true as const, detail: flightDetailOf(s, key) })),
+        ...flying.map((key) => ({ key, title: title(key), ...cx(key), detail: flightDetailOf(s, key) })),
+        ...(session?.keptFlights ?? []).filter((k) => !flying.includes(k)).map((key) => ({ key, title: title(key), kept: true as const, ...cx(key), detail: flightDetailOf(s, key) })),
       ],
       flyingSince: held.map((c) => c.since).sort()[0] ?? null,
       lastActiveAt: session?.lastActiveAt ?? null,

@@ -1,4 +1,5 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
+import type { CanceledPr } from "./canceled-flight.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
 import { registrationOf } from "./registration.ts";
 import { attachCommandOf } from "./session-origin.ts";
@@ -199,6 +200,7 @@ export interface AlertsInput {
   rtsHalted?: RtsHalted | null;
   revertStops?: { airport: string; at: string; detail: string }[]; // 자동 되돌림 breaker가 멈춘 AIRPORT(ATC-351). 스위치를 다시 고르면 사라진다
   k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
+  canceledPrs?: CanceledPr[]; // 취소된 FLIGHT에 아직 열린 PR(ATC-460). PR을 닫으면(또는 FLIGHT를 되살리면) 사라진다. atc는 PR을 닫지 않는다
   controlDown?: ControlDown[];
   hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
@@ -526,6 +528,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       text: `K3 HOLD ${h.flight} — ${h.text}`,
       next: h.fix,
       link: "#release",
+      since: null,
+    });
+  }
+  // 취소된 FLIGHT에 열린 PR(ATC-460): SUPERVISOR가 닫는다. 키는 PR마다 그대로다
+  for (const p of inp.canceledPrs ?? []) {
+    out.push({
+      key: `alert|canceled-pr|${p.repo.replace(/\/+$/, "").split("/").pop() || p.repo}#${p.number}`,
+      group: "alert",
+      level: "caution",
+      cue: null,
+      aircraft: p.aircraft,
+      flight: p.flight,
+      text: `취소된 FLIGHT ${p.flight}의 PR #${p.number}${p.draft ? "(Draft)" : ""}이 열려 있음${p.aircraft ? ` — STAND는 ${p.aircraft}가 쥠` : ""}`,
+      next: "PR을 열어 확인하고 닫는다. atc는 PR을 닫지 않는다",
+      link: p.airport ? `#pr/${p.airport}/${p.number}` : "#flights",
       since: null,
     });
   }

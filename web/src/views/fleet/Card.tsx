@@ -272,7 +272,8 @@ export function Card({
   const language = (a as AircraftView & { language?: { at: string } | null }).language ?? null;
   const ctx = contextBadgeOf(a.context);
   const detail = variant === "detail";
-  const kept = (a.flights ?? []).filter((f) => f.kept);
+  const kept = (a.flights ?? []).filter((f) => f.kept && !f.canceled);
+  const canceledFlights = (a.flights ?? []).filter((f) => f.canceled); // 취소된 FLIGHT는 날고 있는 것이 아니다(ATC-460)
   const working = a.job?.state === "working" && (a.job.detail || a.job.settled);
   // 경보 띠: 켜진 것만, 이 순서로 한 줄씩. 하나도 없으면 띠를 그리지 않는다
   // 상태 점(ATC-287): 일하는 세션 radar, NEEDS YOU blue, NORDO alert, AOG amber, 나머지는 회색. 말은 늘 같이 적는다
@@ -400,10 +401,11 @@ export function Card({
   // NOW(초점 하나, ATC-325): 무엇을 나는가(키 + 제목 한 줄) · 상태(일하는 중·마지막 도구·시각) · 맥락 FOB(ContextLine) · ACCOUNT USAGE 막대. 목록 행 아래(detail)는 행이 이미 보여 주니 뺀다
   const flyingNow = a.flights.filter((f) => !f.kept && a.flying.includes(f.key));
   const nowCol: ReactNode[] = [];
-  if (!detail && a.flying.length > 0) {
+  const flyingLive = a.flying.filter((k) => !canceledFlights.some((f) => f.key === k));
+  if (!detail && flyingLive.length > 0) {
     nowCol.push(
       <ul key="flying" className="fl-now-flights" aria-label="FLYING">
-        {a.flying.map((k) => {
+        {flyingLive.map((k) => {
           const title = flyingNow.find((f) => f.key === k)?.title;
           return (
             <li key={k}>
@@ -412,6 +414,17 @@ export function Card({
             </li>
           );
         })}
+      </ul>,
+    );
+  }
+  if (canceledFlights.length > 0) {
+    nowCol.push(
+      <ul key="canceled" className="fl-kept">
+        {canceledFlights.map((f) => (
+          <li key={f.key} title="Linear에서 취소된 FLIGHT — 날고 있지 않다. 열린 PR이 있으면 HOME 목록에 올라 있다">
+            CANCELED <b className="mono"><OpenFlight k={f.key} /></b>
+          </li>
+        ))}
       </ul>,
     );
   }

@@ -1,3 +1,4 @@
+import { canceledKeysOf, canceledPrsOf, standHoldersOf } from "./canceled-flight.ts";
 import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords } from "./recorder.ts";
 import { k3HoldOf } from "./k3-allow.ts";
@@ -147,6 +148,12 @@ function k3HoldsOf(s: Snapshot): { flight: string; text: string; fix: string }[]
   });
 }
 
+// 취소된 FLIGHT에 열린 PR(ATC-460). 그 PR의 STAND를 쥔 AIRCRAFT를 함께 적는다
+function canceledPrsNow(s: Snapshot, teamPattern: string) {
+  const nameOf = new Map(s.sessions.map((x) => [x.id, registrationOf(x.name, teamPattern) ?? x.name]));
+  return canceledPrsOf(s.pulls ?? [], canceledKeysOf(s.tickets), standHoldersOf(s.claims, (id) => nameOf.get(id)), (repo) => s.airports.find((a) => a.repo === repo)?.code ?? null);
+}
+
 function collectItems(s: Snapshot, now: number, following: ReturnType<typeof followingNow>, unowned: Parameters<typeof supervisorAlertsOf>[0]["unowned"]): SupervisorAlert[] {
   const proposals = allProposals();
   const teamPattern = loadDispatchConfig().teamPattern;
@@ -170,6 +177,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     rtsHalted: rtsHaltedOf(rtsNow.stop, rtsNow.last),
     revertStops: stoppedAirports().map((l) => ({ airport: l.airport ?? "?", at: l.at, detail: l.detail ?? "" })),
     k3Holds: k3HoldsOf(s),
+    canceledPrs: canceledPrsNow(s, teamPattern),
     // RECYCLE이 멈춘 채인 것(이유가 분명)과 이유 불문 없는 것(ATC-203)을 세션마다 하나로
     controlDown: mergeControlDown(
       controlDownOf(recyclesAll, running.control),
