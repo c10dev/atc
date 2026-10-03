@@ -110,15 +110,16 @@ test("rts|halted: ROLLBACK 뒤 멈춤 동안 WARNING 하나, 모드를 다시 �
 
 const rec = (over: object) => ({ t: T, session: "TOWER", result: "recycled", ok: true, ...over }) as Parameters<typeof controlDownOf>[0][number];
 
-test("control|down|<session>: RECYCLE이 멈춘 세션이 다시 뜨지 않았으면 CAUTION, 뜨거나 뒤에 recycled가 나오면 사라진다", () => {
+test("control|down|<session>: RECYCLE이 멈춘 세션이 다시 뜨지 않았으면 조건(TOWER·MCC는 WARNING, ATC-203), 뜨거나 뒤에 recycled가 나오면 사라진다", () => {
   const failed = rec({ result: "launch-failed", ok: false, error: "not trusted" });
   const down = controlDownOf([failed], new Set());
   assert.deepEqual(down, [{ session: "TOWER", since: T, reason: "not trusted" }]);
   const on = supervisorAlertsOf({ ...base, controlDown: down }).filter((a) => a.key === "control|down|TOWER");
   assert.equal(on.length, 1);
-  assert.equal(on[0]!.level, "caution");
+  assert.equal(on[0]!.level, "warning"); // TOWER가 없다(ATC-203: TOWER·MCC는 WARNING, 다른 세션 하나는 CAUTION)
   assert.equal(on[0]!.dest, "alerts");
   assert.match(on[0]!.next, /LAUNCH/);
+  assert.equal(supervisorAlertsOf({ ...base, controlDown: [{ ...down[0]!, session: "OCC" }] }).find((a) => a.key === "control|down|OCC")?.level, "caution");
   // 다시 떴다(SUPERVISOR가 LAUNCH) → 사라진다
   assert.deepEqual(controlDownOf([failed], new Set(["TOWER"])), []);
   // 뒤에 recycled가 나왔다 → 사라진다
