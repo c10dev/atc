@@ -5,6 +5,7 @@ import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import { MetricsLeaks } from "./MetricsLeaks.tsx";
+import { MetricsTouches } from "./MetricsTouches.tsx";
 import { MetricsMisfire } from "./MetricsMisfire.tsx";
 import { Network } from "./Network.tsx";
 import { SingleLane } from "./SingleLane.tsx";
@@ -47,12 +48,13 @@ function stamp(iso: string, clock: "utc" | "local", withDate: boolean): string {
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
-// 하위 화면(ATC-137, ATC-380): #metrics는 운용 지표, #metrics/leaks·misfire·fuel·network. 주소로 고른다.
+// 하위 화면(ATC-137, ATC-380): #metrics는 운용 지표, #metrics/leaks·touches·misfire·fuel·network. 주소로 고른다.
 // 옛 #network는 #metrics/network로 열린다(legacy-hash.ts)
-type Sub = "ops" | "leaks" | "misfire" | "fuel" | "network";
+type Sub = "ops" | "leaks" | "touches" | "misfire" | "fuel" | "network";
 const SUBS: readonly (readonly [Sub, string])[] = [
   ["ops", "OPERATIONS"],
   ["leaks", "LEAKS"],
+  ["touches", "TOUCHES"],
   ["misfire", "MISFIRE"],
   ["fuel", "FUEL"],
   ["network", "NETWORK"],
@@ -86,6 +88,8 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
         <MetricsFuel snapshot={snapshot ?? null} />
       ) : sub === "leaks" ? (
         <MetricsLeaks refreshKey={refreshKey} />
+      ) : sub === "touches" ? (
+        <MetricsTouches refreshKey={refreshKey} />
       ) : sub === "misfire" ? (
         <MetricsMisfire refreshKey={refreshKey} />
       ) : sub === "network" ? (

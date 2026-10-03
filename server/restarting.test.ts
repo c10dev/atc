@@ -191,7 +191,7 @@ test("readEndedSessions: 세션 파일이 없고 최근에 쓴 대화 기록만,
     const t = new Date(Date.now() - ageMin * 60_000);
     utimesSync(p, t, t);
   };
-  const reply = (tools = false) => ({ type: "assistant", timestamp: iso("01:41:00"), message: { role: "assistant", content: [{ type: "text", text: "x" }, ...(tools ? [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] : [])] } });
+  const reply = (tools = false) => ({ type: "assistant", timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), message: { role: "assistant", content: [{ type: "text", text: "x" }, ...(tools ? [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] : [])] } });
   write("ended-i", [{ type: "custom-title", customTitle: "TEAM_H", sessionId: "ended-i" }, reply(), { type: "custom-title", customTitle: "TEAM_I", sessionId: "ended-i" }, { type: "last-prompt" }], 5);
   write("live-j", [{ type: "custom-title", customTitle: "TEAM_J" }, reply()], 5); // 세션 파일이 있는 것
   write("old-k", [{ type: "custom-title", customTitle: "TEAM_K" }, reply()], 300); // 오래됨
@@ -201,6 +201,48 @@ test("readEndedSessions: 세션 파일이 없고 최근에 쓴 대화 기록만,
   assert.deepEqual(out.map((e) => [e.sessionId, e.name, e.normalEnd]).sort(), [["crashed-l", "TEAM_L", false], ["ended-i", "TEAM_I", true]]);
   assert.equal(JSON.stringify(out).includes('"text"'), false); // 본문은 옮기지 않는다
   assert.deepEqual(readEndedSessions(new Set(), Date.now(), 30 * 60_000, [join(root, "no-such-dir")]), []);
+});
+
+test("readEndedSessions(ATC-511): endedAt은 마지막 timestamp 줄, 시각 없는 종료 줄은 무시. bg job 세션은 후보가 아니다", () => {
+  const acct = join(root, "acct511");
+  const proj = join(acct, "projects", "-home-c10-projects-atc");
+  mkdirSync(proj, { recursive: true });
+  const day = "2026-10-03";
+  const z = (hms: string) => `${day}T${hms}Z`;
+  const at511 = (hms: string) => Date.parse(z(hms));
+  const reply = (hms: string) => ({ type: "assistant", timestamp: z(hms), message: { role: "assistant", content: [{ type: "text", text: "x" }] } });
+  const write = (id: string, name: string, lines: object[], mtime: string) => {
+    const p = join(proj, `${id}.jsonl`);
+    writeFileSync(p, [{ type: "custom-title", customTitle: name }, ...lines].map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const t = new Date(z(mtime));
+    utimesSync(p, t, t);
+  };
+  const untimed = [{ type: "mode", mode: "auto" }, { type: "permission-mode", permissionMode: "auto" }, { type: "worktree-state" }, { type: "cost-state" }];
+  const job = (jobId: string, sessionId: string, state: string) => {
+    mkdirSync(join(acct, "jobs", jobId), { recursive: true });
+    writeFileSync(join(acct, "jobs", jobId, "state.json"), JSON.stringify({ state, sessionId }));
+  };
+  // TEAM_K 4daf0a12: 마지막 timestamp 06:25:14Z, 퇴역 줄 때문에 mtime 07:26:05Z
+  write("k-retired", "TEAM_K", [reply("06:25:14"), ...untimed], "07:26:05");
+  // 진짜 /clear: 07:26Z에 끝나고 mtime도 같다
+  write("c-clear", "TEAM_C", [reply("07:26:00"), ...untimed], "07:26:05");
+  // atc STOP·done·killed로 끝난 bg 세션: 마지막 timestamp는 07:26Z로 최근이어도 후보가 아니다
+  write("s-stopped", "TEAM_S", [reply("07:26:00")], "07:26:05");
+  write("d-done", "TEAM_E", [reply("07:26:00")], "07:26:05");
+  write("x-killed", "TEAM_X", [reply("07:26:00")], "07:26:05");
+  job("11111111", "s-stopped", "stopped");
+  job("22222222", "d-done", "done");
+  job("33333333", "x-killed", "killed");
+  const grace = 30 * 60_000;
+  const read = (hms: string) => readEndedSessions(new Set(), at511(hms), grace, [join(acct, "projects")]);
+  assert.deepEqual(read("07:30:00").map((e) => [e.name, e.endedAt]), [["TEAM_C", at511("07:26:00")]]); // 07:30Z에 TEAM_K는 RESTARTING이 아니다
+  const ended = read("07:30:00");
+  const r = restartingOf(ended, [], at511("07:30:00"), 30);
+  assert.deepEqual(r.map((x) => [x.registration, x.until]), [["TEAM_C", z("07:56:00").replace("Z", ".000Z")]]); // 07:56Z까지
+  assert.deepEqual(read("07:56:30"), []); // 유예가 지나면 없다
+  // timestamp가 한 줄도 없으면 예전처럼 mtime
+  write("n-nots", "TEAM_N", [{ type: "last-prompt" }], "07:20:00");
+  assert.equal(read("07:30:00").find((e) => e.name === "TEAM_N")!.endedAt, at511("07:20:00"));
 });
 
 test("restartGraceMin은 0이면 끔(0 이상), launchCardTimeoutMin은 양수만. 아니면 기본 30분", () => {

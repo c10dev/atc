@@ -1,5 +1,5 @@
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { config } from "../config.ts";
 import { type AccountFolder, accountFolders, folderOfAccount, observedLabelsOn } from "../accounts.ts";
 import { toolPaths } from "../../hooks/paths.mjs";
@@ -413,8 +413,41 @@ export function readEndedSessions(knownIds: ReadonlySet<string>, now: number, ma
   return roots.flatMap((root) => readEndedIn(root, knownIds, now, maxAgeMs));
 }
 
+// 대화 기록 끝에서 timestamp가 있는 마지막 줄의 시각. 종료 때 붙는 mode·permission-mode·worktree-state·cost-state 같은 줄은 timestamp가 없어 건너뛴다(ATC-511)
+export function lastTimestampOf(tailText: string): number | null {
+  const lines = tailText.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = /^\{.*?"timestamp":"([^"]+)"/.exec(lines[i]!);
+    const t = m ? Date.parse(m[1]!) : NaN;
+    if (Number.isFinite(t)) return t;
+  }
+  return null;
+}
+
+// 데몬 job(--bg)이 호스트한 세션 id. bg 세션은 /clear로 끝나지 않는다: idle 퇴역·atc STOP·done·killed 모두 RESTARTING이 아니다(ATC-511)
+function bgSessionIds(jobsDir: string): Set<string> {
+  const ids = new Set<string>();
+  let jobs: string[] = [];
+  try {
+    jobs = readdirSync(jobsDir);
+  } catch {
+    return ids;
+  }
+  for (const j of jobs) {
+    try {
+      const text = readFileSync(join(jobsDir, j, "state.json"), "utf8");
+      const m = /"sessionId"\s*:\s*"([^"]+)"/.exec(text);
+      if (m) ids.add(m[1]!);
+      const l = /"linkScanPath"\s*:\s*"([^"]+?)([0-9a-f-]{36})\.jsonl"/.exec(text);
+      if (l) ids.add(l[2]!);
+    } catch {}
+  }
+  return ids;
+}
+
 function readEndedIn(root: string, knownIds: ReadonlySet<string>, now: number, maxAgeMs: number): EndedSession[] {
   const out: EndedSession[] = [];
+  let bg: Set<string> | null = null; // 후보가 생길 때만 한 번 읽는다
   let projects: string[] = [];
   try {
     projects = readdirSync(root);
@@ -459,7 +492,12 @@ function readEndedIn(root: string, knownIds: ReadonlySet<string>, now: number, m
       let name: string | null = null;
       for (let m = title.exec(text); m; m = title.exec(text)) name = m[1]!;
       if (!name) continue;
-      out.push({ sessionId, name: JSON.parse(`"${name}"`) as string, endedAt: st.mtimeMs, normalEnd: normalEndOf(text) });
+      bg ??= bgSessionIds(join(dirname(root), "jobs"));
+      if (bg.has(sessionId)) continue;
+      // 끝난 때는 파일 mtime이 아니라 대화의 마지막 timestamp. mtime은 퇴역 때 붙는 줄로 늦춰진다. timestamp가 없으면 mtime으로
+      const endedAt = lastTimestampOf(text) ?? st.mtimeMs;
+      if (now - endedAt >= maxAgeMs) continue;
+      out.push({ sessionId, name: JSON.parse(`"${name}"`) as string, endedAt, normalEnd: normalEndOf(text) });
     }
   }
   return out;
