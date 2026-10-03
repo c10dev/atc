@@ -170,6 +170,7 @@ export function StatusList({
                   )}
                   {r.flight ? (
                     <>
+                      {r.flight.canceled && <span className="fl-r-detail mono" title="Linear에서 취소된 FLIGHT — 날고 있지 않다">CANCELED </span>}
                       <b className="mono"><OpenFlight k={r.flight.key} /></b>
                       {r.flight.detail && (r.flight.kept || r.health) && (
                         <span className={`fl-r-detail mono${flightDetailText(r.flight.detail, now).unpushed ? " is-unpushed" : ""}`}>{flightDetailText(r.flight.detail, now).text}</span>

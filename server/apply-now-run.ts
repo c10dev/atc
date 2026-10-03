@@ -14,6 +14,7 @@ import {
   pendingOfFile,
   waitingOf,
 } from "./apply-now.ts";
+import { aircraftWithLivePrOf, canceledKeysOf, liveFlightsOf, standHoldersOf } from "./canceled-flight.ts";
 import { config } from "./config.ts";
 import { applyControlFactsOf, applyNowControl, type ActDeps, type FactDeps } from "./control-recycle-run.ts";
 import { loadDispatchConfig } from "./dispatch.ts";
@@ -76,6 +77,10 @@ export async function planNow(s: Snapshot, facts: FactDeps): Promise<{ launchAcc
   });
   const inputs = inputsOf(s, rows, now, []);
   const assigned = new Set(inputs.plan.assign.map((p) => regKey(p.aircraftName)));
+  // 취소된 FLIGHT는 AIRCRAFT를 붙들지 않는다(ATC-460): 그 STAND 점유와 열린 PR은 진행 중으로 세지 않는다
+  const canceled = canceledKeysOf(s.tickets);
+  const nameOf = new Map(s.sessions.map((x) => [x.id, regKey(x.name, loadDispatchConfig().teamPattern)]));
+  const livePr = aircraftWithLivePrOf(s.pulls ?? [], standHoldersOf(s.claims, (id) => nameOf.get(id)), canceled);
   const aircraft: ApplyAircraft[] = inputs.aircraft.map((a) => {
     const fact = inputs.sessions.find((x) => regKey(x.registration) === a.registration);
     const row = rows.find((r) => regKey(r.name, loadDispatchConfig().teamPattern) === a.registration);
@@ -87,8 +92,8 @@ export async function planNow(s: Snapshot, facts: FactDeps): Promise<{ launchAcc
       idle: a.status === "idle",
       retired: !!a.retired,
       aog: !!a.aog,
-      flights: [...a.flying, ...a.flights.map((f) => f.key)],
-      openPr: inputs.openPrs.has(a.registration),
+      flights: liveFlightsOf([...a.flying, ...a.flights.map((f) => f.key)], canceled),
+      openPr: livePr.has(a.registration),
       assigned: assigned.has(a.registration),
       launchedRecently: d?.op === "launch" && now - Date.parse(d.at) < FLEET_PLAN_DEFAULTS.minDwellMin * 60_000,
       limitCut: a.health?.code === "LIMIT" && !!a.health.cut,
