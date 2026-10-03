@@ -1,0 +1,36 @@
+{
+  "_": "c10dev/atc의 실제 파일 목록(GitHub files API의 filename·status). commit6d7d2a0(ATC-456)은 ReleaseTree.css를 더했고, pr515(ATC-423)는 그것을 지웠다",
+  "commit6d7d2a0": [
+    { "filename": "changelog.d/ATC-456.ko.md", "status": "added" },
+    { "filename": "changelog.d/ATC-456.md", "status": "added" },
+    { "filename": "docs/guide/screens.md", "status": "modified" },
+    { "filename": "docs/rules.ko.md", "status": "modified" },
+    { "filename": "duty/CLAUDE.en.md", "status": "modified" },
+    { "filename": "duty/CLAUDE.md", "status": "modified" },
+    { "filename": "server/README.ko.md", "status": "modified" },
+    { "filename": "server/README.md", "status": "modified" },
+    { "filename": "server/dispatch.ts", "status": "modified" },
+    { "filename": "server/model.ts", "status": "modified" },
+    { "filename": "server/release-run.ts", "status": "modified" },
+    { "filename": "server/release-tree.test.ts", "status": "added" },
+    { "filename": "server/release-tree.ts", "status": "added" },
+    { "filename": "server/release.test.ts", "status": "modified" },
+    { "filename": "server/sequence-line.ts", "status": "added" },
+    { "filename": "server/sources/linear.ts", "status": "modified" },
+    { "filename": "web/src/views/Release.tsx", "status": "modified" },
+    { "filename": "web/src/views/ReleaseTree.css", "status": "added" }
+  ],
+  "pr515": [
+    { "filename": "changelog.d/ATC-423.ko.md", "status": "added" },
+    { "filename": "changelog.d/ATC-423.md", "status": "added" },
+    { "filename": "docs/guide/screens.md", "status": "modified" },
+    { "filename": "docs/layout.md", "status": "modified" },
+    { "filename": "server/sidebar-rows.test.ts", "status": "modified" },
+    { "filename": "web/src/Sidebar.tsx", "status": "modified" },
+    { "filename": "web/src/kit/TodoRow.tsx", "status": "modified" },
+    { "filename": "web/src/sidebar-rows.ts", "status": "modified" },
+    { "filename": "web/src/views/Release.css", "status": "modified" },
+    { "filename": "web/src/views/Release.tsx", "status": "modified" },
+    { "filename": "web/src/views/ReleaseTree.css", "status": "removed" }
+  ]
+}

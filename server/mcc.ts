@@ -23,8 +23,10 @@ export interface MccConfig {
   holds: number[]; // SUPERVISOR가 HOLD한 PR 번호: 착륙시키지 않는다
   // K 승인 착륙(ATC-391): 발권 때 승인한 K 효과 안에서 만든 user 등급 PR을 MCC가 착륙시킨다. 기본 on(처음부터 켬), 끄는 것은 SUPERVISOR만(설정 창)
   kApproval: "on" | "off";
+  // 지우기 규칙(ATC-495): 작업 지시서가 이름 붙이지 않은 기능을 지우는 PR을 inspector가 ESCALATE하고 `Removed:` 줄을 요구한다. 기본 on, 끄는 것은 SUPERVISOR만(설정 창)
+  removalGuard: "on" | "off";
 }
-export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" };
+export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" };
 
 const CONFIG_FILE = () => join(config.stateDir, "mcc.json");
 export const RECORD_FILE = () => join(config.stateDir, "mcc.jsonl");
@@ -41,6 +43,7 @@ export function parseMcc(raw: unknown): MccConfig {
     ciCheck: text(r.ciCheck, d.ciCheck),
     holds: [...new Set((Array.isArray(r.holds) ? r.holds : []).filter((n): n is number => Number.isInteger(n) && n > 0))],
     kApproval: r.kApproval === "off" ? "off" : d.kApproval, // 꺼지는 것은 정확히 "off"일 때뿐
+    removalGuard: r.removalGuard === "off" ? "off" : d.removalGuard, // 꺼지는 것은 정확히 "off"일 때뿐. 깨진 파일은 기본(on)이다: 읽을 수 없는 설정이 규칙을 끄지 않는다
   };
 }
 
@@ -86,7 +89,7 @@ export type MccRecord =
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
   | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
   | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
-  | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
+  | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off"; removalGuard?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
   | { op: "hold" | "unhold"; at: string; pr: number };
 
 export function appendMccRecord(r: MccRecord, file = RECORD_FILE()) {

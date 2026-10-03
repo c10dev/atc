@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import type { KDay } from "../../server/k-approval.ts";
+import type { RemovalStats } from "../../server/removal-rule.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf } from "../../server/settings-policy.ts";
@@ -445,6 +446,24 @@ function KApprovalDays({ days }: { days: KDay[] }) {
     </ul>
   );
 }
+// 지우기 규칙(ATC-495)의 숫자: 총 ESCALATE 수는 늘 보여, 오작동 0이 "한 번도 안 울렸다"로 읽히지 않게 한다
+function RemovalGuardStats({ d }: { d: RemovalStats & { headsKnown: boolean } }) {
+  return (
+    <ul className="dp-misfire">
+      <li>
+        지우기 ESCALATE 전체 <b>{d.total}</b> · 최근 7일 <b>{d.last7d}</b>
+      </li>
+      <li>
+        오작동(같은 head 그대로 착륙) <b>{d.misfires}</b>
+        <span className="faint">
+          {" "}
+          — head가 바뀐 뒤 머지 {d.changed} · 대기 {d.waiting} · MCC 착륙 {d.landedByMcc}
+          {d.headsKnown ? "" : " · 머지 head는 MCC 큐를 읽은 뒤 알 수 있음"}
+        </span>
+      </li>
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -477,6 +496,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   mccKApproval: (s) => {
     const days = (switchOf(s, "mccKApproval")?.data as { days?: KDay[] } | undefined)?.days;
     return days ? <KApprovalDays days={days} /> : null;
+  },
+  removalGuard: (s) => {
+    const d = switchOf(s, "removalGuard")?.data as (RemovalStats & { headsKnown: boolean }) | undefined;
+    return d ? <RemovalGuardStats d={d} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),

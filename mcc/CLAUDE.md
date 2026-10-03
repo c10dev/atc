@@ -54,6 +54,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 - 공개 저장소다: vocado 내부 사항, 비밀, 스크린샷이 없어야 한다.
 - 기록은 추가만 하는 JSONL, 설정·등록부는 원자적으로 바꿔 쓰는 JSON. **운영 상태 형식을 바꾸거나 되돌리기 어려운 변경이면 ESCALATE**한다. 검토에서 의심이 남아도 ESCALATE. 이미 쓰는 스위치 설정에서 배포되는 순간 배포 경로나 운영 상태에 새 자동 동작을 켜는 변경(예: `mcc.json`이 이미 `land+rts`인데 RTS를 스스로 시작하는 서버 타이머)도 ESCALATE — 언제 켤지는 SUPERVISOR가 고른다.
 - PR 본문과 ATC 이슈가 말한 일을 하고, 그 밖의 일은 하지 않는가.
+- **지우기 규칙**(ATC-495, 패킷의 `removal`): 작업 지시서가 이름 붙이지 않은 사용자에게 보이는 기능(화면 구역·뷰·버튼·화면이 그리는 필드, 그 기능만 쓰던 스타일시트·컴포넌트)을 diff가 지우면 `escalate`(`ESCALATE: removes <무엇>, not named in the work order`). PR 본문의 `Removed:` 줄이 없거나 diff와 다르면(`none`인데 지움) P1. 작업 지시서 글이 패킷에 없으면(`removal.workOrder: missing`) 그렇다고 적고 이 점은 pass하지 않는다. `removal.rule`이 `off`면(SUPERVISOR 스위치 `removalGuard`) 지우기 때문에 ESCALATE하지 않고 `Removed:` 줄 P1도 달지 않는다.
 
 등급은 P0(머지하면 안 됨), P1(머지 전에 고칠 것), P2(나중에 해도 됨). P0·P1이 없으면 `pass`, 있으면 `findings`. 지적마다 `P1 파일:줄 — 무엇이 왜 문제인지` 한 줄. `pass`에도 본 범위와 P2를 적는다. diff가 잘렸으면(`diffTruncated`) 본 범위를 적고 pass하지 않는다(P1 "diff가 잘려 X를 확인하지 못함"). 4000자 이내.
 

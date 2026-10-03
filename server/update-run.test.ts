@@ -116,7 +116,7 @@ test("시작: 조건이 맞으면 유닛(스텁)을 시작하고 by supervisor�
 test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서버는 유닛을 시작하지 않는다", async () => {
   config.stateDir = mkdtempSync(join(tmpdir(), "update-mcc-")); // 앞 시험의 시작·RTS 기록이 섞이지 않게
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
-  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
+  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" });
   const app = new Hono();
   mountMcc(app, async () => snap(B), () => A);
   const r = await app.request("/api/mcc/rts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "claude-opus-5-5" }) });
@@ -131,7 +131,7 @@ test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서�
 const fresh = (mode: "shadow" | "land" | "land+rts" | "rts") => {
   config.stateDir = mkdtempSync(join(tmpdir(), "update-auto-"));
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
-  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on" });
+  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" });
 };
 
 test("자동 RTS: shadow·land에서는 아무것도 하지 않는다", async () => {

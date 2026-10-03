@@ -25,6 +25,8 @@ K3 효과(guard, hook, `.claude/` …)를 고치는 FLIGHT는 **발권할 때 �
 
 설정 창 AUTOMATION → MCC의 **K APPROVAL**이 이 길의 스위치입니다(기본 `on`, `off`면 전처럼 모든 `user` PR을 사용자가 머지). 그 아래에 최근 7일 날짜별로 이렇게 착륙한 PR 수와, 그 가운데 자동 되돌림 PR이 열린 수·ROLLBACK이 난 수가 보입니다. 이렇게 착륙한 PR은 `mcc.jsonl`의 `land` 줄에 발권 id(`<FLIGHT>@<해시>`)가 남습니다.
 
+**REMOVAL GUARD**(같은 MCC 블록, 기본 `on`): 작업 지시서가 이름 붙이지 않은 기능(화면 구역·뷰·버튼·화면이 그리는 필드)을 지우는 PR은 MCC가 ESCALATE해 당신이 머지합니다(사유는 `removes <무엇>, not named in the work order`). PR 본문에는 지운 것을 적는 `Removed:` 줄(없으면 `Removed: none`)이 있어야 하고, 없거나 diff와 다르면 P1입니다. 스위치 아래에 지우기 ESCALATE 전체 수·최근 7일 수와, 그 가운데 당신이 같은 head 그대로 착륙시킨 수(오작동)가 보입니다. `off`면 MCC는 지우기 때문에 ESCALATE하지 않고 `Removed:` 줄도 따지지 않습니다. 팀에게는 기능을 지키거나 BLOCKED로 보고하라는 규칙이 그대로 있습니다.
+
 ## UPDATE 막대
 
 서비스가 `origin/main`보다 뒤이면 콘솔 바로 아래에 막대가 뜬다.

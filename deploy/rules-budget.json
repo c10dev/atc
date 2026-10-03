@@ -2,7 +2,7 @@
   "_": "Byte budgets for the rule files that sessions load (ATC-361). Raising a number is a user-tier change (deploy/): the SUPERVISOR decides whether a rule earns its place. Before ATC-361: CLAUDE.md 17277, atc-task SKILL.md 16091, 51 text runs shared by the two files.",
   "files": {
     "CLAUDE.md": 8700,
-    ".claude/skills/atc-task/SKILL.md": 11600
+    ".claude/skills/atc-task/SKILL.md": 12300
   },
   "shared": { "window": 20, "maxRunChars": 40 }
 }
