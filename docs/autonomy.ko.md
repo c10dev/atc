@@ -366,6 +366,7 @@ K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow
 - **RELEASE 화면.** SUPERVISOR가 쏘기 전에 `K3` 줄이 있는 FLIGHT의 줄이 선언이 읽히는지, 발권이 allow를 주는지(지금, 또는 화면에서 쏘면)를 보인다.
 - **끄는 스위치.** `dispatch.json`의 `k3Hold`, 기본 켜짐, 설정 창(K3 HOLD, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 켜짐으로 읽는다.
 - **오작동 카운터**(RELEASE 화면 맨 위, `GET /api/releases`의 `k3Hold`): *nuisance*는 `K3` 줄이 효과 없음으로 적힌(`K3: none`) FLIGHT에 걸린 hold, *miss*는 allow 없이 떠난(`launch` 기록에 `k3`가 없는) K3 FLIGHT의 AIRCRAFT가 classifier 거부(세션 health `DENIED`)로 멈춘 것이다(7일 안).
+- **LAUNCH 때도 확인한다(ATC-506).** 승인된 launch 카드는 LAUNCH 직전에 FLIGHT의 K3 선언과 발권을 다시 읽는다(`launchForCard`, 화면 승인과 자동 승인 job이 같이 쓴다). K3 FLIGHT인데 `k3LaunchOf`가 비었거나(발권이 없어졌거나 본문 해시가 바뀜) 티켓이 스냅샷에 없으면(알 수 없음) 띄우지 않는다. 카드는 `approved`로 남고 `launch` 줄을 쓰지 않으며 `autoLaunchMax`·LAUNCH 백오프에 세지 않고, `LAUNCH on approve` 대신 `K3 entries not ready — waiting`을 보인다. 자동 승인 job이 tick마다 다시 시도한다(`runK3LaunchRetry`, 기다리는 목록은 서버 메모리라 재시작을 넘겨 기다린 카드는 시간 초과로 닫힌다). `launchCardTimeoutMin`이 지나면 전처럼 닫히고 사유에 K3가 원인이라고 적는다. `k3Hold`를 끄면 LAUNCH는 전과 같다. 기다린 카드마다 FLIGHT RECORDER에 `k3-launch-wait` 줄이 하나 생기고 오작동 카운터의 *wait*(7일)로 센다. 잘못된 기다림은 거기서 보인다.
 
 ### C9, 만든 것: K3 RELAUNCH (ATC-509)
 

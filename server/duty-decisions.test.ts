@@ -76,10 +76,10 @@ const many = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `SD-${Str
 test("brief: 정해 둔 결정이 맨 위 구역, 오래된 것부터 id·글·until", () => {
   const b = dutyBriefOf(input({ decisions: [{ id: "SD-0001", text: "reject acct-1 proposals", until: "2026-10-03T03:00:00Z" }, { id: "SD-0002", text: "UI work goes through DISPATCH", until: null }] }));
   const t = b.text.split("\n");
-  assert.match(t[1]!, /^STANDING DECISIONS 2/);
-  assert.equal(t[2], "  SD-0001 — reject acct-1 proposals (until 2026-10-03T03:00:00Z)");
-  assert.equal(t[3], "  SD-0002 — UI work goes through DISPATCH");
-  assert.match(t[4]!, /^QUEUE 0/);
+  assert.match(t[2]!, /^STANDING DECISIONS 2/);
+  assert.equal(t[3], "  SD-0001 — reject acct-1 proposals (until 2026-10-03T03:00:00Z)");
+  assert.equal(t[4], "  SD-0002 — UI work goes through DISPATCH");
+  assert.match(t[5]!, /^QUEUE 0/);
 });
 
 test("brief: 가장 최근 briefDecisions개만 싣고 나머지 수를 적는다", () => {
@@ -173,7 +173,7 @@ test("경로: 제안 → 확정(글은 서버가 초안에서 읽는다) → GET
   assert.deepEqual(got.active.map((d) => d.id), [dec.id]);
   assert.equal(got.confirmedDrafts[id], dec.id);
   let brief = ((await (await a.request("/api/duty/brief")).json()) as { text: string }).text;
-  assert.ok(brief.split("\n")[1]!.startsWith("STANDING DECISIONS 1") && brief.includes(`${dec.id} — reject acct-1 proposals`));
+  assert.ok(brief.split("\n")[2]!.startsWith("STANDING DECISIONS 1") && brief.includes(`${dec.id} — reject acct-1 proposals`));
   assert.equal((await post(a, `/api/duty/decisions/${dec.id}/retire`, { why: "no longer" })).status, 200);
   assert.equal((await post(a, `/api/duty/decisions/${dec.id}/retire`, {})).status, 404, "이미 해제한 것");
   brief = ((await (await a.request("/api/duty/brief")).json()) as { text: string }).text;

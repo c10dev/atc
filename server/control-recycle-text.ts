@@ -28,7 +28,7 @@ export function waitAlertTextOf(w: WaitStuck): { text: string; next: string } {
   };
 }
 
-export type RecycleResult = "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unconfirmed" | "launch-failed";
+export type RecycleResult = "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed";
 export interface RecycleRecord {
   t: string;
   session: string;
@@ -51,6 +51,8 @@ export function recycleAlertTextOf(r: Pick<RecycleRecord, "session" | "contextBe
   if (r.result === "recycled") return { text: `CONTROL RECYCLE — ${r.session} 재시작함(컨텍스트 ${k})`, next: "" };
   const why = r.error ? ` — ${r.error}` : "";
   if (r.result === "launch-failed") return { text: `CONTROL RECYCLE — ${r.session}을 멈췄지만 LAUNCH가 실패해 멈춘 채로 있음(컨텍스트 ${k})${why}`, next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다" };
+  // ATC-521: claude stop은 종료 코드 0이었지만 job state.json이 stopped가 되지 않았다. 옛 세션이 계속 돌 수 있어 새로 띄우지 않았다
+  if (r.result === "stop-unverified") return { text: `CONTROL RECYCLE — ${r.session}: claude stop은 성공했지만 job이 멈췄는지 확인하지 못해 새 세션을 띄우지 않음(컨텍스트 ${k})${why}`, next: "FLEET 탭 CONTROL SESSIONS에서 그 job의 상태를 보고 계속 돌면 직접 멈춘다" };
   if (r.result === "stop-unconfirmed") {
     // 확인하지 못했어도 LAUNCH를 시도했다(ATC-175). 세션이 도는지 분명히 말한다
     if (r.launch?.ok) return { text: `CONTROL RECYCLE — ${r.session} STOP을 확인하지 못했지만 LAUNCH가 성공해 새 세션이 돌고 있음(컨텍스트 ${k})`, next: "FLEET 탭 CONTROL SESSIONS에서 세션이 하나뿐인지 본다" };

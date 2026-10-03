@@ -61,7 +61,7 @@ Decisions made while the SUPERVISOR is away are not DUTY's either. They belong t
    - Claude Code memory is shared across ACCOUNTs by ATC-191.
 6. **Shadow first.** Routing to OCC starts as confirmed drafts that OCC does not yet read. It is switched on after a measured shadow period, like MCC and REPOSITION.
 7. **Language.**
-   - DUTY writes Korean to the SUPERVISOR.
+   - DUTY writes Korean to the SUPERVISOR; Korean or English only, never Japanese or Chinese, also after a NEW SHIFT (ATC-150, ATC-510).
    - What it hands to other sessions (a CHARTER REQUEST, a work order, a brief for a working session) is English (ATC-126).
    - Its text is never read aloud; voice stays template-only (ATC-140).
 
@@ -567,6 +567,17 @@ The SUPERVISOR picks the ACCOUNT DUTY runs on in Settings → OPERATIONS → DUT
 - **Record.** `duty.jsonl` gets `{kind: "account", from, to, by: "SUPERVISOR"}`; the drawer shows it as a notice ("DUTY ACCOUNT acct-2 → acct-3 · next message starts a new conversation"). The drawer head line (`DUTY · <account> · context …`) follows the new ACCOUNT at once, through the status event.
 - **Pilot's discretion.** FUEL hold is selectable with a warning (the issue's choice). A running turn is finished on the old ACCOUNT rather than killed (the issue's wording), which needed the `retiring` state. A saved label that left the registry falls back to `~/.claude`, not to a refusal, as `launchAccountOf` does. An old `duty-session.json` without `account` resumes as before.
 - **Checked.** `server/duty-account.test.ts` (validation, fallback, resume decision), `server/duty-machine.test.ts` (`retiring`), `server/duty-run.test.ts` with the fake `claude`: after a change the next spawn has the new `CLAUDE_CONFIG_DIR` and no `--resume`; a turn running at save time finishes and the queued message is answered by the new process; a stored session from another ACCOUNT is not resumed after a restart.
+
+### DUTY LANGUAGE as built (ATC-510)
+
+DUTY never writes Japanese or Chinese to the SUPERVISOR, and a lapse is visible. Tier `flagged` (the DUTY manual `duty/CLAUDE.md` and `.en.md`, and the DUTY runtime).
+
+- **Rule in the manual.** One line, "Language", sits right after the opening paragraph of `duty/CLAUDE.md` and `duty/CLAUDE.en.md`, before the tool table.
+- **Rule in the shift hand-over.** A new conversation after NEW SHIFT has only the manual and the brief. The brief hook prints `GET /api/duty/brief` at the start of every turn, and its head now carries `LANGUAGE: write to the SUPERVISOR in Korean or English only. Never Japanese or Chinese (ATC-150).` (`LANGUAGE_RULE`, `server/duty-brief.ts`).
+- **Check.** `DutyRuntime.onLine` runs `checkDutyText` (`server/duty-language.ts`, pure) on each complete DUTY text. A line is *flagged* when it has kana or CJK ideographs and no Hangul. A Korean line with a Chinese-character word has Hangul, so it passes. Code blocks, inline code, URLs, paths, file names and `BEGIN DATA … END DATA` are not looked at, and a line with no letters left is not counted as checked. It is a warning: the text still reaches the SUPERVISOR unchanged, and a failure to record never stops the turn.
+- **Record.** One FLIGHT RECORDER `duty` line per text (`op: "lang"`: `session` (first 8 characters), `checked`, `flagged`) and one `op: "lang-flag"` line per flagged line with the session id and the time. The text is not written.
+- **METRICS.** The OPERATIONS page has a DUTY LANGUAGE table: lines checked and lines flagged per UTC day (`dutyLanguage` in `GET /api/metrics`).
+- **Pilot's discretion.** Only complete texts are checked (not streamed fragments), so a line is counted once. The rule goes into the brief head, because the brief is the only text the server hands over on every turn.
 
 ### DUTY REVIEW as built (ATC-396)
 

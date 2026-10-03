@@ -17,6 +17,7 @@ import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { type CapIdleHint, idleText } from "./other-background.ts";
 import type { HostMemory } from "./host-memory.ts";
+import { type Duplicate, duplicateTextOf, type Unverified, unverifiedTextOf } from "./control-stop-check.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -204,6 +205,8 @@ export interface AlertsInput {
   k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
   canceledPrs?: CanceledPr[]; // 취소된 FLIGHT에 아직 열린 PR(ATC-460). PR을 닫으면(또는 FLIGHT를 되살리면) 사라진다. atc는 PR을 닫지 않는다
   controlDown?: ControlDown[];
+  // CONTROL STOP CHECK(ATC-521): claude stop은 성공했지만 job이 stopped가 아닌 채인 것(control|unverified)과 같은 이름의 살아 있는 job이 둘 이상인 것(control|duplicate). 둘 다 WARNING, 풀리면 저절로 사라진다
+  controlChecks?: { unverified: Unverified[]; duplicates: readonly Duplicate[] };
   hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
   landBy?: ReadonlyMap<string, LandBy>;
@@ -565,6 +568,34 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",
       since: c.since,
+    });
+  }
+  for (const u of inp.controlChecks?.unverified ?? []) {
+    out.push({
+      key: `control|unverified|${u.session}|${u.jobId}`,
+      group: "recycle",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: unverifiedTextOf(u),
+      next: `FLEET 탭 CONTROL SESSIONS에서 job ${u.jobId}가 아직 도는지 본다. 돌면 직접 멈추고, 설정 창 CONTROL STOP CHECK에서 오탐이면 표시한다`,
+      link: "#fleet/control",
+      since: u.since,
+    });
+  }
+  for (const d of inp.controlChecks?.duplicates ?? []) {
+    out.push({
+      key: `control|duplicate|${d.control}`,
+      group: "recycle",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: duplicateTextOf(d),
+      next: "FLEET 탭 CONTROL SESSIONS에서 어느 job이 공식인지 보고 나머지를 멈춘다",
+      link: "#fleet/control",
+      since: null,
     });
   }
   // 호스트 메모리(ATC-203): 가용 메모리·swap·최근 30분의 OOM kill 수를 글에 싣는다

@@ -6,6 +6,8 @@
 
 지금은 **L1**이다(D7a). L1은 ENGINEERING의 힘이다: 자기 STAND(`.claude/worktrees/duty-*`)에 **문서**를 쓰고, 커밋·푸시하고, PR을 열고, Linear ATC 팀에 이슈를 쓴다. 코드를 고치거나 시험 서버를 돌리는 것(L2)은 없다. 코드는 작업 세션의 몫이다. 이 절들은 `duty.json`의 `l1`이 켜졌을 때(서버가 STAND와 Linear 쓰기를 받을 때)의 이야기다. 꺼져 있으면 `duty stand`·`duty linear`가 "L1이 꺼져 있음"으로 거절된다. 그대로 SUPERVISOR에게 전한다.
 
+**언어:** SUPERVISOR에게 쓰는 글은 한국어나 영어만 쓴다. 일본어·중국어는 쓰지 않는다(ATC-150). 교대(NEW SHIFT) 뒤에도 같다. 서버가 매 턴 brief 머리에 이 규칙을 붙이고, 가나·한자만 있는 줄을 세어 METRICS에 올린다(글은 막지 않는다).
+
 ## 할 수 있는 것
 
 - atc 상태를 읽는다: `duty brief`(한 장 요약), `duty flight`·`duty pr`·`duty idea`(FLIGHT·PR·idea 이슈 자료), 그리고 읽기 전용 `atcctl` 명령, `gh pr view|list|checks|diff`, `git log|show|diff|status`, 저장소 안의 파일(Read·Glob·Grep).
