@@ -166,6 +166,14 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - **METRICS:** `GET /api/landing-gap?days=7` (read only) returns the switch, `episodes`, `closed`, `misfires`, `share` and the open AIRPORTs. METRICS → MISFIRE shows it as a `LANDING GAP` lane beside DISPATCH, SCHEDULE and FLEET PLAN (`한 일` = episodes, `MISFIRE` = misfires, `몫` = misfires / closed).
 - Pilot's discretion: `landingGap` sits in the `operations` group (it writes nothing outside, so it is not a ⚠ mode and has no policy line); the episode job starts empty (no backfill of past stops).
 
+### H4 as built (ATC-503)
+
+- HOME draws the to-do list from `GET /api/flow` joined by `key` to the supervisor queue items: the flow decides order, grouping and the five-line fold, the queue items still draw each row, button and detail. `web/src/views/HomeTodo.tsx` (HOME only) and `web/src/home-todo.ts` (pure helpers, tested in `server/home-todo.test.ts`); `kit/TodoRow` is not changed.
+- A group row is `[kind tag] [n건] [groupNeed] [최장 6h] [펼치기 n]`. The only button expands; there is no batch action. The server's `groupNeed` is shown as sent (`user 등급 PR` is not part of it, see the PR's pilot's discretion). Expanded, each item is the normal row with its own button.
+- The fold line is the server's `todoRest.text` with a `펼치기 n` button that shows the folded lines in the same order. A kind filter from the sidebar re-groups only that kind with the same rule (`groupLines`, tested equal to the server's `todoLines`) and does not fold.
+- The link of a flow-board cell (`todoGroup`, a group key or an item key) is `openTodoGroup(key)` in `home-todo.ts` (a window event): HOME expands the group or the folded rest, opens the row if it is an item, scrolls to it and moves focus to the group's button or the row.
+- No `/api/flow` (503 before the first snapshot): HOME draws the queue one line each, as before.
+
 ## 6. Risks
 
 - **The block-code table drifts.** A new block code with no entry is classified `ATC` and counted. The test that fails on an unmapped code is the guard.

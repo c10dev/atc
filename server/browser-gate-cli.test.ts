@@ -144,8 +144,8 @@ test("신호로 죽은 Chrome의 슬롯은 커널이 놓는다(껍데기를 죽�
 test("세션이 끝났는데 Chrome이 남아 있으면 문이 내리고 슬롯을 놓고 기록한다", async () => {
   const dir = fresh();
   const env = envOf(dir, fakeChrome(dir, 60_000), { ATC_BROWSER_SLOTS: "1", ATC_BROWSER_WATCH_MS: "200" });
-  // 부모(MCP 서버 구실)가 껍데기를 띄우고 곧바로 죽는다
-  const parent = spawnSync(process.execPath, ["-e", `require("child_process").spawn(process.execPath,[${JSON.stringify(CLI)}],{stdio:"ignore",detached:true}).unref();setTimeout(()=>process.exit(0),700)`], { env, encoding: "utf8" });
+  // 부모(MCP 서버 구실)가 껍데기를 띄우고, Chrome이 뜬 것(pids 파일)을 본 뒤에 죽는다. 부모가 먼저 죽으면 껍데기가 처음부터 고아라 세션이 끝난 것을 알아볼 기준이 없다
+  const parent = spawnSync(process.execPath, ["-e", `require("child_process").spawn(process.execPath,[${JSON.stringify(CLI)}],{stdio:"ignore",detached:true}).unref();const t=setInterval(()=>{if(require("fs").existsSync(${JSON.stringify(join(dir, "pids"))}))process.exit(0)},50);setTimeout(()=>process.exit(0),20000)`], { env, encoding: "utf8" });
   assert.equal(parent.status, 0);
   let ended = false;
   for (let i = 0; i < 40 && !ended; i++) {
