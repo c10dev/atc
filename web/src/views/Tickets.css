@@ -94,22 +94,20 @@ a.ticket:hover {
   font-size: var(--text-xs);
 }
 /* ── 표시 옵션(FIDS) ─────────────────────────── */
+/* 표시 옵션 버튼: 공용 .btn 위에 정사각 알약. 바탕은 --layer(패널)를 읽는다 */
 .icon-button {
-  display: inline-grid;
-  place-items: center;
+  --btn-h: 32px;
   width: 32px;
-  height: 32px;
-  border: 1px solid var(--line);
+  padding: 0;
   border-radius: var(--radius-pill);
-  background: var(--panel);
   color: var(--muted);
-  cursor: pointer;
 }
-.icon-button:hover,
+.icon-button:hover:not(:disabled),
 .icon-button[aria-expanded="true"] {
-  border-color: var(--line-strong);
-  background: var(--panel-2);
   color: var(--text);
+}
+.icon-button[aria-expanded="true"] {
+  background: var(--panel-3);
 }
 .view-options {
   position: relative;
@@ -128,33 +126,14 @@ a.ticket:hover {
   background: var(--panel-3);
   box-shadow: var(--shadow-3);
 }
-.view-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
+/* 보기 전환: 공용 Segmented에 아이콘과 글, 40px 칸 */
 .view-switch button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--panel);
-  color: var(--muted);
+  min-height: 40px;
   font-size: var(--text-md);
-  font-weight: 400;
-  cursor: pointer;
-}
-.view-switch button:hover {
-  color: var(--text);
-}
-.view-switch button[aria-checked="true"] {
-  border-color: var(--line-strong);
-  background: var(--panel-2);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .view-menu-hint {
   margin: var(--space-2) 0 0;
@@ -193,14 +172,15 @@ a.ticket:hover {
   letter-spacing: 0.1em;
   color: var(--fids-count);
 }
-.fids-table-wrap {
-  overflow-x: auto;
-}
+/* 표 바탕은 공용 .kit-table. 안내판은 바깥 .fids-list가 테두리·바탕을 갖고, 글자 크기는 둘러싼 글을 따른다 */
 .fids-table {
-  width: 100%;
-  border-collapse: collapse;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
 }
 .fids-table th {
+  background: transparent;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--fids-line);
   font: 700 var(--text-xs) var(--mono);
@@ -213,6 +193,10 @@ a.ticket:hover {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
   vertical-align: middle;
+}
+/* 공용 표는 마지막 줄의 밑선을 지우지만 안내판은 그룹 끝 줄도 선을 둔다 */
+.fids-table tr:last-child td {
+  border-bottom: 1px solid color-mix(in srgb, var(--fids-line) 60%, transparent);
 }
 .fids-table tbody tr:nth-child(even) td {
   background: color-mix(in srgb, var(--fids-card) 55%, transparent);

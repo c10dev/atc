@@ -101,7 +101,7 @@ Rules:
 
 - `web/src/kit/Table.css` (`.kit-table`): the base table: header row, row divider, `tabular-nums`, and `.num` on `th` and `td` for right-aligned numbers (Craft 3.5.7). It reads `--layer` and `--layer-hover`; no domain token, literal or screen class. `web/src/kit/TableScroll.tsx` (`.kit-scroll`) is the one scroll region for a wide table: a named `role="region"` with a tab stop.
 - `mx-table` (METRICS DAILY and MISFIRE, NETWORK) and the NETWORK-only `Scroll` / `.nw-scroll` / `.mx-scroll` are gone; screens keep only layout (`.nw-table` turns the collapse off so row heads can stick). The ROUTE map line uses `.kit-scroll` as well.
-- Four tables are still separate styles: `apt-table`, `bf-table`, `mf-table`, `fids-table`; they move to the base in later units.
+- Three tables are still separate styles: `apt-table`, `bf-table`, `mf-table`; they move to the base in later units. `fids-table` moved in ATC-425: it carries `.kit-table` inside `.kit-scroll` and keeps its departure-board look through its own rules in `views/Tickets.css`.
 
 ### L2 Patterns
 
