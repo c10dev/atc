@@ -64,6 +64,7 @@ import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
+import { mountHomeFlow } from "./home-flow-run.ts";
 import { mountSinceLook } from "./since-look-run.ts";
 import { mountStatus } from "./status-run.ts";
 import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } from "./supervisor-alerts-run.ts";
@@ -280,6 +281,7 @@ mountDutyL1(app, { ...defaultL1Deps, ...reviewHooks(getSnapshot) }); // DUTY D7a
 mountDutyReview(app, getSnapshot); // DUTY REVIEW(ATC-396): 주기·트리거로 서버가 DUTY 턴을 시작한다(duty.json review, 기본 켜짐, SUPERVISOR만 끈다). 읽기 GET /api/duty/review
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountStatus(app, getSnapshot, currentAlerts); // STATUS(ATC-384): "현재 상태"·"ATC-n 어디까지"에 한 번에 답하는 읽기 전용 요약
+mountHomeFlow(app, getSnapshot, () => update.status(), currentAlerts); // HOME 흐름판(ATC-499): 판정·칸·주체·묶은 할 일(읽기만, 새 GitHub·Linear 호출 없음)
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)
 app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); // 지금 있는 알림 key 전체(읽기만)
 app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)

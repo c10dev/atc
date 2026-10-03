@@ -255,6 +255,9 @@ export type LandingBlockCode =
   | "blocked"
   | "merge-unknown"
   | "los";
+// 코드의 실제 목록(ATC-499, 주체 표의 빠짐을 시험이 잡는다). Record라 타입에 코드를 더하면 여기도 고치지 않으면 컴파일이 안 된다
+const LANDING_BLOCK_CODE_SET: Record<LandingBlockCode, true> = { stacked: true, draft: true, "checks-pending": true, "checks-failed": true, "no-checks": true, "no-review": true, "review-stale": true, "review-findings": true, "changes-requested": true, behind: true, dirty: true, blocked: true, "merge-unknown": true, los: true };
+export const LANDING_BLOCK_CODES = Object.keys(LANDING_BLOCK_CODE_SET) as LandingBlockCode[];
 
 // GitHub에 열린 PR. LANDING SEQUENCE의 단위.
 export interface PullRequest {
