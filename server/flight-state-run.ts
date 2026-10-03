@@ -10,6 +10,7 @@ import { forgetIssue } from "./detail-run.ts";
 import { type MoveBody, type MoveIssue, moveVerdict, parseMoveBody } from "./flight-state.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
+import { noteLocalState } from "./sources/linear.ts";
 import { applyIssueState, fetchMoveIssue } from "./sources/linear-write.ts";
 
 export interface StateDeps {
@@ -17,10 +18,11 @@ export interface StateDeps {
   apply: (id: string, stateId: string) => Promise<{ name: string; type: string }>;
   record: typeof record;
   forget: (key: string) => void;
+  localState?: (key: string, now: { name: string; type: string }) => void; // 쓰기가 성공한 뒤 서버의 Linear 캐시에 새 상태를 바로 싣는다(ATC-448). 시험은 비워 둔다
   teams: readonly string[];
   now: () => Date;
 }
-const defaultDeps: StateDeps = { fetchIssue: fetchMoveIssue, apply: applyIssueState, record, forget: forgetIssue, teams: config.linearTeamKeys, now: () => new Date() };
+const defaultDeps: StateDeps = { fetchIssue: fetchMoveIssue, apply: applyIssueState, record, forget: forgetIssue, localState: noteLocalState, teams: config.linearTeamKeys, now: () => new Date() };
 
 export type MoveResult = { ok: true; key: string; from: string; to: string; type: string } | { ok: false; status: 400 | 403 | 404 | 409 | 502 | 503; error: string };
 
@@ -38,6 +40,7 @@ export async function moveFlight(key: string, move: MoveBody, deps: StateDeps = 
     }
     const now = await deps.apply(issue.id, v.stateId);
     deps.forget(key);
+    deps.localState?.(key, now); // 쓰기가 성공한 뒤에만(apply가 던지면 여기 오지 않는다)
     log(true);
     return { ok: true, key, from, to: now.name, type: now.type };
   } catch (e) {

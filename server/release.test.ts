@@ -394,3 +394,18 @@ test("제안 버리기(ATC-401): 옮기기가 실패하면 실패를 그대로 �
   assert.equal(warn.status, 200);
   assert.deepEqual(await warn.json(), { discarded: "ATC-1", warning: "comment failed" });
 });
+
+// ATC-448: 발권이 성공하면 서버의 Linear 캐시가 바로 Todo가 되어 READY·제안 목록에서 빠진다
+test("발권 fire 뒤: 캐시가 Todo로 바뀌어 releaseView의 ready·filed에 더는 없다(버튼을 두 번 누를 수 없다)", async () => {
+  let tickets: Ticket[] = [done("ATC-90"), backlog("ATC-1", { blockedBy: ["ATC-90"] })];
+  const { h, post } = fireHarness(tickets, async (k) => {
+    tickets = tickets.map((t) => (t.key === k ? { ...t, state: "Todo", stateType: "unstarted" } : t)); // moveFlight가 서버 캐시에 하는 일
+    return { ok: true };
+  });
+  h.deps.snapshot = async () => snap(tickets);
+  assert.deepEqual(releaseView(snap(tickets), h.deps).ready.map((r) => r.key), ["ATC-1"]);
+  assert.equal((await post({ flight: "ATC-1" })).status, 200);
+  const after = releaseView(await h.deps.snapshot(), h.deps);
+  assert.deepEqual(after.ready.map((r) => r.key), []);
+  assert.deepEqual(after.filed.map((f) => f.key), []);
+});
