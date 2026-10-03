@@ -8,6 +8,7 @@ import { fuelHolds } from "./fuel-remaining.ts";
 import type { Snapshot } from "./model.ts";
 import { isNetworkKind } from "./network-drafts.ts";
 import { allProposals, APPROVED_NO_SESSION_WHY, append, type Op, type Proposal, regOfProposal } from "./proposals.ts";
+import { k3LaunchWaits, k3WaitClear } from "./k3-launch-wait.ts";
 import { regKey } from "./registration.ts";
 import { appendScheduleApprove, loadScheduleMode, loadScheduleOps, type ScheduleOp } from "./schedule.ts";
 
@@ -41,7 +42,7 @@ function appendAutoLine(line: AutoLine, file = FILE()) {
 
 export interface AutoDeps {
   max: number; // ATC_MAX_LAUNCHED
-  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>; // by "auto"는 index.ts가 정한다
+  launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string; wait?: string }>; // by "auto"는 index.ts가 정한다
 }
 
 // 한 주기가 읽고 쓰는 곳(시험은 가짜를 꽂는다)
@@ -181,6 +182,8 @@ export async function runAutoApprove(s: Snapshot, deps: AutoDeps, now = Date.now
           now: io.stamp,
           by: "auto",
         });
+        // K3 entries가 아직 없어 기다린다(ATC-506): 승인은 적혔고 LAUNCH 줄은 없다. 상한·백오프에 세지 않는다
+        if (r.wait) continue;
         io.addLine({ at, mode: "on", kind: "dispatch", op: "launch", id: p.id, registration: reg, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
         counts.launched++;
         if (r.ok) result.launched++;
@@ -238,11 +241,16 @@ export async function runApprovedRelaunch(s: Snapshot, deps: AutoDeps, now = Dat
         continue;
       }
       io.appendOps([{ op: "relaunch", id: p.id, at }]);
-      let r: { ok: boolean; jobId?: string; error?: string };
+      let r: { ok: boolean; jobId?: string; error?: string; wait?: string };
       try {
         r = await deps.launch(s, reg, p.id, false, p.flight);
       } catch (e) {
         r = { ok: false, error: (e as Error).message };
+      }
+      if (r.wait) {
+        // K3 entries가 아직 없다(ATC-506): 카드는 relaunch 상태로 남고 K3 재시도가 이어받는다
+        result.waiting++;
+        continue;
       }
       const done = io.stamp();
       const launched: Op = { op: "launch", id: p.id, at: done, ok: r.ok, by: "auto", ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
@@ -255,4 +263,42 @@ export async function runApprovedRelaunch(s: Snapshot, deps: AutoDeps, now = Dat
   } finally {
     relaunching = false;
   }
+}
+
+// ── K3 entries를 기다리는 승인된 launch 카드(ATC-506) ──
+// LAUNCH 직전 재확인(launchForCard)이 기다리게 한 카드만 다시 시도한다(서버 메모리의 k3LaunchWaits). 서버가 멈췄다 뜬 카드는 전과 같이 launchCardTimeoutMin 뒤에 닫힌다.
+// 기다리는 동안은 아무것도 적지 않는다. 띄워지면 LAUNCH 줄을, 실패하면 LAUNCH 줄과 SUPERSEDED를 적는다(approveLaunch와 같다)
+export async function runK3LaunchRetry(s: Snapshot, deps: AutoDeps, io: AutoIO = realIO()): Promise<{ launched: number; waiting: number }> {
+  const result = { launched: 0, waiting: 0 };
+  const tp = io.cfg().teamPattern;
+  const cards = io.proposals();
+  for (const id of [...k3LaunchWaits().keys()]) {
+    const p = cards.find((x) => x.id === id);
+    if (!p || p.status !== "approved" || !p.launch || p.launched) {
+      k3WaitClear(id); // 닫혔거나 이미 LAUNCH됐다
+      continue;
+    }
+    const reg = regOfProposal(p, tp) ?? "";
+    if (!reg || s.sessions.some((x) => x.status !== "dead" && regKey(x.name, tp) === reg)) {
+      k3WaitClear(id); // 세션이 이미 있다: 평소대로
+      continue;
+    }
+    let r: { ok: boolean; jobId?: string; error?: string; wait?: string };
+    try {
+      r = await deps.launch(s, reg, p.id, !!p.resume, p.flight);
+    } catch (e) {
+      r = { ok: false, error: (e as Error).message };
+    }
+    if (r.wait) {
+      result.waiting++;
+      continue;
+    }
+    const at = io.stamp();
+    const launched: Op = { op: "launch", id: p.id, at, ok: r.ok, by: "auto", ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
+    io.appendOps(r.ok ? [launched] : [launched, { op: "supersede", id: p.id, at, reason: `${LAUNCH_FAILED_WHY} — ${r.error ?? "원인 모름"}` }]);
+    io.addLine({ at, mode: "on", kind: "dispatch", op: "launch", id: p.id, registration: reg, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
+    k3WaitClear(id);
+    if (r.ok) result.launched++;
+  }
+  return result;
 }

@@ -1,4 +1,4 @@
-import { runApprovedRelaunch, runAutoApprove } from "../auto-approve-run.ts";
+import { runApprovedRelaunch, runAutoApprove, runK3LaunchRetry } from "../auto-approve-run.ts";
 import { defineJob } from "../job-def.ts";
 import type { Snapshot } from "../model.ts";
 import { launchForCard, MAX_LAUNCHED } from "../session-control.ts";
@@ -15,5 +15,7 @@ export default defineJob({
     await runAutoApprove(s, deps).catch((e) => console.error("[atc] auto approve failed:", e));
     // 승인됐는데 세션이 없는 ASSIGN 카드(ATC-388): LAUNCH하거나 닫는다. 스위치와 상관없다(SUPERVISOR 승인이 이미 있다)
     await runApprovedRelaunch(s, deps).catch((e) => console.error("[atc] approved relaunch failed:", e));
+    // K3 entries를 기다리는 승인된 launch 카드(ATC-506): 갖춰졌으면 LAUNCH한다
+    await runK3LaunchRetry(s, deps).catch((e) => console.error("[atc] k3 launch retry failed:", e));
   },
 });

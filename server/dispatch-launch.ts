@@ -200,11 +200,11 @@ export function capIdleNow(
 export const launchFullWhy = (cap: LaunchCap) => `LAUNCH 대기 — 백그라운드 ${cap.launched}${cap.pending ? ` + 승인된 LAUNCH ${cap.pending}` : ""} / 상한 ${cap.max}(ATC_MAX_LAUNCHED)${cap.holders ? ` · ${cap.holders}` : ""} — 자리가 나면 승인한다`;
 
 // 카드마다 LAUNCH 표시(열린·HELD·승인된 launch 카드). 상한이 찼으면 열린 카드는 기다린다고 적는다
-export function launchViewOf(proposals: readonly Proposal[], cap: LaunchCap): Record<string, string> {
+export function launchViewOf(proposals: readonly Proposal[], cap: LaunchCap, k3Waits: ReadonlyMap<string, string> = new Map()): Record<string, string> {
   return Object.fromEntries(
     proposals
       .filter((p) => p.kind === "ASSIGN" && p.launch && (p.status === "proposed" || p.status === "approved"))
-      .map((p) => [p.id, p.status === "proposed" && cap.full ? launchFullWhy(cap) : LAUNCH_TEXT]),
+      .map((p) => [p.id, p.status === "proposed" && cap.full ? launchFullWhy(cap) : p.status === "approved" && !p.launched && k3Waits.has(p.id) ? k3Waits.get(p.id)! : LAUNCH_TEXT]),
   );
 }
 
@@ -229,7 +229,10 @@ export const launchTimeoutWhy = (timeoutMin: number) => `${LAUNCH_FAILED_WHY} �
 // 승인은 적혔는데 LAUNCH 결과가 없다(승인과 LAUNCH 사이에 서버가 멈춤). 유예가 지나면 닫는다 — 스스로 다시 띄우지 않는다
 export const launchMissing = (p: Pick<Proposal, "launch" | "launched" | "timeline">, now: number, timeoutMin: number) =>
   Boolean(p.launch && !p.launched && p.timeline.approved && now - Date.parse(p.timeline.approved) >= timeoutMin * 60_000);
-export const launchMissingWhy = (timeoutMin: number) => `${LAUNCH_FAILED_WHY} — 승인 뒤 ${timeoutMin}분 동안 LAUNCH 기록이 없음(승인 중 서버가 멈췄을 수 있음). 스스로 다시 띄우지 않는다 — 다시 승인한다`;
+export const launchMissingWhy = (timeoutMin: number, k3Wait?: string) =>
+  k3Wait
+    ? `${LAUNCH_FAILED_WHY} — 승인 뒤 ${timeoutMin}분 동안 LAUNCH하지 못함: ${k3Wait}. 발권·선언이 갖춰지지 않아 K3 entries 없이 띄우지 않았다 — 갖춘 뒤 다시 승인한다`
+    : `${LAUNCH_FAILED_WHY} — 승인 뒤 ${timeoutMin}분 동안 LAUNCH 기록이 없음(승인 중 서버가 멈췄을 수 있음). 스스로 다시 띄우지 않는다 — 다시 승인한다`;
 
 // ── 승인 + LAUNCH(순서만, 입출력은 주입). 상한이 찼으면 아무것도 적지 않는다. 승인을 먼저 적고 띄운다.
 // 실패하면 LAUNCH 결과와 SUPERSEDED를 적어 OCC가 보내지 않는다. 이미 세션이 떠 있으면 띄우지 않고 승인만 ──
@@ -238,20 +241,21 @@ export interface ApproveLaunchDeps {
   cap: LaunchCap;
   approve: Op;
   append: (ops: Op[]) => void;
-  launch: () => Promise<{ ok: boolean; jobId?: string; error?: string }>;
+  launch: () => Promise<{ ok: boolean; jobId?: string; error?: string; wait?: string }>; // wait(ATC-506): K3 entries가 아직 없어 띄우지 않았다 — 아무것도 적지 않고 카드는 approved로 남는다
   now: () => string;
   by?: string; // launch 줄의 by. 화면에서 승인하면 SUPERVISOR(기본), 서버의 자동 승인(ATC-334)이면 "auto"
 }
-export async function approveLaunch(id: string, d: ApproveLaunchDeps): Promise<{ ok: boolean; status: 200 | 409 | 502; error?: string }> {
+export async function approveLaunch(id: string, d: ApproveLaunchDeps): Promise<{ ok: boolean; status: 200 | 409 | 502; error?: string; wait?: string }> {
   if (!d.live && d.cap.full) return { ok: false, status: 409, error: launchFullWhy(d.cap) };
   d.append([d.approve]);
   if (d.live) return { ok: true, status: 200 };
-  let r: { ok: boolean; jobId?: string; error?: string };
+  let r: { ok: boolean; jobId?: string; error?: string; wait?: string };
   try {
     r = await d.launch();
   } catch (e) {
     r = { ok: false, error: (e as Error).message };
   }
+  if (r.wait) return { ok: true, status: 200, wait: r.wait };
   const at = d.now();
   const result: Op = { op: "launch", id, at, ok: r.ok, by: d.by ?? "SUPERVISOR", ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
   if (r.ok) {

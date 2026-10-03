@@ -118,7 +118,7 @@ interface TreeGroup {
 interface ReleaseData {
   tree?: TreeGroup[];
   k3Relaunch?: { mode: "on" | "off"; approved: number; expired: number; rejected: number; stopOnly: { aircraft: string; proposal: string; t: string }[] };
-  k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] };
+  k3Hold?: { mode: "on" | "off"; nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[]; waits?: { flight: string; id: string; t: string }[] };
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
   filed: Filed[];
@@ -410,7 +410,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       ? "발권 gate 꺼짐(dispatch.json releaseGate) — 발권 없이도 배정합니다"
       : "일괄 확인을 하면 이때부터 발권한 FLIGHT만 배정합니다. 그 전까지는 발권 없이도 배정합니다";
   // K3 HOLD는 꺼졌거나 오작동이 센 때만 보인다(켜져 있고 0이면 보통 상태)
-  const k3Hold = data.k3Hold && (data.k3Hold.mode !== "on" || data.k3Hold.nuisance.length > 0 || data.k3Hold.miss.length > 0) ? data.k3Hold : null;
+  const k3Hold = data.k3Hold && (data.k3Hold.mode !== "on" || data.k3Hold.nuisance.length > 0 || data.k3Hold.miss.length > 0 || (data.k3Hold.waits?.length ?? 0) > 0) ? data.k3Hold : null;
   // K3 RELAUNCH(ATC-509)는 켜졌거나 센 기록이 있는 때만 보인다(꺼져 있고 0이면 보통 상태)
   const k3Re = data.k3Relaunch && (data.k3Relaunch.mode === "on" || data.k3Relaunch.approved + data.k3Relaunch.expired + data.k3Relaunch.rejected + data.k3Relaunch.stopOnly.length > 0) ? data.k3Relaunch : null;
   const attested = Object.entries(data.attested);
@@ -457,8 +457,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       {!data.gate.on && <p className="rls-note faint">{gateNote}</p>}
       {error && <p className="rls-error" role="alert">{error}</p>}
       {k3Hold && (
-        <p className="rls-note faint" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤">
-          K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length}
+        <p className="rls-note faint" title="DISPATCH가 K3 줄이 있는 FLIGHT를 allow 없이 보내지 않는 장치(설정 창 K3 HOLD). 오작동: nuisance = 효과 없는 K3 줄에 걸려 hold됨, miss = allow 없이 떠난 K3 FLIGHT가 classifier 거부로 멈춤, wait = LAUNCH 직전에 K3 entries를 못 만들어 기다린 launch 카드(ATC-506)">
+          K3 HOLD {k3Hold.mode} · 오작동 nuisance {k3Hold.nuisance.length} · miss {k3Hold.miss.length} · wait {k3Hold.waits?.length ?? 0}
           {k3Hold.miss.length > 0 && ` (${k3Hold.miss.map((m) => `${m.flight}@${m.aircraft}`).join(", ")})`}
         </p>
       )}
