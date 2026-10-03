@@ -355,7 +355,7 @@ K3 효과가 있는 작업 지시서의 FLIGHT는 그 효과의 classifier allow
 
 - **이유.** 받을 곳 없는 FLIGHT가 이제 말로 이유를 댄다: "K3: needs a fresh LAUNCH"와 고치는 길 한 줄(쉬는 AIRCRAFT를 STOP하거나 `k3Relaunch`를 켠다). DISPATCH 제외 사유와 `unserved[].k3`에 있다.
 - **카드.** `k3Relaunch`가 켜지면 FLEET PLAN이 `K3 RELAUNCH`("STOP <REGISTRATION> and LAUNCH it for <FLIGHT>")를 낸다. 조건: FLIGHT에 K3 entries가 있고(`k3LaunchOf`), 그 AIRPORT에 그 FLIGHT를 받을 ABSENT AIRCRAFT가 없고, 거기 AIRCRAFT 하나가 쉬는 중(백그라운드 세션, NORDO 아님)이고 열린 PR·STAND가 없고 LIMIT도 FUEL hold도 아님. 카드 하나에 AIRCRAFT 하나(가장 오래 쉰 것). 맞는 AIRCRAFT가 없으면 카드도 없다.
-- **승인.** 승인은 조건을 다시 보고, **STOP 전에** 발권이 아직 allow를 주는지(같은 본문 해시) 확인한 뒤, STOP하고 `k3OfFlight`의 entries로 `launchAircraft`를 부른다(`launchForCard`와 같은 함수). FLIGHT RECORDER의 두 줄(`stop`, `launch`)은 `proposal`에 카드 id를 싣는다.
+- **승인.** 승인은 조건을 다시 보고, **STOP 전에** 발권이 아직 allow를 주는지(같은 본문 해시) 확인한 뒤, STOP하고 `k3OfFlight`의 entries로 `launchAircraft`를 부른다(`launchForCard`와 같은 함수). 첫 프롬프트는 CREW BRIEFING과 그 FLIGHT의 DIRECT 지시서다(FLEET LAUNCH 라우트와 같다): DISPATCH는 K3 FLIGHT를 launch 카드에만 짝지워 라이브 세션에는 나중에도 넘기지 않기 때문이다. 지시서를 못 읽으면 아무것도 멈추지 않는다. 최근 `minDwellMin` 안에 승인한 FLIGHT에는 새 카드를 내지 않는다. FLIGHT RECORDER의 두 줄(`stop`, `launch`)은 `proposal`에 카드 id를 싣는다.
 - **끄는 스위치.** `dispatch.json`의 `k3Relaunch`, **기본 꺼짐**, 설정 창(K3 RELAUNCH, `fromThisApp`)에서만 바꾼다(`atcctl` 명령 없음). 깨진 파일은 꺼짐으로 읽는다. 꺼져 있으면 이유 문구 말고는 바뀌는 것이 없다.
 - **오작동 카운터**(RELEASE 화면 맨 위, 스위치가 켜졌거나 수가 0보다 클 때만 보임, `GET /api/releases`의 `k3Relaunch`), 7일: 승인한 카드, 만료·반대한 카드, *STOP만*은 카드의 STOP 뒤 `launchCardTimeoutMin` 안에 같은 카드 id의 LAUNCH 성공 줄이 없는 것.
 - **FLEET LAUNCH 버튼.** `flight`를 적은 `POST /api/fleet/:registration/launch`가 launch 카드와 같은 K3 entries를 만든다(`k3OfFlight`: 같은 `k3LaunchOf`, 같은 해시 검사, 화면이나 DUTY 채팅 발권만). 유효한 발권이 없으면 전과 같다.

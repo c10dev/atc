@@ -814,7 +814,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
       }
     }
     const { promptOf: _p, flight: _f, settings: _s, k3: _k, ...opts } = body; // 본문의 promptOf·flight·settings·k3는 옵션으로 넘기지 않는다(함수와 allow 항목은 서버만 만든다)
-        // ATC-509: FLIGHT를 적어 띄우면 launch 카드와 같은 K3 entries(같은 k3LaunchOf, 같은 해시 검사)를 준다. 발권이 없거나 본문이 바뀌었으면 entries 없이 전과 같다
+    // ATC-509: FLIGHT를 적어 띄우면 launch 카드와 같은 K3 entries(같은 k3LaunchOf, 같은 해시 검사)를 준다. 발권이 없거나 본문이 바뀌었으면 entries 없이 전과 같다
     const snap = await getSnapshot();
     const r = await launchAircraft(snap, reg, { ...opts, ...(withFlight ?? {}) }, "SUPERVISOR", undefined, withFlight ? k3OfFlight(snap, withFlight.flight) : undefined);
     if (!r.ok) return c.json({ error: r.error }, r.status as 400);

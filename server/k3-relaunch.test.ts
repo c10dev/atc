@@ -9,7 +9,7 @@ import type { AircraftView } from "./fleet.ts";
 import { type ExecContext, executionOf, type FleetInputs, FLEET_PLAN_DEFAULTS, fleetPlanOf, foldFleetPlan, fuelExpiryOf, PlanError } from "./fleet-plan.ts";
 import { computeActuals } from "./logbook.ts";
 import { K3_FRESH_WHY, k3CheckOf } from "./k3-allow.ts";
-import { k3RelaunchMisfiresOf } from "./k3-relaunch.ts";
+import { k3RelaunchLaunchOptionsOf, k3RelaunchMisfiresOf } from "./k3-relaunch.ts";
 import type { Snapshot, Ticket } from "./model.ts";
 import { type ReleaseChannel, type ReleaseView, releaseHashOf } from "./release.ts";
 import { k3OfFlight } from "./session-control.ts";
@@ -226,4 +226,16 @@ test("the FLEET LAUNCH route builds the same K3 entries as a launch card (same k
   assert.equal(k3OfFlight(snap(t, releasedBy(t, "screen", "stale-hash")), "ATC-509")!(ATCC), null);
   assert.equal(k3OfFlight(snap(t, releasedBy(t, "attested")), "ATC-509")!(ATCC), null);
   assert.equal(k3OfFlight(snap(t, releasedBy(t, "screen")), "ATC-999"), undefined);
+});
+
+test("the relaunched AIRCRAFT gets the FLIGHT: first prompt = CREW BRIEFING + the DIRECT brief, and the same FLIGHT is not stopped for again", () => {
+  const { steps } = executionOf(created(), {}, ctx());
+  const step = steps[1] as { flight: string };
+  const o = k3RelaunchLaunchOptionsOf(step.flight, "BRIEF: DIRECT\nATC-509 do the thing");
+  assert.equal(o.flight, "ATC-509");
+  const prompt = o.promptOf("CREW BRIEFING TEAM_H");
+  assert.ok(prompt.startsWith("CREW BRIEFING TEAM_H") && prompt.includes("Assignment follows") && prompt.includes("BRIEF: DIRECT"), prompt);
+  // 승인한 지 얼마 안 된 FLIGHT는 새 세션이 STAND를 쥘 때까지 또 멈추지 않는다
+  assert.equal(k3Cards(inputs({ k3Relaunched: new Set(["ATC-509"]) })).length, 0);
+  assert.equal(k3Cards(inputs({ k3Relaunched: new Set(["ATC-1"]) })).length, 1);
 });

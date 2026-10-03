@@ -1,4 +1,5 @@
 import type { FleetProposal } from "./fleet-plan.ts";
+import { launchWithFlightPromptOf } from "./fresh-start.ts";
 
 // K3 RELAUNCH의 오작동 수(ATC-509, docs/autonomy.md 원칙 5·C9). 순수 함수만.
 //   approved — 승인한 카드(실행 중·끝남·실패 모두)
@@ -39,3 +40,7 @@ export function k3RelaunchMisfiresOf(input: { proposals: readonly Pick<FleetProp
     stopOnly,
   };
 }
+
+// 새로 띄운 세션에 FLIGHT를 넘기는 옵션(ATC-509). allow만 받고 FLIGHT를 못 받으면 DISPATCH도 라이브 세션은 K3 FLIGHT에 짝지우지 않아(pairsOf: launch 카드만) 같은 STOP·LAUNCH를 되풀이한다.
+// FLEET LAUNCH 라우트와 같은 길: 첫 프롬프트 = CREW BRIEFING + DIRECT 지시서
+export const k3RelaunchLaunchOptionsOf = (flight: string, brief: string) => ({ flight, promptOf: (briefing: string) => launchWithFlightPromptOf(briefing, brief) });

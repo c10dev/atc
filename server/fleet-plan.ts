@@ -100,6 +100,7 @@ export interface FleetInputs {
   repositions?: (RepositionEvent & { baseChanged?: boolean })[];
   // K3 RELAUNCH(ATC-509): dispatch.json k3Relaunch가 "on"이면 true. 없거나 false면 카드를 내지 않는다
   k3Relaunch?: boolean;
+  k3Relaunched?: ReadonlySet<string>; // 최근 minDwell 안에 K3 RELAUNCH를 승인한 FLIGHT. 같은 FLIGHT로 되풀이해 멈추지 않는다
 }
 
 const MIN = 60_000;
@@ -336,7 +337,7 @@ export function k3RelaunchExcludedOf(
   return null;
 }
 export function k3RelaunchOf(
-  i: Pick<FleetInputs, "aircraft" | "plan" | "sessions" | "lastActive" | "nordo" | "openPrs" | "groundStops" | "fuelAccounts" | "launchAccount" | "now" | "k3Relaunch">,
+  i: Pick<FleetInputs, "aircraft" | "plan" | "sessions" | "lastActive" | "nordo" | "openPrs" | "groundStops" | "fuelAccounts" | "launchAccount" | "now" | "k3Relaunch" | "k3Relaunched">,
   assigned: ReadonlySet<string>,
   skip: ReadonlySet<string> = new Set(),
 ): FleetCandidate[] {
@@ -346,7 +347,7 @@ export function k3RelaunchOf(
   const taken = new Set<string>(skip);
   const usable = (a: AircraftView) => !a.retired && !a.aog;
   for (const u of [...waiting].sort((a, b) => a.flight.localeCompare(b.flight))) {
-    if (i.groundStops.has(u.airport)) continue;
+    if (i.groundStops.has(u.airport) || i.k3Relaunched?.has(u.flight)) continue;
     // 그 AIRPORT에 이 FLIGHT를 받을 수 있는 ABSENT AIRCRAFT(DISPATCH가 launch 카드로 쓰는 것)가 있으면 그쪽이 먼저다
     const absent = i.aircraft.some((a) => a.base === u.airport && usable(a) && a.status === "absent" && !a.restarting && !i.nordo.has(a.registration) && canServe(a.registration, a.ratings, a.complement, u));
     if (absent) continue;
