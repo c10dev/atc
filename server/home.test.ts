@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { homeAlertsOf, prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf, stuckRowsOf } from "../web/src/home-rows.ts";
+import { prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf } from "../web/src/home-rows.ts";
 import { proposalAskOf } from "./duty-card.ts";
 import { type FollowInput, followRowOf } from "./follow.ts";
 import type { Milestones } from "./milestones.ts";
 import type { Ticket } from "./model.ts";
 import { type Proposal, proposalsOfFlight } from "./proposals.ts";
-import { type QueueInput, supervisorQueueOf } from "./supervisor-queue.ts";
+import { actionableAlertsOf, type QueueInput, stuckRowsOf, supervisorQueueOf } from "./supervisor-queue.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
 
 // HOME(ATC-377)의 순수 부분: 줄 고르기, 승인 문구, 큐 줄의 card, FLIGHT 배정 기록, FOLLOW 줄의 proposalInfo
@@ -15,7 +15,7 @@ const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 
 const alert = (key: string, level: SupervisorAlert["level"], dest: SupervisorAlert["dest"]): SupervisorAlert => ({ key, level, dest, group: "alert", cue: null, aircraft: null, flight: null, text: key, next: "", link: "#home", since: null }) as SupervisorAlert;
 
-test("homeAlertsOf: WARNING·CAUTION 가운데 조건(alerts)만, 막힌 줄(follow|stuck)과 큐·로그·낮은 등급은 뺀다", () => {
+test("actionableAlertsOf: WARNING·CAUTION 가운데 조건(alerts)만, 막힌 줄(follow|stuck)과 큐·로그·낮은 등급은 뺀다", () => {
   const items = [
     alert("alert|a", "warning", "alerts"),
     alert("alert|b", "caution", "alerts"),
@@ -25,8 +25,8 @@ test("homeAlertsOf: WARNING·CAUTION 가운데 조건(alerts)만, 막힌 줄(fol
     alert("alert|c", "advisory", "alerts"),
     alert("alert|d", null, "alerts"),
   ];
-  assert.deepEqual(homeAlertsOf(items).map((a) => a.key), ["alert|a", "alert|b"]);
-  assert.deepEqual(homeAlertsOf([]), []);
+  assert.deepEqual(actionableAlertsOf(items).map((a) => a.key), ["alert|a", "alert|b"]);
+  assert.deepEqual(actionableAlertsOf([]), []);
 });
 
 test("stuckRowsOf: 끝나지 않은 막힌 줄만, 같은 FLIGHT는 번들이 겹쳐도 한 번", () => {

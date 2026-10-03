@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useRef, useState } from "react";
+import { canCancel, canRecall } from "../../server/flight-brake.ts";
 import { apiSend } from "./api.ts";
 import { flightNumber } from "./aviation.ts";
 import "./FlightBrakes.css";
@@ -20,9 +21,7 @@ export interface FreshVerdict {
 }
 
 const RECALL_MAX = 300;
-// RECALL은 보냈거나(sent) READBACK 받은(accepted) FLIGHT PLAN, 그리고 STAND 없이 DEPARTED한 것에만
-export const canRecall = (p: Pick<BrakeCard, "status" | "departedStand" | "departedVia">) => p.status === "sent" || p.status === "accepted" || (p.status === "departed" && !p.departedStand && p.departedVia === "readback");
-export const canCancel = (p: Pick<BrakeCard, "status">) => p.status === "approved";
+export { canCancel, canRecall };
 
 async function post(path: string, body: unknown): Promise<string | null> {
   try {

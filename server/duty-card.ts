@@ -65,6 +65,11 @@ export function actionsOf(item: Pick<QueueItem, "kind" | "key">, airports: reado
     case "NEEDS YOU":
     case "GO":
       return [{ type: "link", label: "AIRCRAFT 보기(FLEET)", hash: "#fleet" }];
+    case "ALERT":
+    case "STUCK":
+    case "EFFECT":
+    case "CLOSE":
+      return [{ type: "link", label: "HOME에서 보기", hash: "#home" }]; // HOME의 한 목록(ATC-454)이 줄마다 단추를 둔다
   }
 }
 

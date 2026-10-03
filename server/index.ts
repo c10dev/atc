@@ -76,7 +76,7 @@ import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
 import { mountLeaks } from "./leaks-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
-import { mountSupervisorQueue } from "./supervisor-queue-run.ts";
+import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
 import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
@@ -154,6 +154,7 @@ async function tick() {
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
+    if (isWarm(next)) await supervisorQueueNow(async () => next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
     const summary = isWarm(next) ? runSummary(next) : null;
     if (summary) for (const l of summaryListeners) l(summary);
     radioFeed.poll();
@@ -280,7 +281,11 @@ app.get("/api/supervisor-alerts", (c) => c.json({ items: currentAlerts() })); //
 app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)) : c.json({ error: "snapshot not ready" }, 503))); // 끝 규칙이 뺀 알림과 24시간 안에 돌아온 수, 같은 상태의 CAUTION 전후(읽기만, ATC-385)
 
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
-app.get("/api/supervisor-summary", (c) => (current ? c.json(summaryNow(current)) : c.json({ error: "snapshot not ready" }, 503)));
+app.get("/api/supervisor-summary", async (c) => {
+  if (!current) return c.json({ error: "snapshot not ready" }, 503);
+  await supervisorQueueNow(async () => current!, () => update.status()).catch(() => null); // todo는 큐가 센 수(ATC-454)
+  return c.json(summaryNow(current));
+});
 
 // ?topics=snapshot,alert,version,summary,radio,duty: 받을 이벤트를 고른다. 없으면 summary·radio·duty를 뺀 전부(지금까지와 같다). ping은 늘 보낸다. 모르는 이름은 400
 app.get("/api/events", (c) => {

@@ -7,7 +7,7 @@ import type { QueueInput, QueueItem } from "./supervisor-queue.ts";
 export type LeakWhy = "user" | "check" | "escalate" | "hold" | "mode" | "tier-unknown" | "teams-merge-off";
 
 // 큐 항목 + 분류에 필요한 덤. 큐 자체(QueueItem)는 건드리지 않고 leaks-run이 덧붙인다
-export interface LeakItem extends QueueItem {
+export interface LeakItem extends Omit<QueueItem, "primary" | "flight"> {
   flight?: string | null;
   landWhy?: LeakWhy | null; // LANDING: SUPERVISOR가 착륙시키는 이유(land-by.ts)
   prompt?: boolean; // NEEDS YOU: 도구 승인 프롬프트(needs가 "approve …")
@@ -29,7 +29,7 @@ export const CONTROLS = {
   RTS: { id: "RTS", built: true }, // RTS 건강 검사와 ROLLBACK(이미 있다). D1은 이것이 있어 사람이 기다릴 이유가 없다
 } as const satisfies Record<string, Control>;
 
-export type ExemptReason = "K1" | "K2" | "K3" | "brake" | "breaker";
+export type ExemptReason = "K1" | "K2" | "K3" | "brake" | "breaker" | "signal";
 export type Verdict = { leak: true; gate: string; control: Control } | { leak: false; reason: ExemptReason; gate: string | null };
 
 const leak = (gate: string, control: keyof typeof CONTROLS): Verdict => ({ leak: true, gate, control: CONTROLS[control] });
@@ -65,6 +65,12 @@ export function classify(i: LeakItem): Verdict {
       return leak("P16", "C14"); // 제안이 SUPERVISOR의 발권을 기다린다(ATC-401). 센다: 기다림이 보이게
     case "GO":
       return exempt("K3", "P8");
+    // HOME의 한 목록에 더한 종류(ATC-454)는 승인 단계가 아니라 SUPERVISOR가 읽는 신호다. 통제로 없앨 사람의 한 걸음이 아니므로 leak으로 세지 않는다
+    case "ALERT":
+    case "STUCK":
+    case "EFFECT":
+    case "CLOSE":
+      return exempt("signal", null);
   }
 }
 

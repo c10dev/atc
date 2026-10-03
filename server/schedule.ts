@@ -8,6 +8,7 @@ import { flightNumber } from "./callsign.ts";
 import { config } from "./config.ts";
 import { classLabel, classOf, FLIGHT_TYPES, type FlightType, RATINGS, type Rating, WAKES, type Wake } from "./crew.ts";
 import { type Crosscheck, CrosscheckError, type CrosscheckLine, type CrosscheckVerdict, crosscheckRateOf, examplesOf, type HumanDecision, markOf, oneClickOf, parseCrosscheck, type Via, viaOf } from "./crosscheck.ts";
+import { closeManualOf } from "./close-manual.ts";
 import { candidateTeamsOf, DONE_STATES, isCandidateTicket, loadDispatchConfig, PRIORITY_NAME } from "./dispatch.ts";
 import { teamOfKey } from "./linear-keys.ts";
 import { type AircraftView, fleetView, loadFleet } from "./fleet.ts";
@@ -937,10 +938,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     const candidates = candidatesOf(mineTickets, ops, mine, now, tailSignals, lp.milestones);
     // SUPERVISOR가 Linear에서 직접 Done으로 바꿀 것: 승인된 CLOSE, 그림자 운용이면 "승인했을 것"(7일 안) 중 아직 열린 이슈
     const byKeyAll = new Map(s.tickets.map((t) => [t.key, t]));
-    const closeManual = ops
-      .filter((x) => x.kind === "CLOSE" && (x.status === "approved" || (x.status === "agreed" && now - Date.parse(x.statusAt) < 7 * 86_400_000)))
-      .filter((x) => !DONE_STATES.has(byKeyAll.get(x.flight ?? "")?.stateType ?? "completed"))
-      .sort((a, b) => a.statusAt.localeCompare(b.statusAt));
+    const closeManual = closeManualOf(ops, s.tickets, now);
     // NEW 초안의 관계·비슷한 FLIGHT도 화면이 제목과 링크를 보이게 넣는다
     const newKeys = [...open, ...inProgress, ...recent].filter((x) => x.kind === "NEW").flatMap((x) => {
       const p = x.payload as NewPayload;
@@ -1000,10 +998,7 @@ export function mountSchedule(app: Hono, getSnapshot: () => Promise<Snapshot>, p
     const reported = loadSlipsReported();
     const slips = slipList ? slipList.map((x) => ({ ...x, reportedAt: reported.reported[x.key] ?? null })) : null;
     const byKey = new Map(s.tickets.map((t) => [t.key, t]));
-    const closeManual = ops
-      .filter((x) => x.kind === "CLOSE" && (x.status === "approved" || (x.status === "agreed" && now - Date.parse(x.statusAt) < 7 * 86_400_000)))
-      .filter((x) => !DONE_STATES.has(byKey.get(x.flight ?? "")?.stateType ?? "completed"))
-      .sort((a, b) => a.statusAt.localeCompare(b.statusAt))
+    const closeManual = closeManualOf(ops, s.tickets, now)
       .map((x) => ({ id: x.id, flight: x.flight, status: x.status, statusAt: x.statusAt, title: byKey.get(x.flight ?? "")?.title ?? null, url: byKey.get(x.flight ?? "")?.url ?? null, pr: (x.payload as ClosePayload).pr }));
     return c.json({ mode: loadScheduleMode(), slips, closeManual });
   });

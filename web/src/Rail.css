@@ -148,6 +148,10 @@
   font: 700 var(--text-2xs)/1.5 var(--mono);
   text-align: center;
 }
+/* HOME 배지는 WARNING 줄이 있을 때만 알림 톤(ATC-454). 색만 바꾼다 */
+.rail-badge[data-tone="alert"] {
+  background: var(--alert);
+}
 /* HELP 메뉴: 레일 옆으로 열린다 */
 .rail-menu {
   position: relative;

@@ -25,6 +25,7 @@ export interface SupervisorSummary {
   rts: { result: RtsRecord["result"]; at: string; from: string | null; to: string } | null;
   working: { aircraft: number; control: number };
   needsYou: string[]; // 스스로 사람을 기다리는 팀 AIRCRAFT의 이름(ATC-374, waiting-person.ts). 판정을 기다리는 DISPATCH 카드는 여기 없고 pending.dispatch로만 센다
+  todo?: number; // ATC-454: SUPERVISOR QUEUE의 항목 수(HOME·레일 배지와 같은 수, v: 1에 더한 칸). summaryOf는 채우지 않고 summaryNow가 채운다
   sinceLook?: SinceLook; // ATC-383: 마지막으로 본 뒤 바뀐 것의 수와 한 줄(v: 1에 더한 칸). summaryOf는 채우지 않고 summaryNow가 채운다
 }
 
