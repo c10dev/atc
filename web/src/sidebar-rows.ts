@@ -130,15 +130,15 @@ export function aircraftGroups(items: readonly AircraftInput[], airports: readon
 }
 
 // RELEASE의 사이드바는 목록이 아니라 구역 색인이다(ATC-423, docs/layout.md Q7). 고르면 주소가 `#release/<구역>`이 되고 RELEASE가 그 구역으로 스크롤한다.
-// 구역 나눔(후보 · 발권 전 Todo · 나머지)은 화면과 사이드바가 같은 함수를 쓴다
+// 구역은 발권 순서(상위 이슈마다 나무 + SCHEDULE NEW 제안) · 발권 전 Todo · 최근 발권이고, 수는 화면과 사이드바가 같은 함수로 센다
 export const RELEASE_SECTIONS = [
-  { id: "candidates", label: "후보", hash: "release/candidates" },
+  { id: "order", label: "발권 순서", hash: "release/order" },
   { id: "unreleased", label: "Todo 발권 전", hash: "release/unreleased" },
   { id: "recent", label: "최근 발권", hash: "release/recent" },
 ] as const;
 export type ReleaseSection = (typeof RELEASE_SECTIONS)[number]["id"];
 
-// 발권 나무(server/release-tree.ts)의 줄을 구역으로 가른다: 쏠 수 있는 줄(fire)은 후보, 이미 Todo인 줄(release)은 발권 전, 나머지(대기·진행 중)는 따로. 나무 순서를 지킨다
+// 발권 나무(server/release-tree.ts)의 줄을 가른다: 쏠 수 있는 줄(fire)은 후보, 이미 Todo인 줄(release)은 발권 전(`Todo 발권 전` 구역), 나머지(대기·진행 중)는 따로. 나무 순서를 지킨다. 화면의 나무는 모든 줄을 그리고, 이 가름은 `Todo 발권 전`과 수에 쓴다
 export function partitionRelease<T extends { fire: "fire" | "release" | null; children: T[] }>(groups: readonly { rows: readonly T[] }[]): { candidates: T[]; unreleased: T[]; rest: T[] } {
   const out: { candidates: T[]; unreleased: T[]; rest: T[] } = { candidates: [], unreleased: [], rest: [] };
   const walk = (rows: readonly T[]) => {
@@ -151,15 +151,21 @@ export function partitionRelease<T extends { fire: "fire" | "release" | null; ch
   return out;
 }
 
-// GET /api/releases 한 덩이에서 구역마다 수를 센다(후보는 SCHEDULE NEW 제안을 더한다). 읽지 못하면 빈 수
+// 나무가 그리는 줄 수(중첩 포함). 끝난 이슈는 줄이 아니라 그룹의 끝남 수에 든다
+export function treeSize(groups: readonly { rows: readonly { children: readonly unknown[] }[] }[]): number {
+  const count = (rows: readonly { children: readonly unknown[] }[]): number => rows.reduce((n, r) => n + 1 + count(r.children as readonly { children: readonly unknown[] }[]), 0);
+  return groups.reduce((n, g) => n + count(g.rows), 0);
+}
+
+// GET /api/releases 한 덩이에서 구역마다 수를 센다(발권 순서는 나무의 줄에 SCHEDULE NEW 제안을 더한다). 읽지 못하면 빈 수
 export function releaseSectionCounts(j: unknown): { id: ReleaseSection; label: string; hash: string; count: number }[] {
   const d = (j ?? {}) as { tree?: { rows: { fire: "fire" | "release" | null; children: never[] }[] }[]; proposals?: unknown[]; recent?: unknown[] };
   const p = partitionRelease(Array.isArray(d.tree) ? d.tree : []);
-  const count = { candidates: p.candidates.length + (Array.isArray(d.proposals) ? d.proposals.length : 0), unreleased: p.unreleased.length, recent: Array.isArray(d.recent) ? d.recent.length : 0 };
+  const count = { order: treeSize(Array.isArray(d.tree) ? d.tree : []) + (Array.isArray(d.proposals) ? d.proposals.length : 0), unreleased: p.unreleased.length, recent: Array.isArray(d.recent) ? d.recent.length : 0 };
   return RELEASE_SECTIONS.map((s) => ({ ...s, count: count[s.id] }));
 }
 
-// 지금 주소의 RELEASE 구역(#release/candidates …). 없거나 모르면 null
+// 지금 주소의 RELEASE 구역(#release/order …). 없거나 모르면 null
 export function releaseSectionOf(hash: string): ReleaseSection | null {
   const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
   return RELEASE_SECTIONS.find((s) => s.id === sub)?.id ?? null;
