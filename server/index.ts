@@ -50,7 +50,8 @@ import { pruneRecords, record } from "./recorder.ts";
 import type { Snapshot } from "./model.ts";
 import { mountDetail } from "./detail-run.ts";
 import { mountIdeas } from "./ideas-run.ts";
-import { mountFlightState } from "./flight-state-run.ts";
+import { arrivedOpenOf } from "./arrived-open.ts";
+import { defaultStateDeps, mountFlightState } from "./flight-state-run.ts";
 import { mountFollow } from "./follow-run.ts";
 import { mountPrMerge } from "./pr-merge-run.ts";
 import { mountSchedule } from "./schedule.ts";
@@ -217,7 +218,8 @@ mountSchedule(app, getSnapshot, allProposals);
 mountAutonomyAuto(app);
 mountPrMerge(app, getSnapshot); // PR MERGE 버튼(DUTY G2): SUPERVISOR 클릭만, user 등급 CLEARED PR만 GitHub에 머지한다
 mountReleases(app, getSnapshot); // 발권 기록(ATC-362): 화면 클릭·일괄 확인(Origin 검사)과 attested 증언
-mountFlightState(app); // FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다
+// FLIGHT 상태 버튼(DUTY G3): SUPERVISOR 클릭만 Linear에 쓴다. closable(ATC-473): STAND 없는 ARRIVED인데 아직 started인 FLIGHT만 Done으로 옮길 수 있다(HOME의 ARRIVED 줄과 같은 목록)
+mountFlightState(app, { ...defaultStateDeps, closable: async (key) => arrivedOpenOf((await getSnapshot()).tickets, loadLogbook()).some((a) => a.flight === key) });
 mountDetail(app, getSnapshot); // FLIGHT·PR drawer(DUTY G1): 읽기 전용, 60초 캐시
 mountIdeas(app); // IDEAS 서랍(DUTY G4): atc 저장소 idea 이슈 읽기 전용, 60초 캐시
 mountFollowing(app, getSnapshot);

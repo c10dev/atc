@@ -15,6 +15,7 @@ const NEED_BY_KIND: Record<string, string> = {
   UNDELIVERED: "닿지 못한 글을 손으로 전합니다",
   GO: "CAPTAIN이 SUPERVISOR의 go를 기다립니다",
   BACKLOG: "atc가 올린 제안을 발권하거나 버립니다",
+  ARRIVED: "ARRIVED인데 Linear 이슈가 아직 진행 중입니다: 확인하고 Done으로 옮깁니다",
 };
 export const homeNeedOf = (i: { kind: string; need?: string }): string => i.need ?? NEED_BY_KIND[i.kind] ?? i.kind;
 

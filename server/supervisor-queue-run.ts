@@ -9,7 +9,9 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import { accountFolders } from "./accounts.ts";
 import { allClearances } from "./clearances.ts";
 import { allProposals } from "./proposals.ts";
+import { arrivedOpenOf } from "./arrived-open.ts";
 import { closeManualOf, closePrOf } from "./close-manual.ts";
+import { loadLogbook } from "./logbook.ts";
 import { foldEffects } from "./effect-check.ts";
 import { readEffectLines } from "./effect-store.ts";
 import { followNow } from "./follow-run.ts";
@@ -61,6 +63,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   });
   return {
     alerts: currentAlerts(),
+    arrived: arrivedOpenOf(s.tickets, loadLogbook()),
     follow,
     effects,
     closes,

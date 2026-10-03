@@ -30,7 +30,7 @@ test("empty input gives an empty queue and zero counts for every kind", () => {
   const v = supervisorQueueView(empty(), NOW);
   assert.equal(v.count, 0);
   assert.deepEqual(v.items, []);
-  assert.equal(Object.keys(v.counts).length, 15);
+  assert.equal(Object.keys(v.counts).length, 16);
   assert.ok(Object.values(v.counts).every((n) => n === 0));
 });
 

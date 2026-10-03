@@ -175,6 +175,7 @@ export function homeFilterOfKind(kind: string): Exclude<HomeFilter, "all"> {
     case "EFFECT":
       return "effect";
     case "CLOSE":
+    case "ARRIVED":
       return "done";
     default:
       return "queue";
