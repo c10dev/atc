@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CHIP_WORD, clampPanelHeight, controlRadioOf, DEFAULT_PANEL_H, isPanelToggleKey, MIN_PANEL_H, narrowChipsOf, needingCount, opensControlPanel, panelChipsOf, storedPanelHeight } from "./control-panel.ts";
+import { brakesTabWord, CHIP_WORD, clampPanelHeight, controlRadioOf, DEFAULT_PANEL_H, isPanelToggleKey, MIN_PANEL_H, narrowChipsOf, needingCount, nextPanelTab, opensControlPanel, panelChipsOf, storedPanelHeight, storedPanelTab } from "./control-panel.ts";
 import type { StripChip, StripState } from "./control-strip.ts";
 import type { Transmission } from "./radio.ts";
 
@@ -59,6 +59,23 @@ test("controlRadioOf: 그 세션이 보내거나 받은 교신의 끝 limit개",
   assert.deepEqual(controlRadioOf(all, "OCC").map((t) => t.id), ["1", "3", "4"]);
   assert.deepEqual(controlRadioOf(all, "OCC", 2).map((t) => t.id), ["3", "4"]);
   assert.deepEqual(controlRadioOf(all, "MCC"), []);
+});
+
+test("탭: 저장된 값, 화살표 이동, BRAKES 글자(ATC-455)", () => {
+  assert.equal(storedPanelTab("brakes"), "brakes");
+  assert.equal(storedPanelTab("control"), "control");
+  for (const r of [null, undefined, "", "Brakes", "output"]) assert.equal(storedPanelTab(r), "control", String(r));
+  assert.equal(nextPanelTab("control", "ArrowRight"), "brakes");
+  assert.equal(nextPanelTab("brakes", "ArrowRight"), "control"); // 둘레를 돈다
+  assert.equal(nextPanelTab("control", "ArrowLeft"), "brakes");
+  assert.equal(nextPanelTab("brakes", "Home"), "control");
+  assert.equal(nextPanelTab("control", "End"), "brakes");
+  assert.equal(nextPanelTab("control", "Enter"), null);
+  assert.equal(brakesTabWord(0, 0), "");
+  assert.equal(brakesTabWord(1, 0), "1 STOP");
+  assert.equal(brakesTabWord(0, 1), "1 STOP");
+  assert.equal(brakesTabWord(1, 2), "3 STOPS");
+  assert.equal(brakesTabWord(-1, 0), "");
 });
 
 test("opensControlPanel: 옛 #fleet/control과 새 #control", () => {

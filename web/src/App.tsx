@@ -38,7 +38,7 @@ const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("
 const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
-const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
+const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot }>(() => import("./views/Home.tsx"), "Home");
 const Docs = lazyTab<Record<string, never>>(() => import("./views/Docs.tsx"), "Docs");
 // 서랍은 처음 열 때 불러온다(Markdown 렌더러까지 그 청크에)
 const Drawer = lazy(() => import("./Drawer.tsx"));
@@ -326,13 +326,13 @@ export function App({ build }: { build: string }) {
               {/* 처음 도착하는 탭(HOME, ATC-377)의 맨 위 */}
               {tab === "home" && <SinceLook refreshKey={snapshot.at.slice(0, 16)} />}
               <TabBoundary key={tab} stale={showNewVersion(build, serverBuild, null)}>
-                <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now, () => setSettingsOpen(true))}</Suspense>
+                <Suspense fallback={<TabLoading />}>{tabView(tab, snapshot, idx, now)}</Suspense>
               </TabBoundary>
             </div>
           )}
         </main>
         <section className="panel-area">
-          <ControlPanel snapshot={snapshot} now={now} openSignal={controlSignal} />
+          <ControlPanel snapshot={snapshot} now={now} openSignal={controlSignal} onOpenSettings={() => setSettingsOpen(true)} />
         </section>
       </div>
       {globeOpen && snapshot && (
@@ -368,7 +368,7 @@ export function App({ build }: { build: string }) {
 }
 
 // 탭 이름 → view. 하위 경로(#docs/requesting)는 그 view가 location.hash에서 읽는다.
-function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSettings: () => void) {
+function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number) {
   const refreshKey = snapshot.at.slice(0, 16);
   switch (tab) {
     case "flights":
@@ -382,11 +382,11 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
     case "release":
       return <Release refreshKey={refreshKey} />;
     case "home":
-      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} />;
     case "docs":
       return <Docs />;
     default:
-      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} onOpenSettings={onOpenSettings} />;
+      return <Home refreshKey={refreshKey} now={now} snapshot={snapshot} />;
   }
 }
 

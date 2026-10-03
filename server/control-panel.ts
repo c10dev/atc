@@ -44,3 +44,24 @@ export function controlRadioOf(txs: readonly Transmission[], name: string, limit
 
 // 어느 주소가 패널을 여는가: 옛 #fleet/control(설정 창, 서버 경보 링크)과 새 #control
 export const opensControlPanel = (hash: string): boolean => /^#?(?:fleet\/)?control$/.test(hash);
+
+// 아래 패널의 탭(ATC-455, S1c): CONTROL 옆에 BRAKES. VS Code의 PROBLEMS·OUTPUT·TERMINAL 탭처럼 머리에 나란히 선다
+export const PANEL_TABS = ["control", "brakes"] as const;
+export type PanelTab = (typeof PANEL_TABS)[number];
+export const PANEL_TAB_LABEL: Record<PanelTab, string> = { control: "CONTROL", brakes: "BRAKES" };
+// 저장된 값(문자열)을 읽는다. 모르는 값이면 CONTROL
+export const storedPanelTab = (raw: string | null | undefined): PanelTab => ((PANEL_TABS as readonly string[]).includes(raw ?? "") ? (raw as PanelTab) : "control");
+// 탭 줄의 화살표 키: ←→는 둘레를 돌고 Home·End는 양 끝. 다른 키는 null(탭 줄이 가져가지 않는다)
+export function nextPanelTab(cur: PanelTab, key: string): PanelTab | null {
+  const i = PANEL_TABS.indexOf(cur);
+  if (key === "ArrowRight") return PANEL_TABS[(i + 1) % PANEL_TABS.length]!;
+  if (key === "ArrowLeft") return PANEL_TABS[(i + PANEL_TABS.length - 1) % PANEL_TABS.length]!;
+  if (key === "Home") return PANEL_TABS[0]!;
+  if (key === "End") return PANEL_TABS[PANEL_TABS.length - 1]!;
+  return null;
+}
+// 접힌 머리의 BRAKES 탭 옆 글자: 실제로 걸린 GROUND STOP과 수동 출발 중지의 합. 없으면 빈 글자(탭은 아무것도 덧붙이지 않는다). 색만으로 알리지 않는다: `1 STOP`, `2 STOPS`
+export function brakesTabWord(groundStops: number, manualStops: number): string {
+  const n = Math.max(0, Math.trunc(groundStops)) + Math.max(0, Math.trunc(manualStops));
+  return n === 0 ? "" : `${n} ${n === 1 ? "STOP" : "STOPS"}`;
+}

@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CONTROL_POLL_MS, type ControlList } from "../../server/control-view.ts";
-import { CHIP_WORD, clampPanelHeight, controlRadioOf, narrowChipsOf, needingCount, PANEL_STEP, panelChipsOf, isPanelToggleKey, storedPanelHeight } from "../../server/control-panel.ts";
+import { brakesTabWord, CHIP_WORD, clampPanelHeight, controlRadioOf, narrowChipsOf, needingCount, nextPanelTab, PANEL_STEP, PANEL_TAB_LABEL, PANEL_TABS, type PanelTab, panelChipsOf, isPanelToggleKey, storedPanelHeight, storedPanelTab } from "../../server/control-panel.ts";
 import { controlStripOf, type StripChip } from "../../server/control-strip.ts";
 import { allControlDown } from "../../server/control-bulk.ts";
 import type { Snapshot } from "../../server/model.ts";
@@ -12,14 +12,18 @@ import { timeAgo } from "./derive.ts";
 import { Icon } from "./kit/Icon.tsx";
 import { threadsOf } from "./radio-log.ts";
 import { formatClock, useSettings } from "./settings.ts";
+import { useAtfm } from "./views/Atfm.tsx";
+import { Brakes } from "./views/Brakes.tsx";
 import { ControlSessions } from "./views/fleet/ControlSessions.tsx";
 import "./ControlPanel.css";
 
-// 아래 CONTROL 패널(ATC-445, docs/layout.md 7.2·Z5). 접힌 한 줄 머리가 옛 CONTROL 띠를 대신하고, 열면 CONTROL SESSIONS 표와 고른 세션의 최근 교신이 보인다.
+// 아래 패널(ATC-445, docs/layout.md 7.2·Z5). 접힌 한 줄 머리가 옛 CONTROL 띠를 대신하고, 열면 CONTROL SESSIONS 표와 고른 세션의 최근 교신이 보인다.
+// 머리에 탭이 둘이다(ATC-455, S1c): CONTROL과 BRAKES. BRAKES 탭의 몸통은 예전 HOME의 brake 줄(views/Brakes.tsx)이라 어느 화면에서든 한 번에 닿는다.
 // 계산(칩 순서·OK n·높이 한계·단축키)은 server/control-panel.ts(순수). 여기는 그리기와 열고 닫기만 한다. 스스로 열지 않는다(design-language 원칙 1).
 // 읽기: 머리의 칩은 CONTROL_POLL_MS마다(숨겨진 탭은 건너뜀). 표(ControlSessions)와 교신은 열려 있는 동안만 읽는다.
 
 const HEIGHT_KEY = "atc.controlPanelHeight";
+const TAB_KEY = "atc.controlPanelTab";
 const NARROW = "(max-width: 860px)";
 const RADIO_WINDOW_MS = 6 * 3_600_000;
 
@@ -33,6 +37,21 @@ function storedHeight(): number {
 function saveHeight(h: number) {
   try {
     localStorage.setItem(HEIGHT_KEY, String(h));
+  } catch {
+    // 저장소를 못 쓰면 이번 탭에서만 기억한다
+  }
+}
+
+function storedTab(): PanelTab {
+  try {
+    return storedPanelTab(localStorage.getItem(TAB_KEY));
+  } catch {
+    return "control";
+  }
+}
+function saveTab(t: PanelTab) {
+  try {
+    localStorage.setItem(TAB_KEY, t);
   } catch {
     // 저장소를 못 쓰면 이번 탭에서만 기억한다
   }
@@ -116,10 +135,15 @@ function Radio({ name }: { name: string | null }) {
   );
 }
 
-export function ControlPanel({ snapshot, now, openSignal }: { snapshot: Snapshot | null; now: number; openSignal: number }) {
+export function ControlPanel({ snapshot, now, openSignal, onOpenSettings }: { snapshot: Snapshot | null; now: number; openSignal: number; onOpenSettings: () => void }) {
   const [list, setList] = useState<ControlList | null>(controlMemo.list);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTabState] = useState<PanelTab>(storedTab);
+  const refreshKey = snapshot?.at.slice(0, 16) ?? "";
+  // 접힌 머리의 BRAKES 글자(걸린 정지 수)도 이 읽기에서 온다. 몸통의 ATFM 패널도 같은 것을 쓴다
+  const atfm = useAtfm(refreshKey);
+  const tabRefs = useRef<Partial<Record<PanelTab, HTMLButtonElement | null>>>({});
   const [height, setHeight] = useState(storedHeight);
   const narrow = useNarrow();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -140,10 +164,17 @@ export function ControlPanel({ snapshot, now, openSignal }: { snapshot: Snapshot
   }, []);
   const chips = useMemo(() => panelChipsOf(controlStripOf(list?.sessions, snapshot?.sessions, now)), [list, snapshot, now]);
 
-  // 주소(#fleet/control, #control)가 열라고 하면 연다. App이 신호를 올린다
+  const setTab = useCallback((t: PanelTab) => {
+    setTabState(t);
+    saveTab(t);
+  }, []);
+  // 주소(#fleet/control, #control)가 열라고 하면 CONTROL 탭으로 연다. App이 신호를 올린다
   useEffect(() => {
-    if (openSignal > 0) setOpen(true);
-  }, [openSignal]);
+    if (openSignal > 0) {
+      setTab("control");
+      setOpen(true);
+    }
+  }, [openSignal, setTab]);
   // Ctrl+`: 열고 닫는다
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -164,10 +195,30 @@ export function ControlPanel({ snapshot, now, openSignal }: { snapshot: Snapshot
     }
   };
 
-  const pick = useCallback((name: string) => {
-    setSelected(name);
-    setOpen(true);
-  }, []);
+  const pick = useCallback(
+    (name: string) => {
+      setSelected(name);
+      setTab("control");
+      setOpen(true);
+    },
+    [setTab],
+  );
+  // 탭: 닫혀 있으면 그 탭으로 열고, 열려 있는 탭을 다시 누르면 접는다(VS Code의 패널처럼)
+  const pickTab = (t: PanelTab) => {
+    if (open && t === tab) setOpen(false);
+    else {
+      setTab(t);
+      setOpen(true);
+    }
+  };
+  // 탭 줄: ←→ Home End로 옮기고 초점도 따라간다(탭 줄에는 Tab이 한 번만 선다)
+  const onTabKey = (e: React.KeyboardEvent) => {
+    const next = nextPanelTab(tab, e.key);
+    if (!next) return;
+    e.preventDefault();
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  };
 
   // 높이: 위쪽 가장자리를 끌거나(마우스·손가락) 화살표 키로. 바꿀 때마다 이 브라우저에 기억한다
   const resize = (h: number, save = true) => {
@@ -197,22 +248,44 @@ export function ControlPanel({ snapshot, now, openSignal }: { snapshot: Snapshot
   const nar = narrowChipsOf(chips);
   const shown = narrow ? nar.shown : chips;
   const recovery = allControlDown(list?.sessions);
-  // 아직 못 읽었거나 옛 서버라 세션이 없으면 머리도 그리지 않는다(옛 띠와 같다)
-  if (chips.length === 0 && !open) return null;
+  // 머리는 늘 그린다: 세션을 못 읽었어도 BRAKES 탭은 어느 화면에서든 닿아야 한다(ATC-455)
+  const brakesWord = brakesTabWord(atfm.brief ? atfm.brief.groundStops.filter((x) => x.enforced).length : 0, atfm.brief ? atfm.brief.config.manualStops.length : 0);
   const bodyId = "control-panel-body";
   return (
-    <div className={`cp${open ? " is-open" : ""}`} role="region" aria-label="CONTROL 패널" onKeyDown={onKeyDown}>
+    <div className={`cp${open ? " is-open" : ""}`} role="region" aria-label="아래 패널" onKeyDown={onKeyDown}>
       {open && !narrow && (
         <div className="cp-grip" role="separator" aria-orientation="horizontal" aria-label="패널 높이" aria-valuemin={0} aria-valuenow={height} tabIndex={0} onPointerDown={onDrag} onKeyDown={onResizeKey} />
       )}
       <div className="cp-head">
-        <button ref={toggleRef} type="button" className="cp-toggle" aria-expanded={open} aria-controls={bodyId} aria-label={open ? "CONTROL 패널 접기" : "CONTROL 패널 열기"} title="Ctrl+`" onClick={() => setOpen((v) => !v)}>
+        <button ref={toggleRef} type="button" className="cp-toggle" aria-expanded={open} aria-controls={bodyId} aria-label={open ? "패널 접기" : "패널 열기"} title="Ctrl+`" onClick={() => setOpen((v) => !v)}>
           <Icon icon={open ? ChevronDown : ChevronUp} />
-          <span className="cp-label">CONTROL</span>
-          <span className={`cp-count${needing > 0 ? " is-needs" : ""}`} aria-label={needing > 0 ? `${needing}개 세션이 SUPERVISOR를 기다림` : "기다리는 세션 없음"}>
-            {needing}
-          </span>
         </button>
+        <div className="cp-tabs" role="tablist" aria-label="패널 탭" onKeyDown={onTabKey}>
+          {PANEL_TABS.map((t) => (
+            <button
+              key={t}
+              ref={(el) => {
+                tabRefs.current[t] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`cp-tab-${t}`}
+              className={`cp-tab${tab === t ? " is-active" : ""}`}
+              aria-selected={tab === t}
+              aria-controls={open && tab === t ? bodyId : undefined}
+              tabIndex={tab === t ? 0 : -1}
+              onClick={() => pickTab(t)}
+            >
+              <span className="cp-label">{PANEL_TAB_LABEL[t]}</span>
+              {t === "control" && (
+                <span className={`cp-count${needing > 0 ? " is-needs" : ""}`} aria-label={needing > 0 ? `${needing}개 세션이 SUPERVISOR를 기다림` : "기다리는 세션 없음"}>
+                  {needing}
+                </span>
+              )}
+              {t === "brakes" && brakesWord && <span className="cp-count is-needs">{brakesWord}</span>}
+            </button>
+          ))}
+        </div>
         <div className="cp-chips">
           {shown.map((c) => (
             <Chip key={c.name} chip={c} now={now} selected={selected === c.name} onPick={pick} />
@@ -230,12 +303,17 @@ export function ControlPanel({ snapshot, now, openSignal }: { snapshot: Snapshot
           </button>
         )}
       </div>
-      {open && snapshot && (
-        <div id={bodyId} ref={bodyRef} className="cp-body" style={narrow ? undefined : { height }}>
+      {open && tab === "control" && snapshot && (
+        <div id={bodyId} ref={bodyRef} role="tabpanel" aria-labelledby="cp-tab-control" className="cp-body" style={narrow ? undefined : { height }}>
           <div className="cp-table fl-list">
             <ControlSessions snapshot={snapshot} attached={false} selected={selected} onSelect={setSelected} />
           </div>
           <Radio name={selected ?? chips[0]?.name ?? null} />
+        </div>
+      )}
+      {open && tab === "brakes" && (
+        <div id={bodyId} ref={bodyRef} role="tabpanel" aria-labelledby="cp-tab-brakes" className="cp-body cp-body-brakes" style={narrow ? undefined : { height }}>
+          <Brakes atfm={atfm} refreshKey={refreshKey} now={now} onOpenSettings={onOpenSettings} />
         </div>
       )}
     </div>
