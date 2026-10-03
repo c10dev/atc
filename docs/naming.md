@@ -58,6 +58,31 @@ codex/voc-<n>-<slug>      # Codex sessions
 - Old records keep the name they were written with, e.g. `by: "structure"` in LOGBOOK `measured` lines.
 - **DUTY** (the Duty Manager) is a control session with **L1** ([duty.md](duty.md) 3.5, D7a): it does the ENGINEERING work itself. It writes `.md` docs only in its own STAND (`.claude/worktrees/duty-*`, branch `claude/duty-*`), opens PRs, and writes issues to the Linear ATC team through the server. It has no code or test servers (L2), no merge or deploy (L3), no messages to team sessions (L4), and it cannot write the files that set its own powers (the guard, `duty/settings.json`, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, the root `CLAUDE.md`). The `l1` switch in `duty.json` is off by default.
 
+## Flow stage codes and holders (HOME flow board)
+
+The HOME flow board ([home-flow.md](home-flow.md) 3.3–3.4) groups the FLIGHT stages of [follow.md](follow.md) 3.2 into six codes. `OUT`, `OFF`, `ON` and `IN` are the OOOI milestones (`GET /api/milestones`); `QUEUE` and `CLEARED` are stage groups with no milestone of their own.
+
+| Code | Korean gloss | Groups (follow.md 3.2 stages) |
+|---|---|---|
+| `QUEUE` | 대기 | `todo` · `proposed` · `approved`: the FLIGHT exists and is not yet sent |
+| `OUT` | 출발 | `sent` · `readback`: FLIGHT PLAN sent, waiting for or past the CAPTAIN's READBACK (milestone OUT) |
+| `OFF` | 비행 | `pr`: the PR is open (milestone OFF) |
+| `CLEARED` | 착륙 대기 | `ci`: the PR is CLEARED to land and not merged |
+| `ON` | 착륙 | `landed`: merged (milestone ON) |
+| `IN` | 배포 | `deployed`: in service (milestone IN, MCC AIRPORT only) |
+
+- The board has five columns: `ON` and `IN` share one column, `ON·IN`.
+- A code names a place in the flow, not a state of health. Whether a cell is stuck comes from the follow.md 3.3 limits.
+
+Four **holders** say who has to move next. A cell shows the holder of its oldest stuck FLIGHT.
+
+| Holder | Meaning |
+|---|---|
+| `SUPERVISOR` | merge of a `user`-tier or escalated PR, K approval, HUMAN CHECK |
+| `AIRCRAFT` | no READBACK, no PR, NORDO |
+| `ATC` | DISPATCH, MCC or RTS automation lagging |
+| `EXTERNAL` | Codex, GitHub CI, LIMIT, account mismatch |
+
 ## FUEL words on screen
 
 - **FOB (FUEL ON BOARD)** is an AIRCRAFT's own fuel: the context window still free (`FOB 50% · 504k/1M`). It is a share **left**.

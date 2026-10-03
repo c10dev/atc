@@ -58,6 +58,31 @@ codex/voc-<n>-<slug>      # Codex 세션
 - 옛 기록은 쓸 때의 이름을 그대로 둔다. 예: LOGBOOK `measured` 줄의 `by: "structure"`.
 - **DUTY**(Duty Manager)는 **L1**인 관제 세션이다([duty.md](duty.md) 3.5절, D7a). ENGINEERING의 일을 직접 한다. 자기 STAND(`.claude/worktrees/duty-*`, 브랜치 `claude/duty-*`)에만 `.md` 문서를 쓰고, PR을 열고, 서버를 거쳐 Linear ATC 팀에 이슈를 쓴다. 코드·시험 서버(L2), 머지·배포(L3), 팀 세션 메시지(L4)는 없고, 자기 권한을 정하는 파일(guard, `duty/settings.json`, `.claude/`, `.github/`, `package*.json`, `deploy/`, `hooks/`, 루트 `CLAUDE.md`)은 쓰지 못한다. `duty.json`의 `l1` 스위치는 기본이 꺼짐이다.
 
+## 흐름 단계 코드와 holder (HOME 흐름 보드)
+
+HOME 흐름 보드([home-flow.md](home-flow.md) 3.3–3.4)는 [follow.md](follow.md) 3.2의 FLIGHT 단계를 코드 여섯 개로 묶는다. `OUT`·`OFF`·`ON`·`IN`은 OOOI 마일스톤(`GET /api/milestones`)이고, `QUEUE`와 `CLEARED`는 마일스톤이 따로 없는 단계 묶음이다.
+
+| 코드 | 뜻 | 묶는 것(follow.md 3.2 단계) |
+|---|---|---|
+| `QUEUE` | 대기 | `todo` · `proposed` · `approved`: FLIGHT가 있고 아직 보내지 않음 |
+| `OUT` | 출발 | `sent` · `readback`: FLIGHT PLAN을 보냈고 CAPTAIN의 READBACK을 기다리거나 받음(마일스톤 OUT) |
+| `OFF` | 비행 | `pr`: PR이 열림(마일스톤 OFF) |
+| `CLEARED` | 착륙 대기 | `ci`: PR이 CLEARED이고 아직 머지 전 |
+| `ON` | 착륙 | `landed`: 머지됨(마일스톤 ON) |
+| `IN` | 배포 | `deployed`: 서비스에 들어감(마일스톤 IN, MCC AIRPORT만) |
+
+- 보드는 열이 다섯이다. `ON`과 `IN`은 한 열 `ON·IN`을 나눠 쓴다.
+- 코드는 흐름의 자리를 가리킬 뿐 건강 상태가 아니다. 칸이 막혔는지는 follow.md 3.3 한도로 정한다.
+
+**holder** 넷은 다음에 누가 움직여야 하는지를 말한다. 칸에는 가장 오래 막힌 FLIGHT의 holder가 보인다.
+
+| holder | 뜻 |
+|---|---|
+| `SUPERVISOR` | `user` 등급·ESCALATE PR의 머지, K 승인, HUMAN CHECK |
+| `AIRCRAFT` | READBACK 없음, PR 없음, NORDO |
+| `ATC` | DISPATCH·MCC·RTS 자동화가 늦음 |
+| `EXTERNAL` | Codex, GitHub CI, LIMIT, ACCOUNT 불일치 |
+
 ## 화면의 FUEL 말
 
 - **FOB(FUEL ON BOARD)**는 AIRCRAFT 자기 연료, 곧 아직 비어 있는 맥락 창이다(`FOB 50% · 504k/1M`). **남은** 몫이다.
