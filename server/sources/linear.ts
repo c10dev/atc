@@ -1,6 +1,7 @@
 import { config } from "../config.ts";
 import { teamOfKey } from "../linear-keys.ts";
 import { k3CheckOf } from "../k3-allow.ts";
+import { sequenceOf } from "../sequence-line.ts";
 import { kEffectsOf, releaseHashOf } from "../release.ts";
 import type { Ticket, TicketColumn, TicketStateType } from "../model.ts";
 import { applyWrite, reconcileFetch, type StateOverlay } from "../linear-overlay.ts";
@@ -131,6 +132,7 @@ export function toTicket(n: IssueNode, viewer: string | null = null): Ticket {
     children: uniq((n.children?.nodes ?? []).map((c) => c.identifier)),
     kEffects: kEffectsOf(n.description),
     ...(({ declared, check }) => ({ ...(declared.length ? { k3: declared } : {}), ...(check ? { k3Check: check } : {}) }))(k3CheckOf(n.description)),
+    ...(({ seq }) => (seq ? { sequence: seq } : {}))({ seq: sequenceOf(n.description) }),
     releaseHash: releaseHashOf(n.description),
   };
 }

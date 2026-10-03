@@ -28,6 +28,7 @@
 - **작업 지시서** (DUTY와 ENGINEERING, SUPERVISOR 결정 2026-10-02):
   - 본문(영어)은 Goal · Done when · K effects · Measure · Context · Release 여섯 절이다. 묶는 것은 앞의 셋뿐이고, Context는 정보일 뿐 지시가 아니다(PILOT'S DISCRETION). 어떻게 할지는 정하지 않는다.
   - **K3 효과**(ATC-398): `## K effects`의 K3 효과는 선언 한 줄씩, 서버가 읽는 꼴 `K3[<라벨>]: <바꾸는 통제> | files: <저장소 기준 경로, …>`로 쓴다. `<라벨>`은 `server/k3-allow.ts`의 `K3_LABELS` 가운데 하나다(`docs/autonomy.md` C9). 산문으로 `K3: …`라고 쓰지 않는다. K3 효과가 없는 작업 지시서에는 `K3`로 시작하는 줄이 없다(`K3: none`도 쓰지 않는다. 읽히지 않는 줄이라 DISPATCH가 보내지 않는다).
+  - **Sequence 줄**(ATC-456): `## Release` 절에 줄 하나를 둘 수 있다. 꼴은 `Sequence: after ATC-n — <이유>`다. 쓰는 때: 같은 파일을 고치는 일처럼 **먼저 쏘면 좋은 순서**가 있지만 진짜 선행조건은 아닐 때. 진짜 선행조건(앞 일이 끝나야 이 일을 할 수 있다)은 `blockedBy`다. Sequence 줄은 막지 않는다: RELEASE 화면이 그 줄을 `after ATC-n: <이유>`로 보이고 발권 순서에서 ATC-n 뒤에 놓지만, 줄은 READY 그대로 쏠 수 있다. 줄은 한 줄만 쓰고(둘이면 읽히지 않는다), 모르는 이슈나 꼴이 틀린 줄은 화면이 그대로 보이되 순서에는 쓰지 않는다. 서버는 Linear가 저장한 그대로 읽는다(쓴 `ATC-n`이 이슈 멘션 `<issue id=… href=…>ATC-n</issue>`으로 바뀌어도 읽힌다). 발권 해시는 Goal·Done when·K effects만 묶으므로 이 줄을 고쳐도 다시 발권하지 않는다.
   - **K3 발권**(ATC-398): K3 효과가 있는 작업 지시서는 RELEASE 화면이나 DUTY 채팅에서 발권한다. 세션은 그 발권을 증언(attest)하지 않는다: 세션은 이슈를 만들고 SUPERVISOR가 화면에서 쏜다. 증언한 발권으로는 allow 항목이 만들어지지 않아 DISPATCH가 그 FLIGHT를 보내지 않는다(`docs/autonomy.md` C9).
   - **Measure**(ATC-402): 이 FLIGHT가 바꿔야 할 기록이나 수와 방향과 기간을 atc가 읽는 모양으로 적는다. 배포(RTS) 뒤 atc가 같은 기간의 앞뒤를 견줘 평결 하나(`improved`·`not improved`·`worse`·`too little data`)를 남긴다. 줄은 셋이다:
     ```
