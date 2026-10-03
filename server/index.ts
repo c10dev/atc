@@ -68,6 +68,8 @@ import { currentAlerts, endsNow, runSummary, runSupervisorAlerts, summaryNow } f
 import { mountQrh } from "./qrh-run.ts";
 import { mountDuty } from "./duty-api.ts";
 import { mountReleases, releaseFromChat } from "./release-run.ts";
+import { applyWrite } from "./linear-overlay.ts";
+import { onLocalState } from "./sources/linear.ts";
 import { duty, mountDutyRun } from "./duty-run.ts";
 import { defaultL1Deps, mountDutyL1 } from "./duty-l1-run.ts";
 import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
@@ -89,6 +91,10 @@ import { githubStartupWarning, githubSwitch } from "./github-switch.ts";
 const TICK_MS = 2_000;
 
 let current: Snapshot | null = null;
+// atc 자신의 Linear 쓰기가 성공하면 이미 만든 스냅샷에도 새 상태를 싣는다(ATC-448): 바로 다음 /api/releases가 옛 상태를 보지 않는다
+onLocalState((key, next) => {
+  if (current) current = { ...current, tickets: applyWrite(current.tickets, new Map(), key, next, 0).tickets };
+});
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
