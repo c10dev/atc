@@ -91,7 +91,8 @@ interface TreeRow {
   filed: { by: string; at: string } | null;
   why: string | null;
   stale: boolean;
-  parked?: { by: string | null; createdAt: string | null }; // PARKED 줄(ATC-487)
+  parked?: { by: string | null; createdAt: string | null; duplicateOf: string | null }; // PARKED 줄(ATC-487, duplicateOf: 비슷한 제목의 다른 이슈, ATC-488)
+  missing?: { key: string; why: string; text: string; href: string | null }[]; // 기다리는 줄에서 이 화면의 줄이 아닌 막는 이슈(ATC-488)
 }
 // PARKED(ATC-487): 막는 이슈 없이 손으로 올린 Backlog 이슈. 접힌 절에 보이고 발권 단추는 READY와 같다
 interface ParkedRow {
@@ -104,6 +105,7 @@ interface ParkedRow {
   kEffects: string | null;
   k3: K3Status | null;
   sequence: { after: string; reason: string } | null;
+  duplicateOf?: string | null;
 }
 interface TreeGroup {
   key: string | null;
@@ -120,7 +122,7 @@ interface ReleaseData {
   gate: { mode: "auto" | "on" | "off"; on: boolean; armedAt: string | null };
   ready: Row[];
   filed: Filed[];
-  parked?: { on: boolean; rows: ParkedRow[]; fired: number; misfires: string[] };
+  parked?: { on: boolean; rows: ParkedRow[]; fired: number; misfires: string[]; duplicate?: { on: boolean; refused: number; overrides: number; bothFired: number } };
   proposals: Proposal[];
   unreleased: Row[];
   kPending?: KPending[];
@@ -244,6 +246,28 @@ function FlightRow({ row: r, open, toggle, acts }: { row: FlatRow; open: boolean
           )}
           {r.title}
           {problem && <span className="rls-problem"> — {problem}</span>}
+          {/* 기다리는 줄: 막는 이슈가 이 화면의 줄이 아니면 왜 없고 어디 있는지(ATC-488) */}
+          {r.missing?.map((m) => (
+            <span key={m.key} className="rls-missing faint">
+              {" "}
+              ·{" "}
+              {m.href ? (
+                <a href={m.href} {...(m.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})} aria-label={`${m.key}: ${m.text}`}>
+                  <span className="mono">{m.key}</span> {m.text}
+                </a>
+              ) : (
+                <>
+                  <span className="mono">{m.key}</span> {m.text}
+                </>
+              )}
+            </span>
+          ))}
+          {r.parked?.duplicateOf && (
+            <span className="rls-problem" title="제목이 비슷한 이슈가 있습니다. 정보일 뿐이고 아무것도 숨기거나 합치거나 취소하지 않습니다">
+              {" "}
+              — possible duplicate of <a href={`#flight/${r.parked.duplicateOf}`}>{r.parked.duplicateOf}</a>
+            </span>
+          )}
         </>
       }
       age={r.parked?.createdAt ? `${prioOf(r.priority)} · ${timeAgo(r.parked.createdAt, Date.now())}` : prioOf(r.priority)}
@@ -323,6 +347,18 @@ export function Release({ refreshKey }: { refreshKey: string }) {
   const [discarding, setDiscarding] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [parkedSignal, setParkedSignal] = useState(0);
+  // `#release/parked` 링크(기다리는 줄의 "PARKED"): 접힌 PARKED 절을 열고 그리로 스크롤한다(ATC-488)
+  useEffect(() => {
+    const go = () => {
+      if (location.hash !== "#release/parked") return;
+      setParkedSignal((n) => n + 1);
+      setTimeout(() => document.getElementById("rls-parked")?.scrollIntoView({ block: "start" }), 0);
+    };
+    go();
+    addEventListener("hashchange", go);
+    return () => removeEventListener("hashchange", go);
+  }, []);
   useScrollToSection(loaded && data !== null);
 
   const load = useCallback(async () => {
@@ -409,7 +445,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     filed: null,
     why: null,
     stale: false,
-    parked: { by: p.by, createdAt: p.createdAt },
+    parked: { by: p.by, createdAt: p.createdAt, duplicateOf: p.duplicateOf ?? null },
     group: null,
   }));
   const kPending = data.kPending ?? [];
@@ -600,11 +636,17 @@ export function Release({ refreshKey }: { refreshKey: string }) {
       </section>
 
       {parked && (
-        <Fold title="PARKED" count={parkedRows.length} defaultOpen={false}>
+        <div id="rls-parked">
+        <Fold title="PARKED" count={parkedRows.length} defaultOpen={false} openSignal={parkedSignal}>
           <p className="rls-note faint" title="막는 이슈 없이 손으로 올린 Backlog 이슈(상위 이슈 제외). 이 절은 아무것도 스스로 발권하거나 옮기지 않습니다. 오작동: 이 절에서 발권한 이슈가 24시간 안에 Canceled·Duplicate가 됨(설정 창 PARKED로 끕니다)">
             7일 이 절에서 발권 {parked.fired} · 24시간 안에 취소·중복 {parked.misfires.length}
             {parked.misfires.length > 0 && ` (${parked.misfires.join(", ")})`}
           </p>
+          {parked.duplicate?.on && (parked.duplicate.overrides > 0 || parked.duplicate.bothFired > 0) && (
+            <p className="rls-note faint" title="비슷한 제목 검사(설정 창 DUPLICATE TITLE). 넘김 = `--same-title-ok`로 거절을 뒤집은 수, 둘 다 발권 = 중복 표시가 있는 이슈를 쏘았는데 쌍도 이미 발권돼 있던 수">
+              7일 중복 표시 · 거절 {parked.duplicate.refused} · 넘김 {parked.duplicate.overrides} · 둘 다 발권 {parked.duplicate.bothFired}
+            </p>
+          )}
           {parkedRows.length === 0 ? (
             <Empty>PARKED 이슈 없음</Empty>
           ) : (
@@ -613,6 +655,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
             </ul>
           )}
         </Fold>
+        </div>
       )}
 
       {rest.length > 0 && (

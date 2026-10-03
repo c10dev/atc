@@ -13,7 +13,7 @@ export const LABELS_MAX = 12;
 export const BLOCKED_BY_MAX = 5;
 
 export type LinearOp =
-  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[]; blockedBy?: string[] }
+  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[]; blockedBy?: string[]; sameTitleOk?: true }
   | { action: "update"; key: string; title?: string; body?: string; priority?: number; state?: string; labels?: string[] }
   | { action: "comment"; key: string; body: string };
 export type LinearParse = { ok: true; op: LinearOp } | { ok: false; error: string };
@@ -42,7 +42,7 @@ export function parseLinearBody(raw: unknown): LinearParse {
   if (!b) return bad("본문은 JSON 객체");
   const known = (names: string[]) => Object.keys(b).find((k) => !names.includes(k));
   if (b.action === "create") {
-    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels", "blockedBy"]);
+    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels", "blockedBy", "sameTitleOk"]);
     if (extra) return bad(`알 수 없는 칸: ${extra}`);
     const title = text(b.title, TITLE_MAX);
     const body = text(b.body, BODY_MAX);
@@ -73,6 +73,11 @@ export function parseLinearBody(raw: unknown): LinearParse {
       const keys = raw?.map(key);
       if (!raw || !keys || raw.length === 0 || raw.length > BLOCKED_BY_MAX || keys.some((k) => k === null)) return bad(`blockedBy는 ATC-<n> 목록(1~${BLOCKED_BY_MAX}개)`);
       op.blockedBy = [...new Set(keys as string[])];
+    }
+    // 비슷한 제목 검사를 넘긴다(ATC-488): 새 이슈가 일부러 옛 이슈와 비슷할 때. 넘긴 수는 세어 RELEASE 화면에 보인다
+    if (b.sameTitleOk !== undefined) {
+      if (b.sameTitleOk !== true) return bad("sameTitleOk는 true만(명령줄 --same-title-ok)");
+      op.sameTitleOk = true;
     }
     return { ok: true, op };
   }

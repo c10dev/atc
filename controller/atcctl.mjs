@@ -248,7 +248,7 @@ DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 S
                                             CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)
   node atcctl.mjs duty stand <이름>         서버가 .claude/worktrees/duty-<이름>을 origin/main에서 claude/duty-<이름> 브랜치로 만든다(D7a). 문서는 여기에만 쓴다
   node atcctl.mjs duty stand-done <이름>    그 STAND를 치운다(duty-*만, 고치던 것이 없거나 이미 머지됐을 때만. 브랜치는 남는다)
-  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… (--body-file <STAND 안의 .md> | -- '<Markdown 본문>')
+  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… [--same-title-ok] (--body-file <STAND 안의 .md> | -- '<Markdown 본문>')
   node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [--body-file <.md> | -- '<본문>']
   node atcctl.mjs duty linear comment ATC-n (--body-file <.md> | -- '<본문>')
                                             ## 제목이 있는 여러 줄 본문은 명령줄에 싣지 않는다(Claude Code의 Bash 검사가 막는다): 자기 STAND(.claude/worktrees/duty-*/)의 .md에 Write로 쓰고 --body-file로 준다.
@@ -809,6 +809,12 @@ export function parseDutyLinear(args) {
   const labels = [];
   for (let i = 0; i < head.length; i += 2) {
     const flag = head[i];
+    // 값이 없는 옵션(ATC-488): 비슷한 제목 검사를 일부러 넘긴다. 넘긴 수는 세어 RELEASE 화면에 보인다
+    if (flag === "--same-title-ok" && action === "create") {
+      body.sameTitleOk = true;
+      i -= 1;
+      continue;
+    }
     const v = head[i + 1];
     if (v === undefined) throw new Error(`${flag} 뒤에 값이 필요함`);
     if (flag === "--body-file") bodyFile = v;

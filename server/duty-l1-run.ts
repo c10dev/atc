@@ -41,6 +41,9 @@ export interface L1Deps {
   reviewTurn?: () => boolean;
   openSimilar?: (title: string) => Promise<string | null>; // 비슷한 열린 이슈의 key
   onProposal?: (key: string, title: string) => void;
+  // 비슷한 제목 검사(ATC-488): 모든 DUTY 턴의 create에서 열린 ATC 이슈와 거의 같은 제목을 거절한다(스위치 duplicateTitle이 꺼지면 duplicateOn이 false)
+  duplicateOn?: () => boolean;
+  duplicateOpen?: (title: string) => Promise<{ key: string; title: string } | null>;
 }
 
 const repoGit = (repo: string) => async (args: string[]) => (await run("git", ["-C", repo, ...args], { timeout: 60_000, maxBuffer: 4 << 20 })).stdout;
@@ -70,7 +73,7 @@ const serial = <T>(f: () => Promise<T>): Promise<T> => {
 };
 
 export type Reply = { status: 200 | 400 | 403 | 404 | 409 | 502 | 503; body: Record<string, unknown> };
-const fail = (status: Reply["status"], error: string): Reply => ({ status, body: { error } });
+const fail = (status: Reply["status"], error: string, more: Record<string, unknown> = {}): Reply => ({ status, body: { error, ...more } });
 const msgOf = (e: unknown) => String((e as Error)?.message ?? e).split("\n")[0].slice(0, 300);
 
 // ── STAND ──
@@ -155,6 +158,16 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
         const same = await d.openSimilar?.(op.title);
         if (same) return fail(409, `${same}가 비슷한 일을 이미 다룸 — 새로 만들지 않는다(필요하면 ${same}에 댓글로 근거를 더한다)`);
       }
+      // 비슷한 제목(ATC-488): REVIEW 턴이 아닌 모든 DUTY 턴에서도. 명시한 --same-title-ok면 넘기고 세어 둔다. 취소·중복·끝난 이슈는 세지 않는다
+      let override: string | null = null;
+      if (!reviewing && d.duplicateOn?.() !== false && d.duplicateOpen) {
+        const twin = await d.duplicateOpen(op.title);
+        if (twin && !op.sameTitleOk) {
+          d.record({ t: d.now().toISOString(), kind: "policy", op: "duplicate-title", event: "refused", flight: null, of: twin.key });
+          return fail(409, `${twin.key}(${twin.title.slice(0, 80)})와 제목이 거의 같음 — 새로 만들지 않는다(같은 일이면 ${twin.key}에 댓글로 더한다. 일부러 비슷하게 만든다면 --same-title-ok)`, { existing: twin.key });
+        }
+        if (twin) override = twin.key;
+      }
       const team = await d.team();
       if (!team) return fail(502, `Linear에 ${DUTY_TEAM} 팀이 없음`);
       const to = team.states.find((s) => s.name === op.state && (s.type === "backlog" || s.type === "unstarted"));
@@ -197,6 +210,7 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
           blockNote = `이슈 ${r.key}는 만들었지만 막는 관계를 걸지 못함: ${msgOf(e)}`;
         }
       }
+      if (override) d.record({ t: d.now().toISOString(), kind: "policy", op: "duplicate-title", event: "override", flight: r.key, of: override });
       if (reviewing) d.onProposal?.(r.key, op.title);
       return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(blockNote || shapeWarning ? { warning: [blockNote, shapeWarning].filter(Boolean).join("; ") } : {}) } };
     }

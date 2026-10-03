@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { Hono } from "hono";
 import { defaultL1Deps, finishStand, type L1Deps, makeStand, mountDutyL1, writeLinear } from "./duty-l1-run.ts";
 import type { RecordLine } from "./recorder.ts";
+import { openDuplicateOf } from "./title-dup.ts";
 
 const sh = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
 
@@ -438,6 +439,81 @@ test("blockedBy: 막는 FLIGHT를 먼저 읽고, 이슈를 만든 뒤 막는 관
     mountDutyL1(app2, d2);
     const warn = (await (await post(app2, "/api/duty/linear", { ...createBody, blockedBy: ["ATC-7"] })).json()) as { ok: boolean; key: string; warning?: string };
     assert.ok(warn.ok && warn.key === "ATC-99" && /relation refused/.test(warn.warning ?? ""));
+  } finally {
+    s.done();
+  }
+});
+
+// ── 비슷한 제목 검사(ATC-488) ──
+const T = (key: string, title: string, stateType: string) => ({ key, title, stateType, updatedAt: "2026-10-01T00:00:00Z", createdAt: "2026-10-03T00:00:00Z" }) as never;
+const TITLE_475 = "Release shows hand-filed Backlog issues in a folded PARKED section with a fire button";
+
+test("제목 검사: 모든 DUTY 턴에서 열린 ATC 이슈와 거의 같은 제목은 409(기존 key와 함께), 만들지 않고 거절을 센다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const tickets = [T("ATC-475", TITLE_475, "backlog")];
+    const { d, lines } = deps(s.repo, { ...o, reviewTurn: () => false, duplicateOn: () => true, duplicateOpen: async (t) => openDuplicateOf(t, tickets, Date.parse("2026-10-03T12:00:00Z")) });
+    mountDutyL1(app, d);
+    // 1초 뒤에 올라온 같은 작업 지시서(ATC-476)
+    const r = await post(app, "/api/duty/linear", { ...createBody, title: TITLE_475 });
+    assert.equal(r.status, 409);
+    const body = (await r.json()) as { error: string; existing: string };
+    assert.equal(body.existing, "ATC-475");
+    assert.match(body.error, /ATC-475/);
+    assert.match(body.error, /--same-title-ok/);
+    assert.equal(calls.length, 0);
+    assert.deepEqual(lines.filter((l) => l.kind === "policy").map((l) => (l.kind === "policy" && l.op === "duplicate-title" ? [l.event, l.of] : null)), [["refused", "ATC-475"]]);
+    // 다른 제목은 통과
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, title: "Cap memory of the background-session scope" })).status, 200);
+  } finally {
+    s.done();
+  }
+});
+
+test("제목 검사: --same-title-ok면 넘기고 센다(override). 취소·중복된 쌍은 세지 않는다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const tickets = [T("ATC-475", TITLE_475, "backlog"), T("ATC-470", "Cap memory of the background-session scope", "canceled"), T("ATC-471", "Cap memory of the background-session scope", "duplicate")];
+    const { d, lines } = deps(s.repo, { ...o, duplicateOn: () => true, duplicateOpen: async (t) => openDuplicateOf(t, tickets, Date.parse("2026-10-03T12:00:00Z")) });
+    mountDutyL1(app, d);
+    const over = await post(app, "/api/duty/linear", { ...createBody, title: TITLE_475, sameTitleOk: true });
+    assert.equal(over.status, 200);
+    assert.equal(calls.length, 1);
+    const events = lines.flatMap((l) => (l.kind === "policy" && l.op === "duplicate-title" ? [[l.event, l.flight, l.of]] : []));
+    assert.deepEqual(events, [["override", "ATC-99", "ATC-475"]]);
+    // 취소·중복한 쌍과 같은 제목은 막지 않는다
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, title: "Cap memory of the background-session scope" })).status, 200);
+    assert.equal(calls.length, 2);
+    assert.equal(lines.filter((l) => l.kind === "policy" && l.op === "duplicate-title").length, 1);
+    // 값이 true가 아닌 플래그는 본문 검사에서 거절
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, sameTitleOk: "yes" })).status, 400);
+  } finally {
+    s.done();
+  }
+});
+
+test("제목 검사: 스위치(duplicateTitle)가 꺼지면 409도 기록도 없다. REVIEW 턴은 자기 검사(openSimilar)만 쓴다", async () => {
+  const s = scratch();
+  try {
+    const app = new Hono();
+    const { calls, o } = fake();
+    const tickets = [T("ATC-475", TITLE_475, "backlog")];
+    const { d, lines } = deps(s.repo, { ...o, duplicateOn: () => false, duplicateOpen: async (t) => openDuplicateOf(t, tickets, Date.parse("2026-10-03T12:00:00Z")) });
+    mountDutyL1(app, d);
+    assert.equal((await post(app, "/api/duty/linear", { ...createBody, title: TITLE_475 })).status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(lines.filter((l) => l.kind === "policy").length, 0);
+    // REVIEW 턴: 새 검사는 끼지 않는다(옛 openSimilar 검사가 그대로)
+    const app2 = new Hono();
+    const { calls: calls2, o: o2 } = fake();
+    const r2 = deps(s.repo, { ...o2, reviewTurn: () => true, duplicateOn: () => true, duplicateOpen: async () => ({ key: "ATC-475", title: "x" }), openSimilar: async () => null });
+    mountDutyL1(app2, r2.d);
+    assert.equal((await post(app2, "/api/duty/linear", { ...createBody, state: "Backlog" })).status, 200);
+    assert.equal(calls2.length, 1);
   } finally {
     s.done();
   }

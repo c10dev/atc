@@ -39,6 +39,9 @@ import type { FilesInFlight } from "./dispatch.ts";
 import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
 import { releaseTreeOf, type TreeRow } from "./release-tree.ts";
 import { parkedFireVerdict, parkedMisfiresOf, parkedOf } from "./release-parked.ts";
+import { possibleDuplicateOf, twinAlreadyFired } from "./title-dup.ts";
+import { duplicateCountsNow, duplicateTitleOn } from "./title-dup-run.ts";
+import { record } from "./recorder.ts";
 import { loadScheduleOps, type NewPayload } from "./schedule.ts";
 import { readReviewLines } from "./duty-review-store.ts";
 import { bustQueue } from "./queue-bust.ts";
@@ -62,6 +65,9 @@ export interface ReleaseDeps {
   discard?: (key: string, from: string, reason: string) => Promise<MoveOutcome & { warning?: string }>;
   files?: () => FilesInFlight | null; // 파일 겹침 자료(ATC-456 같은 파일 칸). 시험이 채운다(없으면 DISPATCH가 모은 캐시)
   parkedOn?: () => boolean; // PARKED 스위치(releaseParked). 시험이 채운다(없으면 dispatch.json)
+  duplicateOn?: () => boolean; // 비슷한 제목 표시 스위치(duplicateTitle, ATC-488). 시험이 채운다
+  duplicateCounts?: () => { refused: number; overrides: number; bothFired: number }; // 시험이 채운다(없으면 기록에서 센다)
+  recordLine?: typeof record; // 시험이 채운다(없으면 recorder)
   k3RelaunchMisfires?: () => K3RelaunchMisfires; // 시험이 채운다(없으면 FLEET PLAN 카드와 기록에서 센다)
   k3Misfires?: (s: Snapshot) => { nuisance: string[]; miss: { flight: string; aircraft: string; t: string }[] }; // 시험이 채운다(없으면 기록과 세션에서 센다)
 }
@@ -165,8 +171,12 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const filedBy = new Map(filed.map((f) => [f.key, f]));
   const parents = parentKeysOf(s.tickets);
   const openPr = new Set((s.pulls ?? []).filter((p) => p.ticketKey).map((p) => p.ticketKey as string));
+  // PARKED 이슈 key(나무의 줄이 아니라 이 화면의 다른 구역): 기다리는 줄이 "막는 이슈가 PARKED에 있다"고 말한다(ATC-488)
+  const parkedOn = d.parkedOn ? d.parkedOn() : loadDispatchConfig().releaseParked !== "off";
+  const parkedKeys = new Set(parkedOn ? parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys }).map((r) => r.key) : []);
   const tree = releaseTreeOf({
     tickets: s.tickets,
+    parked: parkedKeys,
     candidate: (t) => isCandidateTicket(t, d.teams()) && !parents.has(t.key),
     filed: filedKeys,
     released: (k) => releaseStateOf(k, ticketOf(k)?.releaseHash, view) === "released",
@@ -179,10 +189,17 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const inTree = new Set<string>();
   const walk = (rows: readonly TreeRow<unknown>[]) => rows.forEach((r) => (inTree.add(r.key), walk(r.children)));
   for (const g of tree.groups) walk(g.rows);
-  const parkedOn = d.parkedOn ? d.parkedOn() : loadDispatchConfig().releaseParked !== "off";
+  // 비슷한 제목 표시(ATC-488): 정보일 뿐이다. 스위치(duplicateTitle)가 꺼지면 표시도 세기도 없다
+  const dupOn = d.duplicateOn ? d.duplicateOn() : duplicateTitleOn();
+  const nowMs = d.now().getTime();
   const parked = parkedOn
-    ? { on: true, rows: parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys, inTree }).map((r) => ({ ...r, k3: ((t) => (t ? k3Of(t, view) : null))(ticketOf(r.key)) })), ...parkedMisfiresOf(lines, s.tickets, d.now().getTime()) }
-    : { on: false, rows: [], fired: 0, misfires: [] };
+    ? {
+        on: true,
+        rows: parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys, inTree }).map((r) => ({ ...r, k3: ((t) => (t ? k3Of(t, view) : null))(ticketOf(r.key)), duplicateOf: dupOn ? (possibleDuplicateOf(r, s.tickets, nowMs)?.key ?? null) : null })),
+        ...parkedMisfiresOf(lines, s.tickets, nowMs),
+        duplicate: dupOn ? { on: true, ...(d.duplicateCounts ? d.duplicateCounts() : duplicateCountsNow(nowMs)) } : { on: false, refused: 0, overrides: 0, bothFired: 0 },
+      }
+    : { on: false, rows: [], fired: 0, misfires: [], duplicate: { on: false, refused: 0, overrides: 0, bothFired: 0 } };
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
@@ -252,9 +269,16 @@ export function mountReleases(app: Hono, snapshot: () => Promise<Snapshot>, deps
     const r = screenRelease({ ...t, stateType: "unstarted" }, t.key, body.hash, "click", deps.now());
     if (!r.ok) return c.json({ error: r.error }, r.status);
     if (parked && r.value.op === "release") r.value.parked = true;
+    // 비슷한 제목 표시가 있는 PARKED 이슈를 발권하는데 쌍도 이미 발권돼 있으면 둘 다 쏜 것이다(ATC-488 오작동 세기)
+    let bothFiredWith: string | null = null;
+    if (parked && (deps.duplicateOn ? deps.duplicateOn() : duplicateTitleOn())) {
+      const twin = possibleDuplicateOf(t, s.tickets, deps.now().getTime());
+      if (twin && twinAlreadyFired(s.tickets.find((x) => x.key === twin.key))) bothFiredWith = twin.key;
+    }
     const moved = await (deps.moveToTodo ?? (async () => ({ ok: false as const, status: 503 as const, error: "상태 옮기기 길이 없음" })))(t.key, t.state);
     if (!moved.ok) return c.json({ error: moved.error }, moved.status);
     deps.append([r.value]);
+    if (bothFiredWith) (deps.recordLine ?? record)({ t: deps.now().toISOString(), kind: "policy", op: "duplicate-title", event: "both-fired", flight: t.key, of: bothFiredWith });
     bustQueue(); // 제안이 SUPERVISOR QUEUE에서 곧바로 빠진다
     return c.json({ release: r.value, moved: true });
   });

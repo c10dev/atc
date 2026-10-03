@@ -64,6 +64,8 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "stale-stop"; aircraft: string; ok: boolean; code: "PENDING" | "HUNG"; heldMin: number; flights: string[]; jobId?: string; error?: string }
   | { t: string; kind: "policy"; op: "stale-stop-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "duplicate-title-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
   | { t: string; kind: "policy"; op: "bg-memory-cap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "scope-oom"; unit: string; total: number; delta: number } // 백그라운드 session scope 안의 OOM kill(ATC-505): cgroup memory.events의 oom_kill가 늘 때마다 한 줄
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }

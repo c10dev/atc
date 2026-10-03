@@ -296,7 +296,7 @@ test("발권 fire PARKED(ATC-487): 스위치가 꺼지면 옛 거절 그대로, 
   const { h, post } = fireHarness(tickets, async () => ({ ok: true }), false);
   assert.equal((await post({ flight: "ATC-3" })).status, 409);
   assert.equal(h.lines.length, 0);
-  assert.deepEqual(releaseView(snap(tickets), h.deps).parked, { on: false, rows: [], fired: 0, misfires: [] });
+  assert.deepEqual(releaseView(snap(tickets), h.deps).parked, { on: false, rows: [], fired: 0, misfires: [], duplicate: { on: false, refused: 0, overrides: 0, bothFired: 0 } });
   h.deps.parkedOn = () => true;
   const on = releaseView(snap(tickets), h.deps).parked;
   assert.deepEqual(on.rows.map((r) => r.key), ["ATC-3"]);
@@ -458,4 +458,48 @@ test("GET /api/releases: tree는 상위 이슈 그룹·막는 이슈 밑 중첩�
   assert.deepEqual(top.children[0]!.children.map((c) => c.key), ["ATC-3"]);
   assert.deepEqual(v.unreleased.map((r) => r.key), ["ATC-1"]); // 기존 목록은 그대로
   assert.deepEqual(v.ready.map((r) => r.key), []);
+});
+
+// ── 비슷한 제목 표시와 세기(ATC-488) ──
+const DUP_TITLE = "Release shows hand-filed Backlog issues in a folded PARKED section with a fire button";
+
+test("PARKED 줄의 중복 표시: 제목이 비슷한 이슈를 가리키고, 취소된 쌍은 가리키지 않으며, 스위치가 꺼지면 표시도 세기도 없다", () => {
+  const twinTickets = [backlog("ATC-475", { blockedBy: [], title: DUP_TITLE }), backlog("ATC-476", { blockedBy: [], title: DUP_TITLE }), backlog("ATC-477", { blockedBy: [], title: "Cap memory of the scope" })];
+  const h = fireHarness(twinTickets, async () => ({ ok: true }), true).h;
+  h.deps.duplicateOn = () => true;
+  h.deps.duplicateCounts = () => ({ refused: 2, overrides: 1, bothFired: 0 });
+  const on = releaseView(snap(twinTickets), h.deps).parked;
+  assert.deepEqual(on.rows.map((r: { key: string; duplicateOf: string | null }) => [r.key, r.duplicateOf]), [["ATC-475", "ATC-476"], ["ATC-476", "ATC-475"], ["ATC-477", null]]);
+  assert.deepEqual(on.duplicate, { on: true, refused: 2, overrides: 1, bothFired: 0 });
+  // 취소된 쌍은 표시하지 않는다
+  const dead = [backlog("ATC-475", { blockedBy: [], title: DUP_TITLE }), tk("ATC-476", { state: "Canceled", stateType: "canceled", title: DUP_TITLE })];
+  assert.equal(releaseView(snap(dead), h.deps).parked.rows[0].duplicateOf, null);
+  h.deps.duplicateOn = () => false;
+  const off = releaseView(snap(twinTickets), h.deps).parked;
+  assert.ok(off.rows.every((r: { duplicateOf: string | null }) => r.duplicateOf === null));
+  assert.deepEqual(off.duplicate, { on: false, refused: 0, overrides: 0, bothFired: 0 });
+});
+
+test("PARKED 표시가 있는 이슈를 발권했는데 쌍도 이미 발권돼 있으면 둘 다 발권으로 센다(처음 쏜 쪽은 세지 않는다)", async () => {
+  const tickets = [backlog("ATC-475", { blockedBy: [], title: DUP_TITLE }), backlog("ATC-476", { blockedBy: [], title: DUP_TITLE })];
+  const { h, post } = fireHarness(tickets, async () => ({ ok: true }), true);
+  h.deps.duplicateOn = () => true;
+  const recs: unknown[] = [];
+  h.deps.recordLine = ((l) => void recs.push(l)) as ReleaseDeps["recordLine"];
+  assert.equal((await post({ flight: "ATC-475", hash: "hash-ATC-475" })).status, 200);
+  assert.equal(recs.length, 0); // 쌍(ATC-476)은 아직 Backlog
+  // ATC-475가 Todo로 옮겨진 스냅샷에서 ATC-476을 쏜다
+  const after = [tk("ATC-475", { title: DUP_TITLE }), backlog("ATC-476", { blockedBy: [], title: DUP_TITLE })];
+  const second = fireHarness(after, async () => ({ ok: true }), true);
+  second.h.deps.duplicateOn = () => true;
+  second.h.deps.recordLine = ((l) => void recs.push(l)) as ReleaseDeps["recordLine"];
+  assert.equal((await second.post({ flight: "ATC-476", hash: "hash-ATC-476" })).status, 200);
+  assert.deepEqual(recs.map((r) => { const x = r as { op: string; event: string; flight: string; of: string }; return [x.op, x.event, x.flight, x.of]; }), [["duplicate-title", "both-fired", "ATC-476", "ATC-475"]]);
+  // 스위치가 꺼지면 세지 않는다
+  const off = fireHarness(after, async () => ({ ok: true }), true);
+  off.h.deps.duplicateOn = () => false;
+  const recs2: unknown[] = [];
+  off.h.deps.recordLine = ((l) => void recs2.push(l)) as ReleaseDeps["recordLine"];
+  assert.equal((await off.post({ flight: "ATC-476", hash: "hash-ATC-476" })).status, 200);
+  assert.equal(recs2.length, 0);
 });

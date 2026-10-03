@@ -99,6 +99,8 @@ export interface DispatchConfig {
   bgMemoryMax: string;
   // PARKED(ATC-487): "on"(기본)이면 RELEASE 화면이 막는 이슈 없이 손으로 올린 Backlog 이슈를 접힌 PARKED 절에 보이고 /api/releases/fire가 받는다. "off"면 절이 없고 fire가 거절한다(옛 동작)
   releaseParked: "on" | "off";
+  // 비슷한 제목 검사(ATC-488): "on"(기본)이면 `duty linear create`가 열린 ATC 이슈와 거의 같은 제목을 409로 거절하고 PARKED 줄에 "possible duplicate" 표시를 단다. "off"면 둘 다 없다
+  duplicateTitle: "on" | "off";
 }
 export type K3HoldMode = "on" | "off";
 export type AutoMode = "off" | "shadow" | "on";
@@ -151,6 +153,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   k3Relaunch: "off",
   crossAccountRelease: "on",
   releaseParked: "on",
+  duplicateTitle: "on",
   bgMemoryCap: "on",
   bgMemoryHigh: "20G",
   bgMemoryMax: "24G",
@@ -205,6 +208,18 @@ export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, k3Hold: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// duplicateTitle만 바꿔 저장한다(설정 창, ATC-488). 다른 설정은 그대로 둔다
+export function saveDuplicateTitle(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, duplicateTitle: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -362,6 +377,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       ...scopeMemoryOf(user.bgMemoryHigh, user.bgMemoryMax, d),
       // PARKED(ATC-487): 파일에 "off"라고 적었을 때만 끈다
       releaseParked: user.releaseParked === "off" ? "off" : "on",
+      // 비슷한 제목 검사(ATC-488): 파일에 "off"라고 적었을 때만 끈다
+      duplicateTitle: user.duplicateTitle === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
