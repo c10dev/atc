@@ -180,3 +180,25 @@
     overflow: visible;
   }
 }
+
+/* 오른쪽 패널의 카드: chip을 눌러 올 때 포커스를 받는다(ATC-478). 결정 기록의 gone 줄은 회색 */
+.ds-card:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+.ds-shift.is-gone,
+.ds-shift.is-gone span {
+  color: var(--faint);
+}
+.ds-shift > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-align: left;
+}
+.ds-shift > :last-child {
+  flex: none;
+}

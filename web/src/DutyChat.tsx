@@ -3,9 +3,10 @@ import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { Icon } from "./kit/Icon.tsx";
 import { Loading } from "./kit/Loading.tsx";
 import type { Chat, ChatItem } from "../../server/duty-chat.ts";
+import type { Handled } from "../../server/duty-card-status.ts";
 import { choicesOf, foldTools, leadOf, matchesQuery, nextStick, scrollTopAfterResize, toolLabel } from "../../server/duty-view.ts";
 import { renderSafeMarkdown } from "../../server/safe-markdown.ts";
-import { type Airports, type CardCtx, DraftCard, DutyCard, useCharters, useDecisions, useQueue } from "./DutyCards.tsx";
+import { type Airports, type CardCtx, DecisionChip, DraftCard, DutyCard, useCharters, useDecisions, useQueue, waitingOf } from "./DutyCards.tsx";
 import "./Drawer.css";
 import "./DutyDrawer.css";
 import "./DutyChat.css";
@@ -75,13 +76,13 @@ export function useDutyChat(chat: Chat, airports: Airports, refreshKey: string, 
   const draftCount = chat.items.filter((i) => i.kind === "draft").length;
   const { data: decisions, reload: reloadDecisions } = useDecisions(refreshKey, st?.enabled === true, draftCount);
   const { data: charters, reload: reloadCharters } = useCharters(refreshKey, st?.enabled === true, draftCount);
-  const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
+  const [handled, setHandled] = useState<Readonly<Record<string, Handled>>>({});
   const ctx: CardCtx = {
     items: queue?.items ?? null,
     airports,
-    handled,
-    markHandled: (k) => {
-      setHandled((h) => new Set(h).add(k));
+    status: { items: queue?.items ?? null, handled, decisions, charters, nowMs: now },
+    markHandled: (k, outcome) => {
+      setHandled((h) => ({ ...h, [k]: { outcome, at: new Date().toISOString() } }));
       reload();
     },
     now,
@@ -157,7 +158,7 @@ function Answer({ src, live, fill }: { src: string; live: boolean; fill: (c: str
 
 const utcTime = (t: string) => (/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(t) ? `${t.slice(11, 16)}Z` : "");
 
-function Item({ it, ctx, live, fill }: { it: ChatItem; ctx: CardCtx; live: boolean; fill: (c: string) => void }) {
+function Item({ it, ctx, live, fill, chips, onGo }: { it: ChatItem; ctx: CardCtx; live: boolean; fill: (c: string) => void; chips: boolean; onGo: (id: string) => void }) {
   switch (it.kind) {
     case "user":
       return (
@@ -185,23 +186,30 @@ function Item({ it, ctx, live, fill }: { it: ChatItem; ctx: CardCtx; live: boole
         </div>
       );
     case "card":
-      return <DutyCard it={it} ctx={ctx} />;
+      return chips ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DutyCard it={it} ctx={ctx} />;
     case "draft":
-      return <DraftCard it={it} ctx={ctx} />;
+      // 화면에서는 결정을 기다리는 초안도 chip 한 줄이다. 정해 둔 결정 목록 카드(retire)는 패널에 앉지 않으므로 그대로 둔다
+      return chips && it.draftKind !== "retire" ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DraftCard it={it} ctx={ctx} />;
     case "tool":
       return null; // 도구 줄은 foldTools가 턴마다 묶어 낸다
   }
 }
 
 // 대화 로그. 맨 아래에 붙어 있으면(stick) 새 글과 창 크기 변화를 따라 내려간다. 높이는 틀의 CSS 배치가 정하고 여기서 재지 않는다
-export function DutyLog({ d, filter = "" }: { d: DutyChatState; filter?: string }) {
+// cards: 카드를 대화 속에 어떻게 두는가. "inline"(서랍)은 작은 카드 그대로, "chips"(화면)는 한 줄 chip이고 카드는 오른쪽 패널에 있다.
+// waitingOnly(서랍의 "결정 n" 칩): 대화를 기다리는 카드만 보인다. onGo: chip을 누르면 패널의 그 카드로 간다
+export function DutyLog({ d, filter = "", cards = "inline", waitingOnly = false, onGo = () => {} }: { d: DutyChatState; filter?: string; cards?: "inline" | "chips"; waitingOnly?: boolean; onGo?: (id: string) => void }) {
   const { chat, ctx, thinking, stick } = d;
   const st = chat.status;
   const logRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const resizing = useRef(false);
-  const searching = filter.trim() !== "";
-  const items = useMemo(() => (searching ? chat.items.filter((i) => matchesQuery(i, filter)) : chat.items), [chat.items, filter, searching]);
+  const searching = filter.trim() !== "" || waitingOnly;
+  const waitingIds = useMemo(() => (waitingOnly ? new Set(waitingOf(chat.items, ctx).map((i) => i.id)) : null), [waitingOnly, chat.items, ctx]);
+  const items = useMemo(() => {
+    const byWaiting = waitingIds ? chat.items.filter((i) => waitingIds.has(i.id)) : chat.items;
+    return filter.trim() !== "" ? byWaiting.filter((i) => matchesQuery(i, filter)) : byWaiting;
+  }, [chat.items, filter, waitingIds]);
   const rows = useMemo(() => (searching ? items.map((it) => ({ kind: "item" as const, it })) : foldTools(items, thinking)), [items, thinking, searching]);
   const lastUser = items.reduce((n, it, i) => (it.kind === "user" ? i : n), -1);
   const lastText = items.reduce((n, it, i) => (it.kind === "text" ? i : n), -1);
@@ -236,7 +244,7 @@ export function DutyLog({ d, filter = "" }: { d: DutyChatState; filter?: string 
     <div className="du-log" ref={logRef} onScroll={(e) => void (stick.current = nextStick(stick.current, e.currentTarget, resizing.current))}>
       <div className="du-log-inner" ref={innerRef}>
         {chat.items.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
-        {searching && items.length === 0 && <p className="dr-note">불러온 줄에 없습니다.</p>}
+        {searching && items.length === 0 && <p className="dr-note">{waitingOnly ? "기다리는 카드가 없습니다." : "불러온 줄에 없습니다."}</p>}
         {rows.map((r) => {
           if (r.kind === "tools") {
             return (
@@ -258,7 +266,7 @@ export function DutyLog({ d, filter = "" }: { d: DutyChatState; filter?: string 
             );
           }
           const idx = items.indexOf(r.it);
-          return <Item key={r.it.id} it={r.it} ctx={ctx} live={r.it.kind === "text" && idx === lastText && idx > lastUser} fill={d.fill} />;
+          return <Item key={r.it.id} it={r.it} ctx={ctx} live={r.it.kind === "text" && idx === lastText && idx > lastUser} fill={d.fill} chips={cards === "chips"} onGo={onGo} />;
         })}
         {chat.streaming && (
           <div className="du-msg du-duty is-streaming">

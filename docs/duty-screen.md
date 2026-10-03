@@ -136,6 +136,14 @@ Each step is one work order. U1 first; the rest are chained.
 - **Below 1000 px** (before U7): one column, the chat first, then the waiting cards, then the left column; the page scrolls. At 1279 px and below the shell sidebar is hidden while the screen is open, like it is for a drawer.
 - **Kit.** The drawer's and cards' `dr-btn` became `.btn`; "더 보기" and the choices use `.chip`.
 
+### U2 as built (ATC-478)
+
+- **One rule, one file.** `server/duty-card-status.ts` decides "waiting", "handled" and the outcome for a card or draft (`statusOf`), the panel list (`waitingOf`, newest first, one entry per card key), the decision log (`decisionLog`, rebuilt from the chat items) and the chip text (`chipText`). The right panel, the chips, the log and the drawer's "결정 n" all call it, so they count the same cards. Tests: `server/duty-card-status.test.ts`.
+- **States.** A queue card is waiting while the server's queue holds its `<kind>/<key>`; when the queue no longer holds it the card is handled with the outcome `gone` (grey, time unknown). A button pressed on this screen records outcome and time in the browser's memory (`승인`, `거절`, `동의`, `반대`, `업데이트 시작`, `손으로 전했음`; drafts `확정`, `버림`) and wins over the server's view. A draft is handled when confirmed (outcome `확정`, time from the decision's `at`), dismissed (`버림`) or past its `until` (`until 지남`). Until the queue or the decisions are read a card is neither waiting nor handled ("읽는 중").
+- **Screen.** Cards in the chat are one-line chips (`DecisionChip`): waiting ones read `종류 키 → 오른쪽 패널` and scroll the panel to the card; handled ones show outcome and UTC time. The STANDING DECISIONS list card (`retire`) never waits, so it stays a full card. The left column gets a "결정 기록" list between the standing decisions and the SHIFTs; a row scrolls the chat to its chip.
+- **Drawer.** Cards stay inline. A "결정 n" chip in the head line (`aria-pressed`) filters the chat to the waiting cards; n is `waitingOf(...).length`, the same call the screen's panel uses.
+- **Not stored.** The decision log has no file. After a reload the in-session outcomes are gone: a card handled earlier shows as `gone` without a time, and confirmed drafts keep their outcome and time because the server holds them.
+
 ## 6. Risks
 
 | Risk | Mitigation |

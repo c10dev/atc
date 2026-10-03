@@ -27,3 +27,47 @@
   white-space: normal;
   text-align: left;
 }
+
+/* 화면의 대화 속 카드 한 줄 chip(ATC-478). 기다리면 패널을 가리키고, 처리됐으면 결과와 시각. 폭은 놓인 칸을 따르고 넘치면 말줄임이다 */
+.du-chip {
+  display: flex;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  font-size: var(--text-xs);
+}
+.du-chip.is-handled {
+  border-left-color: var(--radar);
+  color: var(--muted);
+}
+.du-chip.is-gone {
+  border-left-color: var(--line);
+  background: var(--panel-2);
+  color: var(--faint);
+}
+.du-chip-go,
+.du-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.du-chip-go {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.du-chip-go:hover {
+  text-decoration: underline;
+}
+.du-chip-go:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
