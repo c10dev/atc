@@ -119,7 +119,8 @@ export function controlGoneOf(inp: { sessions: readonly string[]; running: Reado
     const l = inp.last.get(name);
     if (l && l.op === "stop" && l.ok && l.by === "SUPERVISOR") continue;
     if (l && inp.now - Date.parse(l.t) < CONTROL_DOWN_GRACE_MS) continue;
-    out.push({ session: name, since: l?.t ?? null, reason: l ? `마지막 기록: ${l.op}${l.ok ? "" : " 실패"}(${l.by})` : "살아 있는 세션이 없음", gone: true });
+    // since는 마지막 기록의 시각이지 내려간 시각이 아니다(며칠 전의 launch일 수 있다): 글에는 "부터"가 아니라 기록의 날짜와 시각을 적는다
+    out.push({ session: name, since: l?.t ?? null, reason: l ? `마지막 기록: ${l.op}${l.ok ? "" : " 실패"}(${l.by}) ${l.t.slice(5, 10)} ${l.t.slice(11, 16)}Z` : "살아 있는 세션이 없음", gone: true });
   }
   return out;
 }
@@ -539,7 +540,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       aircraft: null,
       flight: null,
       text: c.gone
-        ? `관제 세션 ${c.session} 없음${c.since ? ` (${c.since.slice(11, 16)}Z부터)` : ""} — ${c.reason}`
+        ? `관제 세션 ${c.session} 없음 — ${c.reason}`
         : `CONTROL RECYCLE — ${c.session}을 멈췄지만 다시 뜨지 않았음: ${c.reason}`,
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",

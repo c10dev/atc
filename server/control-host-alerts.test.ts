@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { hostMemoryOf, type MemInfo, nextOomState, NO_OOM, OOM_WINDOW_MS, oomInWindow, parseMeminfo, parseOomKill } from "./host-memory.ts";
 import { hostMemoryNow, resetHostMemory } from "./host-memory-run.ts";
+import { CONTROL_READ_OVERLAP_MS, controlOpsNow, resetControlOps } from "./supervisor-alerts-run.ts";
 import { type AlertsInput, CONTROL_DOWN_GRACE_MS, type ControlDown, type ControlOp, controlGoneOf, destOf, mergeControlDown, supervisorAlertsOf } from "./supervisor-alerts.ts";
 
 // ATC-203(ALERTING A1b): 관제 세션이 이유 불문 없을 때, 호스트 메모리 부족·OOM kill
@@ -21,7 +22,7 @@ test("control|down: 살아 있는 행이 없는 관제 세션은 이유를 묻�
   const stale = gone(["OCC", "MCC", "REVIEW"], { TOWER: op(30, { op: "recycle", ok: true }) });
   assert.equal(stale.length, 1);
   assert.equal(stale[0]!.since, ago(30));
-  assert.match(stale[0]!.reason, /recycle\(atc\)/);
+  assert.match(stale[0]!.reason, /recycle\(atc\) 10-03 05:30Z/); // 기록의 날짜와 시각(내려간 시각이 아니다)
 });
 
 test("control|down: SUPERVISOR가 직접 STOP한 것이 마지막 일이면 뺀다. 그 뒤에 launch가 있거나 STOP이 실패했거나 atc가 멈춘 것은 뺀 것이 아니다", () => {
@@ -48,7 +49,7 @@ test("control|down: RECYCLE이 멈춘 채인 것과 합치면 세션마다 하�
 });
 
 const base: AlertsInput = { sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [] } as unknown as AlertsInput;
-const down = (...names: string[]): ControlDown[] => names.map((session) => ({ session, since: ago(10), reason: "r", gone: true }));
+const down = (...names: string[]): ControlDown[] => names.map((session) => ({ session, since: ago(10), reason: "마지막 기록: launch(SUPERVISOR) 10-03 05:50Z", gone: true }));
 const levelOf = (list: ControlDown[]) => Object.fromEntries(supervisorAlertsOf({ ...base, controlDown: list }).filter((a) => a.key.startsWith("control|down|")).map((a) => [a.key.split("|")[2], a.level]));
 
 test("control|down: CAUTION, TOWER나 MCC가 없거나 둘 이상이 한꺼번에 없으면 WARNING. 키는 세션마다 그대로고 dest는 alerts", () => {
@@ -60,11 +61,11 @@ test("control|down: CAUTION, TOWER나 MCC가 없거나 둘 이상이 한꺼번�
   const [a] = supervisorAlertsOf({ ...base, controlDown: down("OCC") }).filter((x) => x.key === "control|down|OCC");
   assert.equal(a!.dest, "alerts");
   assert.match(a!.text, /OCC/);
-  assert.match(a!.text, /\d\d:\d\dZ부터/);
+  assert.match(a!.text, /마지막 기록/);
+  assert.doesNotMatch(a!.text, /부터/); // 내려간 시각을 모르니 "부터"라고 하지 않는다
   assert.match(a!.next, /LAUNCH/);
-  // 시각을 모르면 "부터"를 쓰지 않는다
+  // 기록이 없으면 이유만
   const [b] = supervisorAlertsOf({ ...base, controlDown: [{ session: "OCC", since: null, reason: "살아 있는 세션이 없음", gone: true }] });
-  assert.doesNotMatch(b!.text, /부터/);
   assert.equal(b!.since, null);
 });
 
@@ -137,4 +138,30 @@ test("host|memory: 항목은 키 하나(host|memory), dest는 alerts, 서버 재
   assert.equal(hostMemoryNow(NOW + 10_000, { meminfo, vmstat: "oom_kill 9\n" })?.oom, 2);
   assert.equal(hostMemoryNow(NOW + 15_000, { meminfo: null, vmstat: null }), null);
   resetHostMemory();
+});
+
+// 늦게 붙은 기록(ATC-203 MCC 지적): launchControl은 t를 먼저 정하고 claude 호출을 한 뒤에 기록을 붙인다
+test("controlOpsNow: 오래 걸린 launch가 나중에 붙어도(t가 옛날) 읽는다 — 안 그러면 옛 SUPERVISOR STOP이 남아 죽은 세션을 뜻한 것으로 오해한다", () => {
+  resetControlOps();
+  const line = (t: number, op: "launch" | "stop", by = "SUPERVISOR") => ({ t: new Date(t).toISOString(), kind: "control", op, session: "TOWER", by, ok: true }) as never;
+  const stop = line(NOW - 60 * 60_000, "stop");
+  // 첫 읽기: SUPERVISOR의 STOP
+  assert.equal(controlOpsNow(NOW, () => [stop]).get("TOWER")?.op, "stop");
+  // launch는 NOW+1초에 시작해 40초 걸려 NOW+41초에 기록이 붙었다(t는 시작 시각). 다음 읽기는 NOW+60초: 10초 겹침이면 NOW+50초부터라 놓친다
+  const launch = line(NOW + 1_000, "launch");
+  const second = NOW + 60_000;
+  const seen: number[] = [];
+  const read = (since: number) => {
+    seen.push(since);
+    return [stop, launch].filter((r) => Date.parse((r as { t: string }).t) >= since);
+  };
+  const m = controlOpsNow(second, read);
+  assert.equal(m.get("TOWER")?.op, "launch", "늦게 붙은 launch를 놓쳤다");
+  // 겹침은 5분이다: 첫 읽기에서 NOW-5분을 다음 읽기의 시작으로 정했다
+  assert.equal(seen[0], NOW - CONTROL_READ_OVERLAP_MS);
+  // 같은 줄을 두 번 읽어도 같은 결과다
+  assert.equal(controlOpsNow(second + 30_000, read).get("TOWER")?.op, "launch");
+  // 그 launch 뒤에 세션이 사라지면 SUPERVISOR의 STOP이 아니라 없는 세션이다
+  assert.equal(controlGoneOf({ sessions: ["TOWER"], running: new Set(), last: m, now: second + 10 * 60_000 }).length, 1);
+  resetControlOps();
 });

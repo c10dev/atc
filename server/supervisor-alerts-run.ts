@@ -58,12 +58,15 @@ const repositionAlertInputs = (rs: ReturnType<typeof readRecords>, now: number) 
 // 관제 세션마다 마지막으로 겪은 일(ATC-203): FLIGHT RECORDER의 control launch·stop·recycle 기록에서. SUPERVISOR의 STOP인지 가르는 데 쓴다.
 // 새 상태 파일은 없다: 처음 한 번 CONTROL_STOP_LOOKBACK_MS만큼 읽고, 그 뒤로는 지난번 읽은 시각부터만 읽어 메모리에 든다(서버를 다시 켜면 다시 읽는다)
 export const CONTROL_STOP_LOOKBACK_MS = 14 * 24 * 3_600_000;
+// 다음에 읽을 때 이만큼 겹쳐 읽는다. launchControl·stopControl은 t를 먼저 정하고 claude 호출(시간 제한 60초)을 한 뒤에 기록을 붙이므로, 늦게 붙은 줄은 t가 옛날이다.
+// 가장 긴 동작보다 훨씬 길게 겹쳐야 그 줄을 놓치지 않는다(같은 줄을 두 번 읽어도 해가 없다: 세션마다 가장 늦은 t만 남긴다). 못 보면 옛 STOP이 남아 죽은 세션을 SUPERVISOR의 뜻으로 오해한다
+export const CONTROL_READ_OVERLAP_MS = 5 * 60_000;
 const controlLast = new Map<string, ControlOp>();
 let controlReadFrom = 0;
-function controlOpsNow(now: number): ReadonlyMap<string, ControlOp> {
+export function controlOpsNow(now: number, read: (sinceMs: number) => ReturnType<typeof readRecords> = readRecords): ReadonlyMap<string, ControlOp> {
   const from = controlReadFrom || now - CONTROL_STOP_LOOKBACK_MS;
-  controlReadFrom = now - 10_000; // 겹쳐 읽어도 같은 줄이라 해가 없다
-  for (const r of readRecords(from)) {
+  controlReadFrom = now - CONTROL_READ_OVERLAP_MS;
+  for (const r of read(from)) {
     if (r.kind !== "control" || (r.op !== "launch" && r.op !== "stop" && r.op !== "recycle")) continue;
     if (r.op === "recycle" && (r.result === "would" || r.result === "would-wait")) continue; // 그림자 판정은 일어난 일이 아니다
     const prev = controlLast.get(r.session);
