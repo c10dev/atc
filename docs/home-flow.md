@@ -6,7 +6,7 @@ Related: [layout.md](layout.md) (HOME is one of the five screens), [follow.md](f
 
 ## 1. Current facts
 
-- **HOME is a to-do list.** `layout.md` gives it one job: "is there anything for me to do now?". It shows the SUPERVISOR QUEUE, ALERTs, stuck FLIGHT lines, the brakes row, and (since ATC-383) a separate SINCE LAST LOOK row at the top.
+- **HOME is a to-do list.** `layout.md` gives it one job: "is there anything for me to do now?". It shows a separate SINCE LAST LOOK row at the top (since ATC-383) and the SUPERVISOR QUEUE, where ALERTs and stuck FLIGHTs are kinds of their own. BRAKES moved to the bottom panel (ATC-455).
 - **Two bottlenecks were invisible on HOME.** On 10-02, 8 escalated PRs sat as "MCC INSPECTION 대기" while the real wait was the SUPERVISOR's merge. On 10-03, vocado's Codex review was silent and the REVIEW diff truncation (~80k) held 15 FLIGHTs. Both were found only through `atcctl mcc queue` and the dispatch brief.
 - **The stages and stuck limits already exist.** `followRowOf` (`server/follow.ts`) gives every FLIGHT a stage (`todo` … `deployed`, follow.md 3.2) and a `stuck` mark with limits (3.3): Todo without a proposal 30 min, approved-not-sent 10 min, no READBACK 10 min, `no-pr`, `pr-not-cleared`, CLEARED-not-landed 60 min, landed-not-deployed 15 min.
 - **Landing owner already exists for PRs.** `mcc.md` classifies an ATCC PR as `mcc` or `supervisor` (tier `user`, ESCALATE, hold, shadow mode), and `pulls[].blocks` carries the block codes (checks pending or failed, behind, dirty, review).
@@ -115,10 +115,14 @@ Not new as a milestone (follow.md section 1 has OUT, OFF, ON, IN), but **new as 
 
 ### 4.2 Can "work the system should move" be computed exactly?
 
-Yes for PRs, by definition for the rest, with one total table as the condition.
+Yes. Every FLIGHT from QUEUE to CLEARED already has a stage and, past a limit, a stuck reason (follow.md 3.2–3.3). PRs add one total table.
 
-- A stopped verdict needs at least one open PR (stage `pr` or `ci`) at that AIRPORT whose holder is `ATC` or `EXTERNAL`. A PR held by the SUPERVISOR (tier `user`, ESCALATE, hold, HUMAN CHECK, K approval) is excluded, and so is a PR that inherits a SUPERVISOR holder through a blocker.
-- Work held by an AIRCRAFT is the team working, not the system failing; it is excluded and shows only as congestion when it passes a limit.
+- **A stopped verdict needs at least one FLIGHT at that AIRPORT, in any stage from QUEUE to CLEARED, whose holder is `ATC`, `AIRCRAFT` or `EXTERNAL`.**
+  - Only SUPERVISOR-held work is excluded: tier `user`, ESCALATE, hold, HUMAN CHECK and K approval.
+  - Work that inherits a SUPERVISOR holder through a blocker is excluded too.
+  - This is the rule settled on 2026-10-03.
+- **AIRCRAFT-held work counts.** Suppose every AIRCRAFT goes NORDO or idle before opening a PR. Work then waits in QUEUE or OUT, nothing lands past the threshold, and the board must say stopped. That is the silent stall this board exists to show.
+- **Before a PR, the holder comes from the follow.md 3.3 stuck reason.** It works like the PR table below: a reason nobody classified is `ATC` and counts as a classification miss.
 - The holder of each PR comes from fields that already exist: landing owner (`mcc` / `supervisor`), MCC ESCALATE and hold, the `pulls[].blocks` codes, and review state. The classification is **one table from block code to holder, and a test fails if a code is unmapped.** A code nobody classified defaults to `ATC` and counts as a classification miss, so it can never hide a stop behind the SUPERVISOR.
 - Known weak spot: a vocado PR whose reviewer (Codex or DeepSeek) never answers is `EXTERNAL`. That is the intended case (the 10-03 stop), but the "silent" judgement is an age limit on the review wait, which the table needs as a number.
 
