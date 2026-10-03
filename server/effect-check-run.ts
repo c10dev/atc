@@ -6,6 +6,7 @@ import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
 import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
 import { appendEffectLine, readEffectLines, VERDICTS_FILE } from "./effect-store.ts";
+import { bustQueue } from "./queue-bust.ts";
 import { loadMcc } from "./mcc.ts";
 import { isAutoApproved, misfireOf } from "./misfire.ts";
 import { milestonesNow } from "./milestones-run.ts";
@@ -211,6 +212,7 @@ export function mountEffectCheck(app: Hono, getSnapshot: () => Promise<Snapshot>
     if (!/^[A-Z][A-Z0-9]*-\d+$/.test(flight) || typeof b?.wrong !== "boolean") return c.json({ error: "flight(ATC-n)와 wrong(true|false)이 필요함" }, 400);
     if (!foldEffects(readEffectLines()).some((v) => v.flight === flight)) return c.json({ error: "그 FLIGHT의 평결이 없음" }, 404);
     appendEffectLine({ v: 1, ev: "mark", at: new Date().toISOString(), flight, wrong: b.wrong });
+    bustQueue(); // 틀림으로 표시하면 EFFECT 줄이 큐에서 바로 빠진다(ATC-454, 5초 캐시를 비운다)
     return c.json(viewOf());
   });
 }

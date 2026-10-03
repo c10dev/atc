@@ -87,16 +87,17 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
 
 let cache: { at: number; epoch: number; view: SupervisorQueue } | null = null;
 
-// 지금의 큐(5초 캐시). 센 개수는 SUPERVISOR SUMMARY의 todo가 읽는다(ATC-454)
-export async function queueViewNow(s: Snapshot, updateStatus: () => Promise<UpdateStatus | null>, now = Date.now()): Promise<SupervisorQueue> {
+// 같은 5초 캐시로 큐를 준다(GET /api/supervisor/queue와 GET /api/notices가 함께 쓴다, ATC-447)
+export async function supervisorQueueNow(getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, now = Date.now()): Promise<SupervisorQueue> {
   if (cache && cache.epoch === queueEpoch() && now - cache.at < CACHE_MS) return cache.view;
+  const s = await getSnapshot();
   const view = supervisorQueueView(await collectQueueInput(s, updateStatus, now), now);
   cache = { at: now, epoch: queueEpoch(), view };
-  setTodo(view.count);
+  setTodo(view.count); // SUPERVISOR SUMMARY의 todo가 같은 수를 읽는다(ATC-454)
   return view;
 }
 
 export function mountSupervisorQueue(app: Hono, getSnapshot: () => Promise<Snapshot>, updateStatus: () => Promise<UpdateStatus | null>, events: () => readonly TrafficEvent[] = () => []) {
   eventsOf = events;
-  app.get("/api/supervisor/queue", async (c) => c.json(await queueViewNow(await getSnapshot(), updateStatus)));
+  app.get("/api/supervisor/queue", async (c) => c.json(await supervisorQueueNow(getSnapshot, updateStatus)));
 }

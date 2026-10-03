@@ -200,7 +200,7 @@ export const TOP_SCREEN_FILES = [
   // 설정 창(S6)
   "SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing",
   // 머리글·알림·갱신(S8)
-  "App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow",
+  "App", "AlertBell", "Notices", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow",
   // GLOBE 보기 모드
   "GlobeMode",
 ];
@@ -213,7 +213,7 @@ const SCREEN_GROUPS: [string, string[]][] = [
   ["GLOBE", ["views/Globe", "views/GlobeAirport", "views/GlobeFlights", "views/GlobeRadio", "views/GlobeSpace", "GlobeMode"]],
   ["DRAWERS", ["Drawer", "DutyDrawer", "IdeasDrawer", "DutyCards", "FlightBrakes", "FlightDispatch", "FlightRadio", "FlightLink", "FollowNext", "Relay", "EffectVerdict"]],
   ["SETTINGS", ["SettingsPanel", "SettingsAlerts", "SettingsAccounts", "SettingsAutomation", "SettingsServer", "SupervisorPairing", "views/Airports"]],
-  ["HEADER", ["App", "AlertBell", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow"]],
+  ["HEADER", ["App", "AlertBell", "Notices", "HelpMenu", "Ticker", "UpdateBar", "NewVersion", "ControlPanel", "ApplyNow"]],
 ];
 // 같은 이름의 소스 파일이 없는 스타일시트의 주인 화면
 const STYLESHEET_OWNER: Record<string, string> = { "alerts.css": "HEADER" };

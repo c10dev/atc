@@ -94,7 +94,7 @@ function HomeQueue({ refreshKey, now, snapshot }: { refreshKey: string; now: num
               <p className="hm-title mono">{i.flight ? <OpenFlight k={i.flight} label={i.title} /> : i.title}</p>
               {i.detail && !verdict && <p className="hm-detail muted">{i.detail}</p>}
               {i.need && <p className="hm-need muted">→ {i.need}</p>}
-              {verdict && <EffectRow v={verdict} now={now} onView={setEffects} />}
+              {verdict && <EffectRow v={verdict} now={now} onView={(v) => { setEffects(v); reload(); }} />}
               {i.kind === "HUMAN CHECK" && humanPull(i.key) ? (
                 <ul className="hc-list">
                   <HumanRow pr={humanPull(i.key)!} idx={idx} nameOf={nameOf} />

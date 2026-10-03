@@ -134,9 +134,9 @@ test("RELEASE 묶음: AIRPORT별, 우선순위 먼저, 검색", () => {
 
 test("METRICS 하위 화면과 HOME 닻: 이름·주소가 고정이고 검색이 거른다", () => {
   assert.deepEqual(METRICS_ITEMS.map((m) => m.label), ["OPERATIONS", "LEAKS", "MISFIRE", "FUEL", "NETWORK"]);
-  assert.deepEqual(HOME_ANCHORS.map((a) => a.label), ["QUEUE", "ALERTS", "BRAKES"]);
+  assert.deepEqual(HOME_ANCHORS.map((a) => a.label), ["TO DO", "BRAKES"]);
   assert.deepEqual(filterLabeled(METRICS_ITEMS, "fuel").map((m) => m.id), ["fuel"]);
-  assert.equal(filterLabeled(HOME_ANCHORS, "").length, 3);
+  assert.equal(filterLabeled(HOME_ANCHORS, "").length, 2);
   assert.equal(metricsSubOf("#metrics"), "ops");
   assert.equal(metricsSubOf("#metrics/leaks"), "leaks");
   assert.equal(metricsSubOf("#metrics/nope"), "ops");

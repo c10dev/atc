@@ -76,7 +76,8 @@ import { mountDutyReview, reviewHooks } from "./duty-review-run.ts";
 import { mountLeaks } from "./leaks-run.ts";
 import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
-import { mountSupervisorQueue, queueViewNow } from "./supervisor-queue-run.ts";
+import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
+import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
 import { mountRadio, RadioFeed } from "./radio-run.ts";
 import { mountReadability } from "./readability-run.ts";
@@ -153,7 +154,7 @@ async function tick() {
     const alertEvent = isWarm(next) ? runSupervisorAlerts(next) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
-    if (isWarm(next)) await queueViewNow(next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
+    if (isWarm(next)) await supervisorQueueNow(async () => next, () => update.status()).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
     const summary = isWarm(next) ? runSummary(next) : null;
     if (summary) for (const l of summaryListeners) l(summary);
     radioFeed.poll();
@@ -265,6 +266,7 @@ mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tic
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
+mountNotices(app, getSnapshot, () => update.status()); // NOTICES(ATC-447): 사이드바 머리의 알림 세 개(읽기만)
 mountEffectCheck(app, getSnapshot); // EFFECT CHECK(ATC-402): 배포한 FLIGHT가 `## Measure`에 적은 것을 바꿨는지 재고 effect-verdicts.jsonl에 평결을 남긴다(재기만, 끄는 스위치는 설정 창)
 mountLeaks(app, getSnapshot, () => update.status()); // LEAK COUNTER(ATC-363): 릴리스 뒤에도 사람이 거치는 단계를 leaks.jsonl에 열릴 때·닫힐 때 한 줄씩 센다(세기만)
 mountLanes(app); // 조용한 리뷰 레인(ATC-386): 날짜별 착륙 수와 REVIEW 한 레인으로 착륙한 수(읽기만)
@@ -281,7 +283,7 @@ app.get("/api/supervisor-alerts/ends", (c) => (current ? c.json(endsNow(current)
 // 알림 요약(ATC-153, 읽기만): 메뉴 막대·브라우저·atc-app이 같은 숫자를 읽는다. 아직 스냅샷이 없으면 503
 app.get("/api/supervisor-summary", async (c) => {
   if (!current) return c.json({ error: "snapshot not ready" }, 503);
-  await queueViewNow(current, () => update.status()).catch(() => null); // todo는 큐가 센 수(ATC-454)
+  await supervisorQueueNow(async () => current!, () => update.status()).catch(() => null); // todo는 큐가 센 수(ATC-454)
   return c.json(summaryNow(current));
 });
 

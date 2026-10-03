@@ -154,8 +154,7 @@ export const METRICS_ITEMS = [
 ] as const;
 
 export const HOME_ANCHORS = [
-  { id: "queue", label: "QUEUE", ariaLabel: "SUPERVISOR QUEUE" },
-  { id: "alerts", label: "ALERTS", ariaLabel: "ALERTS" },
+  { id: "queue", label: "TO DO", ariaLabel: "SUPERVISOR QUEUE · 할 일" }, // 알림·막힌 FLIGHT·EFFECT·CLOSE도 이 목록에 있다(ATC-454)
   { id: "brakes", label: "BRAKES", ariaLabel: "BRAKES" },
 ] as const;
 

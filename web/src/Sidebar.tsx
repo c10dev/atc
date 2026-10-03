@@ -6,6 +6,8 @@ import { flightNumber } from "./aviation.ts";
 import { stationOfHash, stationsOf, type StationCount } from "./radio-log.ts";
 import type { Transmission } from "../../server/radio.ts";
 import { Icon } from "./kit/Icon.tsx";
+import { NoticeIcons } from "./Notices.tsx";
+import type { Notices } from "../../server/notices.ts";
 import {
   type AircraftInput,
   type AirportLite,
@@ -27,7 +29,7 @@ import "./Sidebar.css";
 
 // 화면 사이드바(ATC-443, docs/layout.md 7.2·E1): 레일 옆에서 "열린 화면 안"을 AIRPORT별로 보여 준다.
 // 새 서버 길은 없다. FLIGHTS·RELEASE는 snapshot(tickets의 airport)과 RELEASE가 이미 받는 GET /api/releases, FLEET는 FLEET가 이미 받는 GET /api/fleet을 읽는다.
-// 머리: 화면 이름 + 검색(알림 Z6이 들어올 자리는 검색 왼쪽의 빈 칸). 항목을 고르면 서랍(#flight/<KEY>)이나 화면 안 자리로 간다.
+// 머리: 화면 이름 + 검색+ 알림 세 개(Z6, Notices.tsx) + 검색. 항목을 고르면 서랍(#flight/<KEY>)이나 화면 안 자리로 간다.
 
 const TITLE: Record<string, string> = { home: "HOME", release: "RELEASE", flights: "FLIGHTS", radio: "RADIO", fleet: "FLEET", metrics: "METRICS", docs: "DOCS" };
 
@@ -117,6 +119,7 @@ export function Sidebar({
   snapshot,
   idx,
   refreshKey,
+  notices,
   over,
   onPick,
   onClose,
@@ -125,6 +128,7 @@ export function Sidebar({
   snapshot: Snapshot | null;
   idx: Index | null;
   refreshKey: string;
+  notices: Notices;
   over: boolean; // 좁은 폭: 화면 위로 열린다
   onPick: () => void; // 항목을 골랐다(좁은 폭에서는 닫는다)
   onClose: () => void;
@@ -363,8 +367,8 @@ export function Sidebar({
       <div className="sb-head">
         <h2 className="sb-title-screen mono">{TITLE[screen] ?? screen.toUpperCase()}</h2>
         <div className="sb-tools">
-          {/* 알림(Z6, docs/layout.md E4)이 들어올 자리: 검색 왼쪽 */}
-          <div className="sb-notify" />
+          {/* 알림(Z6, docs/layout.md E4): 검색 왼쪽 */}
+          <NoticeIcons notices={notices} onPick={onPick} />
           <label className="sb-search">
             <Icon icon={Search} size={14} />
             <input

@@ -167,6 +167,9 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   };
 }
 
+// 발권할 수 있는 READY 목록만(GET /api/releases의 ready와 같은 값, NOTICES가 읽는다, ATC-447)
+export const releaseReadyNow = (s: Snapshot) => releaseView(s, defaultDeps(async () => s)).ready;
+
 export function mountReleases(app: Hono, snapshot: () => Promise<Snapshot>, deps: ReleaseDeps = defaultDeps(snapshot)) {
   const readBody = async (c: Context): Promise<Record<string, unknown> | null> => {
     const raw = await c.req.text();

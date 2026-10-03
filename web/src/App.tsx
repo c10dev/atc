@@ -1,4 +1,5 @@
-import { AlertBell, SoundLockChip } from "./AlertBell.tsx";
+import { SoundLockChip } from "./AlertBell.tsx";
+import { NoticeTotal, useNotices } from "./Notices.tsx";
 import { FollowNext } from "./FollowNext.tsx";
 import { canonicalHash } from "./legacy-hash.ts";
 import { SinceLook } from "./SinceLook.tsx";
@@ -91,6 +92,7 @@ export function App({ build }: { build: string }) {
     setSbFolded(next);
     saveSidebarFolded(next);
   };
+  const notices = useNotices(snapshot?.at.slice(0, 16) ?? "");
   const closeSidebarOver = useCallback(() => setSbOver(false), []);
   // 레일로 화면을 바꾸면 화면 위로 열린 사이드바는 닫는다
   useEffect(() => setSbOver(false), [tab]);
@@ -209,7 +211,7 @@ export function App({ build }: { build: string }) {
       </Rail>
       {/* 사이드바(Z2). 서랍 열(Z3)·아래 패널(Z5) 자리는 그 단계가 오기 전에는 비어 있고 접혀 있다 */}
       <aside className="sidebar" id="screen-sidebar" aria-label="화면 목록" hidden={!sbShown}>
-        {sbShown && <Sidebar screen={tab} snapshot={snapshot} idx={idx} refreshKey={snapshot?.at.slice(0, 16) ?? ""} over={narrow} onPick={closeSidebarOver} onClose={closeSidebarOver} />}
+        {sbShown && <Sidebar screen={tab} snapshot={snapshot} idx={idx} refreshKey={snapshot?.at.slice(0, 16) ?? ""} notices={notices} over={narrow} onPick={closeSidebarOver} onClose={closeSidebarOver} />}
       </aside>
       {narrow && sbOver && <button type="button" className="sidebar-scrim" aria-label="목록 닫기" tabIndex={-1} onClick={closeSidebarOver} />}
       <div className="shell-main">
@@ -217,6 +219,7 @@ export function App({ build }: { build: string }) {
           <button type="button" className="fold-btn" aria-label={sbShown ? "사이드바 접기" : "사이드바 펴기"} aria-expanded={sbShown} aria-controls="screen-sidebar" title={sbShown ? "사이드바 접기" : "사이드바 펴기"} onClick={toggleSidebar}>
             <Icon icon={PanelLeft} size={16} />
           </button>
+          {!sbShown && <NoticeTotal notices={notices} onOpen={toggleSidebar} />}
           <span className="top-brand" aria-hidden="true">
             {brandMark}
             <span>{brandTitle}</span>
@@ -240,7 +243,6 @@ export function App({ build }: { build: string }) {
                 ALERTS{advisories > 0 && <em className="adv-count"> +{advisories} ADV</em>}
               </span>
             </button>
-            <AlertBell />
             <SoundLockChip />
             <div className="readout clock">
               <Clock clock={settings.clock} />
