@@ -1,6 +1,6 @@
 /* 마지막으로 본 뒤 한 줄(ATC-383). 중립 색만 쓴다: 숫자는 굵기로만 눈에 띈다(원칙 1·3) */
 .since-look {
-  margin: 0 0 var(--space-3);
+  margin: 0;
   color: var(--muted);
   font-size: var(--text-xs);
 }
@@ -12,8 +12,7 @@
 }
 .since-look-label {
   font-family: var(--mono);
-  letter-spacing: 0.08em;
-  color: var(--faint);
+  color: var(--muted);
 }
 .since-look-chip b {
   font-family: var(--mono);
@@ -25,7 +24,7 @@
 }
 .since-look-seen {
   margin-left: auto;
-  color: var(--faint);
+  color: var(--muted);
 }
 .since-look-list {
   display: flex;

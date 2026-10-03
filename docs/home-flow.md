@@ -158,6 +158,11 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - **Stopped** needs at least one FLIGHT at that AIRPORT in QUEUE to CLEARED whose holder is not `SUPERVISOR`; otherwise the same silence is `congested` with the SUPERVISOR holder. A cell whose FLIGHTs are all on the to-do list has `flights: []` and `todoGroup`; a partly listed cell keeps its rows with `todo` pointing at the item.
 - To-do order: WARNING, SUPERVISOR-held stuck (STUCK, LANDING, HUMAN CHECK of a FLIGHT whose holder is SUPERVISOR), CAUTION and other STUCK, the rest; oldest first. LANDING and HUMAN CHECK items have no `since` in the queue, so their age comes from the PR (`readyAt`, else `createdAt`). Items group when kind and button label match; ALERT, STUCK, EFFECT, CLOSE and ARRIVED group only when level and need text match too (pilot's discretion).
 
+### H3 as built (ATC-502)
+
+- `web/src/views/HomeFlow.tsx` (+ `HomeFlow.css`) draws the focal verdict block and the flow board from `GET /api/flow`, polled with `refreshKey` at most every 10 s. `Home.tsx` puts them above the to-do list; the separate SinceLook row is gone and `SinceLook.tsx` renders the line inside the block (same `/api/since-look` and marker). Pure text helpers (`splitLine`, `todoKeysOf`, stage names) are in `web/src/flow-board.ts`.
+- Pilot's discretion: the block title is the part of the server's `line` before the first ` · `, the rest is the second line (the server sends one string, the text is not rewritten). The block does not draw a holder tag because the server's text already names the holder. The cell jump `n건 모두 아래 할 일에 있다 ↓` opens the to-do rows whose key (or group key) matches and moves focus to the list; until ATC-503 groups the list, a group opens all its rows (a click on a row opens only that row). Stack width is 560 px and the short holder tag starts under 760 px of container width.
+
 ## 6. Risks
 
 - **The block-code table drifts.** A new block code with no entry is classified `ATC` and counted. The test that fails on an unmapped code is the guard.

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SinceLook as SinceLookView } from "../../server/since-look.ts";
 import { apiGet, apiSend } from "./api.ts";
+import { ageText } from "./flow-age.ts";
 import { OpenFlight } from "./FlightLink.tsx";
 import "./SinceLook.css";
 
 // 마지막으로 본 뒤 바뀐 것 한 줄(ATC-383). 수·문구·목록은 서버가 정한다(GET /api/since-look). 조용하면(센 것이 없으면) 아무것도 그리지 않는다.
+// ATC-502: 따로 선 줄이 아니라 HOME 판정 블록 안의 한 줄이다(`마지막으로 본 뒤 7h · 발권 5 · 착륙(ON) 9 · 배포(IN) 3 · 읽음`). 같은 마커·같은 API.
 // "봄"은 SUPERVISOR 화면이 서버에 알린다: 읽음 버튼, 또는 탭이 가려질 때(그린 시각까지). 마커는 서버에 하나라 메뉴 막대와 다른 브라우저도 같이 옮겨진다.
 const MIN_GAP_MS = 10_000;
 
@@ -63,7 +65,7 @@ export function SinceLook({ refreshKey }: { refreshKey: string }) {
   return (
     <section className="since-look" aria-label="마지막으로 본 뒤">
       <div className="since-look-row">
-        <span className="since-look-label">SINCE LAST LOOK</span>
+        <span className="since-look-label">마지막으로 본 뒤 {ageText(Math.max(0, Math.round((Date.now() - Date.parse(v.since)) / 60_000)))}</span>
         {KINDS.filter((k) => items(k).length > 0).map((k) => (
           <button key={k} className={`chip since-look-chip${k === "waiting" ? " is-waiting" : ""}`} aria-expanded={open === k} onClick={() => setOpen(open === k ? null : k)}>
             {LABEL[k]} <b>{items(k).length}</b>

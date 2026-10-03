@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { alertLevelLabel, callsign } from "../aviation.ts";
 import type { QueueItem } from "../../../server/supervisor-queue.ts";
 import type { PullRequest, Snapshot } from "../../../server/model.ts";
@@ -12,13 +12,14 @@ import { OpenFlight } from "../FlightLink.tsx";
 import { homeNeedOf } from "../home-rows.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
-import { SinceLook } from "../SinceLook.tsx";
 import { homeFilterOf, homeFilterOfKind } from "../sidebar-rows.ts";
 import { AtfmAlert, useAtfm } from "./Atfm.tsx";
+import { todoKeysOf } from "../flow-board.ts";
 import { HumanRow } from "./HumanCheck.tsx";
+import { FlowBoard, FocalVerdict, type TodoOpenRequest, useFlow } from "./HomeFlow.tsx";
 import "./Home.css";
 
-// HOME(`#home`, ATC-377, ATC-422 S1b): 답하는 질문은 하나다 — 지금 내가 할 일이 있나. 순서대로: ATFM 알림(걸렸을 때), SINCE LAST LOOK 한 줄, 할 일 목록.
+// HOME(`#home`, ATC-377, ATC-422 S1b, ATC-502): 먼저 흐름이 막혔나(초점 판정 블록 + 흐름판, GET /api/flow), 그다음 내가 할 일이 있나. 순서대로: ATFM 알림(걸렸을 때), 초점 판정 블록(SINCE LAST LOOK 한 줄이 그 안에 있다), 흐름판, 할 일 목록.
 // 할 일 목록은 SUPERVISOR QUEUE(GET /api/supervisor/queue, S1a) 그대로다: 서버가 정한 순서, 줄마다 서버가 정한 단추 하나(`primary`). 화면은 고르지 않고 그린다.
 // 비면 SINCE LAST LOOK 줄과 옅은 한 줄 `할 일 없음`뿐이다(design-language 원칙 1). BRAKES는 아래 패널 탭(ATC-455), LATE WAYPOINTS는 FLIGHTS 목록 맨 위로 갔다.
 // 읽는 칸의 폭은 880px쯤이고 가운데에 놓는다(design-language 원칙 8의 예외: 목록을 읽는 화면).
@@ -36,20 +37,37 @@ function useHomeFilter() {
 
 export function Home({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
   const atfm = useAtfm(refreshKey);
+  const flow = useFlow(refreshKey);
+  const [openReq, setOpenReq] = useState<(TodoOpenRequest & { id: number }) | null>(null);
+  const seq = useRef(0);
+  // 판의 `할 일 ↓`·`n건 모두 아래 할 일에 있다 ↓`: 할 일 목록으로 가서 그 줄(묶음이면 묶음의 줄)을 연다. 열쇠가 없으면 목록 머리로만 간다
+  const toTodo = (group?: string) => {
+    const keys = group && flow ? todoKeysOf(flow.todo, group) : [];
+    setOpenReq({ keys, n: keys.length, id: ++seq.current });
+  };
   return (
     <section className="home" aria-label="HOME">
       <AtfmAlert atfm={atfm} now={now} />
-      <SinceLook refreshKey={snapshot.at.slice(0, 16)} />
-      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} />
+      {flow && <FocalVerdict view={flow} sinceKey={snapshot.at.slice(0, 16)} onTodo={() => toTodo()} />}
+      {flow && <FlowBoard view={flow} onTodo={toTodo} />}
+      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} openReq={openReq} />
     </section>
   );
 }
 
-function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
+function TodoList({ refreshKey, now, snapshot, openReq }: { refreshKey: string; now: number; snapshot: Snapshot; openReq: (TodoOpenRequest & { id: number }) | null }) {
   const { queue, reload } = useQueue(refreshKey, true);
   const { view: effects, set: setEffects } = useEffects(null, refreshKey);
   const filter = useHomeFilter();
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(new Set());
+  const top = useRef<HTMLDivElement>(null);
+  // 판에서 온 요청: 목록 머리로 가고, 가리킨 줄을 연다(초점은 그 목록으로)
+  useEffect(() => {
+    if (!openReq) return;
+    if (openReq.keys.length) setOpenKeys(new Set(openReq.keys));
+    top.current?.scrollIntoView({ block: "start" });
+    top.current?.focus({ preventScroll: true });
+  }, [openReq]);
   const idx = useMemo(() => buildIndex(snapshot), [snapshot]);
   if (!queue) return null;
   if (queue.items.length === 0) return <Empty className="home-empty">할 일 없음</Empty>;
@@ -64,7 +82,7 @@ function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: numb
   };
   const shown = filter === "all" ? queue.items : queue.items.filter((i) => homeFilterOfKind(i.kind) === filter);
   return (
-    <div className="home-list">
+    <div className="home-list" id="home-todo" ref={top} tabIndex={-1}>
       <SectionHead count={shown.length}>할 일</SectionHead>
       {shown.length === 0 ? (
         <Empty>이 종류의 할 일 없음</Empty>
@@ -72,8 +90,8 @@ function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: numb
         <ul className="home-rows" aria-label="할 일">
           {shown.map((i) => {
             const rk = `${i.kind}/${i.key}`;
-            const open = openKey === rk;
-            const toggle = () => setOpenKey(open ? null : rk);
+            const open = openKeys.has(rk);
+            const toggle = () => setOpenKeys(open ? new Set() : new Set([rk]));
             const hc = i.kind === "HUMAN CHECK" ? humanPull(i.key) : undefined;
             const verdict = i.kind === "EFFECT" ? (effects?.verdicts ?? []).find((v) => v.flight === i.key) : undefined;
             return (

@@ -1,0 +1,395 @@
+/* HOME 초점 판정 블록과 흐름판(ATC-502, docs/home-flow.md 3.2–3.4). 색·글꼴은 :root 토큰만.
+   정상은 무채색(design-language 원칙 1의 HOME 예외): --radar·--amber·--alert·--cyan 없음. 정체는 --amber ▲, 막힘은 --alert ■.
+   판 안에서 빨강은 "막힘"만 뜻한다(웹 .needs-you 빨강을 쓰지 않는다). 초점 고리도 판 안에서는 중립색이다.
+   폭은 화면이 아니라 놓인 칸을 본다(@container): FLIGHT 서랍을 열면 칸이 432px쯤으로 좁아진다 */
+
+/* ── 초점 ── */
+.fb-focal {
+  display: grid;
+  gap: var(--space-1-5);
+  padding: var(--space-2) 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.fb-focal-title {
+  margin: 0;
+  color: var(--text);
+  font: 600 var(--text-2xl) / 1.2 var(--sans);
+}
+.fb-focal[data-verdict="congested"] .fb-focal-title {
+  color: var(--amber);
+}
+.fb-focal[data-verdict="stopped"] .fb-focal-title {
+  color: var(--alert);
+}
+.fb-focal-rest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-md) var(--sans);
+}
+.fb-focal:not([data-verdict="normal"]) .fb-focal-rest {
+  color: var(--text);
+}
+.fb-glyph {
+  font-family: var(--mono);
+}
+.fb-glyph[data-verdict="congested"] {
+  color: var(--amber);
+}
+.fb-glyph[data-verdict="stopped"] {
+  color: var(--alert);
+}
+.fb-todo-link,
+.fb-all-todo {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: 600 var(--text-sm) var(--sans);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.fb-todo-link {
+  margin-left: auto;
+}
+.fb-flight .fb-todo-link {
+  margin-left: 0;
+  justify-self: end;
+  font-size: var(--text-xs);
+}
+.fb-focal .since-look {
+  padding-top: var(--space-1);
+}
+.fb :focus-visible,
+.fb-focal :focus-visible {
+  outline-color: currentColor;
+}
+
+/* ── 판 ── */
+.fb {
+  display: grid;
+  container-type: inline-size;
+}
+.fb-head,
+.fb-row {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) 8rem;
+  column-gap: var(--space-3);
+}
+.fb-head {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.fb-head-stages,
+.fb-cells {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  column-gap: var(--space-1);
+}
+.fb-head-cell {
+  position: relative;
+  display: grid;
+  justify-items: end;
+  padding-right: var(--space-2);
+  color: var(--muted);
+  font: var(--text-2xs) var(--sans);
+  white-space: nowrap;
+}
+.fb-head-cell b {
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+}
+/* 단계 사이 화살표: 칸 왼쪽 끝, 두 줄 가운데 */
+.fb-head-stages .fb-head-cell + .fb-head-cell::before {
+  content: "→";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.fb-head-cell.is-spark {
+  justify-items: start;
+  padding: 0;
+}
+.fb-ap {
+  border-bottom: 1px solid var(--line);
+}
+.fb-row {
+  align-items: center;
+  min-height: 72px;
+  padding: var(--space-2) 0;
+}
+.fb-row.is-idle {
+  min-height: 48px;
+}
+.fb-name {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.fb-name b {
+  color: var(--text);
+  font: 700 var(--text-md) var(--mono);
+  letter-spacing: 0.04em;
+}
+.fb-name span {
+  overflow: hidden;
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-idle {
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+}
+.fb-cell {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: var(--space-0-5);
+  min-width: 0;
+  min-height: 56px;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-align: right;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.fb-cell.is-empty {
+  cursor: default;
+}
+.fb-cell:hover,
+.fb-cell[aria-expanded="true"] {
+  background: var(--layer-hover);
+}
+.fb-cell-code {
+  display: none; /* 넓을 때는 머리줄이 이름을 단다 */
+  color: var(--muted);
+  font: 600 var(--text-2xs) var(--mono);
+  letter-spacing: 0.06em;
+}
+.fb-cell-n {
+  font: 600 var(--text-xl) / 1.1 var(--mono);
+}
+.fb-cell-age {
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  white-space: nowrap;
+}
+.fb-cell[data-tone="caution"] {
+  box-shadow: inset 0 2px 0 var(--amber);
+}
+.fb-cell[data-tone="caution"] .fb-cell-n,
+.fb-cell[data-tone="caution"] .fb-cell-age {
+  color: var(--amber);
+}
+.fb-cell[data-tone="warning"] {
+  background: var(--alert-wash);
+  box-shadow: inset 0 2px 0 var(--alert);
+}
+.fb-cell[data-tone="warning"] .fb-cell-n,
+.fb-cell[data-tone="warning"] .fb-cell-age {
+  color: var(--alert);
+}
+.fb-holder {
+  max-width: 100%;
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: 700 var(--text-2xs) var(--mono);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-holder-short {
+  display: none;
+}
+
+/* 12시간 착륙 막대와 `n · 마지막 4m` */
+.fb-spark {
+  display: grid;
+  gap: var(--space-1);
+}
+.fb-spark-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-0-5);
+  height: 32px;
+  color: var(--muted);
+}
+.fb-spark-bars > span {
+  flex: 1;
+  border-radius: var(--radius-sm);
+  background: currentColor;
+}
+.fb-spark-bars > span.is-zero {
+  height: var(--space-0-5);
+  color: var(--faint);
+}
+.fb-spark-cap {
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  white-space: nowrap;
+}
+.fb-spark-cap b {
+  color: var(--text);
+  font-weight: 600;
+}
+.fb-spark-cap [data-late] {
+  color: var(--alert);
+  font-weight: 700;
+}
+.fb-reason {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-xs) var(--sans);
+}
+.fb-ap[data-verdict="stopped"] .fb-reason {
+  color: var(--text);
+}
+
+/* ── 열린 칸의 FLIGHT 목록: AIRPORT 줄 바로 아래 ── */
+.fb-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--layer-hover);
+  border-radius: var(--radius-md);
+}
+.fb-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+}
+.fb-list-head b {
+  color: var(--text);
+}
+.fb-list-close {
+  margin-left: auto;
+}
+.fb-flights {
+  display: grid;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fb-flight {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) minmax(0, 1.2fr) auto 3rem 4.5rem;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  font: var(--text-sm) var(--sans);
+}
+.fb-flight-key {
+  font-family: var(--mono);
+}
+.fb-flight-title,
+.fb-flight-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-flight-sub {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.fb-flight[data-stuck] .fb-flight-sub {
+  color: var(--text);
+}
+.fb-flight-age {
+  color: var(--muted);
+  font: var(--text-xs) var(--mono);
+  text-align: right;
+}
+
+/* 칸이 760px 아래면 주체 태그는 서버가 준 짧은 꼴(전체 이름은 접근 이름·툴팁에) */
+@container (max-width: 760px) {
+  .fb-cells .fb-holder-full {
+    display: none;
+  }
+  .fb-cells .fb-holder-short {
+    display: inline;
+  }
+}
+
+/* 서랍을 열어 칸이 좁으면(560px 아래): 이름과 막대가 윗줄, 다섯 칸이 아랫줄, 칸마다 이름 */
+@container (max-width: 560px) {
+  .fb-head {
+    display: none;
+  }
+  .fb-row {
+    grid-template-columns: minmax(0, 1fr) 8rem;
+    row-gap: var(--space-1);
+  }
+  .fb-row.is-idle {
+    grid-template-columns: minmax(0, 1fr) auto 8rem;
+  }
+  .fb-name {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .fb-cells {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    column-gap: var(--space-1);
+  }
+  .fb-cell {
+    justify-items: start;
+    padding: var(--space-1);
+    text-align: left;
+  }
+  .fb-cell-code {
+    display: block;
+  }
+  .fb-cell-n {
+    font-size: var(--text-lg);
+  }
+  .fb-cell-age {
+    font-size: var(--text-2xs);
+  }
+  .fb-reason {
+    grid-column: 1 / -1;
+  }
+  .fb-flight {
+    grid-template-columns: 5.5rem minmax(0, 1fr) 2.5rem 4rem;
+  }
+  .fb-flight-key {
+    grid-area: 1 / 1;
+  }
+  .fb-flight-title {
+    grid-area: 1 / 2;
+  }
+  .fb-flight-age {
+    grid-area: 1 / 3;
+  }
+  .fb-flight > :last-child {
+    grid-area: 1 / 4;
+  }
+  .fb-flight-sub {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  .fb-flight .fb-holder {
+    grid-area: 3 / 1 / 4 / -1;
+    justify-self: start;
+  }
+}
