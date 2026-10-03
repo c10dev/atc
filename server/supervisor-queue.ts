@@ -4,6 +4,7 @@ import type { Clearance, PullRequest, Session } from "./model.ts";
 import type { Proposal } from "./proposals.ts";
 import type { FleetProposal } from "./fleet-plan.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
+import type { ArrivedOpen } from "./arrived-open.ts";
 import { canCancel, canRecall } from "./flight-brake.ts";
 import type { FollowBundle, FollowRow } from "./follow.ts";
 import type { SupervisorAlert } from "./supervisor-alerts.ts";
@@ -17,14 +18,15 @@ import type { UpdateKind } from "./update.ts";
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
 // 순수 함수만. 자료 모으기는 supervisor-queue-run.ts. `title`은 atc 말(FLIGHT key·REGISTRATION·PR 번호)만 쓰고 티켓·PR 제목은 싣지 않는다.
 
+// ARRIVED(ATC-473): STAND 없는 FLIGHT가 LOGBOOK ARRIVED인데 Linear는 아직 In Progress. 확인한 클릭 하나로 Done으로 옮긴다
 // ALERT·STUCK·EFFECT·CLOSE(ATC-454, S1a)는 HOME이 한 목록으로 모으려고 더한 종류다: SUPERVISOR가 할 수 있는 알림, 한도를 넘긴 막힌 FLIGHT, 목표를 못 맞춘 EFFECT 평결, 손으로 Done 해야 하는 CLOSE
-export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "BACKLOG", "ALERT", "STUCK", "EFFECT", "CLOSE"] as const;
+export const QUEUE_KINDS = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "BACKLOG", "ALERT", "STUCK", "EFFECT", "CLOSE", "ARRIVED"] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 // HOME 줄이 보이는 단추 하나(ATC-454). 무엇을 누를지는 서버가 정하고 화면은 그린다. 다른 동작은 기존 길(duty-card.ts의 actionsOf와 각 라우트)에 그대로 있다
 // approve: 큐 줄에서 승인·거절하는 기존 인라인 길(op가 어느 길인지). brake: 그 FLIGHT의 CANCEL·RECALL. open: hash의 화면(url이 있으면 그 주소)을 연다
 export interface QueuePrimary {
-  action: "approve" | "brake" | "open";
+  action: "approve" | "brake" | "open" | "done"; // done: STAND 없는 ARRIVED FLIGHT를 Done으로(ATC-473, 줄을 열어 확인한 뒤)
   label: string;
   op?: "fleet-plan" | "update" | "proposal" | "schedule";
   hash?: string;
@@ -43,6 +45,7 @@ export interface QueueItem {
   flight?: string; // ALERT·STUCK·EFFECT·CLOSE: 그 FLIGHT
   brake?: { id: string; status: string; aircraftName: string | null; departedStand: string | null; departedVia: string | null; mode: "shadow" | "approval" }; // STUCK: 줄의 CANCEL·RECALL이 쓰는 제안(primary가 brake일 때)
   pr?: { repo: string; number: number; url: string }; // CLOSE: 이 CLOSE를 승인한 PR
+  arrived?: ArrivedOpen; // ARRIVED: 도착 보고(AIRCRAFT, 시각, 글, 결과 링크)와 이슈 링크, 지금 Linear 상태(옮길 때의 from)
   hand?: HandItem; // UNDELIVERED: 손으로 전하는 카드(ATC-271)
   detail?: string; // SCHEDULE: OCC의 근거 한 줄. 탭이 없어 큐 줄이 판정 화면이라, 무엇을 승인하는지 보이게 한다(ATC-378)
   card?: { kind: Proposal["kind"]; launch: boolean }; // PROPOSAL: 승인하면 무슨 일이 일어나는지 가르는 것(ASSIGN은 FLIGHT PLAN, launch는 LAUNCH 먼저, RELEASE는 FLIGHT PLAN 없음, ATC-377)
@@ -83,6 +86,7 @@ export interface QueueInput {
   alerts?: Pick<SupervisorAlert, "key" | "level" | "group" | "aircraft" | "flight" | "text" | "next" | "link" | "since" | "dest">[];
   follow?: { bundles: Pick<FollowBundle, "rows">[]; dispatchMode: "shadow" | "approval" };
   effects?: EffectVerdict[];
+  arrived?: ArrivedOpen[]; // STAND 없는 ARRIVED인데 아직 started인 FLIGHT(arrived-open.ts, ATC-473)
   closes?: { id: string; flight: string | null; statusAt: string; url: string | null; pr: { repo: string; number: number; url: string } }[];
 }
 
@@ -208,6 +212,23 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
 
   for (const c of inp.closes ?? []) {
     out.push({ kind: "CLOSE", key: c.id, since: c.statusAt, title: `CLOSE ${c.flight ?? c.id}`, hash: "#home", primary: open("Linear에서 열기", "#home", c.url ?? undefined), detail: `승인한 CLOSE · PR ${c.pr.repo.split("/").pop()}#${c.pr.number}`, need: "OCC는 이슈 상태를 바꾸지 않는다: Linear에서 Done으로 바꾼다", pr: c.pr, ...(c.flight ? { flight: c.flight } : {}) });
+  }
+
+  // ARRIVED(ATC-473): 이미 큐 줄이 있는 FLIGHT는 더하지 않는다. 제목은 atc 말(FLIGHT key·AIRCRAFT), 티켓 제목과 보고 글은 detail에
+  for (const a of inp.arrived ?? []) {
+    if (held.has(a.flight)) continue;
+    out.push({
+      kind: "ARRIVED",
+      key: a.flight,
+      since: a.arrivedAt,
+      title: `${a.flight}${a.aircraft ? ` → ${a.aircraft}` : ""}`,
+      hash: `#flight/${a.flight}`,
+      primary: { action: "done", label: "Done…" },
+      detail: [a.title, a.note].filter(Boolean).join(" · ").slice(0, 400),
+      need: `ARRIVED인데 Linear는 아직 ${a.state}: 확인하고 Done으로 옮긴다`,
+      flight: a.flight,
+      arrived: a,
+    });
   }
 
   return queueOrderOf(out);

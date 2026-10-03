@@ -70,6 +70,7 @@ export function classify(i: LeakItem): Verdict {
     case "STUCK":
     case "EFFECT":
     case "CLOSE":
+    case "ARRIVED":
       return exempt("signal", null);
   }
 }

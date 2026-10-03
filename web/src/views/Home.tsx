@@ -4,6 +4,7 @@ import type { QueueItem } from "../../../server/supervisor-queue.ts";
 import type { PullRequest, Snapshot } from "../../../server/model.ts";
 import { openAlert } from "../alerts-runtime.ts";
 import { buildIndex, timeAgo } from "../derive.ts";
+import { ArrivedDone } from "../ArrivedDone.tsx";
 import { Actions, useQueue } from "../DutyCards.tsx";
 import { EffectRow, useEffects } from "../EffectVerdict.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
@@ -108,7 +109,7 @@ function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: numb
 // 줄의 단추 하나: 서버가 정한 primary 그대로. 바로 하는 것(알림 열기, 화면·Linear 열기)은 단추가 하고, 확인이 필요한 것(승인·거절, CANCEL·RECALL, 손으로 전하기, HUMAN CHECK)은 줄을 열어 상세에서 한다
 function RowAction({ item, open, toggle }: { item: QueueItem; open: boolean; toggle: () => void }) {
   const p = item.primary;
-  const inDetail = p.action === "approve" || p.action === "brake" || Boolean(item.hand || item.offer) || (item.kind === "HUMAN CHECK" && Boolean(p.hash === "#home"));
+  const inDetail = p.action === "approve" || p.action === "brake" || p.action === "done" || Boolean(item.hand || item.offer) || (item.kind === "HUMAN CHECK" && Boolean(p.hash === "#home"));
   if (inDetail) {
     return (
       <button type="button" className="btn is-primary" aria-expanded={open} onClick={toggle}>
@@ -140,12 +141,13 @@ function ItemDetail({ item, onDone, children }: { item: QueueItem; onDone: () =>
   return (
     <>
       <p className="home-need">{homeNeedOf(item)}</p>
-      {item.detail && <p>{item.detail}</p>}
-      {item.flight && (
+      {item.detail && p.action !== "done" && <p>{item.detail}</p>}
+      {item.flight && p.action !== "done" && (
         <p>
           FLIGHT <OpenFlight k={item.flight} />
         </p>
       )}
+      {p.action === "done" && <ArrivedDone item={item} onDone={onDone} />}
       {p.action === "approve" && p.op && <Actions item={item} actions={[{ type: "inline", op: p.op }]} onDone={onDone} />}
       {p.action === "brake" && item.brake && item.flight && <FlightBrakes p={{ ...item.brake, flight: item.flight }} mode={item.brake.mode} onDone={onDone} />}
       {(item.hand || item.offer) && <Actions item={item} actions={[{ type: "link", label: p.label, hash: p.hash ?? item.hash }]} onDone={onDone} />}
