@@ -262,7 +262,7 @@ test("막힘: 승인 뒤 발송 없음 10분, 발송 뒤 READBACK 없음 10분",
   const r3 = followRowOf("ATC-3", base({ tickets, proposals: [sent] }));
   assert.equal(r3.stuck?.code, "sent-no-readback");
   assert.equal(r3.next?.kind, "look");
-  assert.equal(r3.next?.href, "#flights/radio");
+  assert.equal(r3.next?.href, "#radio");
 });
 
 test("막힘: 착륙(ON) 뒤 배포(IN) 없음 15분. MCC AIRPORT가 아닌 곳은 아니다", () => {

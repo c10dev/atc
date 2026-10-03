@@ -3,6 +3,8 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "./api.ts";
 import { type Index, occupantsOf } from "./derive.ts";
 import { flightNumber } from "./aviation.ts";
+import { stationOfHash, stationsOf, type StationCount } from "./radio-log.ts";
+import type { Transmission } from "../../server/radio.ts";
 import { Icon } from "./kit/Icon.tsx";
 import {
   type AircraftInput,
@@ -14,6 +16,7 @@ import {
   type FlightInput,
   type Group,
   HOME_ANCHORS,
+  matchesQuery,
   METRICS_ITEMS,
   metricsSubOf,
   releaseGroups,
@@ -26,7 +29,7 @@ import "./Sidebar.css";
 // 새 서버 길은 없다. FLIGHTS·RELEASE는 snapshot(tickets의 airport)과 RELEASE가 이미 받는 GET /api/releases, FLEET는 FLEET가 이미 받는 GET /api/fleet을 읽는다.
 // 머리: 화면 이름 + 검색(알림 Z6이 들어올 자리는 검색 왼쪽의 빈 칸). 항목을 고르면 서랍(#flight/<KEY>)이나 화면 안 자리로 간다.
 
-const TITLE: Record<string, string> = { home: "HOME", release: "RELEASE", flights: "FLIGHTS", fleet: "FLEET", metrics: "METRICS", docs: "DOCS" };
+const TITLE: Record<string, string> = { home: "HOME", release: "RELEASE", flights: "FLIGHTS", radio: "RADIO", fleet: "FLEET", metrics: "METRICS", docs: "DOCS" };
 
 // ≤ 860px(결정 Q2의 한 폭): 사이드바가 화면 위로 열린다
 export function useNarrow(): boolean {
@@ -86,6 +89,11 @@ const aircraftOf = (j: unknown): { registration: string; callsign: string; statu
   const a = (j as { aircraft?: unknown })?.aircraft;
   return Array.isArray(a) ? (a as { registration: string; callsign: string; status: string; base: string | null; retired?: boolean }[]) : [];
 };
+const radioOf = (j: unknown): Transmission[] => {
+  const t = (j as { transmissions?: unknown })?.transmissions;
+  return Array.isArray(t) ? (t as Transmission[]) : [];
+};
+const NONE_RADIO: Transmission[] = [];
 const NONE_RELEASE: ReturnType<typeof releaseOf> = [];
 const NONE_AIRCRAFT: ReturnType<typeof aircraftOf> = [];
 
@@ -180,6 +188,10 @@ export function Sidebar({
     return aircraftGroups(items, airports, query);
   }, [screen, fleetRows, snapshot?.sessions, airports, query]);
 
+  // RADIO: 지난 6시간 교신을 스테이션별로 센다(화면과 같은 GET /api/radio, 새 길 없음). 고르면 #radio/<스테이션>
+  const radioTxs = useJson(screen === "radio" ? "/api/radio" : null, refreshKey, radioOf, NONE_RADIO);
+  const stations = useMemo(() => (screen === "radio" ? stationsOf(radioTxs) : { control: [], aircraft: [] }), [screen, radioTxs]);
+
   const metricsItems = filterLabeled(METRICS_ITEMS, query);
   const homeItems = filterLabeled(HOME_ANCHORS, query);
   const sub = metricsSubOf(hash);
@@ -265,6 +277,46 @@ export function Sidebar({
       ))
     ) : (
       empty
+    );
+  } else if (screen === "radio") {
+    const cur = stationOfHash(hash);
+    const pick = (list: StationCount[]) => list.filter((s) => matchesQuery(query, [s.id, s.label]));
+    const groups = [
+      { code: "CONTROL", rows: pick(stations.control) },
+      { code: "AIRCRAFT", rows: pick(stations.aircraft) },
+    ].filter((g) => g.rows.length);
+    body = (
+      <>
+        <ul className="sb-list">
+          <li>
+            <button type="button" className="sb-item" aria-current={cur === null ? "page" : undefined} onClick={() => go("radio", onPick)}>
+              <span className="sb-key mono">all</span>
+              <span className="sb-count mono">{radioTxs.length}</span>
+            </button>
+          </li>
+        </ul>
+        {groups.length ? (
+          groups.map((g) => (
+            <section className="sb-group" key={g.code} aria-label={g.code}>
+              <div className="sb-group-head">
+                <span className="sb-code mono">{g.code}</span>
+              </div>
+              <ul className="sb-list">
+                {g.rows.map((s) => (
+                  <li key={s.id}>
+                    <button type="button" className="sb-item" aria-current={cur === s.id ? "page" : undefined} onClick={() => go(`radio/${encodeURIComponent(s.id)}`, onPick)} title={s.kind === "aircraft" ? `${s.label} (${s.id})` : s.id}>
+                      <span className="sb-key mono">{s.kind === "aircraft" ? s.id : s.label}</span>
+                      <span className="sb-count mono">{s.count}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        ) : (
+          empty
+        )}
+      </>
     );
   } else if (screen === "metrics") {
     body = metricsItems.length ? (

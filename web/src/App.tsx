@@ -35,6 +35,7 @@ import { ApproachScene } from "./ApproachScene.tsx";
 // 첫 화면(RADAR)만 메인 번들에 두고, 나머지 탭은 처음 열 때 불러온다(청크마다 그 탭의 CSS·라이브러리까지, 예: DOCS의 marked).
 const Flights = lazyTab<{ snapshot: Snapshot; idx: Index; now: number; refreshKey: string }>(() => import("./views/Flights.tsx"), "Flights");
 const Fleet = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/fleet/Fleet.tsx"), "Fleet");
+const Radio = lazyTab<Record<string, never>>(() => import("./views/Radio.tsx"), "Radio");
 const Metrics = lazyTab<{ refreshKey: string; snapshot: Snapshot }>(() => import("./views/Metrics.tsx"), "Metrics");
 const Release = lazyTab<{ refreshKey: string }>(() => import("./views/Release.tsx"), "Release");
 const Home = lazyTab<{ refreshKey: string; now: number; snapshot: Snapshot; onOpenSettings: () => void }>(() => import("./views/Home.tsx"), "Home");
@@ -372,6 +373,8 @@ function tabView(tab: Tab, snapshot: Snapshot, idx: Index, now: number, onOpenSe
   switch (tab) {
     case "flights":
       return <Flights snapshot={snapshot} idx={idx} now={now} refreshKey={snapshot.at} />;
+    case "radio":
+      return <Radio />;
     case "fleet":
       return <Fleet refreshKey={refreshKey} snapshot={snapshot} />;
     case "metrics":
