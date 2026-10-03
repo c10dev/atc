@@ -4,7 +4,7 @@
 .away-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font: 700 var(--text-2xs) var(--mono);
   letter-spacing: 0.08em;
   color: var(--amber);
@@ -31,7 +31,7 @@
   color: var(--stamp-gray);
 }
 .strip .cs .away-tag {
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
   vertical-align: 3px;
 }
 
