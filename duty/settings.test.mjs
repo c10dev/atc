@@ -13,7 +13,7 @@ test("설정 파일 자리: duty/settings.json이고 duty/.claude/settings.json�
 });
 
 test("모델과 최상위 키: model만 정하고 mcp·환경·추가 폴더는 없다", () => {
-  assert.equal(settings.model, "claude-sonnet-5-5");
+  assert.equal(settings.model, "claude-sonnet-5-5[1m]");
   assert.deepEqual(Object.keys(settings).sort(), ["hooks", "model", "permissions"]);
   assert.deepEqual(Object.keys(settings.permissions).sort(), ["allow", "deny"], "additionalDirectories·defaultMode를 두지 않는다");
 });
