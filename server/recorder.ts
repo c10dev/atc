@@ -68,6 +68,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
   | { t: string; kind: "policy"; op: "bg-memory-cap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "verify-gate-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "browser-gate-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "scope-oom"; unit: string; total: number; delta: number } // 백그라운드 session scope 안의 OOM kill(ATC-505): cgroup memory.events의 oom_kill가 늘 때마다 한 줄
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
