@@ -166,6 +166,11 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - The link of a flow-board cell (`todoGroup`, a group key or an item key) is `openTodoGroup(key)` in `home-todo.ts` (a window event): HOME expands the group or the folded rest, opens the row if it is an item, scrolls to it and moves focus to the group's button or the row.
 - No `/api/flow` (503 before the first snapshot): HOME draws the queue one line each, as before.
 
+### H3 as built (ATC-502)
+
+- `web/src/views/HomeFlow.tsx` (+ `HomeFlow.css`) draws the focal verdict block and the flow board from the `GET /api/flow` view that `Home.tsx` reads once (`useFlow`, shared with the H4 to-do list). `Home.tsx` puts them above the to-do list; the separate SinceLook row is gone and `SinceLook.tsx` renders the line inside the block (same `/api/since-look` and marker). Pure text helpers (`splitLine`, stage names) are in `web/src/flow-board.ts`.
+- Pilot's discretion: the block title is the part of the server's `line` before the first ` · `, the rest is the second line (the server sends one string, the text is not rewritten). The block does not draw a holder tag because the server's text already names the holder. `할 일 n ↓` scrolls to the to-do list (`#home-todo`) and moves focus there. Stack width is 560 px and the short holder tag starts under 760 px of container width.
+
 ## 6. Risks
 
 - **The block-code table drifts.** A new block code with no entry is classified `ATC` and counted. The test that fails on an unmapped code is the guard.

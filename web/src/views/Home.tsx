@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { alertLevelLabel, callsign } from "../aviation.ts";
 import type { QueueItem } from "../../../server/supervisor-queue.ts";
+import type { FlowView } from "../../../server/home-flow.ts";
 import type { PullRequest, Snapshot } from "../../../server/model.ts";
 import { openAlert } from "../alerts-runtime.ts";
 import { buildIndex, timeAgo } from "../derive.ts";
@@ -13,14 +14,15 @@ import { homeNeedOf } from "../home-rows.ts";
 import { planOf } from "../home-todo.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
-import { SinceLook } from "../SinceLook.tsx";
 import { homeFilterOf, homeFilterOfKind } from "../sidebar-rows.ts";
 import { AtfmAlert, useAtfm } from "./Atfm.tsx";
 import { HumanRow } from "./HumanCheck.tsx";
+import { openTodoGroup } from "../home-todo.ts";
+import { FlowBoard, FocalVerdict } from "./HomeFlow.tsx";
 import { HomeTodoLines, useFlow } from "./HomeTodo.tsx";
 import "./Home.css";
 
-// HOME(`#home`, ATC-377, ATC-422 S1b): 답하는 질문은 하나다 — 지금 내가 할 일이 있나. 순서대로: ATFM 알림(걸렸을 때), SINCE LAST LOOK 한 줄, 할 일 목록.
+// HOME(`#home`, ATC-377, ATC-422 S1b, ATC-502): 먼저 흐름이 막혔나(초점 판정 블록 + 흐름판, GET /api/flow), 그다음 내가 할 일이 있나. 순서대로: ATFM 알림(걸렸을 때), 초점 판정 블록(SINCE LAST LOOK 한 줄이 그 안에 있다), 흐름판, 할 일 목록.
 // 할 일 목록은 SUPERVISOR QUEUE(GET /api/supervisor/queue, S1a) 그대로다: 서버가 정한 순서, 줄마다 서버가 정한 단추 하나(`primary`). 화면은 고르지 않고 그린다.
 // 비면 SINCE LAST LOOK 줄과 옅은 한 줄 `할 일 없음`뿐이다(design-language 원칙 1). BRAKES는 아래 패널 탭(ATC-455), LATE WAYPOINTS는 FLIGHTS 목록 맨 위로 갔다.
 // 읽는 칸의 폭은 880px쯤이고 가운데에 놓는다(design-language 원칙 8의 예외: 목록을 읽는 화면).
@@ -38,19 +40,26 @@ function useHomeFilter() {
 
 export function Home({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
   const atfm = useAtfm(refreshKey);
+  const flow = useFlow(refreshKey);
+  // `할 일 n ↓`: 할 일 목록 머리로 가서 초점을 둔다
+  const toTodo = () => {
+    const el = document.getElementById("home-todo");
+    el?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    el?.focus({ preventScroll: true });
+  };
   return (
     <section className="home" aria-label="HOME">
       <AtfmAlert atfm={atfm} now={now} />
-      <SinceLook refreshKey={snapshot.at.slice(0, 16)} />
-      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} />
+      {flow && <FocalVerdict view={flow} sinceKey={snapshot.at.slice(0, 16)} onTodo={toTodo} />}
+      {flow && <FlowBoard view={flow} onTodo={openTodoGroup} />}
+      <TodoList refreshKey={refreshKey} now={now} snapshot={snapshot} flow={flow} />
     </section>
   );
 }
 
-function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: number; snapshot: Snapshot }) {
+function TodoList({ refreshKey, now, snapshot, flow }: { refreshKey: string; now: number; snapshot: Snapshot; flow: FlowView | null }) {
   const { queue, reload } = useQueue(refreshKey, true);
   const { view: effects, set: setEffects } = useEffects(null, refreshKey);
-  const flow = useFlow(refreshKey);
   const filter = useHomeFilter();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const idx = useMemo(() => buildIndex(snapshot), [snapshot]);
@@ -107,7 +116,7 @@ function TodoList({ refreshKey, now, snapshot }: { refreshKey: string; now: numb
       })
     : null;
   return (
-    <div className="home-list">
+    <div className="home-list" id="home-todo" tabIndex={-1}>
       <SectionHead count={shown.length}>할 일</SectionHead>
       {shown.length === 0 ? (
         <Empty>이 종류의 할 일 없음</Empty>
