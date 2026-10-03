@@ -1,4 +1,4 @@
-import { blockedAlerts, type Job } from "./job-state.ts";
+import { blockedAlerts, isControlSessionName, type Job } from "./job-state.ts";
 import type { Proposal } from "./proposals.ts";
 import { registrationOf } from "./registration.ts";
 
@@ -45,6 +45,7 @@ export function waitingOnPersonOf(inp: WaitInput): WaitingOnPerson[] {
     const id = a.sessionIds[0]!;
     const s = byId.get(id);
     blocked.add(id);
+    if (s && isControlSessionName(s.name)) continue; // 관제 세션은 NEEDS YOU가 아니라 규칙 위반 WARNING이다(ATC-352)
     out.push({ kind: "blocked", key: id, name: s?.name ?? id, aircraft: aircraftOf(s?.name), since: s?.job?.since ?? null });
   }
   for (const s of inp.sessions) {

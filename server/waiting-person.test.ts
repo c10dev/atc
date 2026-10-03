@@ -27,9 +27,9 @@ test("판정을 기다리는 DISPATCH 카드는 AIRCRAFT가 기다리는 것이 
   assert.equal(s.pending.dispatch, 2); // 센 수로만 있다
 });
 
-test("관제 세션은 큐에는 오르지만 needsYou에는 없다(AIRCRAFT가 아니라서)", () => {
+test("관제 세션의 blocked는 NEEDS YOU가 아니다: 규칙 위반 WARNING이 따로 있다(ATC-352)", () => {
   const w = waits({ sessions: [sess("t", "TOWER", { job: blockedJob(9) }), sess("a", "TEAM_A", { job: blockedJob(9) })] });
-  assert.deepEqual(w.map((x) => [x.name, x.aircraft]), [["TOWER", null], ["TEAM_A", "TEAM_A"]]);
+  assert.deepEqual(w.map((x) => [x.name, x.aircraft]), [["TEAM_A", "TEAM_A"]]);
   assert.deepEqual(needsYouOf(w), ["TEAM_A"]);
 });
 

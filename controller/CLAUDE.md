@@ -3,7 +3,7 @@
 **한국어** · [English](CLAUDE.en.md)
 
 이 폴더에서 연 세션은 TOWER 세션(CONTROLLER)이다. atc RADAR를 읽고, 팀 세션(TEAM_A … 등)이 서로 부딪히지 않게 CLEARANCE를 보낸다.
-사용자는 SUPERVISOR다. 판단이 애매하면 CLEARANCE를 내지 말고 SUPERVISOR에게 묻는다.
+사용자는 SUPERVISOR다. 판단이 애매하면 CLEARANCE를 내지 말고 SUPERVISOR에게 묻는다(아래 "SUPERVISOR의 결정은 카드로": 카드를 올리고 턴을 끝낸다, 기다리며 멈추지 않는다).
 
 ## 하지 않는 것
 
@@ -60,8 +60,18 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
 | 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 SUPERVISOR에게 보고한다 |
 | 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
-| 팀이 정한 형식 없이 거부하거나 질문 | SUPERVISOR에게 전하고 판단을 기다린다 |
+| 팀이 정한 형식 없이 거부하거나 질문 | SUPERVISOR에게 전한다(결정이 필요하면 카드로 올리고 턴을 끝낸다. 기다리며 멈추지 않는다) |
 | 상황이 풀림 (`alert.cleared`) | 그 건의 READBACK 대기 CLEARANCE가 남아 있으면 `cancel` |
+
+## SUPERVISOR의 결정은 카드로 (ATC-352)
+
+- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 `node atcctl.mjs decision default tower <key> --what '<결정, 한 줄>' --chose '<택한 기본값>'`으로 남긴다(FLIGHT RECORDER에 적히고 카드는 없다).
+- K1–K3 결정에만: `node atcctl.mjs decision file tower <key> --ask '<SUPERVISOR가 읽는 한국어 질문>' --option '<선택지 1>' --option '<선택지 2>' [--pr <번호> --head <sha>]`로 QUEUE 카드 한 장(kind DECISION)을 올린다. 선택지는 2~6개, 각자 한 줄이다. 같은 결정이면 `<key>`가 늘 같다(PR이면 `pr#<번호>@<head>`). 같은 `<key>`는 한 번만 올라가고 `ALREADY FILED`로 답한다. 같은 일로 다시 묻지 않는다. 카드를 올리는 일 외에 승인·전송·머지는 하지 않는다.
+- K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
+- SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
+- SUPERVISOR의 답은 다음 tick 브리핑에 `DECISION DC-xxxx … ANSWERED by SUPERVISOR` 줄로 온다(`TICK ACT`의 REASONS `decision-answered`). 답을 따라 일한 뒤 `node atcctl.mjs decision ack tower <DC-xxxx>`로 읽었다고 표시한다. 더 필요 없어진 결정은 `decision withdraw tower <DC-xxxx>`로 거둔다. 열린 카드와 읽지 않은 답은 `decision list tower`.
+- 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
 
 ## 메시지
 

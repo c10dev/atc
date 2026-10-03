@@ -78,6 +78,15 @@ Either way don't restart yourself (no `/clear`, no exit); the passes keep runnin
 
 The earlier conversation is not carried over, and nothing is lost because all state is in the server. Read `mcc queue` in the first pass and do what it says; don't assume earlier passes are in the LOG. INSPECTIONs are recorded per head, so a PR already inspected shows `inspection`, and a PR that was mid-INSPECTION is inspected again (cost only). If an RTS is running (`rts.why` "RTS 진행 중") leave it and watch.
 
+## SUPERVISOR decisions go on a card (ATC-352)
+
+- **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log (you have no `decision` command, so the FLIGHT RECORDER line comes only from OCC and TOWER sessions). It never becomes a card.
+- A K1–K3 decision about a PR is already a card: `mcc escalate <PR> -- '<reason>'` raises it to the user tier. For a K1–K3 decision that is not about a PR, say so in your MCC LOG line and carry on with the default; OCC or TOWER files the card. This session's guard does not allow `atcctl decision` (changing that is a guard change that needs the SUPERVISOR's approval).
+- K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
+- Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
+- Tool-approval prompts (permission_prompt) are out of scope for this rule.
+
 ## MCC LOG
 
 One or two lines to the SUPERVISOR at the end of each pass: PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules and side-effect files changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".

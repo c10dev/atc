@@ -78,6 +78,15 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 이전 대화는 이어지지 않는다. 그래도 잃는 것이 없게 상태는 모두 서버에 있다. 첫 바퀴는 `mcc queue`를 읽고 그 출력이 말하는 대로 한다. LOG에 이전 바퀴가 있다고 가정하지 않는다. INSPECTION은 head마다 기록되어 있어 이미 한 PR은 `inspection`에 보이고, 하던 중이던 PR은 다시 INSPECTION한다(비용만 든다). RTS가 돌고 있으면(`rts.why` "RTS 진행 중") 그대로 두고 지켜본다.
 
+## SUPERVISOR의 결정은 카드로 (ATC-352)
+
+- **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 (이 세션에는 `decision` 명령이 없어 FLIGHT RECORDER 줄은 OCC·TOWER 세션만 남긴다) 카드로는 올리지 않는다.
+- PR에 대한 K1–K3 결정은 이미 카드다: `mcc escalate <PR> -- '<사유>'`로 user 등급으로 올린다. PR이 아닌 K1–K3 결정은 MCC LOG 줄에 적고 기본값으로 진행한다. 카드는 OCC나 TOWER가 올린다. 이 세션의 guard는 `atcctl decision`을 허용하지 않는다(바꾸려면 guard 변경이라 SUPERVISOR 승인이 필요하다).
+- K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
+- SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
+- 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
+
 ## MCC LOG
 
 매 바퀴 끝에 SUPERVISOR에게 한두 줄: INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙과 외부 부작용 파일, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".

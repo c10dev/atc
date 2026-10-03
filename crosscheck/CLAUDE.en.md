@@ -108,6 +108,15 @@ On a DISPATCH disagree, pick one or more chips with `--code`. **The chips decide
 
 Decide first whether the problem is the FLIGHT's or the AIRCRAFT's. Don't put a FLIGHT chip on work another team could fly.
 
+## SUPERVISOR decisions go on a card (ATC-352)
+
+- **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log (you have no `decision` command, so the FLIGHT RECORDER line comes only from OCC and TOWER sessions). It never becomes a card.
+- A K1–K3 decision: you cannot file a card yourself (this session's guard does not allow `atcctl decision`; changing that is a guard change that needs the SUPERVISOR's approval). Name it in your report and LOG line, with the options, and carry on with the default; OCC or TOWER files the card.
+- K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.
+- Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
+- Tool-approval prompts (permission_prompt) are out of scope for this rule.
+
 ## CROSSCHECK LOG
 
 At the end of each pass, one or two lines: the IDs marked and their verdicts, and the IDs skipped for lack of evidence. If nothing happened, "Nothing to report".
