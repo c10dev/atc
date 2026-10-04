@@ -8,6 +8,7 @@ import { readRecords } from "./recorder.ts";
 import { parseDays } from "./readability-run.ts";
 import { ROLE_DIRS } from "./squelch-run.ts";
 import { type Counts, emptyScan, matchNamed, type Named, openedRate, OPEN_WINDOW_MS, scanLine, type SessionCalls, type Usage, usageOf } from "./skill-calls.ts";
+import { timed } from "./job-timing.ts";
 
 // SKILL-CALL READER(ATC-289): 하루에 한 번 어제의 Skill·sub-agent 호출 수와 qrh.named → opened를 skill-usage.jsonl에 한 줄로 더한다(추가만).
 // 대화 기록은 읽기만 하고 줄 단위로 흘려 읽는다. 남기는 것은 세션·이름·시각뿐이다.
@@ -255,5 +256,5 @@ export function startSkillUsage(deps: Deps = realDeps()) {
     }
   };
   setTimeout(tick, 40_000).unref();
-  setInterval(tick, 3_600_000).unref();
+  setInterval(() => timed("tick:skill-calls", tick), 3_600_000).unref();
 }

@@ -19,6 +19,7 @@ import { releaseIdOf } from "./release.ts";
 import { readReleaseView } from "./release-store.ts";
 import { readLeaks } from "./leaks-run.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
+import { timed } from "./job-timing.ts";
 
 // EFFECT CHECK의 읽고 쓰기(ATC-402). 규칙은 effect-check.ts(순수). 평결은 effect-verdicts.jsonl에 추가만 한다(FLIGHT마다 하나, 그 뒤 SUPERVISOR의 표시 줄).
 // 끄는 스위치는 effect-check.json의 `on`(on·off, 없으면 on). 바꾸는 길은 설정 창뿐이다(SUPERVISOR 자격이 있는 요청만, atcctl 명령은 없다).
@@ -201,7 +202,7 @@ export function mountEffectCheck(app: Hono, getSnapshot: () => Promise<Snapshot>
     }
   };
   setTimeout(() => void tick(), 90_000).unref();
-  setInterval(() => void tick(), TICK_MS).unref();
+  setInterval(() => void timed("tick:effect-check", tick), TICK_MS).unref();
 
   // 평결 목록(?flight=KEY면 그 FLIGHT만). 읽기만
   app.get("/api/effect", (c) => {

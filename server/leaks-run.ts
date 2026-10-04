@@ -10,6 +10,7 @@ import { parseDays } from "./readability-run.ts";
 import { collectQueueInput } from "./supervisor-queue-run.ts";
 import { supervisorQueueOf } from "./supervisor-queue.ts";
 import type { UpdateStatus } from "./update.ts";
+import { timed } from "./job-timing.ts";
 
 // LEAK COUNTER(ATC-363)의 기록과 읽기. 계산은 leaks.ts(순수). leaks.jsonl은 추가만 한다: leak이 열릴 때와 닫힐 때만 한 줄.
 export const LEAKS_FILE = () => join(config.stateDir, "leaks.jsonl");
@@ -69,7 +70,7 @@ export function mountLeaks(app: Hono, getSnapshot: () => Promise<Snapshot>, upda
     }
   };
   setTimeout(() => void tick(), 30_000).unref();
-  setInterval(() => void tick(), TICK_MS).unref();
+  setInterval(() => void timed("tick:leaks", tick), TICK_MS).unref();
 
   app.get("/api/leaks", (c) => {
     const p = parseDays(c.req.query("days") ?? "7");
