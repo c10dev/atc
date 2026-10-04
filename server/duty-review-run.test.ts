@@ -157,3 +157,21 @@ test("점검 한 주기(ATC-470): 놀고 있는 AIRCRAFT가 있고 기다리는 
   h.d.now = () => T0 + 10 * MIN;
   assert.equal(await reviewTick(h.d, state), null);
 });
+
+test("empty 점검 결과(ATC-470): 점검 턴 뒤에 이어 쓰인 SUPERVISOR 글의 답은 named에 세지 않는다", async () => {
+  const h = harness({ lines: [{ v: 1, ev: "review", id: "R-0001", at: new Date(T0 - 60 * MIN).toISOString(), trigger: "schedule", detail: "" }] });
+  const feeds: ((e: unknown) => void)[] = [];
+  (h.d.rt() as unknown as { subscribe: (f: (e: unknown) => void) => () => void }).subscribe = (f) => (feeds.push(f), () => {});
+  h.d.get = async (path) => (path === "/api/dispatch/brief" ? { plan: { aircraft: [{ registration: "TEAM_A", available: true }], assign: [], unserved: [], excluded: [] } } : { landingQueue: [] });
+  h.d.ready = () => [{ key: "ATC-7", title: "Fire me", priority: 2 }];
+  h.d.ideas = async () => null;
+  watchEmptyTurn(h.d.rt(), h.d.append, h.d.now);
+  assert.equal(await reviewTick(h.d, { idleSince: null, emptySince: T0 - 30 * MIN }), "R-0002");
+  for (const f of feeds) f({ type: "text", text: "요약: READY 없음", final: true });
+  for (const f of feeds) f({ type: "user", text: "ATC-7 어때?" }); // 상태가 thinking으로 이어진 채 SUPERVISOR 글이 시작
+  for (const f of feeds) f({ type: "text", text: "ATC-7을 쏘세요", final: true });
+  for (const f of feeds) f({ type: "state", state: "idle" });
+  const outs = h.appended.filter((l) => l.ev === "outcome");
+  assert.equal(outs.length, 1);
+  assert.equal(outs[0]!.ev === "outcome" ? outs[0]!.named : -1, 0);
+});

@@ -57,7 +57,8 @@ export function watchEmptyTurn(rt: DutyRuntime, append: (l: ReviewLine) => void,
   return rt.subscribe((e) => {
     if (!emptyTurn) return;
     if (e.type === "text" && e.final) emptyTurn.text += `\n${e.text}`;
-    else if (e.type === "state" && e.state !== "thinking") {
+    // 줄 선 SUPERVISOR 글이 이어 쓰이면(user) 점검 턴은 거기서 끝난다: 그 뒤의 답은 점검의 답이 아니다
+    else if (e.type === "user" || (e.type === "state" && e.state !== "thinking")) {
       const t = emptyTurn;
       emptyTurn = null;
       append({ v: 1, ev: "outcome", at: new Date(now()).toISOString(), review: t.id, named: namedReadyOf(t.text, t.ready) });
