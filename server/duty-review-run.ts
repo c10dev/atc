@@ -6,7 +6,7 @@ import { loadDutyConfig } from "./duty-config.ts";
 import { appendReviewLine, readReviewLines } from "./duty-review-store.ts";
 import { type DutyRuntime, duty } from "./duty-run.ts";
 import { openEffectLines } from "./effect-check-run.ts";
-import { decideReview, nextReviewId, openSimilarKey, reviewDaysOf, reviewLeaksOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
+import { decideReview, emptyMisfiresOf, namedReadyOf, nextReviewId, openSimilarKey, reviewDaysOf, reviewLeaksOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
 import { type OpenLeak, openFromRecords } from "./leaks.ts";
 import { readLeaks } from "./leaks-run.ts";
 import type { Snapshot } from "./model.ts";
@@ -14,6 +14,10 @@ import type { ReleaseLine } from "./release.ts";
 import { readReleaseLines } from "./release-store.ts";
 import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { timed } from "./job-timing.ts";
+import { releaseReadyNow } from "./release-run.ts";
+import { GithubOffError } from "./github-switch.ts";
+import { IDEA_LABEL, IDEAS_REPO, shapeIdeaList } from "./ideas.ts";
+import { fetchIdeaList } from "./sources/github.ts";
 
 export const TICK_MS = 60_000;
 const WARMUP_MS = 3 * 60_000; // 서버가 뜬 직후(RTS 재시작)에는 스냅샷이 비어 있다: 이만큼 기다린다
@@ -29,12 +33,38 @@ export interface ReviewDeps {
   openLeaks: (now: number) => { title: string; sinceMs: number }[];
   alerts: () => { level: string; text: string }[];
   effects?: () => string[]; // 열린 EFFECT CHECK 평결(not improved·worse, ATC-402). 없으면 빈 목록
+  ready?: (snap: Snapshot) => { key: string; title: string; priority: number | null }[]; // empty 점검 지시문에 줄 READY Backlog. 없으면 releaseReadyNow
+  ideas?: () => Promise<{ number: number; title: string }[] | null>; // empty 점검 지시문에 줄 열린 idea. null이면 읽지 못함. 없으면 gh
   cfg?: () => ReturnType<typeof loadDutyConfig>; // 시험용
   now: () => number;
   startedAt: number;
 }
 
 const openLeaksNow = (now: number): { title: string; sinceMs: number }[] => reviewLeaksOf([...openFromRecords(readLeaks(), now).values()].map((o: OpenLeak) => o.rec));
+
+const ideasNow = async (): Promise<{ number: number; title: string }[] | null> => {
+  try {
+    return shapeIdeaList(await fetchIdeaList(IDEAS_REPO, IDEA_LABEL)).map((i) => ({ number: i.number, title: i.title }));
+  } catch (e) {
+    if (!(e instanceof GithubOffError)) console.warn(`[atc] duty review: ideas ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
+};
+
+// 도는 empty 점검의 결과를 모은다(턴이 끝나면 outcome 줄 하나: DUTY의 답이 READY를 몇 개 이름 붙였나, ATC-470)
+let emptyTurn: { id: string; ready: { key: string }[]; text: string } | null = null;
+export function watchEmptyTurn(rt: DutyRuntime, append: (l: ReviewLine) => void, now: () => number): () => void {
+  return rt.subscribe((e) => {
+    if (!emptyTurn) return;
+    if (e.type === "text" && e.final) emptyTurn.text += `\n${e.text}`;
+    // 줄 선 SUPERVISOR 글이 이어 쓰이면(user) 점검 턴은 거기서 끝난다: 그 뒤의 답은 점검의 답이 아니다
+    else if (e.type === "user" || (e.type === "state" && e.state !== "thinking")) {
+      const t = emptyTurn;
+      emptyTurn = null;
+      append({ v: 1, ev: "outcome", at: new Date(now()).toISOString(), review: t.id, named: namedReadyOf(t.text, t.ready) });
+    }
+  });
+}
 
 // 지금 REVIEW 턴이 도는 중이면 id를 기억한다(제안 줄에 붙인다)
 let currentReview: string | null = null;
@@ -58,7 +88,7 @@ export function landingLinesOf(brief: unknown): string[] {
 }
 
 // 한 주기. 시험이 직접 부른다. 돌렸으면 점검 id
-export async function reviewTick(d: ReviewDeps, state: { idleSince: number | null }): Promise<string | null> {
+export async function reviewTick(d: ReviewDeps, state: { idleSince: number | null; emptySince?: number | null }): Promise<string | null> {
   const cfg = (d.cfg ?? loadDutyConfig)();
   const now = d.now();
   if (!cfg.enabled || !cfg.review || now - d.startedAt < WARMUP_MS) return null;
@@ -72,8 +102,9 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
   const rt = d.rt();
   const st = rt.status();
   if (currentReview !== null && !rt.reviewTurn()) currentReview = null;
-  const dec = decideReview({ now, lastAt, busy: st.state !== "idle" || st.queued > 0, cfg, signals, idleSince: state.idleSince, history: reviews, fuelHold: fuelHoldOf(snap, cfg.account) });
+  const dec = decideReview({ now, lastAt, busy: st.state !== "idle" || st.queued > 0, cfg, signals, idleSince: state.idleSince, emptySince: state.emptySince ?? null, history: reviews, fuelHold: fuelHoldOf(snap, cfg.account) });
   state.idleSince = dec.idleSince;
+  state.emptySince = dec.emptySince;
   if (!dec.run || !dec.trigger) return null;
   const id = nextReviewId(lines);
   const brief = await d.get("/api/controller/brief").catch(() => null);
@@ -83,12 +114,17 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
     .slice(0, 10)
     .map((a) => `${a.level}: ${a.text.slice(0, 160)}`);
   const open = snap.tickets.filter((t) => t.stateType !== "completed" && t.stateType !== "canceled").map((t) => ({ key: t.key, title: t.title }));
-  const text = reviewPromptOf({ id, trigger: dec.trigger, detail: dec.detail ?? "", signals, linear: cfg.l1, landing: landingLinesOf(brief), alerts: alertLines, effects: d.effects?.() ?? [], openIssues: open });
+  const isEmpty = dec.trigger === "empty";
+  const readyBacklog = isEmpty ? (d.ready ?? releaseReadyNow)(snap).map((r) => ({ key: r.key, title: r.title, priority: r.priority ?? null })) : undefined;
+  const ideas = isEmpty ? await (d.ideas ?? ideasNow)() : undefined;
+  const text = reviewPromptOf({ id, trigger: dec.trigger, detail: dec.detail ?? "", signals, linear: cfg.l1, landing: landingLinesOf(brief), alerts: alertLines, effects: d.effects?.() ?? [], openIssues: open, readyBacklog, ideas });
   const line = `DUTY REVIEW ${id} · ${dec.trigger} · ${dec.detail ?? ""}`.slice(0, 300);
   currentReview = id; // 턴 시작 전에 세운다: 첫 도구 호출이 이 id를 본다
+  if (isEmpty) emptyTurn = { id, ready: readyBacklog ?? [], text: "" };
   const r = await rt.sendReview(text, line);
   if (r.verdict !== "sent") {
     currentReview = null;
+    emptyTurn = null;
     return null;
   }
   d.append({ v: 1, ev: "review", id, at: new Date(now).toISOString(), trigger: dec.trigger, detail: (dec.detail ?? "").slice(0, 300), ...(dec.key ? { key: dec.key.slice(0, 500) } : {}) });
@@ -116,7 +152,8 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
     startedAt: Date.now(),
     ...deps,
   };
-  const state = { idleSince: null as number | null };
+  const state = { idleSince: null as number | null, emptySince: null as number | null };
+  watchEmptyTurn(d.rt(), d.append, d.now);
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -144,7 +181,8 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
       on: cfg.review,
       dutyEnabled: cfg.enabled,
       linear: cfg.l1,
-      config: { everyMin: cfg.reviewEveryMin, idleMin: cfg.reviewIdleMin, leakMin: cfg.reviewLeakMin, gapMin: cfg.reviewGapMin },
+      config: { everyMin: cfg.reviewEveryMin, idleMin: cfg.reviewIdleMin, leakMin: cfg.reviewLeakMin, gapMin: cfg.reviewGapMin, emptyMin: cfg.reviewEmptyMin, emptyGapMin: cfg.reviewEmptyGapMin },
+      empty: { on: cfg.reviewEmpty, ...emptyMisfiresOf(lines, tickets) },
       last: last && last.ev === "review" ? { id: last.id, at: last.at, trigger: last.trigger, detail: last.detail } : null,
       days: reviewDaysOf(lines, d.releases(), tickets, d.now(), 14),
     });

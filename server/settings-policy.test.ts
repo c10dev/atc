@@ -9,7 +9,7 @@ const INDEX = settingsIndexOf(switchViews());
 test("modeLine: 선언된 스위치를 한 줄로, 기본은 꺼짐(자동 운항·SCHEDULE·FLEET PLAN·CODEX LANE은 기본 on)", () => {
   assert.equal(
     modeLine(modeSegments(switchViews())),
-    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
+    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY REVIEW EMPTY on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
   );
 });
 
@@ -114,7 +114,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "SCHEDULE·FLEET PLAN AUTO", "SCHEDULE·FLEET PLAN 자동 적용", "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog"],
     ["operations", "REPOSITION", "소속 AIRPORT 옮기기", "base fleet plan approval auto fleet-plan.reposition"],
     ["operations", "CONTROL RECYCLE", "관제 세션 자동 재시작", "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode"],
-    ["operations", "DUTY", "DUTY 채팅(atc 안의 대화 상대)", "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC l1 duty.l1 DUTY L1 stand linear"],
+    ["operations", "DUTY", "DUTY 채팅(atc 안의 대화 상대)", "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC empty duty.reviewEmpty DUTY REVIEW EMPTY l1 duty.l1 DUTY L1 stand linear"],
     ["operations", "JUDGES", "판정 계열", "jev typesafe replay shadow judges.jev"],
     ["operations", "LANDING GAP", "착륙 없음 막힘 규칙(HOME)", "landing gap 착륙 없음 막힘 p90 기준 landingGap"],
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],

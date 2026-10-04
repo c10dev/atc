@@ -8,7 +8,7 @@ import type { Ticket } from "./model.ts";
 // 이 파일은 순수 조각이다: 언제 돌지(트리거), DUTY에게 줄 글, 하루 단위 세기. 턴을 시작하고 파일을 쓰는 것은 duty-review-run.ts.
 // 제안은 Backlog까지만(autonomy.md 원칙 10): Todo로 올려 쏘는 것은 SUPERVISOR가 RELEASE 화면에서 한다.
 
-export type ReviewTrigger = "schedule" | "idle" | "leak";
+export type ReviewTrigger = "schedule" | "idle" | "leak" | "empty";
 
 // 점검 한 번이 보는 신호. 모두 서버 안에서 같은 핸들러로 읽은 값이다
 export interface ReviewSignals {
@@ -54,13 +54,14 @@ export function signalsOf(dispatch: unknown, openLeaks: readonly { title: string
   };
 }
 
-export type ReviewConfig = Pick<DutyConfig, "review" | "reviewEveryMin" | "reviewIdleMin" | "reviewLeakMin" | "reviewGapMin">;
+export type ReviewConfig = Pick<DutyConfig, "review" | "reviewEveryMin" | "reviewIdleMin" | "reviewLeakMin" | "reviewGapMin" | "reviewEmpty" | "reviewEmptyMin" | "reviewEmptyGapMin">;
 
 export interface ReviewDecision {
   run: boolean;
   trigger?: ReviewTrigger;
   detail?: string;
   idleSince: number | null; // 호출한 쪽이 다음 주기에 다시 넣는다(놀고-일감 상태가 이어진 시작 시각)
+  emptySince: number | null; // 같은 꼴(ATC-470): 받을 수 있는 AIRCRAFT가 있고 기다리는 FLIGHT가 없는 상태가 이어진 시작 시각
   key?: string; // idle·leak 트리거가 본 것의 서명(점검 줄에 남는다). 같은 서명은 reviewEveryMin 안에 다시 점검하지 않는다
   why?: string; // run이 false인 이유(시험·화면용)
 }
@@ -82,13 +83,16 @@ export const reviewKeyOf = (trigger: "idle" | "leak", s: ReviewSignals): string 
 // 지금 점검을 시작할까. lastAt은 마지막 점검 시각(점검한 적이 없으면 0). 서버가 막 떴을 때는 호출한 쪽의 준비 시간이 막는다.
 // 같은 트리거가 같은 서명을 보고 reviewEveryMin 안에 이미 점검했으면 다시 점검하지 않는다(바뀌지 않는 leak·놀고-일감이 30분마다 점검을 부르지 않게).
 // fuelHold: DUTY ACCOUNT의 FUEL이 HOLD 임계값 이상이면 서버가 시작하는 턴을 하지 않는다(SUPERVISOR의 글에는 그대로 답한다)
-export function decideReview(x: { now: number; lastAt: number; busy: boolean; cfg: ReviewConfig; signals: ReviewSignals; idleSince: number | null; history?: readonly ReviewMemo[]; fuelHold?: boolean }): ReviewDecision {
+export function decideReview(x: { now: number; lastAt: number; busy: boolean; cfg: ReviewConfig; signals: ReviewSignals; idleSince: number | null; emptySince?: number | null; history?: readonly ReviewMemo[]; fuelHold?: boolean }): ReviewDecision {
   const { now, cfg, signals } = x;
   const history = x.history ?? [];
   // 놀고-일감이 이어진 시간은 점검을 못 하는 때에도 센다
   const stuck = signals.idleAircraft.length > 0 && signals.waitingFlights.length > 0;
   const idleSince = stuck ? (x.idleSince ?? now) : null;
-  const out = (r: Omit<ReviewDecision, "idleSince">): ReviewDecision => ({ ...r, idleSince });
+  // empty(ATC-470): idle과 배타다(idle은 기다리는 FLIGHT가 있을 때, empty는 없을 때)
+  const empty = signals.idleAircraft.length > 0 && signals.waitingFlights.length === 0;
+  const emptySince = empty ? (x.emptySince ?? now) : null;
+  const out = (r: Omit<ReviewDecision, "idleSince" | "emptySince">): ReviewDecision => ({ ...r, idleSince, emptySince });
   if (!cfg.review) return out({ run: false, why: "off" });
   if (x.busy) return out({ run: false, why: "busy" });
   if (x.fuelHold) return out({ run: false, why: "fuel" });
@@ -99,14 +103,19 @@ export function decideReview(x: { now: number; lastAt: number; busy: boolean; cf
     const key = reviewKeyOf("idle", signals);
     if (!repeated("idle", key)) {
       const m = Math.floor((now - idleSince) / MIN);
-      return { run: true, trigger: "idle", key, detail: `${signals.idleAircraft.join(", ")} idle for ${m} min while ${signals.waitingFlights.slice(0, 6).join(", ")} wait${signals.waitingFlights.length > 6 ? ` (+${signals.waitingFlights.length - 6})` : ""}`, idleSince: null };
+      return { run: true, trigger: "idle", key, detail: `${signals.idleAircraft.join(", ")} idle for ${m} min while ${signals.waitingFlights.slice(0, 6).join(", ")} wait${signals.waitingFlights.length > 6 ? ` (+${signals.waitingFlights.length - 6})` : ""}`, idleSince: null, emptySince };
     }
+  }
+  // empty: reviewEmptyGapMin 안에 empty 점검이 있었으면 서명과 관계없이 다시 하지 않는다
+  if (cfg.reviewEmpty && emptySince !== null && now - emptySince >= cfg.reviewEmptyMin * MIN && !history.some((h) => h.trigger === "empty" && now - h.at < cfg.reviewEmptyGapMin * MIN)) {
+    const m = Math.floor((now - emptySince) / MIN);
+    return { run: true, trigger: "empty", detail: `${signals.idleAircraft.join(", ")} available for ${m} min with no Todo FLIGHT waiting`, idleSince, emptySince: null };
   }
   if (signals.leakMin !== null && signals.leakMin >= cfg.reviewLeakMin) {
     const key = reviewKeyOf("leak", signals);
-    if (!repeated("leak", key)) return { run: true, trigger: "leak", key, detail: `${signals.leakTitle ?? "a human step"} held ${signals.leakMin} min`, idleSince };
+    if (!repeated("leak", key)) return { run: true, trigger: "leak", key, detail: `${signals.leakTitle ?? "a human step"} held ${signals.leakMin} min`, idleSince, emptySince };
   }
-  if (now - x.lastAt >= cfg.reviewEveryMin * MIN) return { run: true, trigger: "schedule", detail: `last review ${Math.floor((now - x.lastAt) / MIN)} min ago`, idleSince };
+  if (now - x.lastAt >= cfg.reviewEveryMin * MIN) return { run: true, trigger: "schedule", detail: `last review ${Math.floor((now - x.lastAt) / MIN)} min ago`, idleSince, emptySince };
   return out({ run: false, why: "quiet" });
 }
 
@@ -121,6 +130,30 @@ export interface ReviewPromptInput {
   alerts: string[];
   effects?: string[]; // 열린 EFFECT CHECK 평결(not improved·worse): 배포한 FLIGHT가 목표를 못 맞췄다(ATC-402)
   openIssues: { key: string; title: string }[]; // 이미 열려 있는 일(중복 제안을 막으려고 준다)
+  readyBacklog?: { key: string; title: string; priority: number | null }[]; // empty 트리거(ATC-470): 지금 발권할 수 있는 READY Backlog 줄(releaseReadyNow)
+  ideas?: { number: number; title: string }[] | null; // empty 트리거: 열린 idea 이슈. null이면 읽지 못했다(GitHub 꺼짐·오류)
+}
+
+export const READY_LIST_MAX = 30;
+export const IDEAS_LIST_MAX = 30;
+
+// empty 트리거 전용 단계(ATC-470). 순서가 곧 우선순위다: READY → 설계 문서 → 작은 idea. 2·3단계가 합쳐 PROPOSALS_MAX를 넘지 않고 상한이 차는 단계에서 멈춘다
+export function emptySectionOf(x: ReviewPromptInput): string[] {
+  const ready = x.readyBacklog ?? [];
+  const ideas = x.ideas ?? null;
+  const cap = x.linear
+    ? `Steps 2 and 3 together create at most ${PROPOSALS_MAX} issues in this review (Backlog only, the work-order format, Evidence in Context). Stop at the first step that fills the cap.`
+    : "Linear writes are off (duty.json l1): do not create issues in steps 2 and 3; list what you would file, with evidence.";
+  return [
+    "EMPTY FLEET: an AIRCRAFT can take work and no Todo FLIGHT is waiting, so the fleet is idle. Line up the next work, in this order:",
+    `STEP 1 — READY Backlog (server list below, ${ready.length} row${ready.length === 1 ? "" : "s"}). Say in your Korean summary which of these are worth firing now and why, naming each by its key (ATC-n). You cannot fire them: the SUPERVISOR does, on the RELEASE screen. If none is worth firing, say so in one line.`,
+    ready.length ? ready.slice(0, READY_LIST_MAX).map((r) => `- ${r.key} P${r.priority ?? "-"} ${r.title.slice(0, 90)}`).join("\n") : "- none",
+    "STEP 2 — Design documents. Read the Implementation order tables in ../docs/*.md. Find steps that are not marked done and have no ATC issue yet (check the open issues list below and search the issue titles), and file each as a Backlog issue.",
+    "STEP 3 — Small ideas. From the open idea issues below, pick ones that a single FLIGHT can finish and file each as a Backlog issue (Context names the idea number). Skip ideas that need a SUPERVISOR decision or a design first.",
+    ideas === null ? "open idea issues: unavailable (GitHub is off or did not answer); skip step 3." : [`open idea issues (${Math.min(ideas.length, IDEAS_LIST_MAX)} of ${ideas.length}):`, ...(ideas.length ? ideas.slice(0, IDEAS_LIST_MAX).map((i) => `- #${i.number} ${i.title.slice(0, 90)}`) : ["- none"])].join("\n"),
+    cap,
+    "",
+  ];
 }
 
 export const OPEN_ISSUES_MAX = 120;
@@ -148,6 +181,7 @@ export function reviewPromptOf(x: ReviewPromptInput): string {
     "open EFFECT CHECK verdicts (a deployed FLIGHT that did not move what its ## Measure named; the SUPERVISOR has not marked them wrong):",
     list(x.effects ?? []),
     "",
+    ...(x.trigger === "empty" ? emptySectionOf(x) : []),
     "DO:",
     "1. Name the bottleneck, if there is one, and its evidence (PR numbers, FLIGHT keys, minutes). Use only what the commands and the facts show.",
     "2. Reply with a short summary in Korean, at most 8 lines. If nothing needs doing, say that in one line.",
@@ -173,7 +207,9 @@ export function openSimilarKey(title: string, tickets: readonly Ticket[], now: n
 // ── 기록(duty-reviews.jsonl, 추가만)과 하루 세기 ──
 export type ReviewLine =
   | { v: 1; ev: "review"; id: string; at: string; trigger: ReviewTrigger; detail: string; key?: string }
-  | { v: 1; ev: "proposal"; at: string; review: string; key: string; title: string };
+  | { v: 1; ev: "proposal"; at: string; review: string; key: string; title: string }
+  // empty 점검의 턴이 끝났을 때 한 줄(ATC-470): named = DUTY의 답이 이름 붙인 READY Backlog 수
+  | { v: 1; ev: "outcome"; at: string; review: string; named: number };
 
 export const nextReviewId = (lines: readonly ReviewLine[]): string => {
   const n = lines.reduce((m, l) => (l.ev === "review" ? Math.max(m, Number(l.id.slice(2)) || 0) : m), 0);
@@ -204,7 +240,7 @@ export function reviewDaysOf(lines: readonly ReviewLine[], releases: readonly Re
     const day = dayOf(l.at);
     if (day < first) continue;
     if (l.ev === "review") row(day).reviews++;
-    else {
+    else if (l.ev === "proposal") {
       const r = row(day);
       r.proposals++;
       const rel = releasedAt.get(l.key);
@@ -214,3 +250,26 @@ export function reviewDaysOf(lines: readonly ReviewLine[], releases: readonly Re
   }
   return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
 }
+
+// ── empty 오발 세기(ATC-470) ──
+export interface EmptyMisfires {
+  reviews: number; // empty 점검 수
+  wasted: number; // 끝났는데 READY Backlog를 하나도 이름 붙이지 않고 이슈도 올리지 않은 점검(헛턴)
+  discarded: number; // 올린 이슈를 SUPERVISOR가 버린(Canceled·Duplicate) 점검
+}
+
+export function emptyMisfiresOf(lines: readonly ReviewLine[], tickets: readonly Pick<Ticket, "key" | "stateType">[]): EmptyMisfires {
+  const stateOf = new Map(tickets.map((t) => [t.key, t.stateType]));
+  const empties = lines.flatMap((l) => (l.ev === "review" && l.trigger === "empty" ? [l.id] : []));
+  const out: EmptyMisfires = { reviews: empties.length, wasted: 0, discarded: 0 };
+  for (const id of empties) {
+    const filed = lines.filter((l) => l.ev === "proposal" && l.review === id);
+    const outcome = lines.find((l) => l.ev === "outcome" && l.review === id);
+    if (outcome && outcome.ev === "outcome" && outcome.named === 0 && filed.length === 0) out.wasted++; // 결과 줄이 없으면(서버가 중간에 내려감) 모르니 세지 않는다
+    if (filed.some((l) => l.ev === "proposal" && stateOf.get(l.key) === "canceled")) out.discarded++;
+  }
+  return out;
+}
+
+// DUTY의 답이 이름 붙인 READY 키의 수(대소문자 무시, 단어 경계)
+export const namedReadyOf = (text: string, ready: readonly { key: string }[]): number => ready.filter((r) => new RegExp(`\\b${r.key}\\b`, "i").test(text)).length;

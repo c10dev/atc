@@ -21,10 +21,13 @@ export interface DutyConfig {
   reviewIdleMin: number; // 놀고 있는 AIRCRAFT가 일감을 두고 이만큼 이어지면 트리거
   reviewLeakMin: number; // leak이 이만큼 열려 있으면 트리거
   reviewGapMin: number; // 점검과 점검 사이 최소 간격(트리거가 몰려도)
+  reviewEmpty: boolean; // ATC-470: empty 트리거 스위치(기본 켜짐). SUPERVISOR만(설정 창). 꺼도 다른 트리거는 그대로
+  reviewEmptyMin: number; // 받을 수 있는 AIRCRAFT가 있는데 기다리는 Todo FLIGHT가 없는 상태가 이만큼 이어지면 empty 트리거
+  reviewEmptyGapMin: number; // empty 점검과 다음 empty 점검 사이 최소 간격
 }
 
-export const REVIEW_DEFAULTS = { everyMin: 240, idleMin: 20, leakMin: 60, gapMin: 30 } as const;
-export const REVIEW_RANGES = { everyMin: [30, 1440], idleMin: [5, 240], leakMin: [15, 1440], gapMin: [10, 240] } as const;
+export const REVIEW_DEFAULTS = { everyMin: 240, idleMin: 20, leakMin: 60, gapMin: 30, emptyMin: 20, emptyGapMin: 60 } as const;
+export const REVIEW_RANGES = { everyMin: [30, 1440], idleMin: [5, 240], leakMin: [15, 1440], gapMin: [10, 240], emptyMin: [5, 240], emptyGapMin: [10, 1440] } as const;
 const reviewNum = (raw: unknown, def: number, [lo, hi]: readonly [number, number]) => (typeof raw === "number" && Number.isInteger(raw) && raw >= lo && raw <= hi ? raw : def);
 
 export const DEFAULT_ACCOUNT = "acct-2";
@@ -53,6 +56,9 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     reviewIdleMin: reviewNum(o.reviewIdleMin, REVIEW_DEFAULTS.idleMin, REVIEW_RANGES.idleMin),
     reviewLeakMin: reviewNum(o.reviewLeakMin, REVIEW_DEFAULTS.leakMin, REVIEW_RANGES.leakMin),
     reviewGapMin: reviewNum(o.reviewGapMin, REVIEW_DEFAULTS.gapMin, REVIEW_RANGES.gapMin),
+    reviewEmpty: o.reviewEmpty !== false,
+    reviewEmptyMin: reviewNum(o.reviewEmptyMin, REVIEW_DEFAULTS.emptyMin, REVIEW_RANGES.emptyMin),
+    reviewEmptyGapMin: reviewNum(o.reviewEmptyGapMin, REVIEW_DEFAULTS.emptyGapMin, REVIEW_RANGES.emptyGapMin),
   };
 }
 
