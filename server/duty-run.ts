@@ -74,6 +74,7 @@ export class DutyRuntime {
   private last: { model: string | null; context: number | null; costUsd: number | null; rates: DutyRate[] } = { model: null, context: null, costUsd: null, rates: [] };
   private badBase = 0;
   private reviewing = false; // 서버가 시작한 REVIEW 턴이 도는 중(ATC-396): 이 동안 Linear 제안은 Backlog에만
+  private supervisorWords: string | null = null; // 지금 도는 턴을 시작한 SUPERVISOR 글(ATC-471). REVIEW 턴·턴 없음이면 null
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
 
@@ -167,6 +168,11 @@ export class DutyRuntime {
     const r = this.apply({ kind: "message", msg });
     if (r.verdict === "refused") return { verdict: "refused", reason: this.s.error ? `DUTY가 내려가 있습니다: ${this.s.error}` : "DUTY가 내려가 있습니다. NEW SHIFT로 다시 시작합니다" };
     return { verdict: r.verdict ?? "sent" };
+  }
+
+  // 지금 도는 턴이 SUPERVISOR 글(Origin 검사를 거친 /api/duty/message)로 시작됐으면 그 글(duty-l1-run.ts의 `create --release`가 쓴다). 아니면 null
+  supervisorTurn(): string | null {
+    return this.s.phase === "thinking" && !this.reviewing ? this.supervisorWords : null;
   }
 
   // REVIEW 턴이 도는 중인가(duty-l1-run.ts가 Todo를 막는 데 쓴다)
@@ -287,6 +293,7 @@ export class DutyRuntime {
         if (done) return;
         done = true;
         this.reviewing = false;
+        this.supervisorWords = null;
         if (this.proc === p) this.proc = null;
         resolve();
         this.apply({ kind: "exit", ...(error ? { error } : {}) });
@@ -319,10 +326,12 @@ export class DutyRuntime {
     if (m.review) {
       // REVIEW 턴(ATC-396): SUPERVISOR가 쓴 글이 아니다. 긴 지시문은 기록하지 않고 한 줄만 남긴다
       this.reviewing = true;
+      this.supervisorWords = null;
       this.append({ t, kind: "notice", text: m.review });
       this.emit({ type: "notice", text: m.review });
       return;
     }
+    this.supervisorWords = m.text || "(image only)";
     this.append({ t, kind: "user", text: m.text, ...(m.image ? { image: m.image.file } : {}) });
     this.emit({ type: "user", text: m.text, ...(m.image ? { image: m.image.file } : {}) });
   }
@@ -347,6 +356,7 @@ export class DutyRuntime {
         continue;
       }
       if (e.type === "state") {
+        this.supervisorWords = null;
         this.reviewing = false; // 턴이 끝났다: 줄 선 글이 이어 써져도 그것은 SUPERVISOR의 글이다
         this.apply({ kind: "result" }); // 큐에 남은 글이 있으면 여기서 이어 쓴다
         continue;

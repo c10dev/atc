@@ -101,6 +101,8 @@ export interface DispatchConfig {
   releaseParked: "on" | "off";
   // 비슷한 제목 검사(ATC-488): "on"(기본)이면 `duty linear create`가 열린 ATC 이슈와 거의 같은 제목을 409로 거절하고 PARKED 줄에 "possible duplicate" 표시를 단다. "off"면 둘 다 없다
   duplicateTitle: "on" | "off";
+  // 채팅 발권(ATC-471): "on"(기본)이면 SUPERVISOR 글이 시작한 DUTY 턴의 `duty linear create --release`가 만든 이슈를 그 글로 발권한다. "off"면 403(RELEASE 화면에서 발권)
+  chatRelease: "on" | "off";
   stuckUnserved: "on" | "off"; // 막힘 알림 문구(ATC-522): plan.unserved인 Todo FLIGHT의 follow|stuck에 사유와 다음 한 걸음을 적는다. off면 옛 문구
 }
 export type K3HoldMode = "on" | "off";
@@ -155,6 +157,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   crossAccountRelease: "on",
   releaseParked: "on",
   duplicateTitle: "on",
+  chatRelease: "on",
   stuckUnserved: "on",
   bgMemoryCap: "on",
   bgMemoryHigh: "20G",
@@ -210,6 +213,18 @@ export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, k3Hold: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// chatRelease만 바꿔 저장한다(설정 창, ATC-471). 다른 설정은 그대로 둔다
+export function saveChatRelease(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, chatRelease: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -393,6 +408,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       releaseParked: user.releaseParked === "off" ? "off" : "on",
       // 비슷한 제목 검사(ATC-488): 파일에 "off"라고 적었을 때만 끈다
       duplicateTitle: user.duplicateTitle === "off" ? "off" : "on",
+      // 채팅 발권(ATC-471): 파일에 "off"라고 적었을 때만 끈다
+      chatRelease: user.chatRelease === "off" ? "off" : "on",
       // 막힘 알림 문구(ATC-522): 파일에 "off"라고 적었을 때만 끈다
       stuckUnserved: user.stuckUnserved === "off" ? "off" : "on",
     };

@@ -92,6 +92,10 @@ test("duty linear create: 옵션은 -- 앞, 본문은 -- 뒤 낱말 전부, 라�
     body: "Body text",
   });
   assert.deepEqual(parseDutyLinear(["create", "--title", "T", "--priority", "9", "--", "B"]).priority, "9", "1-4가 아니면 서버가 거절한다");
+  assert.equal(parseDutyLinear(["create", "--title", "T", "--priority", "2", "--release", "--", "B"]).release, true, "--release는 값 없는 플래그");
+  assert.equal(parseDutyLinear(["create", "--title", "T", "--priority", "2", "--", "B"]).release, undefined);
+  assert.throws(() => parseDutyLinear(["update", "ATC-7", "--release"]), /--release/, "update에는 이 플래그가 없다");
+  assert.match(dutyLinearText({ key: "ATC-9", url: "https://x", state: "Todo", released: true }), /released/);
   assert.throws(() => parseDutyLinear(["create", "--title"]), /값이 필요함/);
   assert.throws(() => parseDutyLinear(["create", "--team", "VOC"]), /알 수 없는 옵션 --team/);
   assert.throws(() => parseDutyLinear(["create", "--assignee", "x"]), /알 수 없는 옵션/);

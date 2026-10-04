@@ -13,7 +13,7 @@ export const LABELS_MAX = 12;
 export const BLOCKED_BY_MAX = 5;
 
 export type LinearOp =
-  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[]; blockedBy?: string[]; sameTitleOk?: true }
+  | { action: "create"; title: string; body: string; priority: number; state: string; parent?: string; project?: string; labels: string[]; blockedBy?: string[]; sameTitleOk?: true; release?: true }
   | { action: "update"; key: string; title?: string; body?: string; priority?: number; state?: string; labels?: string[] }
   | { action: "comment"; key: string; body: string };
 export type LinearParse = { ok: true; op: LinearOp } | { ok: false; error: string };
@@ -42,14 +42,17 @@ export function parseLinearBody(raw: unknown): LinearParse {
   if (!b) return bad("본문은 JSON 객체");
   const known = (names: string[]) => Object.keys(b).find((k) => !names.includes(k));
   if (b.action === "create") {
-    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels", "blockedBy", "sameTitleOk"]);
+    const extra = known(["action", "title", "body", "priority", "state", "parent", "project", "labels", "blockedBy", "sameTitleOk", "release"]);
     if (extra) return bad(`알 수 없는 칸: ${extra}`);
     const title = text(b.title, TITLE_MAX);
     const body = text(b.body, BODY_MAX);
     if (!title) return bad(`title이 필요함(${TITLE_MAX}자까지)`);
     if (!body) return bad(`body(Markdown)가 필요함(${BODY_MAX}자까지)`);
     if (!Number.isInteger(b.priority) || (b.priority as number) < 1 || (b.priority as number) > 4) return bad("priority가 필요함(1 Urgent · 2 High · 3 Medium · 4 Low). 우선순위 없는 작업 지시서는 DISPATCH가 후보로 읽지 않는다");
-    const state = b.state === undefined ? "Backlog" : b.state;
+    // --release(ATC-471): 상태는 Todo다. Backlog를 같이 주면 거절, 상태를 안 주면 Todo
+    if (b.release !== undefined && b.release !== true) return bad("release는 true만(명령줄 --release)");
+    const state = b.state === undefined ? (b.release === true ? "Todo" : "Backlog") : b.state;
+    if (b.release === true && state !== "Todo") return bad("--release는 Todo로 만든다: --state Backlog와 같이 쓸 수 없음");
     if (typeof state !== "string" || !(DUTY_STATES as readonly string[]).includes(state)) return bad("state는 Backlog 또는 Todo만(Started·Done은 PR과 Fixes의 몫)");
     const op: LinearOp = { action: "create", title: title.trim(), body, priority: b.priority as number, state, labels: [] };
     if (b.parent !== undefined) {
@@ -74,6 +77,7 @@ export function parseLinearBody(raw: unknown): LinearParse {
       if (!raw || !keys || raw.length === 0 || raw.length > BLOCKED_BY_MAX || keys.some((k) => k === null)) return bad(`blockedBy는 ATC-<n> 목록(1~${BLOCKED_BY_MAX}개)`);
       op.blockedBy = [...new Set(keys as string[])];
     }
+    if (b.release === true) op.release = true;
     // 비슷한 제목 검사를 넘긴다(ATC-488): 새 이슈가 일부러 옛 이슈와 비슷할 때. 넘긴 수는 세어 RELEASE 화면에 보인다
     if (b.sameTitleOk !== undefined) {
       if (b.sameTitleOk !== true) return bad("sameTitleOk는 true만(명령줄 --same-title-ok)");
