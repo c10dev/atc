@@ -400,6 +400,29 @@ interface ReviewView {
   linear: boolean;
   last: { id: string; at: string; trigger: string; detail: string } | null;
   days: { day: string; reviews: number; proposals: number; fired: number; discarded: number }[];
+  empty?: { on: boolean; reviews: number; wasted: number; discarded: number };
+}
+// empty 트리거의 오발 세기(ATC-470): 헛턴(READY도 안 짚고 이슈도 안 올림)과 올린 이슈가 버려진 점검
+function EmptyReviewRecord({ on }: { on: boolean }) {
+  const [v, setV] = useState<ReviewView["empty"] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/duty/review")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ReviewView) => alive && setV(d.empty ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [on]);
+  if (!v) return null;
+  return (
+    <div className="config-note" aria-label="DUTY REVIEW EMPTY 오발">
+      <p>
+        empty 점검 {v.reviews} · 헛턴 {v.wasted} · 이슈가 버려진 점검 {v.discarded}
+      </p>
+    </div>
+  );
 }
 function DutyReviewRecord({ on }: { on: boolean }) {
   const [v, setV] = useState<ReviewView | null>(null);
@@ -730,6 +753,7 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
     return d ? <StopCheckStats d={d} refresh={() => save({})} /> : null;
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
+  dutyReviewEmpty: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <EmptyReviewRecord on={switchOf(s, "dutyReviewEmpty")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
   judgesJev: (s) =>
     s.judges.jev.lastRunAt || s.judges.jev.lastError ? (

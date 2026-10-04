@@ -37,7 +37,7 @@ test("imageCheck: PNG·JPEG·WebP만, base64만, 크기 상한", () => {
 });
 
 test("parseDutyConfig: 기본은 꺼짐·acct-2·30분, 이상한 값은 기본으로", () => {
-  assert.deepEqual(parseDutyConfig(null), { enabled: false, account: "acct-2", idleMin: 30, briefMaxChars: 6000, briefDecisions: 20, charter: "off", l1: false, review: true, reviewEveryMin: 240, reviewIdleMin: 20, reviewLeakMin: 60, reviewGapMin: 30 });
+  assert.deepEqual(parseDutyConfig(null), { enabled: false, account: "acct-2", idleMin: 30, briefMaxChars: 6000, briefDecisions: 20, charter: "off", l1: false, review: true, reviewEveryMin: 240, reviewIdleMin: 20, reviewLeakMin: 60, reviewGapMin: 30, reviewEmpty: true, reviewEmptyMin: 20, reviewEmptyGapMin: 60 });
   // REVIEW(ATC-396): 기본 켜짐(live first), false로만 끈다. 범위 밖 분은 기본으로
   assert.equal(parseDutyConfig({ review: false }).review, false);
   assert.equal(parseDutyConfig({ review: "no" }).review, true);

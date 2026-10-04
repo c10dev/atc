@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type DutyConfig, parseDutyConfig } from "./duty-config.ts";
 import type { ReviewLine } from "./duty-review.ts";
-import { fuelHoldOf, landingLinesOf, type ReviewDeps, reviewTick, reviewTurnActive } from "./duty-review-run.ts";
+import { fuelHoldOf, landingLinesOf, type ReviewDeps, reviewTick, reviewTurnActive, watchEmptyTurn } from "./duty-review-run.ts";
 import type { DutyRuntime } from "./duty-run.ts";
 import type { Snapshot } from "./model.ts";
 
@@ -130,4 +130,30 @@ test("fuelHoldOf·reviewTurnActive: ACCOUNT를 못 찾으면 false, 턴이 끝�
   assert.equal(reviewTurnActive(() => rt), false);
   turn = true;
   assert.equal(reviewTurnActive(() => rt), false, "한 번 풀린 id는 다음 턴이 되살리지 않는다");
+});
+
+test("점검 한 주기(ATC-470): 놀고 있는 AIRCRAFT가 있고 기다리는 FLIGHT가 없는 채 20분이면 empty 점검, READY·idea 목록이 지시문에 실리고, 턴이 끝나면 outcome 한 줄", async () => {
+  const recent: ReviewLine = { v: 1, ev: "review", id: "R-0001", at: new Date(T0 - 60 * MIN).toISOString(), trigger: "schedule", detail: "" };
+  const h = harness({ lines: [recent] });
+  const feeds: ((e: unknown) => void)[] = [];
+  (h.d.rt() as unknown as { subscribe: (f: (e: unknown) => void) => () => void }).subscribe = (f) => (feeds.push(f), () => {});
+  h.d.get = async (path) => (path === "/api/dispatch/brief" ? { plan: { aircraft: [{ registration: "TEAM_A", available: true }], assign: [], unserved: [], excluded: [] } } : { landingQueue: [] });
+  h.d.ready = () => [{ key: "ATC-7", title: "Fire me", priority: 2 }];
+  h.d.ideas = async () => [{ number: 41, title: "Tiny idea" }];
+  watchEmptyTurn(h.d.rt(), h.d.append, h.d.now);
+  const state: { idleSince: number | null; emptySince: number | null } = { idleSince: null, emptySince: T0 - 21 * MIN };
+  assert.equal(await reviewTick(h.d, state), "R-0002");
+  assert.match(h.sent[0]!.line, /· empty · TEAM_A available for 21 min/);
+  assert.match(h.sent[0]!.text, /- ATC-7 P2 Fire me/);
+  assert.match(h.sent[0]!.text, /- #41 Tiny idea/);
+  assert.equal(state.emptySince, null);
+  // DUTY의 답이 ATC-7을 이름 붙이고 턴이 끝난다
+  for (const f of feeds) f({ type: "text", text: "지금 ATC-7을 발권하세요", final: true });
+  for (const f of feeds) f({ type: "state", state: "idle" });
+  const o = h.appended.find((l) => l.ev === "outcome");
+  assert.deepEqual(o && o.ev === "outcome" ? [o.review, o.named] : null, ["R-0002", 1]);
+  // 60분 안에는 다시 empty 점검을 하지 않는다
+  state.emptySince = T0 - 90 * MIN;
+  h.d.now = () => T0 + 10 * MIN;
+  assert.equal(await reviewTick(h.d, state), null);
 });
