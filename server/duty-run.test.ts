@@ -409,3 +409,22 @@ test("ATC-510: 가나·한자만 있는 DUTY 글은 세고 기록하되(글은 �
   assert.match(String(flags[0]!.session), /^[0-9a-f]{8}$/);
   assert.ok(!JSON.stringify(duty).includes("日本語"), "기록에 글을 싣지 않는다");
 });
+
+test("supervisorTurn(ATC-471): SUPERVISOR 글이 시작한 턴 동안만 그 글을 준다. 턴이 끝나면 null, REVIEW 턴은 null", async () => {
+  const r = rig();
+  assert.equal(r.rt.supervisorTurn(), null, "턴이 없으면 null");
+  await r.rt.send("slow make the work order and go ahead");
+  await until(() => r.rt.status().state === "thinking");
+  assert.equal(r.rt.supervisorTurn(), "slow make the work order and go ahead");
+  assert.equal((await r.rt.send("second")).verdict, "queued");
+  assert.equal(r.rt.supervisorTurn(), "slow make the work order and go ahead", "줄 선 글은 자기 턴이 시작되기 전에는 턴을 바꾸지 않는다");
+  await until(() => r.log().filter((l) => l.kind === "text").length === 2);
+  await idle(r);
+  assert.equal(r.rt.supervisorTurn(), null, "턴이 끝나면 null");
+  assert.equal((await r.rt.sendReview("slow review instructions", "REVIEW started")).verdict, "sent");
+  await until(() => r.rt.status().state === "thinking");
+  assert.equal(r.rt.reviewTurn(), true);
+  assert.equal(r.rt.supervisorTurn(), null, "서버가 시작한 REVIEW 턴은 SUPERVISOR 턴이 아니다");
+  await until(() => r.rt.status().state === "idle");
+  r.rt.dispose();
+});

@@ -699,6 +699,22 @@ function StopCheckStats({ d, refresh }: { d: StopCheckData; refresh: () => void 
     </ul>
   );
 }
+// CHAT RELEASE 세기(ATC-471): 최근 7일에 `create --release`로 발권한 수와, 그 가운데 첫 LAUNCH 전에 SUPERVISOR가 버렸거나 Backlog로 되돌렸거나 거둔 수(오작동). 0도 보인다
+interface ChatCreateData {
+  on: boolean;
+  released: number;
+  misfires: string[];
+}
+function ChatReleaseStats({ d }: { d: ChatCreateData }) {
+  return (
+    <ul className="dp-misfire">
+      <li>
+        최근 7일 이 길로 발권 <b>{d.released}</b> · 첫 LAUNCH 전에 버림·Backlog로 되돌림·거둠 <b>{d.misfires.length}</b>
+        {d.misfires.length > 0 && ` (${d.misfires.join(", ")})`}
+      </li>
+    </ul>
+  );
+}
 const switchOf = (s: ServerSettings, key: string) => s.switches.find((x) => x.key === key);
 
 const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
@@ -739,6 +755,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   verifyGate: (s) => {
     const d = switchOf(s, "verifyGate")?.data as VerifyGateData | undefined;
     return d ? <VerifyGateStats d={d} /> : null;
+  },
+  chatRelease: (s) => {
+    const d = switchOf(s, "chatRelease")?.data as ChatCreateData | undefined;
+    return d ? <ChatReleaseStats d={d} /> : null;
   },
   browserGate: (s) => {
     const d = switchOf(s, "browserGate")?.data as BrowserGateData | undefined;

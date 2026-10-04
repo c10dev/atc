@@ -74,6 +74,8 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "stuck-unserved-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "stuck-unserved"; flight: string; why: string; airport: string } // 막힘 알림이 새 문구를 쓴 때(ATC-522): 알림이 새로 올라올 때 한 줄
+  | { t: string; kind: "policy"; op: "chat-release-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "chat-release"; event: "refused"; why: "switch-off" | "no-supervisor-turn" | "k-effects"; flight: null }
   | { t: string; kind: "policy"; op: "duplicate-title-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "duplicate-title"; event: "refused" | "override" | "both-fired"; flight: string | null; of: string } // 비슷한 제목 검사(ATC-488): 거절, --same-title-ok로 만든 것, PARKED 표시가 있는데 SUPERVISOR가 둘 다 발권한 것
   | { t: string; kind: "policy"; op: "bg-memory-cap-mode"; by: string; from: string; to: string }

@@ -16,6 +16,8 @@ import { loadDutyConfig } from "./duty-config.ts";
 import { DUTY_TEAM, issueVerdict, type LinearOp, parseLinearBody, resolveLabels, stateVerdict } from "./duty-linear.ts";
 import { standBranch, standDoneVerdict, standNameOf, standPath, worktreePaths } from "./duty-stand.ts";
 import { record } from "./recorder.ts";
+import { createRelease, releaseHashOf, sectionsOf, type ReleaseLine } from "./release.ts";
+import { k3DeclarationsOf } from "./k3-allow.ts";
 import { workOrderCheck, workOrderRejection } from "./work-order-check.ts";
 import { createDutyBlocks, createDutyComment, createDutyIssue, type CreateInput, type DutyIssueRead, type DutyTeam, fetchDutyIssue, fetchDutyTeam, fetchProjectId, updateDutyIssue, type UpdateInput } from "./sources/linear-write.ts";
 
@@ -44,6 +46,15 @@ export interface L1Deps {
   // 비슷한 제목 검사(ATC-488): 모든 DUTY 턴의 create에서 열린 ATC 이슈와 거의 같은 제목을 거절한다(스위치 duplicateTitle이 꺼지면 duplicateOn이 false)
   duplicateOn?: () => boolean;
   duplicateOpen?: (title: string) => Promise<{ key: string; title: string } | null>;
+  // 채팅 발권(ATC-471, 선택): `create --release`. turn은 지금 도는 DUTY 턴을 시작한 SUPERVISOR 글(REVIEW 턴·턴 없음이면 null), on은 스위치 chatRelease, append는 발권 기록
+  chatRelease?: { on: () => boolean; turn: () => string | null; append: (l: ReleaseLine) => void };
+}
+
+// K 효과가 있는 작업 지시서인가(ATC-471): K3 줄이 있거나 `## K effects`가 None으로 시작하지 않는다. 있으면 발권은 화면에서만
+export function declaresKEffects(body: string): boolean {
+  const k3 = k3DeclarationsOf(body);
+  if (k3.declared.length > 0 || k3.unparsed > 0 || k3.lines > 0 || k3.none > 0) return true;
+  return !/^none\b/i.test(sectionsOf(body).k);
 }
 
 const repoGit = (repo: string) => async (args: string[]) => (await run("git", ["-C", repo, ...args], { timeout: 60_000, maxBuffer: 4 << 20 })).stdout;
@@ -153,6 +164,24 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
     const shape = bodyText === undefined ? null : workOrderCheck(bodyText);
     if (shape && shape.errors.length) return fail(400, workOrderRejection(shape.errors));
     const shapeWarning = shape?.warnings.length ? shape.warnings.join("; ") : undefined;
+    // 채팅 발권(ATC-471): 아무것도 만들기 전에 거른다. 스위치 → SUPERVISOR 글이 시작한 턴 → K 효과 순
+    let releaseWords: string | null = null;
+    if (op.action === "create" && op.release) {
+      const refuse = (why: "switch-off" | "no-supervisor-turn" | "k-effects") => d.record({ t: d.now().toISOString(), kind: "policy", op: "chat-release", event: "refused", why, flight: null });
+      if (!d.chatRelease?.on()) {
+        refuse("switch-off");
+        return fail(403, "채팅 발권이 꺼져 있음(설정 창 CHAT RELEASE) — 이슈는 만들지 않았다. RELEASE 화면에서 발권한다(Backlog로 만들고 SUPERVISOR가 쏜다)");
+      }
+      releaseWords = d.chatRelease.turn();
+      if (releaseWords === null) {
+        refuse("no-supervisor-turn");
+        return fail(403, "--release는 SUPERVISOR 글이 시작한 DUTY 턴에서만 받는다(REVIEW 턴·턴 없음·다른 길은 안 됨) — 이슈는 만들지 않았다. Backlog로 만들고 SUPERVISOR가 RELEASE 화면에서 쏜다");
+      }
+      if (declaresKEffects(op.body)) {
+        refuse("k-effects");
+        return fail(409, "K 효과가 있는 작업 지시서는 채팅으로 발권하지 않는다 — fire this one on the RELEASE screen(Backlog로 만들어 SUPERVISOR가 화면에서 쏜다). 이슈는 만들지 않았다");
+      }
+    }
     if (op.action === "create") {
       if (reviewing) {
         const same = await d.openSimilar?.(op.title);
@@ -210,9 +239,24 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
           blockNote = `이슈 ${r.key}는 만들었지만 막는 관계를 걸지 못함: ${msgOf(e)}`;
         }
       }
+      // 채팅 발권(ATC-471): 이슈가 만들어진 뒤에 적는다. 해시는 Linear가 저장한 본문을 다시 읽어서(스냅숏이 읽는 것과 같다. DUTY가 보낸 본문의 해시는 이스케이프 때문에 달라 곧바로 stale로 읽힌다).
+      // 다시 읽지 못하면 발권을 적지 않는다: 이슈는 Todo로 남고 SUPERVISOR가 화면에서 쏜다
+      let released = false;
+      let releaseNote: string | undefined;
+      if (op.release && releaseWords !== null) {
+        try {
+          const stored = (await d.issue(r.key))?.description;
+          const line = createRelease(r.key, stored, releaseWords, d.now());
+          if (!line.ok) throw new Error(line.error);
+          d.chatRelease!.append(line.value);
+          released = true;
+        } catch (e) {
+          releaseNote = `이슈 ${r.key}는 만들었지만 발권을 적지 못함: ${msgOf(e)} — RELEASE 화면에서 발권한다`;
+        }
+      }
       if (override) d.record({ t: d.now().toISOString(), kind: "policy", op: "duplicate-title", event: "override", flight: r.key, of: override });
       if (reviewing) d.onProposal?.(r.key, op.title);
-      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(blockNote || shapeWarning ? { warning: [blockNote, shapeWarning].filter(Boolean).join("; ") } : {}) } };
+      return { status: 200, body: { ok: true, key: r.key, url: r.url, state: op.state, ...(blockedBy.length ? { blockedBy } : {}), ...(op.release ? { released } : {}), ...(blockNote || releaseNote || shapeWarning ? { warning: [blockNote, releaseNote, shapeWarning].filter(Boolean).join("; ") } : {}) } };
     }
     const issue = await d.issue(op.key);
     if (!issue) return fail(404, `${op.key}를 찾을 수 없음`);

@@ -28,7 +28,7 @@ const MOVE_QUERY = `query MoveIssue($id: String!) {
 // 읽기: 옮기기 직전의 현재 상태와 그 팀의 상태 목록. 없으면 null
 export async function fetchMoveIssue(key: string): Promise<MoveIssue | null> {
   if (!config.linearApiKey) throw new Error("Linear 미연결");
-  const d = await gql<{ issue: null | { id: string; identifier: string; state: { name: string; type: string }; team: { key: string; states: { nodes: { id: string; name: string; type: string }[] } } | null } }>(MOVE_QUERY, { id: key });
+  const d = await gql<{ issue: null | { id: string; identifier: string; description?: string | null; state: { name: string; type: string }; team: { key: string; states: { nodes: { id: string; name: string; type: string }[] } } | null } }>(MOVE_QUERY, { id: key });
   const i = d.issue;
   if (!i) return null;
   return { id: i.id, key: i.identifier, team: i.team?.key ?? null, state: i.state, states: i.team?.states.nodes ?? [] };
@@ -94,7 +94,7 @@ export async function fetchDutyTeam(key: string): Promise<DutyTeam | null> {
 }
 
 const DUTY_ISSUE_QUERY = `query DutyIssue($id: String!) {
-  issue(id: $id) { id identifier state { name type } team { key states(first: 30) { nodes { id name type } } } labels(first: 50) { nodes { id name } } }
+  issue(id: $id) { id identifier description state { name type } team { key states(first: 30) { nodes { id name type } } } labels(first: 50) { nodes { id name } } }
 }`;
 export interface DutyIssueRead {
   id: string;
@@ -103,12 +103,13 @@ export interface DutyIssueRead {
   state: { name: string; type: string };
   labels: { id: string; name: string }[];
   states: { id: string; name: string; type: string }[];
+  description?: string | null; // Linear가 저장한 본문(Markdown 이스케이프가 들어간 그대로). 발권 해시가 스냅숏과 같아지게 만든 뒤 다시 읽는다(ATC-471)
 }
 export async function fetchDutyIssue(key: string): Promise<DutyIssueRead | null> {
   ready();
-  const d = await gqlDuty<{ issue: null | { id: string; identifier: string; state: { name: string; type: string }; team: { key: string; states: { nodes: { id: string; name: string; type: string }[] } } | null; labels: { nodes: { id: string; name: string }[] } } }>(DUTY_ISSUE_QUERY, { id: key });
+  const d = await gqlDuty<{ issue: null | { id: string; identifier: string; description?: string | null; state: { name: string; type: string }; team: { key: string; states: { nodes: { id: string; name: string; type: string }[] } } | null; labels: { nodes: { id: string; name: string }[] } } }>(DUTY_ISSUE_QUERY, { id: key });
   const i = d.issue;
-  return i ? { id: i.id, key: i.identifier, team: i.team?.key ?? null, state: i.state, labels: i.labels.nodes, states: i.team?.states.nodes ?? [] } : null;
+  return i ? { id: i.id, key: i.identifier, description: i.description ?? null, team: i.team?.key ?? null, state: i.state, labels: i.labels.nodes, states: i.team?.states.nodes ?? [] } : null;
 }
 
 // 프로젝트 이름 → id. 없으면 null

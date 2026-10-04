@@ -15,7 +15,7 @@ export type ReleaseLine =
       channel: ReleaseChannel;
       at: string;
       hash: string; // 승인한 내용(목표·완료 기준·선언한 K 효과)의 해시
-      via?: "click" | "bulk"; // screen: 한 건 클릭 / 일괄 확인
+      via?: "click" | "bulk" | "create"; // screen: 한 건 클릭 / 일괄 확인, duty-chat: `duty linear create --release`(ATC-471)
       parked?: true; // screen 클릭이 RELEASE 화면의 PARKED 절에서 한 발권(ATC-487). 오작동 수를 센다
       words?: string; // duty-chat: SUPERVISOR 글 앞부분, attested: 증언한 말
       session?: string; // attested: 증언한 세션 이름
@@ -29,7 +29,7 @@ export interface ReleaseRecord {
   channel: ReleaseChannel;
   at: string;
   hash: string;
-  via?: "click" | "bulk";
+  via?: "click" | "bulk" | "create";
   words?: string;
   session?: string;
   kConfirm?: { at: string; hash: string }; // attested 발권에 SUPERVISOR가 한 K 확인(ATC-391). 새 발권이 오면 없어진다
@@ -167,6 +167,30 @@ export function chatRelease(f: Flight | undefined, key: string, text: string, at
   const hash = r.value.releaseHash ?? null;
   if (!hash) return { ok: false, status: 409, error: `${key}의 본문을 읽지 못해 해시를 만들 수 없음` };
   return { ok: true, value: { op: "release", flight: key, channel: "duty-chat", at: now(at), hash, words: squash(text).slice(0, WORDS_MAX) } };
+}
+
+// `duty linear create --release`(ATC-471): SUPERVISOR 글이 시작한 DUTY 턴에서 만든 이슈의 발권. 해시는 Linear가 저장한 본문을 만든 뒤 다시 읽은 것에서(스냅숏이 읽는 것과 같다: DUTY가 보낸 본문이 아니다. 저장할 때 Markdown 이스케이프가 들어가 해시가 달라진다), words는 그 턴을 시작한 글에서(앞 500자)
+export function createRelease(key: string, storedBody: string | null | undefined, turnWords: string, at: Date): Verdict<ReleaseLine> {
+  const hash = releaseHashOf(storedBody);
+  if (!hash) return { ok: false, status: 409, error: `${key}의 저장된 본문을 읽지 못해 해시를 만들 수 없음` };
+  return { ok: true, value: { op: "release", flight: key, channel: "duty-chat", at: now(at), hash, via: "create", words: squash(turnWords).slice(0, WORDS_MAX) } };
+}
+
+// 이 길(create --release)의 오작동 수(ATC-471): 최근 7일에 이 길로 낸 발권 가운데 첫 LAUNCH 전에 SUPERVISOR가 버렸거나(Canceled·Duplicate) Backlog로 되돌렸거나 거둔(revoke) 것.
+// 이슈가 이미 시작·끝났으면(started·completed) 쓰였으니 세지 않는다. 순수
+const WEEK_MS = 7 * 86_400_000;
+export function chatCreateMisfiresOf(lines: readonly ReleaseLine[], tickets: readonly { key: string; stateType: string }[], now: number): { released: number; misfires: string[] } {
+  const stateOf = new Map(tickets.map((t) => [t.key, t.stateType]));
+  const mine = lines.filter((l) => l.op === "release" && l.via === "create" && now - Date.parse(l.at) <= WEEK_MS);
+  const bad = new Set<string>();
+  for (const l of mine) {
+    if (l.op !== "release") continue;
+    const st = stateOf.get(l.flight);
+    if (st === "started" || st === "completed") continue;
+    const revoked = lines.some((x) => x.op === "revoke" && x.flight === l.flight && x.at >= l.at);
+    if (revoked || st === "canceled" || st === "duplicate" || st === "backlog") bad.add(l.flight);
+  }
+  return { released: mine.length, misfires: [...bad].sort() };
 }
 
 // 다른 세션의 증언. 서버는 말을 확인할 수 없다(agent가 쓴 글이라 거짓일 수 있다): attested로 표시하고 세션 이름을 남긴다

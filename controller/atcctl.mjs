@@ -248,11 +248,12 @@ DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 S
                                             CHARTER REQUEST 초안(영어). SUPERVISOR가 카드에서 확정하면 OCC가 schedule brief로 읽는다(duty.charter 스위치, D5)
   node atcctl.mjs duty stand <이름>         서버가 .claude/worktrees/duty-<이름>을 origin/main에서 claude/duty-<이름> 브랜치로 만든다(D7a). 문서는 여기에만 쓴다
   node atcctl.mjs duty stand-done <이름>    그 STAND를 치운다(duty-*만, 고치던 것이 없거나 이미 머지됐을 때만. 브랜치는 남는다)
-  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… [--same-title-ok] (--body-file <STAND 안의 .md> | -- '<Markdown 본문>')
+  node atcctl.mjs duty linear create --title '<글>' --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project '<이름>'] [--blocked-by ATC-n]… [--label '<이름>']… [--same-title-ok] [--release] (--body-file <STAND 안의 .md> | -- '<Markdown 본문>')
   node atcctl.mjs duty linear update ATC-n [--title '<글>'] [--priority <1-4>] [--state Backlog|Todo] [--label '<이름>']… [--body-file <.md> | -- '<본문>']
   node atcctl.mjs duty linear comment ATC-n (--body-file <.md> | -- '<본문>')
                                             ## 제목이 있는 여러 줄 본문은 명령줄에 싣지 않는다(Claude Code의 Bash 검사가 막는다): 자기 STAND(.claude/worktrees/duty-*/)의 .md에 Write로 쓰고 --body-file로 준다.
                                             STAND 밖 파일·심볼릭 링크로 나간 파일·.md 아님은 거절한다. .issue-bodies/ 아래 파일은 성공하면 지워 STAND가 깨끗하게 남는다
+                                            --release: SUPERVISOR가 이 채팅 글로 "만들고 진행해"라고 했을 때만. Todo로 만들고 그 글로 발권한다(--state Backlog와 같이 못 씀). SUPERVISOR 글이 시작한 턴이 아니면(REVIEW 턴·턴 없음)·K 효과가 있으면·스위치 CHAT RELEASE가 꺼져 있으면 거절하고 아무것도 만들지 않는다 — 그때는 Backlog로 만들어 RELEASE 화면에서 쏘게 한다
                                             서버가 자기 키로 Linear ATC 팀에 쓴다(D7a). 상태는 Backlog·Todo까지, 라벨은 있는 것만 더한다. 한 번마다 FLIGHT RECORDER 한 줄`;
 
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
@@ -791,7 +792,7 @@ export function parseDutyStand(args) {
 }
 
 // duty linear create|update|comment (D7a). 본문(Markdown)은 -- 뒤 낱말 전부. 옵션은 -- 앞에 쓴다
-//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--parent ATC-n] [--project <이름>] [--blocked-by ATC-n]… [--label <이름>]… -- <본문>
+//   create  --title <글> --priority <1-4> [--state Backlog|Todo] [--release] [--parent ATC-n] [--project <이름>] [--blocked-by ATC-n]… [--label <이름>]… -- <본문>
 //   update  ATC-n [--title <글>] [--priority <1-4>] [--state Backlog|Todo] [--label <이름>]… [-- <본문>]   (라벨은 더하기만)
 //   comment ATC-n -- <본문>
 export function parseDutyLinear(args) {
@@ -810,6 +811,12 @@ export function parseDutyLinear(args) {
   for (let i = 0; i < head.length; i += 2) {
     const flag = head[i];
     // 값이 없는 옵션(ATC-488): 비슷한 제목 검사를 일부러 넘긴다. 넘긴 수는 세어 RELEASE 화면에 보인다
+    // --release(ATC-471): SUPERVISOR 글이 시작한 DUTY 턴의 create만. 서버가 턴·스위치·K 효과를 가린다
+    if (flag === "--release" && action === "create") {
+      body.release = true;
+      i -= 1;
+      continue;
+    }
     if (flag === "--same-title-ok" && action === "create") {
       body.sameTitleOk = true;
       i -= 1;
@@ -869,7 +876,7 @@ export function dutyStandText(r, done) {
     : `STAND ${r.name} ready: ${r.path} on branch ${r.branch} from ${r.base}${r.nodeModules ? " (node_modules linked)" : ""}\nWrite docs there with Edit/Write and use git -C ${r.path} … for git.`;
 }
 export function dutyLinearText(r) {
-  const head = r.url ? `${r.key} created (${r.state}) ${r.url}` : `${r.key} ${r.state ? `updated (${r.state})` : "written"}`;
+  const head = r.url ? `${r.key} created (${r.state})${r.released ? " and released from the SUPERVISOR chat message" : ""} ${r.url}` :`${r.key} ${r.state ? `updated (${r.state})` : "written"}`;
   return r.warning ? `${head}\nWARNING: ${r.warning}` : head;
 }
 
