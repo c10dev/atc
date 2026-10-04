@@ -40,7 +40,6 @@ import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
 import { releaseTreeOf, type TreeRow } from "./release-tree.ts";
 import { parkedFireVerdict, parkedMisfiresOf, parkedOf } from "./release-parked.ts";
 import { possibleDuplicateOf, twinAlreadyFired } from "./title-dup.ts";
-import { chatCreateCountsNow } from "./chat-release-run.ts";
 import { duplicateCountsNow, duplicateTitleOn } from "./title-dup-run.ts";
 import { record } from "./recorder.ts";
 import { loadScheduleOps, type NewPayload } from "./schedule.ts";
@@ -217,7 +216,6 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     recent,
     channels,
     attested: attestedCounts(lines),
-    chatCreate: chatCreateCountsNow(nowMs, s.tickets, lines), // `create --release` 길(ATC-471): 스위치, 7일 발권 수, 첫 LAUNCH 전에 버린·되돌린·거둔 수
   };
 }
 

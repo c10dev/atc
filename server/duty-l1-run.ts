@@ -239,12 +239,14 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
           blockNote = `이슈 ${r.key}는 만들었지만 막는 관계를 걸지 못함: ${msgOf(e)}`;
         }
       }
-      // 채팅 발권(ATC-471): 이슈가 만들어진 뒤에 적는다. 해시는 만든 본문에서 스냅숏과 같은 규칙으로(releaseHashOf). 못 적으면 이슈는 Todo로 남고 SUPERVISOR가 화면에서 쏜다
+      // 채팅 발권(ATC-471): 이슈가 만들어진 뒤에 적는다. 해시는 Linear가 저장한 본문을 다시 읽어서(스냅숏이 읽는 것과 같다. DUTY가 보낸 본문의 해시는 이스케이프 때문에 달라 곧바로 stale로 읽힌다).
+      // 다시 읽지 못하면 발권을 적지 않는다: 이슈는 Todo로 남고 SUPERVISOR가 화면에서 쏜다
       let released = false;
       let releaseNote: string | undefined;
       if (op.release && releaseWords !== null) {
-        const line = createRelease(r.key, op.body, releaseWords, d.now());
         try {
+          const stored = (await d.issue(r.key))?.description;
+          const line = createRelease(r.key, stored, releaseWords, d.now());
           if (!line.ok) throw new Error(line.error);
           d.chatRelease!.append(line.value);
           released = true;

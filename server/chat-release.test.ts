@@ -13,7 +13,11 @@ const createBody = { action: "create", title: "Speed up the thing", body: okBody
 const relBody = { ...createBody, release: true };
 const post = (app: Hono, body: unknown) => app.request("/api/duty/linear", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-function rig(over: { on?: boolean; turn?: string | null; review?: boolean } = {}) {
+// Linear는 본문을 Markdown으로 저장하며 기호 앞에 역슬래시를 둔다(`k3\_allow.ts`, `\[x\]`)
+const linearEscape = (s: string) => s.replace(/([_[\]])/g, "\\$1");
+
+function rig(over: { on?: boolean; turn?: string | null; review?: boolean; readBack?: "escaped" | "none" } = {}) {
+  let stored: string | null = null;
   const calls: unknown[][] = [];
   const events: string[] = []; // create와 발권 기록의 순서
   const written: ReleaseLine[] = [];
@@ -26,8 +30,8 @@ function rig(over: { on?: boolean; turn?: string | null; review?: boolean } = {}
     repo: process.cwd(),
     enabled: () => true,
     team: async () => ({ id: "T", states, labels: [] }),
-    issue: async (k) => (k === "ATC-7" ? issue : k === "ATC-99" ? { ...issue, id: "i99", key: "ATC-99" } : null),
-    create: async (i) => (calls.push(["create", i]), events.push("create"), { key: "ATC-99", url: "https://linear.app/x/ATC-99" }),
+    issue: async (k) => (k === "ATC-7" ? issue : k === "ATC-99" ? { ...issue, id: "i99", key: "ATC-99", description: over.readBack === "none" ? null : stored } : null),
+    create: async (i) => (calls.push(["create", i]), events.push("create"), (stored = over.readBack === "escaped" ? linearEscape(i.description) : i.description), { key: "ATC-99", url: "https://linear.app/x/ATC-99" }),
     blocks: async () => {},
     forget: () => {},
     record: ((l: RecordLine) => void lines.push(l)) as L1Deps["record"],
@@ -50,11 +54,33 @@ test("--release: SUPERVISOR 턴이면 Todo로 만들고, 이슈가 생긴 뒤에
   const line = c.written[0]!;
   assert.ok(line.op === "release");
   assert.deepEqual([line.channel, line.via, line.flight, line.words], ["duty-chat", "create", "ATC-99", "만들고 진행해: speed up the thing"]);
-  // 스냅숏(sources/linear.ts)은 이슈 본문에 releaseHashOf를 쓴다: Linear로 보낸 본문의 해시와 같아야 한다
+  // 스냅숏(sources/linear.ts)은 Linear가 저장한 본문에 releaseHashOf를 쓴다: 다시 읽은 본문의 해시와 같아야 한다
   const input = c.calls[0]![1] as { description: string; stateId: string };
   assert.equal(line.hash, releaseHashOf(input.description));
   assert.equal(input.stateId, "st");
   assert.equal(foldReleases(c.written).records["ATC-99"]?.hash, releaseHashOf(input.description));
+});
+
+test("--release: 해시는 Linear가 이스케이프해 저장한 본문을 다시 읽은 것에서 만든다(보낸 본문의 해시면 곧바로 stale)", async () => {
+  const c = rig({ readBack: "escaped" });
+  const body = "## Goal\nRename k3_allow.ts and tick [x] items\n\n## Done when\nthe_file is renamed\n\n## K effects\nNone\n\n## Measure\nNone";
+  assert.equal((await post(c.app, { ...relBody, body })).status, 200);
+  const sent = (c.calls[0]![1] as { description: string }).description;
+  const stored = linearEscape(sent);
+  assert.notEqual(releaseHashOf(sent), releaseHashOf(stored), "이 본문은 이스케이프로 해시가 달라진다");
+  const line = c.written[0]!;
+  assert.ok(line.op === "release");
+  assert.equal(line.hash, releaseHashOf(stored), "스냅숏이 계산하는 값");
+});
+
+test("--release: 저장된 본문을 다시 읽지 못하면 발권을 적지 않고 이슈는 Todo로 남는다(화면에서 발권)", async () => {
+  const c = rig({ readBack: "none" });
+  const r = await post(c.app, relBody);
+  assert.equal(r.status, 200);
+  const b = (await r.json()) as { released: boolean; warning?: string };
+  assert.equal(b.released, false);
+  assert.match(b.warning ?? "", /RELEASE 화면/);
+  assert.equal(c.written.length, 0);
 });
 
 test("--release: 글이 500자를 넘으면 앞 500자(채팅 발권과 같은 한도)", async () => {

@@ -169,10 +169,10 @@ export function chatRelease(f: Flight | undefined, key: string, text: string, at
   return { ok: true, value: { op: "release", flight: key, channel: "duty-chat", at: now(at), hash, words: squash(text).slice(0, WORDS_MAX) } };
 }
 
-// `duty linear create --release`(ATC-471): SUPERVISOR 글이 시작한 DUTY 턴에서 만든 이슈의 발권. 해시는 만든 본문에서, words는 그 턴을 시작한 글에서(앞 500자)
-export function createRelease(key: string, body: string, turnWords: string, at: Date): Verdict<ReleaseLine> {
-  const hash = releaseHashOf(body);
-  if (!hash) return { ok: false, status: 409, error: `${key}의 본문에서 해시를 만들 수 없음` };
+// `duty linear create --release`(ATC-471): SUPERVISOR 글이 시작한 DUTY 턴에서 만든 이슈의 발권. 해시는 Linear가 저장한 본문을 만든 뒤 다시 읽은 것에서(스냅숏이 읽는 것과 같다: DUTY가 보낸 본문이 아니다. 저장할 때 Markdown 이스케이프가 들어가 해시가 달라진다), words는 그 턴을 시작한 글에서(앞 500자)
+export function createRelease(key: string, storedBody: string | null | undefined, turnWords: string, at: Date): Verdict<ReleaseLine> {
+  const hash = releaseHashOf(storedBody);
+  if (!hash) return { ok: false, status: 409, error: `${key}의 저장된 본문을 읽지 못해 해시를 만들 수 없음` };
   return { ok: true, value: { op: "release", flight: key, channel: "duty-chat", at: now(at), hash, via: "create", words: squash(turnWords).slice(0, WORDS_MAX) } };
 }
 
