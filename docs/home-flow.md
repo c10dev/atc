@@ -174,6 +174,12 @@ Recommendation: **shorten, do not truncate.** `SUPER…` is a cut word. The serv
 - The link of a flow-board cell (`todoGroup`, a group key or an item key) is `openTodoGroup(key)` in `home-todo.ts` (a window event): HOME expands the group or the folded rest, opens the row if it is an item, scrolls to it and moves focus to the group's button or the row.
 - No `/api/flow` (503 before the first snapshot): HOME draws the queue one line each, as before.
 
+### H4 follow-up: group row in the kit (ATC-504)
+
+- The group row moved from HOME into `web/src/kit/TodoRow.tsx` as `TodoGroupRow` (`[kind tag] [n건] [need] [최장 age] [펼치기 n]`, its CSS in `kit/TodoRow.css`) and `TodoGroupedList`, which groups a list the server does not group. The pure grouping is `web/src/kit/todo-group.ts` (`groupItems`, `ageShort`; `server/todo-group.test.ts`). HOME's `HomeTodo.tsx` keeps the server's order, open state and scroll, and draws each group with `TodoGroupRow`.
+- RELEASE groups its flat lists (SCHEDULE NEW proposals, `Todo 발권 전`, PARKED) by tag + need. The need comes from the row's button and problem (`발권 필요`, `우선순위 먼저 정해야 발권`, or the problem text). The ordering tree is not grouped: its rows nest to show what blocks what.
+- Pilot's discretion: the DUTY drawer has no row list to group (ATC-422 left only a count and a HOME link there; its decision cards are not to-do rows), so it is unchanged; the kit now supports it when a list appears. A group's `최장` is `—` when its rows have no age (RELEASE only has the PARKED created time). `모두 발권…` on RELEASE is the existing one-time confirmation, not part of a group row.
+
 ### H3 as built (ATC-502)
 
 - `web/src/views/HomeFlow.tsx` (+ `HomeFlow.css`) draws the focal verdict block and the flow board from the `GET /api/flow` view that `Home.tsx` reads once (`useFlow`, shared with the H4 to-do list). `Home.tsx` puts them above the to-do list; the separate SinceLook row is gone and `SinceLook.tsx` renders the line inside the block (same `/api/since-look` and marker). Pure text helpers (`splitLine`, stage names) are in `web/src/flow-board.ts`.
