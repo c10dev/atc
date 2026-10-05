@@ -1070,10 +1070,16 @@ test("열린 제안 상한(ATC-403): 수가 상한이면 빈 AIRCRAFT가 있어�
   const full = fold([create("D-0001", "VOC-1", "b", 10), create("D-0002", "VOC-2", "c", 10)]);
   const view = capStateOf(full, plan, cfg, NOW);
   assert.deepEqual([view.open, view.cap, view.full], [2, 2, true]);
-  assert.deepEqual(view.held.map((h) => h.flight), ["VOC-9"]); // VOC-1은 이미 카드가 있다
-  // syncOps도 같은 FLIGHT를 만들지 않는다: 화면의 held와 실제 동작이 같다
-  const ops = syncOps(full, plan, { tickets: [t("VOC-1"), t("VOC-2"), t("VOC-9")], workspaces: [] }, cfg, NOW, 3);
+  assert.deepEqual(view.waitingForCap.map((h) => h.flight), ["VOC-9"]); // VOC-1은 이미 카드가 있다
+  // syncOps도 같은 FLIGHT를 만들지 않는다: 화면의 waitingForCap과 실제 동작이 같다
+  const tickets = [t("VOC-1"), t("VOC-2"), t("VOC-9")];
+  const ops = syncOps(full, plan, { tickets, workspaces: [] }, cfg, NOW, 3);
   assert.equal(ops.some((o) => o.op === "create"), false);
   const below = capStateOf(fold([create("D-0001", "VOC-1", "b", 10)]), plan, cfg, NOW);
-  assert.deepEqual([below.open, below.full, below.held.length], [1, false, 0]);
+  assert.deepEqual([below.open, below.full, below.waitingForCap.length], [1, false, 0]);
+  // HELD 카드는 상한을 채우지 않는다(syncOps가 세기 전에 건너뛴다): n = cap - 1 + HELD 하나는 가득 찬 것이 아니다
+  const withHeld = fold([create("D-0001", "VOC-1", "b", 10), create("D-0002", "VOC-2", "c", 10), { op: "hold", id: "D-0002", at: iso(9), blockedBy: ["VOC-180"] }]);
+  const held = capStateOf(withHeld, plan, cfg, NOW);
+  assert.deepEqual([held.open, held.full, held.waitingForCap.length], [1, false, 0]);
+  assert.equal(syncOps(withHeld, plan, { tickets, workspaces: [] }, cfg, NOW, 3).some((o) => o.op === "create" && o.flight === "VOC-9"), true); // syncOps는 아직 자리가 있다
 });
