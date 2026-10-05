@@ -85,6 +85,8 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
     teamPattern: loadDispatchConfig().teamPattern,
     relays,
     clearances,
+    githubKnown: Boolean(s.github?.enabled && s.github.fetchedAt),
+    tickets: (s.tickets ?? []).map((t) => ({ key: t.key, stateType: t.stateType })),
     decisions: allDecisions(),
     orphans: orphanViewsNow(s, now, allProposals(), landedOf(loadLogbook()), loadDispatchConfig().teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, text: o.text })),
     relayOffers: relayOffersOf({ pulls: s.pulls ?? [], claims: s.claims ?? [], sessions: s.sessions ?? [], workspaces: s.workspaces ?? [], airports: s.airports ?? [] }, { clearances, events: events(), relays, lastAircraft: lastAircraftSources(), now, holderRoutes: holderRoutes() ?? new Map() }),
