@@ -185,9 +185,9 @@ async function tick() {
     timed("tick:radio", () => radioFeed.poll());
 
     current = next;
-    const text = warm.saveText(next, Date.now()); // 살아 있는 따뜻한 스냅샷만, 1분에 한 번
-    if (text) void writeWarmCache(text);
-    const settled = warm.settle(next, Date.now()); // 복원본을 막 버렸으면 화면에 살아 있는 것을 보낸다
+    // 살아 있는 따뜻한 스냅샷만 1분에 한 번 저장한다. 스위치가 꺼지면 저장도 복원본 보이기도 멈춘다. 복원본을 막 버렸으면 화면에 살아 있는 것을 보낸다
+    const { save, ended: settled } = warm.tick(next, Date.now(), () => loadWarmStartConfig().mode);
+    if (save) void writeWarmCache(save);
     if (warm.active()) signature = sig; // 복원본을 보이는 동안 화면은 이미 그것을 받았다
     else if (settled || sig !== signature) {
       signature = sig;

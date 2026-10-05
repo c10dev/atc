@@ -60,6 +60,22 @@ export class WarmStart {
     return true;
   }
 
+  // 스냅샷 한 바퀴마다 한 번(서버 tick). 스위치 값은 필요할 때만 읽는다(getMode): 복원본을 보이는 중이거나 저장할 때가 됐을 때.
+  // off면 복원본을 바로 버리고 아무것도 저장하지 않는다. save는 저장할 본문, ended는 복원본이 막 끝났다(화면에 살아 있는 것을 보내야 한다)
+  tick(live: Snapshot, nowMs: number, getMode: () => "on" | "off"): { save: string | null; ended: boolean } {
+    if (!this.active() && !this.saveDue(live, nowMs)) return { save: null, ended: false };
+    if (getMode() === "off") {
+      const ended = this.restored !== null;
+      this.restored = null;
+      return { save: null, ended };
+    }
+    return { save: this.saveText(live, nowMs), ended: this.settle(live, nowMs) };
+  }
+
+  private saveDue(live: Snapshot, nowMs: number): boolean {
+    return isWarm(live) && nowMs - this.lastSaveMs >= SAVE_EVERY_MS;
+  }
+
   // 따뜻한 살아 있는 스냅샷을 최대 1분에 한 번 저장할 본문으로. 아니면 null
   saveText(live: Snapshot, nowMs: number): string | null {
     if (!isWarm(live) || nowMs - this.lastSaveMs < SAVE_EVERY_MS) return null;

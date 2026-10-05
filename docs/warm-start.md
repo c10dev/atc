@@ -15,6 +15,10 @@ After a restart (for example RETURN TO SERVICE) the server needs about 90 s to r
 
 The restored snapshot lives only inside `WarmStart` (`server/warm-start.ts`). It is never assigned to the live `current` snapshot. So `isWarm`, `diffSnapshots` (no `alert.raised`/`alert.cleared`/LANDING events, no FLIGHT RECORDER lines), the jobs (DISPATCH, AUTOLAND, MCC, ATFM …), SUPERVISOR alerts and the summary all read live data only. Other `/api/*` routes (HOME flow, DISPATCH, …) also read live data, so they stay as cold as before until the live snapshot warms up.
 
+## Other readers of the snapshot
+
+`/api/snapshot` and the SSE `snapshot` event are public reads: any other consumer (the ANNUNCIATOR app, scripts) also gets the restored data for up to `maxAgeMin` after a restart. Only the `restored` field marks it, so a consumer that must act on current data should ignore a snapshot that has `restored` set.
+
 ## Switch
 
-Settings → OPERATIONS → **WARM START** (`warm-start.json`, default `on`, SUPERVISOR only, no `atcctl` command). `off` neither writes nor reads the cache file. `maxAgeMin` (1–120, default 10) is edited in `warm-start.json`. There is no misfire counter: nothing acts on the data, it is only shown.
+Settings → OPERATIONS → **WARM START** (`warm-start.json`, default `on`, SUPERVISOR only, no `atcctl` command). `off` neither writes nor reads the cache file: the server checks the switch on the snapshot tick whenever a restored snapshot is on show or a save is due, so turning it off at runtime stops saving and drops a restored snapshot at once (the screen then gets the live one). `maxAgeMin` (1–120, default 10) is edited in `warm-start.json` and read at boot. There is no misfire counter: nothing acts on the data, it is only shown.

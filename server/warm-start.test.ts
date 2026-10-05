@@ -111,6 +111,30 @@ test("저장: 따뜻한 살아 있는 스냅샷만, 최대 1분에 한 번", () 
   assert.ok(w.saveText(snap(), T0 + SAVE_EVERY_MS), "after a minute");
 });
 
+test("tick: 스위치가 off면 아무것도 저장하지 않고 보이던 복원본도 버린다, on이면 저장·교체", () => {
+  // off: 따뜻한 스냅샷이 와도 저장 본문이 없다
+  const off = new WarmStart();
+  assert.deepEqual(off.tick(snap(), T0, () => "off"), { save: null, ended: false });
+  assert.deepEqual(off.tick(snap(), T0 + 5 * MIN, () => "off"), { save: null, ended: false });
+  // 복원본을 보이는 중에 꺼지면 바로 버리고(ended) 살아 있는 것을 보낸다
+  const w = new WarmStart();
+  w.restore(parseCache(cacheText(snap()), T0, 10 * MIN), 10 * MIN);
+  assert.deepEqual(w.tick(cold(), T0 + MIN, () => "off"), { save: null, ended: true });
+  assert.equal(w.active(), false);
+  // 켜 두면: 따뜻하면 저장하고 복원본을 버린다. 콜드면 복원본 유지, 저장 없음
+  const on = new WarmStart();
+  on.restore(parseCache(cacheText(snap()), T0, 10 * MIN), 10 * MIN);
+  assert.deepEqual(on.tick(cold(), T0 + MIN, () => "on"), { save: null, ended: false });
+  const r = on.tick(snap(), T0 + 2 * MIN, () => "on");
+  assert.ok(r.save);
+  assert.equal(r.ended, true);
+  // 스위치 값은 필요할 때만 읽는다: 복원본이 없고 저장할 때도 아니면 읽지 않는다
+  let reads = 0;
+  on.tick(snap(), T0 + 2 * MIN + 1000, () => (reads++, "on"));
+  on.tick(cold(), T0 + 10 * MIN, () => (reads++, "on"));
+  assert.equal(reads, 0);
+});
+
 test("설정 파일: 기본 on·10분, off, 범위 밖 maxAgeMin은 기본값", () => {
   assert.deepEqual(parseWarmStartConfig(null), { mode: "on", maxAgeMin: 10 });
   assert.deepEqual(parseWarmStartConfig({ mode: "off", maxAgeMin: 30 }), { mode: "off", maxAgeMin: 30 });

@@ -15,6 +15,10 @@
 
 복원본은 `WarmStart`(`server/warm-start.ts`) 안에만 있다. 살아 있는 `current` 스냅샷에는 절대 넣지 않는다. 그래서 `isWarm`, `diffSnapshots`(`alert.raised`·`alert.cleared`·LANDING 이벤트도, FLIGHT RECORDER 줄도 없다), 잡(DISPATCH, AUTOLAND, MCC, ATFM …), SUPERVISOR 알림, 요약은 모두 살아 있는 데이터만 읽는다. 다른 `/api/*` 길(HOME 흐름판, DISPATCH …)도 살아 있는 데이터를 읽으므로, 살아 있는 스냅샷이 따뜻해질 때까지 전과 같다.
 
+## 스냅샷을 읽는 다른 쪽
+
+`/api/snapshot`과 SSE `snapshot` 이벤트는 공개 읽기다: 다른 소비자(ANNUNCIATOR 앱, 스크립트)도 재시작 뒤 `maxAgeMin`까지 복원본을 받는다. 복원본이라는 표시는 `restored` 필드뿐이므로, 지금 데이터로 움직여야 하는 소비자는 `restored`가 있는 스냅샷을 무시한다.
+
 ## 스위치
 
-설정 → OPERATIONS → **WARM START**(`warm-start.json`, 기본 `on`, SUPERVISOR 전용, `atcctl` 명령 없음). `off`면 캐시 파일을 쓰지도 읽지도 않는다. `maxAgeMin`(1–120, 기본 10)은 `warm-start.json`에서 고친다. 오발 카운터는 없다: 이 데이터로 움직이는 것이 없고 보이기만 한다.
+설정 → OPERATIONS → **WARM START**(`warm-start.json`, 기본 `on`, SUPERVISOR 전용, `atcctl` 명령 없음). `off`면 캐시 파일을 쓰지도 읽지도 않는다: 서버는 복원본을 보이는 중이거나 저장할 때가 됐을 때 스냅샷 tick에서 스위치를 확인하므로, 실행 중에 꺼도 저장이 멈추고 보이던 복원본이 바로 사라진다(화면은 살아 있는 것을 받는다). `maxAgeMin`(1–120, 기본 10)은 `warm-start.json`에서 고치고 부팅 때 읽는다. 오발 카운터는 없다: 이 데이터로 움직이는 것이 없고 보이기만 한다.
