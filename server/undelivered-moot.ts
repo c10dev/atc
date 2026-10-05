@@ -46,3 +46,9 @@ export function isMoot(m: MootMsg, ctx: MootCtx): boolean {
   }
   return false;
 }
+
+// DECISION 카드가 말하는 FLIGHT(ATC-543): key나 질문에 든 FLIGHT key 가운데 티켓 목록에 있는 첫 것. 없으면 null
+export function decisionFlightOf(d: { key: string; ask: string }, tickets: readonly { key: string }[]): string | null {
+  for (const text of [d.key, d.ask]) for (const m of text.matchAll(/\b[A-Z]{2,5}-\d{1,6}\b/g)) if (tickets.some((t) => t.key === m[0])) return m[0];
+  return null;
+}

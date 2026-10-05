@@ -173,6 +173,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     sessions: s.sessions,
     alerts: s.alerts,
     workspaces: s.workspaces,
+    heldStands: new Set((s.claims ?? []).filter((c) => c.state === "active" && s.sessions.some((x) => x.id === c.sessionId && x.status !== "dead")).map((c) => c.workspacePath)),
     tickets: s.tickets,
     following,
     ...(unowned ? { unowned } : {}),

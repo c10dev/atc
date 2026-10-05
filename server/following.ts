@@ -443,11 +443,11 @@ export function followingOf(inp: FollowInput): FollowItem[] {
       return f;
     })
     .filter((f) => {
-      // 티켓이 닫힌(Done·Canceled) FLIGHT는 따라가지 않는다: 문제도 함께 빠진다(ATC-385). STRANDED만 남는다 — 그때는 변경이 정말 main에 없다
+      // 티켓이 닫힌(Done·Canceled) FLIGHT는 따라가지 않는다: 문제도 함께 빠진다(ATC-385). stranded도 뺀다(ATC-543): 남은 변경은 정리 줄(alert|cleanup)이 경로·변경 수·미푸시 수와 함께 알린다
       if (inp.endRules !== false && isClosed(ticketOf(f.flight))) {
-        for (const i of f.issues) if (i.code !== "stranded") inp.ended?.push({ key: i.key, rule: "flight-closed" });
-        f.issues = f.issues.filter((i) => i.code === "stranded");
-        return f.issues.length > 0;
+        for (const i of f.issues) inp.ended?.push({ key: i.key, rule: "flight-closed" });
+        f.issues = [];
+        return false;
       }
       if (f.issues.some((i) => i.code === "stranded" || i.code === "unable" || i.code === "launch" || i.code === "undelivered" || i.code === "blocked-report")) return true;
       if (!f.stages.arrived || inp.now - Date.parse(f.stages.arrived) <= KEEP_ARRIVED_MS) return true;

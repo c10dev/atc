@@ -105,7 +105,7 @@ test("STRANDED(14:41 뒤): #396은 #395를 거쳐 main으로 가니 아님, #397
   assert.deepEqual(strandedOf([{ ...merged(397, B.s396, "2026-09-27T14:41:22Z"), flight: null, reached: null }]), []);
 });
 
-test("Fixes 키와 FLIGHT FOLLOWING: 본문 Fixes로 FLIGHT를 찾고, Linear가 Done이어도 STRANDED 문제를 남긴다", () => {
+test("Fixes 키와 FLIGHT FOLLOWING: 본문 Fixes로 FLIGHT를 찾고, Linear가 Done이면 STRANDED 문제도 빠진다(ATC-543)", () => {
   assert.equal(fixesKeyOf("Some text\n\nFixes VOC-190"), "VOC-190");
   assert.equal(fixesKeyOf("closes voc-12 and more"), "VOC-12");
   assert.equal(fixesKeyOf("Part of VOC-189"), null);
@@ -114,11 +114,7 @@ test("Fixes 키와 FLIGHT FOLLOWING: 본문 Fixes로 FLIGHT를 찾고, Linear가
     proposals: [], tickets: [done], workspaces: [], pulls: [], logbook: [], departures: [], now: Date.parse("2026-09-29T00:00:00Z"),
     stranded: [{ repo: "/r", number: 398, url: "u", title: TITLES[398], flight: "VOC-190", base: B.s397, mergedAt: "2026-09-27T14:41:27Z", mergeCommit: SQUASH.p398 }],
   });
-  const f = items.find((x) => x.flight === "VOC-190")!;
-  const issue = f.issues.find((i) => i.code === "stranded")!;
-  assert.equal(issue.text, `STRANDED — PR #398이 ${B.s397}에 머지돼 기본 브랜치에 닿지 않음 (Linear는 Done이지만 변경은 main에 없음)`);
-  assert.equal(issue.key, "VOC-190|stranded|398");
-  assert.equal(issue.severity, "warn");
+  assert.equal(items.find((x) => x.flight === "VOC-190"), undefined); // 닫힌 FLIGHT는 따라가지 않는다. 남은 변경은 정리 줄이 알린다
 });
 
 // ── ATC-216: squash 머지된 PR이 실어 간 쌓인 머지는 STRANDED가 아니다. 번호·이름은 모두 일반값 ──

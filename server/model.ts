@@ -76,6 +76,7 @@ export interface Workspace {
   ticketKey: string | null; // 브랜치의 voc-<n>에서 추출
   // 이 브랜치의 마지막 커밋이 origin에 있나(origin/<branch> 추적 ref가 HEAD와 같다, ATC-86). 브랜치가 없거나 origin이 없으면 null. 모르면 없다
   pushed?: boolean | null;
+  unpushed?: number | null; // HEAD의 커밋 가운데 어느 원격에도 없는 수(ATC-543). 모르면 없다
 }
 
 export type TicketStateType =

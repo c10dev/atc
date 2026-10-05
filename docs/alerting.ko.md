@@ -17,3 +17,9 @@ Status (2026-10-03): [layout.md](layout.md)로 **대체됨(superseded)**. 만든
   - **헤더 벨**은 사이드바 헤더의 알림 아이콘으로 옮겼다([ATC-447](https://linear.app/vocado/issue/ATC-447)). 출처(Linear, GitHub, atc)별로 묶는다.
   - **MASTER, LOG 팝오버, 숫자 둘의 탭 제목, summary v2**는 계획하지 않는다. summary는 `counts`와 `pending`을 그대로 둔다.
 - **여전히 맞는 것:** 2절의 원칙 1–6과 8([design-language.md](design-language.md)에 모았다), 3.1의 목적지 표, 7절의 결정.
+
+### 닫힌 FLIGHT와 남은 STAND, 만든 것(ATC-543)
+
+- **닫힌 FLIGHT는 조용하다.** Linear 상태가 Done·Canceled·Duplicate인 FLIGHT는 `no-pr`·`no-arrival`·`no-departure`·`review-no-pr`·`stranded` 줄도, ORPHAN FLIGHT도 내지 않는다(`server/following.ts`의 닫힌 FLIGHT 거름이 이제 `stranded`도 뺀다. 나머지는 ATC-385가 이미 뺐다). `done-not-merged`와 `merged-not-done`은 제 뜻 그대로다.
+- **정리 줄 하나.** `alert|cleanup`이 닫힌 FLIGHT의 남은 STAND(살아 있는 세션이 쥐지 않고 본 체크아웃이 아닌 것)를 오래 주인 없는 변경·종료된 세션의 점유와 함께 싣는다. STAND마다 경로, 변경 수, 미푸시 커밋 수(`git rev-list --count HEAD --not --remotes`)를 보인다. `git -C <체크아웃> worktree remove <경로>` 명령은 둘 다 0일 때만 보이고, 아니면 지우면 잃는 것을 적는다. atc는 이 명령을 실행하지 않는다. 순수 부분은 `server/cleanup-stands.ts`다.
+- **쓸모없어진 DECISION 카드.** FLIGHT가 닫혔거나 PR이 머지·닫힌(GitHub를 읽었을 때) DECISION은 SUPERVISOR QUEUE에서 빠진다. 규칙은 ATC-540의 `isMoot`다. 카드를 답하거나 거두지 않는다: 기록은 그대로이고 role은 여전히 거둘 수 있다. DECISION 카드에는 원래 알림 줄이 없어서 알림 목록에서 뺄 것은 없다.
