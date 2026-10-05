@@ -10,7 +10,7 @@ import { Actions, useQueue } from "../DutyCards.tsx";
 import { EffectRow, useEffects } from "../EffectVerdict.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
-import { homeNeedOf, opensInDetail } from "../home-rows.ts";
+import { homeControlOf, homeNeedOf, opensInDetail } from "../home-rows.ts";
 import { planOf } from "../home-todo.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
@@ -170,18 +170,19 @@ function RowAction({ item, open, toggle }: { item: QueueItem; open: boolean; tog
 // 열린 줄의 상세: 필요한 것 한 문장 전체, 이유, 남은 동작(승인·거절, CANCEL·RECALL, 손으로 전하기 …), HUMAN CHECK 증거. 되돌리기 어려운 동작은 여기서 한 번 더 묻는다(각 단추가 확인을 든다)
 function ItemDetail({ item, onDone, children }: { item: QueueItem; onDone: () => void; children: React.ReactNode }) {
   const p = item.primary;
+  const control = homeControlOf(item);
   return (
     <>
       <p className="home-need">{homeNeedOf(item)}</p>
-      {item.detail && p.action !== "done" && <p>{item.detail}</p>}
-      {item.flight && p.action !== "done" && (
+      {item.detail && control !== "done" && <p>{item.detail}</p>}
+      {item.flight && control !== "done" && (
         <p>
           FLIGHT <OpenFlight k={item.flight} />
         </p>
       )}
-      {p.action === "done" && <ArrivedDone item={item} onDone={onDone} />}
-      {p.action === "approve" && p.op && <Actions item={item} actions={[{ type: "inline", op: p.op }]} onDone={onDone} />}
-      {p.action === "brake" && item.brake && item.flight && <FlightBrakes p={{ ...item.brake, flight: item.flight }} mode={item.brake.mode} onDone={onDone} />}
+      {control === "done" && <ArrivedDone item={item} onDone={onDone} />}
+      {control === "approve" && p.op && <Actions item={item} actions={[{ type: "inline", op: p.op }]} onDone={onDone} />}
+      {control === "brake" && item.brake && item.flight && <FlightBrakes p={{ ...item.brake, flight: item.flight }} mode={item.brake.mode} onDone={onDone} />}
       {item.decision && <Actions item={item} actions={[]} onDone={onDone} />}
       {(item.hand || item.offer) && <Actions item={item} actions={[{ type: "link", label: p.label, hash: p.hash ?? item.hash }]} onDone={onDone} />}
       {children}

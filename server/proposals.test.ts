@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
-import { AUTO_STALE_WHY, canApply, crosscheckBriefOf, NO_VERDICT_WHY, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps } from "./proposals.ts";
+import { AUTO_STALE_WHY, canApply, crosscheckBriefOf, NO_VERDICT_WHY, DEFAULT_SETTLE_MIN, fold, settledItemsOf, settledOf, settlesInMin, withSettled, formatFlightPlan, gate3Of, gateOf, isHeld, isInFlight, type Op, overdueOf, type Proposal, reasonStatsOf, recentFlightsOf, recentPairsOf, reservedOf, syncOps, capStateOf } from "./proposals.ts";
 import { takenByOf, toTicket } from "./sources/linear.ts";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
@@ -1060,4 +1060,26 @@ test("자동 운항(ATC-367): 승인되지 못한 열린 ASSIGN은 TTL이 지나
   assert.deepEqual(syncOps(existing, plan, { tickets, workspaces: [] }, { ...cfg, autoDispatch: "off" }, NOW, 10).filter((o) => o.id === "D-0001"), []);
   const closed = fold([create("D-0001", "VOC-1", "b", 90), { op: "supersede", id: "D-0001", at: iso(0), reason: `${AUTO_STALE_WHY} (60분)` }]);
   assert.equal(recentPairsOf(closed, NOW).size, 0); // churned라 24시간 짝 차단에 들지 않는다
+});
+
+test("열린 제안 상한(ATC-403): 수가 상한이면 빈 AIRCRAFT가 있어도 기다리는 FLIGHT는 held로 보이고, 상한 아래면 비어 있다", () => {
+  const cfg = { ...DEFAULT_DISPATCH_CONFIG, slots: { ...DEFAULT_DISPATCH_CONFIG.slots, openProposals: 2 } };
+  const free = (id: string, name: string) => ({ id, name, callsign: name, airport: "VCDO", available: true, reason: "PARKED", reserved: null });
+  // b·c·d 모두 비어 있고, 계획은 VOC-1·VOC-2(카드 있음)와 VOC-9(카드 없음)를 낸다
+  const plan = planOf({ assign: [assign("VOC-1", "b"), assign("VOC-2", "c"), assign("VOC-9", "d")], aircraft: [free("b", "TEAM_B"), free("c", "TEAM_C"), free("d", "TEAM_D")] });
+  const full = fold([create("D-0001", "VOC-1", "b", 10), create("D-0002", "VOC-2", "c", 10)]);
+  const view = capStateOf(full, plan, cfg, NOW);
+  assert.deepEqual([view.open, view.cap, view.full], [2, 2, true]);
+  assert.deepEqual(view.waitingForCap.map((h) => h.flight), ["VOC-9"]); // VOC-1은 이미 카드가 있다
+  // syncOps도 같은 FLIGHT를 만들지 않는다: 화면의 waitingForCap과 실제 동작이 같다
+  const tickets = [t("VOC-1"), t("VOC-2"), t("VOC-9")];
+  const ops = syncOps(full, plan, { tickets, workspaces: [] }, cfg, NOW, 3);
+  assert.equal(ops.some((o) => o.op === "create"), false);
+  const below = capStateOf(fold([create("D-0001", "VOC-1", "b", 10)]), plan, cfg, NOW);
+  assert.deepEqual([below.open, below.full, below.waitingForCap.length], [1, false, 0]);
+  // HELD 카드는 상한을 채우지 않는다(syncOps가 세기 전에 건너뛴다): n = cap - 1 + HELD 하나는 가득 찬 것이 아니다
+  const withHeld = fold([create("D-0001", "VOC-1", "b", 10), create("D-0002", "VOC-2", "c", 10), { op: "hold", id: "D-0002", at: iso(9), blockedBy: ["VOC-180"] }]);
+  const held = capStateOf(withHeld, plan, cfg, NOW);
+  assert.deepEqual([held.open, held.full, held.waitingForCap.length], [1, false, 0]);
+  assert.equal(syncOps(withHeld, plan, { tickets, workspaces: [] }, cfg, NOW, 3).some((o) => o.op === "create" && o.flight === "VOC-9"), true); // syncOps는 아직 자리가 있다
 });

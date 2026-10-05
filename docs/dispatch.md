@@ -122,6 +122,8 @@ The relation is read from Linear (`parent` / `children(first: 50)`), not guessed
 
 When slots are full, nothing is proposed instead of an `ASSIGN` (extended to ground delay in stage 3).
 
+**The open-proposal cap is shown (ATC-403).** `GET /api/dispatch/brief` has `cap: {open, cap, full, waitingForCap}` (`capStateOf`, pure) and the FLEET PLAN screen shows `open proposals n/cap`. `open` counts undecided `ASSIGN` cards the way `syncOps` does (HELD, RESUME and PR HOLDER cards do not count). When `open` reaches `slots.openProposals`, `waitingForCap` lists the planned FLIGHTs that got no card because of the cap, best score first, so a full cap is not read as a shortage of work or AIRCRAFT. It is display only: no cap value changes, and the decision to raise or keep the cap stays with the SUPERVISOR.
+
 ### 5.3 Score (higher goes first)
 
 | Factor | Calculation | Default weight |
@@ -752,6 +754,7 @@ Under auto dispatch a lower-scored FLIGHT could lose its card at the very moment
 - **`orphanOnly`.** When the stop would not exist without the orphan, `AircraftState.orphanOnly` lists those FLIGHTs; `runDispatch` writes one `hold` line per orphan to `orphan-flight-events.jsonl` for the misfire counter.
 - **Off switch.** `orphanFlight` off passes an empty map: the plan is exactly as before.
 - **Formats.** `orphan-flight.json`, `orphan-flight-events.jsonl` and `AircraftState.orphanOnly` are additive; `proposals.jsonl` does not change.
+- **ABSENT and live AIRCRAFT share the ORPHAN rule (ATC-548).** The ABSENT branch (no session, LAUNCH candidate) counts the REGISTRATION's ORPHAN FLIGHTs with the same slot and WAKE math and the same `orphanOnly` marking as the live branch: a full slot makes it `stopped` (no LAUNCH card, the reason names the ORPHAN FLIGHTs), room left makes it `available` with `room`. Before this, an ABSENT AIRCRAFT got a LAUNCH card that DISPATCH withdrew as `AIRCRAFT 멈춤` once the session appeared (2026-10-03 09:25–09:40). A `tail:` FLIGHT held by an ABSENT AIRCRAFT now also uses the slot math instead of stopping it outright. The RESUME path is unchanged and still comes first for the ORPHAN FLIGHT itself. The METRICS → MISFIRE tab counts a LAUNCH card superseded with `AIRCRAFT 멈춤` within one settle of its LAUNCH per day (`launchStopped`, launch-then-stopped); it should read 0. No new switch: the change only makes the two branches agree, and `orphanFlight` off still passes an empty map.
 
 ## DIRECT briefs (ATC-32)
 

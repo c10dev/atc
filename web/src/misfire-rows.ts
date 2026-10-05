@@ -2,7 +2,7 @@
 // `/api/autonomy/auto`의 SCHEDULE·FLEET PLAN 적용·misfire)을 레인마다 한 줄로 나란히 놓을 뿐이다.
 
 export interface DispatchMisfire {
-  total: { approvals: number; misfires: number; share: number | null; crossAccount?: number; displaced?: number; displacedMisfires?: number }; // crossAccount: ACCOUNT 불일치 규칙으로 닫은 카드(ATC-458). displaced·displacedMisfires: 경합 보호가 센 "더 나은 배정"으로 밀려난 카드와 그중 밀어낸 카드가 닫힌 것(ATC-547)
+  total: { approvals: number; misfires: number; share: number | null; crossAccount?: number; displaced?: number; displacedMisfires?: number; launchStopped?: number }; // launchStopped: LAUNCH 직후 "AIRCRAFT 멈춤"으로 거둔 LAUNCH 카드(ATC-548). crossAccount: ACCOUNT 불일치 규칙으로 닫은 카드(ATC-458). displaced·displacedMisfires: 경합 보호가 센 "더 나은 배정"으로 밀려난 카드와 그중 밀어낸 카드가 닫힌 것(ATC-547)
 }
 export interface AutoMisfireLine {
   at: string;

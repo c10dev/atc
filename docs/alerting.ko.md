@@ -24,9 +24,16 @@ Status (2026-10-03): [layout.md](layout.md)로 **대체됨(superseded)**. 만든
 - **정리 줄 하나.** `alert|cleanup`이 닫힌 FLIGHT의 남은 STAND(살아 있는 세션이 쥐지 않고 본 체크아웃이 아닌 것)를 오래 주인 없는 변경·종료된 세션의 점유와 함께 싣는다. STAND마다 경로, 변경 수, 미푸시 커밋 수(`git rev-list --count HEAD --not --remotes`)를 보인다. `git -C <체크아웃> worktree remove <경로>` 명령은 둘 다 0일 때만 보이고, 아니면 지우면 잃는 것을 적는다. atc는 이 명령을 실행하지 않는다. 순수 부분은 `server/cleanup-stands.ts`다.
 - **쓸모없어진 DECISION 카드.** FLIGHT가 닫혔거나 PR이 머지·닫힌(GitHub를 읽었을 때) DECISION은 SUPERVISOR QUEUE에서 빠진다. 규칙은 ATC-540의 `isMoot`다. 카드를 답하거나 거두지 않는다: 기록은 그대로이고 role은 여전히 거둘 수 있다. DECISION 카드에는 원래 알림 줄이 없어서 알림 목록에서 뺄 것은 없다.
 
+
 ### 관제 세션은 턴을 끝낸다, CLEARANCE MOOT (ATC-515)
 
 - **WARNING은 SUPERVISOR가 할 일이 있다는 뜻이다.** TOWER·MCC 매뉴얼에 이제 팀의 READBACK·UNABLE·STANDBY를 기다리는 것도, SUPERVISOR가 `user` 등급이나 ESCALATE한 PR을 머지하기를 기다리는 것도 멈출 이유가 아니라고 적혀 있다: ATC LOG·MCC LOG 한 줄을 쓰고 job을 `working`/`idle`로 둔 채 턴을 끝낸다. 매뉴얼의 모든 "SUPERVISOR에게 보고"는 LOG 보고다. K1–K3 결정만 묻는다(TOWER·OCC는 DECISION 카드, MCC는 `mcc escalate`). `CONTROL_BLOCKED_NEXT`와 `blockedAlerts`는 그대로다: `blocked`인 관제 job은 MCC도 여전히 규칙 위반을 낸다.
 - **CLEARANCE MOOT.** `server/clearance-moot.ts`(순수)가 열려 있고(READBACK·ROGER·UNABLE·취소 없음) FLIGHT의 PR이 하나 이상이며 모두 머지됐거나 닫힌 CLEARANCE를 고른다. CLEARANCE에는 PR 번호가 없어 FLIGHT가 고리다. FLIGHT가 없거나 PR이 아직 없는 것, 가장 늦은 머지 뒤에 나간 것(후속 일일 수 있다), 머지 시각을 모르는 FLIGHT의 것은 고르지 않는다. tick 브리핑이 `clearances.moot`로 싣고 TOWER가 `atcctl cancel`을 직접 낸다(서버는 취소하지 않는다). 열린·머지된 PR은 스냅샷·LOGBOOK·stranded 머지에서 읽는다. 머지 없이 닫힌 PR은 atc가 기록하지 않아 그런 FLIGHT는 고르지 않는다.
 - **스위치.** SUPERVISOR 전용 `CLEARANCE MOOT`(설정 창, `clearance-moot.json`, 기본 on). off면 브리핑에 아무것도 없고 셈도 움직이지 않는다. 매뉴얼 문구는 스위치와 상관없다.
 - **MISFIRE.** 1분 일 `clearance-moot`이 올린 CLEARANCE를 id로 기록한다(`clearance-moot-events.jsonl`, 브리핑 경로는 읽기만 한다). 취소된 것은 같은 FLIGHT에 취소 뒤 24시간 안에 새 CLEARANCE가 나가거나, 올릴 때 그 FLIGHT에 있던 PR이 다시 열리면 MISFIRE 하나로 센다. `GET /api/clearance-moot`이 스위치와 수(올림·취소·MISFIRE)를 보여 준다.
+
+### QUEUE 계약(ATC-546)
+
+SUPERVISOR QUEUE의 모든 종류와 HOME에 닿는 모든 알림은 한 표(`server/queue-contract.ts`)에 두 가지를 선언한다. **`ends`**: 스스로 사라지는 조건(말로, 구현한 함수 포함). **`action`**: SUPERVISOR가 HOME에서 누르는 것(`approve`, `brake`, `hand`, `answer`, `open`, `done`)과, 그 동작이 HOME 화면에서만 되는지(`screenOnly`). `QUEUE_CONTRACT`는 `QUEUE_KINDS` 값마다 한 줄, `ALERT_CONTRACT`는 HOME에 닿는 알림 key 종류마다 한 줄(`alert|…`, `following|…`, `control|…`, `rts|halted` …)이고, 닿지 않는 key 앞마디는 `ALERT_NOT_ON_HOME`이 이유를 적는다.
+
+**QUEUE 종류나 HOME 알림을 더하면 줄을 더한다.** `server/queue-contract.test.ts`가 줄 없는 종류, `supervisorQueueOf`가 만든 시험 줄이 선언한 동작을 그리지 않는 것(`homeControlOf`, `web/src/home-rows.ts`: HOME의 열린 줄이 쓰는 같은 함수), `open` 단추가 `#home` 자신을 가리키는 것(ATC-541의 고리)을 실패로 막는다. 줄의 `gap` 칸은 알려진 어긋남(선언한 동작이 아직 HOME에 그려지지 않음)이고, 시험이 그 어긋남이 아직 사실인지 확인하므로 고치면 칸을 지운다.

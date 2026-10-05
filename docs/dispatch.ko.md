@@ -122,6 +122,8 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 슬롯이 차면 `ASSIGN` 대신 아무것도 내지 않는다(3단계에서 ground delay로 확장).
 
+**열린 제안 상한을 보여 준다(ATC-403).** `GET /api/dispatch/brief`에 `cap: {open, cap, full, waitingForCap}`(`capStateOf`, 순수)가 있고 FLEET PLAN 화면이 `열린 제안 n/상한`을 보여 준다. `open`은 `syncOps`와 같은 기준으로 결정 안 된 `ASSIGN` 카드를 센다(HELD·RESUME·PR HOLDER 카드는 세지 않는다). `open`이 `slots.openProposals`에 이르면 `waitingForCap`이 상한 때문에 카드가 되지 못한 계획의 FLIGHT를 점수 높은 순으로 적어, 가득 찬 상한을 일감이나 AIRCRAFT 부족으로 읽지 않게 한다. 보여 주기만 한다: 상한 값은 바꾸지 않고, 올릴지 둘지는 SUPERVISOR가 정한다.
+
 ### 5.3 점수 (높을수록 먼저)
 
 | 요소 | 계산 | 기본 가중 |
@@ -752,6 +754,7 @@ DISPATCH가 `plan.unserved`에 올린 Todo FLIGHT는 `follow|stuck`가 `제안 �
 - **`orphanOnly`.** orphan이 없으면 멈춤이 없을 때 `AircraftState.orphanOnly`가 그 FLIGHT들을 담는다. `runDispatch`가 MISFIRE 셈을 위해 orphan마다 `hold` 줄을 `orphan-flight-events.jsonl`에 한 번 쓴다.
 - **끄는 스위치.** `orphanFlight`가 off면 빈 맵을 넘겨 계획이 전과 똑같다.
 - **형식.** `orphan-flight.json`, `orphan-flight-events.jsonl`, `AircraftState.orphanOnly`는 더하기만 한다. `proposals.jsonl`은 그대로다.
+- **ABSENT와 살아 있는 AIRCRAFT는 ORPHAN 규칙이 같다(ATC-548).** ABSENT 분기(세션 없음, LAUNCH 후보)도 그 REGISTRATION의 ORPHAN FLIGHT를 살아 있는 분기와 같은 슬롯·WAKE 셈과 같은 `orphanOnly` 표시로 센다: 슬롯이 차면 `stopped`(LAUNCH 카드 없음, 사유가 ORPHAN FLIGHT를 적는다), 남으면 `room`을 가진 `available`이다. 전에는 ABSENT AIRCRAFT에 LAUNCH 카드를 냈다가 세션이 뜨면 DISPATCH가 `AIRCRAFT 멈춤`으로 거두었다(2026-10-03 09:25–09:40). ABSENT AIRCRAFT가 쥔 `tail:` FLIGHT도 이제 무조건 멈추지 않고 같은 슬롯 셈을 쓴다. RESUME 길은 그대로이고 ORPHAN FLIGHT 자신에게는 여전히 먼저 간다. METRICS → MISFIRE 탭이 LAUNCH 뒤 한 settle 안에 `AIRCRAFT 멈춤`으로 거둔 LAUNCH 카드를 날짜별로 센다(`launchStopped`, launch-then-stopped). 0이어야 한다. 새 스위치는 없다: 두 분기를 맞출 뿐이고 `orphanFlight`가 off면 여전히 빈 맵을 넘긴다.
 
 ## DIRECT briefs (ATC-32)
 
