@@ -1,4 +1,5 @@
-import { type ReactNode, useId } from "react";
+import { Fragment, type ReactNode, useId, useState } from "react";
+import { ageShort, type GroupSpec, groupItems } from "./todo-group.ts";
 import "./TodoRow.css";
 
 // 할 일 줄 하나(design-language 4.1 행과 펼침, docs/design-system.md 결정 S4): 한 줄에 칸 위치가 고정이다.
@@ -66,6 +67,98 @@ export function TodoRow({
         {children}
       </ul>
     </li>
+  );
+}
+
+// 묶음 줄(ATC-504, design-language 4.1·12): 같은 종류에 같은 필요인 줄을 한 줄로. `[종류 태그] [n건] [같은 필요] … [최장 나이] [펼치기 n]`.
+// 단추는 펼치기 하나뿐이다: 한꺼번에 하는 동작은 어디에도 없다. 펼치면 항목마다 TodoRow 한 줄이 그대로 나오고 줄마다 자기 단추가 있다(children).
+// domId: 바깥에서 이 묶음을 찾아 스크롤·초점을 줄 때 쓰는 id(펼치기 단추가 초점을 받는다).
+export function TodoGroupRow({
+  domId,
+  tag,
+  tone = null,
+  count,
+  need,
+  oldest,
+  open,
+  onToggle,
+  children,
+}: {
+  domId?: string;
+  tag: string;
+  tone?: TodoTone;
+  count: number;
+  need: ReactNode;
+  oldest: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children?: ReactNode;
+}) {
+  const id = useId();
+  const itemsId = `${id}-items`;
+  return (
+    <li id={domId} className={`kit-todo-group${open ? " is-open" : ""}`}>
+      <div className="kit-todo-group-line">
+        {tone === "warning" && <span className="kit-todo-group-bar" aria-hidden="true" />}
+        <span className="tag" data-tone={tone === "warning" ? "alert" : tone === "caution" ? "amber" : undefined}>
+          {tag}
+        </span>
+        <span className="kit-todo-group-count">{count}건</span>
+        <span className="kit-todo-group-need">{need}</span>
+        <span className="kit-todo-group-age faint">{oldest}</span>
+        <button type="button" className="btn kit-todo-group-toggle" aria-expanded={open} aria-controls={itemsId} onClick={onToggle}>
+          {open ? "접기" : `펼치기 ${count}`}
+        </button>
+      </div>
+      <ul id={itemsId} className="kit-todo-group-items" hidden={!open}>
+        {open && children}
+      </ul>
+    </li>
+  );
+}
+
+// 묶는 목록(ATC-504): 서버가 묶지 않는 목록(RELEASE 등)을 같은 종류·같은 필요끼리 묶어 그린다. 둘 이상 같은 것만 묶이고 하나뿐인 줄은 그대로다. 열림 상태는 이 목록이 쥔다.
+// render는 항목 하나의 줄(TodoRow)을 그린다. 묶음 안에서도 항목 줄은 같은 것이다.
+export function TodoGroupedList<T>({
+  items,
+  specOf,
+  keyOf,
+  render,
+  className,
+  label,
+}: {
+  items: readonly T[];
+  specOf: (t: T) => GroupSpec;
+  keyOf: (t: T) => string;
+  render: (t: T) => ReactNode;
+  className?: string;
+  label: string;
+}) {
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (k: string) => setOpenGroups((s) => (s.has(k) ? new Set([...s].filter((x) => x !== k)) : new Set(s).add(k)));
+  return (
+    <ul className={className} aria-label={label}>
+      {groupItems(items, specOf).map((l) =>
+        l.type === "item" ? (
+          render(l.item)
+        ) : (
+          <TodoGroupRow
+            key={`group/${l.key}`}
+            tag={l.kind}
+            tone={l.tone}
+            count={l.count}
+            need={l.need}
+            oldest={l.oldestMin === null ? "—" : `최장 ${ageShort(l.oldestMin)}`}
+            open={openGroups.has(l.key)}
+            onToggle={() => toggle(l.key)}
+          >
+            {l.items.map((t) => (
+              <Fragment key={keyOf(t)}>{render(t)}</Fragment>
+            ))}
+          </TodoGroupRow>
+        ),
+      )}
+    </ul>
   );
 }
 

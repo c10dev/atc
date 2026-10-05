@@ -1,3 +1,4 @@
+import { ageShort } from "./kit/todo-group.ts";
 import type { FlowTodo, FlowTodoLine, FlowView } from "../../server/home-flow.ts";
 
 // HOME 할 일 묶음(ATC-503, docs/home-flow.md 3.5): 순서와 묶음은 서버가 정한다(GET /api/flow의 todo·todoLines·todoRest). 화면은 다시 정렬하지 않는다.
@@ -55,12 +56,7 @@ export function locateTodo(plan: Pick<TodoPlan, "shown" | "rest">, key: string):
   return null;
 }
 
-// `최장 6h`: 분을 가장 큰 단위 하나로(45m · 6h · 3d)
-export function ageShort(min: number): string {
-  if (min < 60) return `${Math.max(0, Math.round(min))}m`;
-  if (min < 1440) return `${Math.round(min / 60)}h`;
-  return `${Math.round(min / 1440)}d`;
-}
+export { ageShort };
 
 // 줄 열쇠를 요소 id로(공백·슬래시·# 같은 글자를 뺀다). 같은 열쇠는 늘 같은 id
 export const todoDomId = (key: string): string => `home-todo-${key.replace(/[^A-Za-z0-9가-힣_-]+/g, "-")}`;

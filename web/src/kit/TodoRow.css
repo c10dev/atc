@@ -162,3 +162,102 @@
     align-items: center;
   }
 }
+
+/* 묶음 줄(ATC-504, HOME에서 옮김): 칸 위치는 위 줄과 같다 — 태그 · 건수 · 필요한 것(남는 폭) · 나이 · 단추 */
+.kit-todo-group {
+  position: relative;
+  container-type: inline-size;
+  border-radius: var(--radius-md);
+}
+.kit-todo-group:hover > .kit-todo-group-line,
+.kit-todo-group.is-open > .kit-todo-group-line {
+  background: var(--layer-hover);
+}
+.kit-todo-group-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--alert);
+}
+.kit-todo-group-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 12rem) minmax(0, 1fr) 5rem 9rem;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: var(--space-12);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+}
+.kit-todo-group-count {
+  color: var(--text);
+  font: var(--text-sm) var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.kit-todo-group-need {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font: var(--text-sm) var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kit-todo-group-age {
+  font: var(--text-xs) var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.kit-todo-group-toggle {
+  justify-self: end;
+  max-width: 100%;
+  white-space: nowrap;
+}
+/* 펼친 항목: 묶음 아래로 한 칸 들여 쓰고 왼쪽에 가는 선 하나 */
+.kit-todo-group-items {
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2) var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--line);
+}
+.kit-todo-group-items[hidden] {
+  display: none;
+}
+@container (max-width: 720px) {
+  .kit-todo-group-line {
+    grid-template-columns: auto minmax(0, 1fr) 5rem 9rem;
+    grid-template-areas:
+      "tag count age act"
+      "need need need need";
+    row-gap: var(--space-1);
+  }
+  .kit-todo-group-line > .tag {
+    grid-area: tag;
+  }
+  .kit-todo-group-count {
+    grid-area: count;
+  }
+  .kit-todo-group-age {
+    grid-area: age;
+  }
+  .kit-todo-group-toggle {
+    grid-area: act;
+  }
+  .kit-todo-group-need {
+    grid-area: need;
+    white-space: normal;
+  }
+}
+@container (max-width: 520px) {
+  .kit-todo-group-line {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tag count age"
+      "need need act";
+  }
+}

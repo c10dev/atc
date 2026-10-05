@@ -5,7 +5,8 @@ import { timeAgo } from "../derive.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { Fold } from "../kit/Fold.tsx";
 import { Loading } from "../kit/Loading.tsx";
-import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
+import { SectionHead, TodoGroupedList, TodoRow } from "../kit/TodoRow.tsx";
+import type { GroupSpec } from "../kit/todo-group.ts";
 import { partitionRelease, RELEASE_SECTIONS, treeSize } from "../sidebar-rows.ts";
 
 // RELEASE 화면(ATC-376, docs/layout.md Y1): SUPERVISOR가 화살을 쏘는 한 곳(`#release`).
@@ -188,6 +189,13 @@ function problemOf(r: TreeRow): string | null {
   if (r.stale) return "발권 뒤 내용이 바뀜";
   if (r.why) return "발권을 거둠";
   return null;
+}
+// 묶음 규칙(ATC-504): 같은 태그에 같은 필요(같은 단추)인 줄이 둘 이상이면 한 줄로 묶인다. 필요는 줄의 단추와 문제에서 온다. 나이는 PARKED의 createdAt뿐이다
+function fireSpec(r: TreeRow): GroupSpec {
+  const problem = problemOf(r);
+  const need = r.fire === "fire" && r.priority <= 0 ? "우선순위 먼저 정해야 발권" : problem ? `${problem} — 다시 확인하고 발권` : "발권 필요";
+  const created = r.parked?.createdAt ? Date.parse(r.parked.createdAt) : NaN;
+  return { kind: tagOf(r), need, tone: problem ? "caution" : null, ageMin: Number.isNaN(created) ? null : Math.max(0, (Date.now() - created) / 60_000) };
 }
 // 상태를 한 문장으로(줄에서는 태그로만 말한 것)
 function stateText(r: TreeRow): string {
@@ -499,8 +507,13 @@ export function Release({ refreshKey }: { refreshKey: string }) {
         <SectionHead count={orderCount}>발권 순서</SectionHead>
         {orderCount === 0 && <Empty>발권할 후보 없음 — DUTY REVIEW·SCHEDULE NEW가 올린 Backlog 제안, 막는 FLIGHT가 모두 끝난 Backlog 이슈가 여기 옵니다</Empty>}
         {data.proposals.length > 0 && (
-          <ul className="rls-rows" aria-label="제안">
-            {data.proposals.map((p) => {
+          <TodoGroupedList
+            className="rls-rows"
+            label="제안"
+            items={data.proposals}
+            keyOf={(p) => p.id}
+            specOf={() => ({ kind: "SCHEDULE NEW", need: "HOME에서 승인", tone: null, ageMin: null })}
+            render={(p) => {
               const id = `proposal/${p.id}`;
               const open = openKey === id;
               return (
@@ -531,8 +544,8 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                   }
                 />
               );
-            })}
-          </ul>
+            }}
+          />
         )}
         {/* 상위 이슈마다 한 그룹(없으면 기타): 머리에 끝남 d/t와 다음 발권. 그룹 안에서 막힌 이슈는 막는 이슈 밑에 중첩된다. 끝난 이슈는 줄이 아니라 끝남 수에 든다 */}
         {(data.tree ?? []).map((g) => (
@@ -572,9 +585,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
                 </>
               )}
             </div>
-            <ul className="rls-rows" aria-label="Todo 발권 전">
-              {unreleased.map((r) => row("unreleased", r))}
-            </ul>
+            <TodoGroupedList className="rls-rows" label="Todo 발권 전" items={unreleased} keyOf={(r) => r.key} specOf={fireSpec} render={(r) => row("unreleased", r)} />
           </>
         )}
       </section>
@@ -683,9 +694,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
           {parkedRows.length === 0 ? (
             <Empty>PARKED 이슈 없음</Empty>
           ) : (
-            <ul className="rls-rows" aria-label="PARKED">
-              {parkedRows.map((r) => row("parked", r))}
-            </ul>
+            <TodoGroupedList className="rls-rows" label="PARKED" items={parkedRows} keyOf={(r) => r.key} specOf={fireSpec} render={(r) => row("parked", r)} />
           )}
         </Fold>
         </div>
