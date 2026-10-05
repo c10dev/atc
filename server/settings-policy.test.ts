@@ -123,6 +123,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "STUCK UNSERVED", "받을 AIRCRAFT가 없는 Todo의 막힘 알림 문구", "stuck unserved 막힘 알림 문구 no-aircraft unqualified no-tail 받을 AIRCRAFT 없음 LAUNCH stuckUnserved"],
     ["operations", "JOB TIMING", "서버 일별 시간 측정", "job timing 잡 시간 측정 cpu 서버 부하 steady jobTiming"],
     ["operations", "EVENT LOOP LAG", "서버 느림 알림(이벤트 루프 지연)", "event loop lag 이벤트 루프 지연 서버 느림 p99 job timing misfire eventLoopLag"],
+    ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);

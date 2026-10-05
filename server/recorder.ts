@@ -71,6 +71,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "event-loop-lag-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "orphan-flight-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "job-timing-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "warm-start-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
