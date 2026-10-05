@@ -49,6 +49,59 @@ export function pageOf(raw: string, before?: number, size = PAGE_SIZE): { lines:
   return { lines, next: start > 0 ? start : null };
 }
 
+// 읽기 전용 검색(ATC-479): 줄 단위로 대소문자 무시 부분 문자열 찾기. 대상은 SUPERVISOR·DUTY 글, 초안(글과 DD-n), 카드(종류와 키).
+// 깨진 줄은 건너뛰고, 줄 번호 n은 pageOf와 같은 0부터. 최신 것부터 cap개까지 돌려준다(truncated면 더 있음)
+export const SEARCH_CAP = 50;
+export const SEARCH_MIN = 2;
+export interface SearchHit {
+  n: number;
+  t: string;
+  kind: "user" | "text" | "draft" | "card";
+  snippet: string;
+}
+const SNIP = 70; // 찾은 자리 앞뒤로 남기는 글자 수
+
+function searchableOf(l: DutyLogLine): { kind: SearchHit["kind"]; text: string } | null {
+  switch (l.kind) {
+    case "user":
+    case "text":
+      return typeof l.text === "string" ? { kind: l.kind, text: l.text } : null;
+    case "draft":
+      return { kind: "draft", text: `${l.text ?? ""} ${l.draft ?? ""}`.trim() };
+    case "card":
+      return { kind: "card", text: `${l.queueKind ?? ""} ${l.key ?? ""} ${l.draft ?? ""}`.trim() };
+    default:
+      return null;
+  }
+}
+
+export function searchLog(raw: string, query: string, cap = SEARCH_CAP): { hits: SearchHit[]; truncated: boolean } {
+  const needle = query.trim().toLowerCase();
+  if (needle.length < SEARCH_MIN) return { hits: [], truncated: false };
+  const all = raw.split("\n");
+  const hits: SearchHit[] = [];
+  for (let n = all.length - 1; n >= 0; n--) {
+    if (all[n] === "") continue;
+    let l: DutyLogLine;
+    try {
+      l = JSON.parse(all[n]!) as DutyLogLine;
+    } catch {
+      continue;
+    }
+    if (!l || typeof l !== "object" || typeof l.kind !== "string") continue;
+    const s = searchableOf(l);
+    if (!s) continue;
+    const flat = s.text.replace(/\s+/g, " ");
+    const at = flat.toLowerCase().indexOf(needle);
+    if (at < 0) continue;
+    if (hits.length >= cap) return { hits, truncated: true };
+    const from = Math.max(0, at - SNIP);
+    const to = Math.min(flat.length, at + needle.length + SNIP);
+    hits.push({ n, t: typeof l.t === "string" ? l.t : "", kind: s.kind, snippet: `${from > 0 ? "…" : ""}${flat.slice(from, to)}${to < flat.length ? "…" : ""}` });
+  }
+  return { hits, truncated: false };
+}
+
 export const IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 

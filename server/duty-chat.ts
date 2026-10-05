@@ -2,14 +2,16 @@
 import type { DutyLogLine } from "./duty-log.ts";
 import type { DutyRate } from "./duty-stream.ts";
 
-export type ChatItem =
+// n: 기록(duty.jsonl)의 줄 번호. 기록에서 읽은 줄에만 있고 SSE로 막 들어온 줄에는 없다(ATC-479)
+export type ChatItem = (
   | { id: string; kind: "user"; text: string; image?: string; t: string }
   | { id: string; kind: "text"; text: string; t: string }
   | { id: string; kind: "tool"; name: string; summary: string; error: boolean; t: string }
   | { id: string; kind: "notice"; text: string; t: string }
   | { id: string; kind: "shift"; t: string }
   | { id: string; kind: "card"; queueKind: string; key: string; draft: string; t: string }
-  | { id: string; kind: "draft"; draftKind: "note" | "charter" | "retire"; draft: string; text: string; until: string | null; t: string };
+  | { id: string; kind: "draft"; draftKind: "note" | "charter" | "retire"; draft: string; text: string; until: string | null; t: string }
+) & { n?: number };
 
 export interface DutyStatusView {
   enabled: boolean;
@@ -33,11 +35,12 @@ export interface Chat {
   streaming: string; // 아직 완성되지 않은 DUTY 글(조각을 이은 것)
   status: DutyStatusView | null;
   seq: number;
+  older: number | null; // 기록에서 이 목록보다 앞을 읽을 때 넣을 before(GET /api/duty/history의 next). 더 없으면 null
 }
 
 export const accountNotice = (from: string, to: string) => `DUTY ACCOUNT ${from} → ${to} · 다음 메시지부터 새 대화`;
 
-export const emptyChat =(): Chat => ({ items: [], streaming: "", status: null, seq: 0 });
+export const emptyChat =(): Chat => ({ items: [], streaming: "", status: null, seq: 0, older: null });
 
 // 서버 SSE `duty` 이벤트(DutyEvent + t, 그리고 연결 때의 status)
 export type DutyWire =
@@ -55,25 +58,54 @@ export type DutyWire =
 
 const MAX_ITEMS = 1000;
 type NewItem = ChatItem extends infer T ? (T extends ChatItem ? Omit<T, "id"> : never) : never;
+export type { NewItem };
 const push = (c: Chat, item: NewItem): Chat => {
   const seq = c.seq + 1;
   const items = [...c.items, { ...item, id: `e${seq}` } as ChatItem];
   return { ...c, seq, items: items.length > MAX_ITEMS ? items.slice(items.length - MAX_ITEMS) : items };
 };
 
-// 기록 쪽(GET /api/duty/history의 lines)으로 목록을 새로 만든다. 사용량 줄은 그리지 않는다
-export function chatFromHistory(lines: readonly (DutyLogLine & { n?: number })[], status: DutyStatusView | null = null): Chat {
-  let c: Chat = { ...emptyChat(), status };
+// 기록 줄 하나가 그리는 항목(그리지 않는 줄은 null). 줄 번호가 있으면 n에 남긴다
+export function itemOfLine(l: DutyLogLine & { n?: number }): NewItem | null {
+  const n = l.n === undefined ? {} : { n: l.n };
+  switch (l.kind) {
+    case "user":
+      return { kind: "user", text: l.text, ...(l.image ? { image: l.image } : {}), t: l.t, ...n };
+    case "text":
+      return { kind: "text", text: l.text, t: l.t, ...n };
+    case "tool":
+      return { kind: "tool", name: l.name, summary: l.summary, error: l.error, t: l.t, ...n };
+    case "notice":
+      return { kind: "notice", text: l.text, t: l.t, ...n };
+    case "shift":
+      return { kind: "shift", t: l.t, ...n };
+    case "account":
+      return { kind: "notice", text: accountNotice(l.from, l.to), t: l.t, ...n };
+    case "card":
+      return { kind: "card", queueKind: l.queueKind, key: l.key, draft: l.draft, t: l.t, ...n };
+    case "draft":
+      return { kind: "draft", draftKind: l.draftKind, draft: l.draft, text: l.text, until: l.until ?? null, t: l.t, ...n };
+    default:
+      return null; // 사용량 줄은 그리지 않는다
+  }
+}
+
+// 앞쪽 쪽(더 불러오기)의 항목들. id는 줄 번호에서 따서 쪽을 앞에 붙여도 안 바뀐다
+export function olderItems(lines: readonly (DutyLogLine & { n: number })[]): ChatItem[] {
+  const out: ChatItem[] = [];
   for (const l of lines) {
-    if (l.kind === "usage") continue;
-    if (l.kind === "user") c = push(c, { kind: "user", text: l.text, ...(l.image ? { image: l.image } : {}), t: l.t });
-    else if (l.kind === "text") c = push(c, { kind: "text", text: l.text, t: l.t });
-    else if (l.kind === "tool") c = push(c, { kind: "tool", name: l.name, summary: l.summary, error: l.error, t: l.t });
-    else if (l.kind === "notice") c = push(c, { kind: "notice", text: l.text, t: l.t });
-    else if (l.kind === "shift") c = push(c, { kind: "shift", t: l.t });
-    else if (l.kind === "account") c = push(c, { kind: "notice", text: accountNotice(l.from, l.to), t: l.t });
-    else if (l.kind === "card") c = push(c, { kind: "card", queueKind: l.queueKind, key: l.key, draft: l.draft, t: l.t });
-    else if (l.kind === "draft") c = push(c, { kind: "draft", draftKind: l.draftKind, draft: l.draft, text: l.text, until: l.until ?? null, t: l.t });
+    const it = itemOfLine(l);
+    if (it) out.push({ ...it, id: `h${l.n}` } as ChatItem);
+  }
+  return out;
+}
+
+// 기록 쪽(GET /api/duty/history의 lines)으로 목록을 새로 만든다. older는 그 응답의 next
+export function chatFromHistory(lines: readonly (DutyLogLine & { n?: number })[], status: DutyStatusView | null = null, older: number | null = null): Chat {
+  let c: Chat = { ...emptyChat(), status, older };
+  for (const l of lines) {
+    const it = itemOfLine(l);
+    if (it) c = push(c, it);
   }
   return c;
 }

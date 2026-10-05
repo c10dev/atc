@@ -41,6 +41,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-anchor: none; /* 앞쪽 쪽을 붙일 때 보던 자리는 DutyLog가 직접 맞춘다(ATC-479) */
   padding: var(--space-3) var(--gutter);
 }
 .du-log-inner {

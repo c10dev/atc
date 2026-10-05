@@ -1,8 +1,43 @@
 /* DUTY 대화 공유 부품(ATC-477)의 더 보기와 choices. 색·글꼴은 :root 토큰만. 로그와 입력 모양은 DutyDrawer.css */
 .du-time {
   margin-left: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--faint);
+  cursor: default;
+}
+.du-time:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+/* 평소엔 HH:MMZ, 가리키거나 초점이 있으면 날짜까지(ATC-479) */
+.du-time-full,
+.du-time:hover .du-time-short,
+.du-time:focus .du-time-short {
+  display: none;
+}
+.du-time:hover .du-time-full,
+.du-time:focus .du-time-full {
+  display: inline;
+  color: var(--muted);
+}
+.du-stamped {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.du-older {
+  align-self: center;
+}
+.du-older-end {
+  text-align: center;
+}
+/* 검색 결과로 간 줄을 잠깐 표시한다 */
+.is-hit {
+  outline: 2px solid var(--cyan);
+  outline-offset: 4px;
+  border-radius: var(--radius-md);
 }
 .du-more > summary {
   display: inline-flex;

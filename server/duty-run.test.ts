@@ -343,6 +343,12 @@ test("POST /api/duty/message: 검사(빈 글·긴 글·깨진 JSON)와 보냄·�
   const hist = (await (await app.request("/api/duty/history?before=2")).json()) as { lines: unknown[] };
   assert.equal(hist.lines.length, 2);
   assert.equal((await app.request("/api/duty/history?before=-1")).status, 400);
+  assert.equal((await app.request("/api/duty/history?limit=0")).status, 400);
+  const s1 = (await (await app.request("/api/duty/search?q=SECOND")).json()) as { hits: { n: number; kind: string }[]; truncated: boolean };
+  assert.ok(s1.hits.some((h) => h.kind === "user"), "SUPERVISOR 글이 찾아진다");
+  assert.equal((await app.request("/api/duty/search?q=second", { headers: { origin: "http://localhost:5173" } })).status, 200);
+  assert.equal((await app.request("/api/duty/search?q=second", { headers: { origin: "https://evil.example" } })).status, 403);
+  assert.equal((await app.request(`/api/duty/search?q=${"x".repeat(201)}`)).status, 400);
   rt.dispose();
 });
 
