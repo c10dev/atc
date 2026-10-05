@@ -99,6 +99,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["landing", "REVIEW", "Codex 한도 때 착륙 리뷰", "보안 pr sonnet deepseek exclude externalReview.security"],
     ["landing", "MIGRATE", "마이그레이션 리허설", "migrate 마이그레이션 리허설 hostedDb 시험 DB PITR migrateRehearsal"],
     ["landing", "AUTO REVERT", "main이 빨개지면 lander 머지 자동 되돌림", "revert 되돌림 main red 빨간 breaker autoRevert flake groundstop"],
+    ["landing", "RED MAIN", "빨간 main이 사람의 머지로 HOLD되면 QUEUE 한 줄", "red main 빨간 main hold auto-revert 사람의 머지 막힌 PR checks-failed queue needs you redMain"],
     ["operations", "FUEL", "사용 한도 HOLD", "dispatch hold 사용량 한도 fuel.hold"],
     ["operations", "AUTO APPROVE", "일치 기반 자동 승인", "dispatch schedule agree blind launch 자동 승인 autoApprove autoApproveLaunch via auto"],
     ["operations", "STALE STOP", "끝난 FLIGHT의 멈춘 AIRCRAFT 정리", "stale stop pending hung 멈춘 정리 staleStop"],
@@ -128,7 +129,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);
-  assert.deepEqual(INDEX.filter((e) => e.tab === "landing").map((e) => e.code), ["AUTOLAND", "MCC", "REVIEW", "MIGRATE", "AUTO REVERT", "CODEX LANE"]);
+  assert.deepEqual(INDEX.filter((e) => e.tab === "landing").map((e) => e.code), ["AUTOLAND", "MCC", "REVIEW", "MIGRATE", "AUTO REVERT", "CODEX LANE", "RED MAIN"]);
 });
 
 test("recycleAutoGuardOf(ATC-175): alert → auto는 ⚠ 확인, auto → alert와 같은 값은 확인 없이. OCC는 문구가 따로", () => {

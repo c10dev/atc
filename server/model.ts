@@ -273,7 +273,7 @@ export interface PullRequest {
   standPath: string | null; // 그 브랜치를 체크아웃한 워크트리 path
   draft: boolean;
   landing: "CLEARED" | "APPROACH";
-  blocks: { code: LandingBlockCode; text: string; en: string; findings?: ReviewFindings }[]; // text: 화면용 한국어 한 줄, en: 팀에 보내는 영어 한 줄(ATC-174)
+  blocks: { code: LandingBlockCode; text: string; en: string; findings?: ReviewFindings; checks?: string[] }[]; // text: 화면용 한국어 한 줄, en: 팀에 보내는 영어 한 줄(ATC-174)
   readyAt: string | null; // 이 head에서 모든 조건이 처음 맞은 시각. CLEARED일 때만
   changed?: string[]; // PR이 고친 파일(ATC-71 읽기, 못 읽었으면 없음). GO AROUND가 머지된 PR과 겹친 파일을 적는다(ATC-128)
   createdAt: string; // PR을 연 시각 (APPROACH 정렬, LAND CLEARANCE 짝짓기)

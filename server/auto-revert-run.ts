@@ -281,7 +281,7 @@ async function act(mode: AutoRevertMode, code: string, repo: string, slug: strin
   const live = loadAutoRevert().mode;
   if (live === "off" || live !== mode) return;
   if (d.act === "hold") {
-    appendAutoRevertLine({ op: "hold", airport: code, head, pr: d.pr, detail: d.why });
+    appendAutoRevertLine({ op: "hold", airport: code, head, pr: d.pr, ...(d.foreign ? { foreign: d.foreign } : {}), detail: d.why });
     return;
   }
   if (d.act === "stop") {

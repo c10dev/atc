@@ -19,6 +19,7 @@ import { foldEffects } from "./effect-check.ts";
 import { readEffectLines } from "./effect-store.ts";
 import { followNow } from "./follow-run.ts";
 import { setTodo } from "./queue-todo.ts";
+import { redMainNow } from "./red-main-run.ts";
 import { currentAlerts } from "./supervisor-alerts-run.ts";
 import { candidateTeamsOf } from "./dispatch.ts";
 import { readReviewLines } from "./duty-review-store.ts";
@@ -67,6 +68,7 @@ export async function collectQueueInput(s: Snapshot, updateStatus: () => Promise
   });
   return {
     alerts: currentAlerts(),
+    redMain: redMainNow(s),
     arrived: arrivedOpenOf(s.tickets, loadLogbook()),
     follow,
     effects,

@@ -372,6 +372,8 @@ const codexWhy = (u: CodexUnavailable, silentMs: number) =>
 
 type Block = PullRequest["blocks"][number];
 const block = (code: LandingBlockCode, text: string, en: string, findings?: ReviewFindings): Block => (findings ? { code, text, en, findings } : { code, text, en });
+// checks-failed는 실패한 체크 이름 전부를 싣는다(text는 셋까지만 보인다): red main 줄이 어느 PR이 같은 체크로 막혔나 가린다(ATC-536)
+const failedBlock = (failed: string[]): Block => ({ ...block("checks-failed", `CI 실패: ${names(failed)}`, checksFailedEn(failed)), checks: failed });
 const short = (oid: string) => oid.slice(0, 7);
 const names = (xs: string[]) => (xs.length > 3 ? `${xs.slice(0, 3).join(", ")} 외 ${xs.length - 3}개` : xs.join(", "));
 
@@ -406,7 +408,7 @@ export function checkBlocks(rollup: GhCheck[] | null): Block[] {
   const pending = checks.filter((c) => checkState(c) === "pending").map(label);
   const out: Block[] = [];
   if (pending.length) out.push(block("checks-pending", `CI 진행 중: ${names(pending)}`, checksPendingEn(pending)));
-  if (failed.length) out.push(block("checks-failed", `CI 실패: ${names(failed)}`, checksFailedEn(failed)));
+  if (failed.length) out.push(failedBlock(failed));
   return out;
 }
 
