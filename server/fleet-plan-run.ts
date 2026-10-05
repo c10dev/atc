@@ -40,7 +40,7 @@ import { loadLogbook } from "./logbook.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import { runAutoFleet, fleetMisfires } from "./autonomy-auto-run.ts";
 import { fromThisApp } from "./origin.ts";
-import { allProposals, directBriefOf, reservedOf } from "./proposals.ts";
+import { allProposals, directBriefOf, lastCapView, reservedOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { autoRepositionOf, parseReposition, type RepositionConfig, type RepositionEvent, type RepositionMode, REPOSITION_MODES } from "./reposition.ts";
 import { fleetKeyOf, regKey } from "./registration.ts";
@@ -332,6 +332,7 @@ export function fleetPlanView(now = Date.now(), fuel: FuelRemaining[] = []) {
     ranAt: last?.at ?? null,
     error: last?.error ?? null,
     demand: last?.demand ?? [],
+    cap: lastCapView(), // 열린 제안 수와 상한(ATC-403). 주기가 한 번 돌기 전엔 null
     fuel, // FUEL REMAINING per ACCOUNT(ATC-63): 블록의 "weekly-usage line"
     open,
     waiting,

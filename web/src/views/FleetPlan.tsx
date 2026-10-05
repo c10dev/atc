@@ -22,6 +22,7 @@ interface PlanBrief {
   ranAt: string | null;
   error: string | null;
   demand: DemandRow[];
+  cap?: { open: number; cap: number; full: boolean; waitingForCap: { flight: string; aircraft: string | null; airport: string | null }[] } | null; // 열린 제안 수와 상한(ATC-403). 옛 서버면 없음
   fuel?: FuelRemaining[]; // ACCOUNT마다 FUEL REMAINING(ATC-63, 옛 서버면 없음)
   open: Open[];
   waiting: { key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; since: string | null }[];
@@ -207,6 +208,17 @@ export function FleetPlan({ refreshKey, onChanged, fleetAccounts }: { refreshKey
       {(error || brief.error) && (
         <p className="fl-error" role="alert">
           {error ?? `계산 실패: ${brief.error}`}
+        </p>
+      )}
+      {brief.cap && (
+        <p className="fp-cap" aria-label="열린 제안 수">
+          열린 제안 <b className={brief.cap.full ? "fp-short" : undefined}>{brief.cap.open}/{brief.cap.cap}</b>
+          {brief.cap.full &&
+            (brief.cap.waitingForCap.length ? (
+              <span className="faint"> — 상한이 차서 제안하지 못한 FLIGHT {brief.cap.waitingForCap.length}건: {brief.cap.waitingForCap.map((h) => `${flightNumber(h.flight)}${h.aircraft ? ` → ${h.aircraft}` : ""}`).join(", ")}. 카드를 판정하면 다음 주기에 제안한다</span>
+            ) : (
+              <span className="faint"> — 상한이 찼다(기다리는 FLIGHT 없음)</span>
+            ))}
         </p>
       )}
       {demand.length > 0 && (
