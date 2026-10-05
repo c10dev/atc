@@ -16,6 +16,7 @@ import { waitsOnHuman } from "./human-check.ts";
 import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
 import type { RelayOffer } from "./relay-offer.ts";
 import type { UpdateKind } from "./update.ts";
+import { isMoot, type MootCtx } from "./undelivered-moot.ts";
 
 // SUPERVISOR QUEUE(ATC-194, docs/ui-visibility.md 3.1, docs/duty.md Q1): SUPERVISOR의 결정을 기다리는 것 하나의 목록.
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
@@ -73,14 +74,16 @@ export interface QueueInput {
   // FLEET PLAN: 열린 제안과, 최근 주기가 아직 그것을 내는지(isStale의 결과)
   fleetPlan: (Pick<FleetProposal, "id" | "kind" | "aircraft" | "status" | "at"> & { stale: boolean })[];
   // landBy: TOWER가 쓰는 landByOf의 결과. "supervisor"이고 CLEARED면 SUPERVISOR가 머지한다
-  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & { landBy: LandBy; landWhy?: LandWhy | null; landDetail?: string })[];
+  pulls: (Pick<PullRequest, "repo" | "number" | "head" | "draft" | "landing" | "humanCheck" | "ticketKey"> & Partial<Pick<PullRequest, "standPath">> & { landBy: LandBy; landWhy?: LandWhy | null; landDetail?: string })[];
   update: { kind: UpdateKind; deployed: string | null; main: string | null; mainCi: string; at: string } | null;
   sessions: (Pick<Session, "id" | "name" | "job" | "lastActiveAt"> & Partial<Pick<Session, "status" | "origin" | "jobId" | "account" | "health">>)[];
   blockedMin: number;
   teamPattern?: string; // 팀 AIRCRAFT 이름 규칙(waiting-person.ts). 없으면 기본
   // 손으로 전하는 카드(ATC-271): 모두 없으면 카드가 없다
-  relays?: Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason" | "cause">[];
-  clearances?: Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause" | "handAt">[];
+  relays?: (Pick<Relay, "id" | "to" | "kind" | "text" | "status" | "statusAt" | "reason" | "cause"> & Partial<Pick<Relay, "at" | "flight" | "pr" | "type">>)[];
+  clearances?: (Pick<Clearance, "id" | "toName" | "type" | "text" | "undeliverableAt" | "undeliverableReason" | "undeliverableCause" | "handAt"> & Partial<Pick<Clearance, "at" | "flight" | "stand" | "readbackAt" | "unableAt" | "cancelledAt">>)[];
+  githubKnown?: boolean; // 이번 스냅샷이 GitHub를 읽었다(없으면 PR이 닫혔는지 판단하지 않는다, ATC-540)
+  tickets?: { key: string; stateType: string }[]; // FLIGHT가 끝났는지(ATC-540)
   folders?: { label: string; dir: string }[]; // ACCOUNT 라벨 → 폴더(등록부)
   defaultDir?: string; // ~/.claude
   autoDispatch?: boolean; // 자동 운항(ATC-367): 서버가 ASSIGN 카드를 승인하므로 SUPERVISOR 큐에 올리지 않는다
@@ -180,18 +183,30 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
     const dir = inp.folders?.find((f) => f.label === t?.account)?.dir ?? null;
     return handCardOf(to, reason, { session: t, folderDir: dir, defaultDir: inp.defaultDir ?? "" });
   };
-  for (const r of inp.relays ?? []) {
+  // 쓸모없어진 줄은 뺀다(ATC-540). 기록은 그대로이고 큐 보기에서만 빠진다
+  const moot: MootCtx = { now, githubKnown: Boolean(inp.githubKnown), pulls: inp.pulls, tickets: inp.tickets ?? [] };
+  const relays = inp.relays ?? [];
+  const clearances = inp.clearances ?? [];
+  for (const r of relays) {
     if (r.status !== "undeliverable") continue;
+    const newer = !!r.flight && relays.some((x) => x.id !== r.id && x.flight === r.flight && x.kind === r.kind && (x.type ?? null) === (r.type ?? null) && !!x.at && !!r.at && x.at > r.at && (x.status === "issued" || x.status === "delivered" || x.status === "hand"));
+    if (isMoot({ at: r.statusAt, flight: r.flight ?? null, type: r.type ?? null, pr: r.pr ?? null, text: r.text, stand: null, closed: false, newerDelivered: newer }, moot)) continue;
     const reason = r.reason ?? "undeliverable";
     out.push({ kind: "UNDELIVERED", key: r.id, since: r.statusAt, title: `RELAY ${r.id} → ${r.to}`, hash: "#fleet", primary: open("AIRCRAFT 보기", "#fleet"), hand: { source: "RELAY", id: r.id, to: r.to, reason, text: r.text, card: handFor(r.to, reason) } });
   }
-  for (const c of inp.clearances ?? []) {
-    if (!c.undeliverableAt || c.handAt || now - Date.parse(c.undeliverableAt) > 3 * 86_400_000) continue;
+  for (const c of clearances) {
+    if (!c.undeliverableAt || c.handAt) continue;
+    // 닿지 못해 닫힌 것은 cancelledAt이 undeliverableAt과 같다. 그 뒤 따로 취소되거나 답이 왔으면 열려 있지 않다
+    const closed = Boolean(c.readbackAt || c.unableAt || (c.cancelledAt && c.cancelledAt !== c.undeliverableAt));
+    const newer = !!c.flight && clearances.some((x) => x.id !== c.id && x.flight === c.flight && x.type === c.type && !!x.at && !!c.at && x.at > c.at && !x.undeliverableAt && !x.cancelledAt);
+    if (isMoot({ at: c.undeliverableAt, flight: c.flight ?? null, type: c.type, pr: null, text: c.text, stand: c.stand ?? null, closed, newerDelivered: newer }, moot)) continue;
     const reason = c.undeliverableReason ?? "undeliverable";
     out.push({ kind: "UNDELIVERED", key: c.id, since: c.undeliverableAt, title: `${c.type} ${c.id} → ${c.toName}`, hash: "#home", primary: open("AIRCRAFT 보기", "#fleet"), hand: { source: "CLEARANCE", id: c.id, to: c.toName, reason, text: c.text, card: handFor(c.toName, reason) } });
   }
   for (const p of inp.proposals) {
     if (!p.undelivered || p.status !== "approved" || !p.aircraftName) continue;
+    const newer = inp.proposals.some((x) => x.id !== p.id && x.flight === p.flight && x.kind === p.kind && !x.undelivered && x.statusAt > p.undelivered!.at && ["sent", "accepted", "departed", "arrived"].includes(x.status));
+    if (isMoot({ at: p.undelivered.at, flight: p.flight, type: p.kind, pr: null, text: null, stand: null, closed: false, newerDelivered: newer }, moot)) continue;
     const reason = p.undelivered.reason;
     out.push({ kind: "UNDELIVERED", key: `${p.id}|${p.undelivered.at}`, since: p.undelivered.at, title: `FLIGHT PLAN ${p.flight} → ${p.aircraftName}`, hash: "#home", primary: open("AIRCRAFT 보기", "#fleet"), hand: { source: "FLIGHT PLAN", id: p.id, to: p.aircraftName, reason, text: null, card: handFor(p.aircraftName, reason) } });
   }
