@@ -130,6 +130,18 @@ export function controlGoneOf(inp: { sessions: readonly string[]; running: Reado
   return out;
 }
 
+// 순수(ATC-545): 지금 떠 있는 관제 세션 이름. 이름이 같거나(대소문자 무시) 그 관제 폴더에서 연 세션 가운데 죽지 않은 것이 하나라도 있으면 있는 것이다.
+// CONTROL 띠(controlRowsOf)와 같은 판정이라 CONTROL_NAMES에 없는 REVIEW도 알아본다. job 폴더가 여러 개(다른 ACCOUNT, 옛 폴더)여도 하나라도 살아 있으면 있다
+export function controlPresentOf(specs: readonly { name: string; dir: string | null }[], sessions: readonly { name: string; cwd?: string | null; status: string }[]): Set<string> {
+  const trim = (p: string) => p.replace(/\/$/, "");
+  const live = sessions.filter((x) => x.status !== "dead");
+  const out = new Set<string>();
+  for (const sp of specs) {
+    if (live.some((x) => x.name.toUpperCase() === sp.name || (sp.dir !== null && x.cwd != null && trim(x.cwd) === trim(sp.dir)))) out.add(sp.name);
+  }
+  return out;
+}
+
 // 순수: RECYCLE이 멈춘 채인 것(이유가 분명하다)과 이유 불문 없는 것을 한 세션에 하나로 합친다. 같은 세션이면 RECYCLE 쪽 글을 쓴다
 export function mergeControlDown(recycle: readonly ControlDown[], gone: readonly ControlDown[]): ControlDown[] {
   const by = new Map<string, ControlDown>(gone.map((c) => [c.session, c]));

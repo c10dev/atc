@@ -3,7 +3,7 @@ import test from "node:test";
 import { hostMemoryOf, type MemInfo, nextOomState, NO_OOM, OOM_WINDOW_MS, oomInWindow, parseMeminfo, parseOomKill } from "./host-memory.ts";
 import { hostMemoryNow, resetHostMemory } from "./host-memory-run.ts";
 import { CONTROL_READ_OVERLAP_MS, controlOpsNow, resetControlOps } from "./supervisor-alerts-run.ts";
-import { type AlertsInput, CONTROL_DOWN_GRACE_MS, type ControlDown, type ControlOp, controlGoneOf, destOf, mergeControlDown, supervisorAlertsOf } from "./supervisor-alerts.ts";
+import { type AlertsInput, CONTROL_DOWN_GRACE_MS, type ControlDown, type ControlOp, controlGoneOf, controlPresentOf, destOf, mergeControlDown, supervisorAlertsOf } from "./supervisor-alerts.ts";
 
 // ATC-203(ALERTING A1b): 관제 세션이 이유 불문 없을 때, 호스트 메모리 부족·OOM kill
 const NOW = Date.parse("2026-10-03T06:00:00Z");
@@ -46,6 +46,24 @@ test("control|down: RECYCLE이 멈춘 채인 것과 합치면 세션마다 하�
   const merged = mergeControlDown(recycle, [{ session: "TOWER", since: null, reason: "x", gone: true }, { session: "OCC", since: null, reason: "y", gone: true }]);
   assert.deepEqual(merged.map((c) => [c.session, c.gone ?? false]), [["OCC", true], ["TOWER", false]]);
   assert.equal(merged.find((c) => c.session === "TOWER")!.reason, "not trusted");
+});
+
+// ATC-545: 관제 세션이 있다는 판정은 CONTROL 띠와 같다(REVIEW 포함, job 폴더가 여럿이어도 하나라도 살아 있으면 있다)
+const SPECS = ["TOWER", "OCC", "MCC", "REVIEW"].map((name) => ({ name, dir: `/repo/${name.toLowerCase()}` }));
+const sess = (name: string, status: string, cwd = "/elsewhere") => ({ name, cwd, status });
+test("controlPresentOf: 다른 ACCOUNT로 다시 띄운 세션은 있다. REVIEW도 이름으로 알아본다", () => {
+  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("review", "working")]);
+  assert.deepEqual([...p].sort(), ["MCC", "OCC", "REVIEW", "TOWER"]);
+  assert.deepEqual(gone([...p]), []);
+});
+test("controlPresentOf: 멈췄고 옛 job 폴더만 남았으면(dead) 없다", () => {
+  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("REVIEW", "dead")]);
+  assert.equal(p.has("REVIEW"), false);
+  assert.equal(gone([...p]).map((d) => d.session).join(), "REVIEW");
+});
+test("controlPresentOf: 폴더가 둘이고 가장 새 것이 working이면 있다(옛 dead가 가리지 않는다). 폴더에서 연 이름 없는 세션도 있다", () => {
+  const p = controlPresentOf(SPECS, [sess("REVIEW", "dead"), sess("REVIEW", "working"), sess("x", "idle", "/repo/tower/"), sess("OCC", "idle"), sess("MCC", "idle")]);
+  assert.deepEqual([...p].sort(), ["MCC", "OCC", "REVIEW", "TOWER"]);
 });
 
 const base: AlertsInput = { sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [] } as unknown as AlertsInput;

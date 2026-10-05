@@ -9,7 +9,6 @@ import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
 import { landByOf, type LandBy } from "./land-by.ts";
 import { handoffResolver } from "./autoland-handoff-run.ts";
-import { type ControlName, controlNameOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
 import { landedOf, loadDispatchConfig } from "./dispatch.ts";
 import { lagAlertNow } from "./event-loop-lag-run.ts";
@@ -30,7 +29,7 @@ import { capIdleNow } from "./dispatch-launch.ts";
 import { stoppedAirports } from "./auto-revert-run.ts";
 import { duplicatesNow } from "./control-stop-check-run.ts";
 import { type StopCheckLine, unverifiedOf } from "./control-stop-check.ts";
-import { type AlertEvent, alertKeyOf, type ControlOp, controlDownOf, controlGoneOf, diffAlerts, mergeControlDown, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
+import { type AlertEvent, alertKeyOf, type ControlOp, controlDownOf, controlGoneOf, controlPresentOf, diffAlerts, mergeControlDown, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { hostMemoryNow } from "./host-memory-run.ts";
 import { sinceLookNow } from "./since-look-run.ts";
 import { todoNow } from "./queue-todo.ts";
@@ -89,11 +88,9 @@ export const resetControlOps = () => {
 
 // 지금 돌고 있는 관제 세션 이름과 AIRCRAFT REGISTRATION(조건 항목 control|down, reposition|stuck이 "다시 떴나"를 볼 때 쓴다)
 function runningNames(s: Snapshot, teamPattern: string): { control: Set<string>; aircraft: Set<string> } {
-  const dirs: Partial<Record<ControlName, string>> = {};
-  for (const c of CONTROL_SESSIONS) if (c.dir) dirs[c.name as ControlName] = controlDirOf(c) ?? undefined;
   const live = s.sessions.filter((x) => x.status !== "dead");
   return {
-    control: new Set(live.flatMap((x) => controlNameOf({ name: x.name, cwd: x.cwd }, dirs) ?? [])),
+    control: controlPresentOf(CONTROL_SESSIONS.map((c) => ({ name: c.name, dir: controlDirOf(c) })), s.sessions), // CONTROL 띠와 같은 판정(ATC-545)
     aircraft: new Set(live.flatMap((x) => registrationOf(x.name, teamPattern) ?? [])),
   };
 }
