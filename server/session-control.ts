@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context, Hono } from "hono";
@@ -19,6 +19,8 @@ import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
 import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
+import { ofControlSession } from "./control-match.ts";
+import { realDir } from "./control-realdir.ts";
 import { type K3Declaration, type K3Launch, k3LaunchOf, k3LaunchWaitOf } from "./k3-allow.ts";
 import { k3WaitClear, k3WaitMark } from "./k3-launch-wait.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
@@ -207,19 +209,12 @@ export const CONTROL_SESSIONS: readonly ControlSpec[] = [
   { name: "ENGINEERING", dir: null, prompt: null, flags: [], launch: null },
 ];
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
-const realDir = (p: string) => {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-};
 export const controlDirOf = (spec: ControlSpec, root = REPO_ROOT) => (spec.dir ? realDir(join(root, spec.dir)) : null);
 export const controlSpecOf = (name: string) => CONTROL_SESSIONS.find((s) => s.name === name.toUpperCase()) ?? null;
 
 // 이 관제 세션으로 보는 세션: 이름이 같거나(대소문자 무시), 그 폴더에서 연 세션(tmux로 이름 없이 띄운 것도). 폴더가 없으면 이름으로만
 // STALE 줄은 빼고(ATC-93) 따로 controlStaleOf로 보인다
-const ofControl = (spec: ControlSpec, r: AgentRow, dir: string | null) => sameName(r, spec.name) || (dir !== null && realDir(r.cwd) === dir);
+const ofControl = (spec: ControlSpec, r: AgentRow, dir: string | null) => ofControlSession(spec.name, r, dir, realDir);
 export function controlRowsOf(spec: ControlSpec, rows: AgentRow[], dir: string | null): AgentRow[] {
   return rows.filter((r) => !r.stale && ofControl(spec, r, dir));
 }

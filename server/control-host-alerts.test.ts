@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ofControlSession } from "./control-match.ts";
+import { realDir } from "./control-realdir.ts";
 import test from "node:test";
 import { hostMemoryOf, type MemInfo, nextOomState, NO_OOM, OOM_WINDOW_MS, oomInWindow, parseMeminfo, parseOomKill } from "./host-memory.ts";
 import { hostMemoryNow, resetHostMemory } from "./host-memory-run.ts";
@@ -51,19 +56,35 @@ test("control|down: RECYCLE이 멈춘 채인 것과 합치면 세션마다 하�
 // ATC-545: 관제 세션이 있다는 판정은 CONTROL 띠와 같다(REVIEW 포함, job 폴더가 여럿이어도 하나라도 살아 있으면 있다)
 const SPECS = ["TOWER", "OCC", "MCC", "REVIEW"].map((name) => ({ name, dir: `/repo/${name.toLowerCase()}` }));
 const sess = (name: string, status: string, cwd = "/elsewhere") => ({ name, cwd, status });
-test("controlPresentOf: 다른 ACCOUNT로 다시 띄운 세션은 있다. REVIEW도 이름으로 알아본다", () => {
-  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("review", "working")]);
+test("controlPresentOf: 이름이 맞으면 어느 ACCOUNT의 줄이든 있다(snapshot은 모든 ACCOUNT 폴더의 세션을 담는다). REVIEW도 알아본다", () => {
+  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("review", "working")], realDir);
   assert.deepEqual([...p].sort(), ["MCC", "OCC", "REVIEW", "TOWER"]);
   assert.deepEqual(gone([...p]), []);
 });
 test("controlPresentOf: 멈췄고 옛 job 폴더만 남았으면(dead) 없다", () => {
-  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("REVIEW", "dead")]);
+  const p = controlPresentOf(SPECS, [sess("TOWER", "working"), sess("OCC", "idle"), sess("MCC", "idle"), sess("REVIEW", "dead")], realDir);
   assert.equal(p.has("REVIEW"), false);
   assert.equal(gone([...p]).map((d) => d.session).join(), "REVIEW");
 });
 test("controlPresentOf: 폴더가 둘이고 가장 새 것이 working이면 있다(옛 dead가 가리지 않는다). 폴더에서 연 이름 없는 세션도 있다", () => {
-  const p = controlPresentOf(SPECS, [sess("REVIEW", "dead"), sess("REVIEW", "working"), sess("x", "idle", "/repo/tower/"), sess("OCC", "idle"), sess("MCC", "idle")]);
+  const p = controlPresentOf(SPECS, [sess("REVIEW", "dead"), sess("REVIEW", "working"), sess("x", "idle", "/repo/tower/"), sess("OCC", "idle"), sess("MCC", "idle")], realDir);
   assert.deepEqual([...p].sort(), ["MCC", "OCC", "REVIEW", "TOWER"]);
+});
+
+test("ofControlSession: 띠와 알림이 같은 판정을 읽는다 — 심볼릭 링크로 연 폴더와 `Team G` 꼴 이름도 같다", () => {
+  const root = mkdtempSync(join(tmpdir(), "atc545-"));
+  try {
+    mkdirSync(join(root, "review"));
+    symlinkSync(join(root, "review"), join(root, "link"));
+    const dir = realDir(join(root, "review"));
+    // 링크 경로로 연 세션: 이름이 달라도 폴더가 같다
+    assert.equal(ofControlSession("REVIEW", { name: "x", cwd: join(root, "link") }, dir, realDir), true);
+    assert.deepEqual([...controlPresentOf([{ name: "REVIEW", dir }], [{ name: "x", cwd: join(root, "link"), status: "idle" }], realDir)], ["REVIEW"]);
+    assert.equal(ofControlSession("REVIEW", { name: "x", cwd: join(root, "other") }, dir, realDir), false);
+    assert.equal(ofControlSession("REVIEW", { name: "review", cwd: null }, null, realDir), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 const base: AlertsInput = { sessions: [], alerts: [], workspaces: [], tickets: [], following: [], proposals: [], pulls: [] } as unknown as AlertsInput;

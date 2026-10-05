@@ -9,6 +9,7 @@ import { readMccRecords } from "./mcc.ts";
 import { mccLandInfoCached, rtsState } from "./mcc-run.ts";
 import { landByOf, type LandBy } from "./land-by.ts";
 import { handoffResolver } from "./autoland-handoff-run.ts";
+import { realDir } from "./control-realdir.ts";
 import type { Snapshot } from "./model.ts";
 import { landedOf, loadDispatchConfig } from "./dispatch.ts";
 import { lagAlertNow } from "./event-loop-lag-run.ts";
@@ -90,7 +91,7 @@ export const resetControlOps = () => {
 function runningNames(s: Snapshot, teamPattern: string): { control: Set<string>; aircraft: Set<string> } {
   const live = s.sessions.filter((x) => x.status !== "dead");
   return {
-    control: controlPresentOf(CONTROL_SESSIONS.map((c) => ({ name: c.name, dir: controlDirOf(c) })), s.sessions), // CONTROL 띠와 같은 판정(ATC-545)
+    control: controlPresentOf(CONTROL_SESSIONS.map((c) => ({ name: c.name, dir: controlDirOf(c) })), s.sessions, realDir), // CONTROL 띠와 같은 판정(ATC-545)
     aircraft: new Set(live.flatMap((x) => registrationOf(x.name, teamPattern) ?? [])),
   };
 }

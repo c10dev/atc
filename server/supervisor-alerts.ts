@@ -1,4 +1,5 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
+import { ofControlSession } from "./control-match.ts";
 import { unservedStuckOf } from "./stuck-unserved.ts";
 import type { CanceledPr } from "./canceled-flight.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
@@ -130,14 +131,14 @@ export function controlGoneOf(inp: { sessions: readonly string[]; running: Reado
   return out;
 }
 
-// 순수(ATC-545): 지금 떠 있는 관제 세션 이름. 이름이 같거나(대소문자 무시) 그 관제 폴더에서 연 세션 가운데 죽지 않은 것이 하나라도 있으면 있는 것이다.
-// CONTROL 띠(controlRowsOf)와 같은 판정이라 CONTROL_NAMES에 없는 REVIEW도 알아본다. job 폴더가 여러 개(다른 ACCOUNT, 옛 폴더)여도 하나라도 살아 있으면 있다
-export function controlPresentOf(specs: readonly { name: string; dir: string | null }[], sessions: readonly { name: string; cwd?: string | null; status: string }[]): Set<string> {
-  const trim = (p: string) => p.replace(/\/$/, "");
+// 순수(ATC-545): 지금 떠 있는 관제 세션 이름. 이름이나 폴더가 맞는(ofControlSession, CONTROL 띠의 controlRowsOf와 같은 하나의 판정) 세션 가운데 죽지 않은 것이 하나라도 있으면 있는 것이다.
+// 그래서 CONTROL_NAMES에 없는 REVIEW도 알아보고, job 폴더가 여러 개(다른 ACCOUNT, 옛 폴더)여도 하나라도 살아 있으면 있다. specs의 dir은 controlDirOf(realDir)다.
+// 살아 있음의 뜻만 다르다: 띠는 agents 줄의 stale을, 알림은 snapshot 세션의 dead를 뺀다(둘 다 "끝난 줄")
+export function controlPresentOf(specs: readonly { name: string; dir: string | null }[], sessions: readonly { name: string; cwd?: string | null; status: string }[], norm: (p: string) => string): Set<string> {
   const live = sessions.filter((x) => x.status !== "dead");
   const out = new Set<string>();
   for (const sp of specs) {
-    if (live.some((x) => x.name.toUpperCase() === sp.name || (sp.dir !== null && x.cwd != null && trim(x.cwd) === trim(sp.dir)))) out.add(sp.name);
+    if (live.some((x) => ofControlSession(sp.name, x, sp.dir, norm))) out.add(sp.name);
   }
   return out;
 }
