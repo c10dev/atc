@@ -963,18 +963,35 @@ export function planDispatch(
       aircraft.push({ ...base, available: false, reason: fuelHoldReason(fuel, now) });
       continue;
     }
-    // 끝나지 않은 In Progress FLIGHT(tail: 라벨, ATC-90). 세션이 없어 점유는 없다
-    const startedTail = s.tickets.filter((t) => t.stateType === "started" && tailsOf(t, now).has(reg) && !landed.has(t.key) && needsStand(classOf(t.labels).type)).map((t) => t.key);
+    // 끝나지 않은 In Progress FLIGHT(tail: 라벨, ATC-90)와 ORPHAN FLIGHT(ATC-516, ATC-548). 세션이 없어 점유는 없다.
+    // ORPHAN을 세는 규칙은 살아 있는 세션 분기와 같다: LAUNCH 전후에 같은 AIRCRAFT를 같은 눈으로 본다(떠 있다가 막히면 방금 낸 LAUNCH 카드가 헛수고가 된다)
+    const orphanKeys = new Set(orphans.get(reg) ?? []);
+    const startedAll = new Set(s.tickets.filter((t) => t.stateType === "started" && tailsOf(t, now).has(reg)).map((t) => t.key));
+    for (const k of orphanKeys) startedAll.add(k);
+    const started = [...startedAll].filter((k) => {
+      const t = byKey.get(k);
+      return t && t.stateType === "started" && !landed.has(k) && needsStand(classOf(t.labels).type);
+    });
     // 착륙만 기다리는 FLIGHT는 슬롯을 쓰지 않는다(ATC-387). 상한을 넘으면 새 FLIGHT를 받지 않는다
-    const waitingTail = startedTail.filter(waitsOf);
-    const holding = startedTail.filter((k) => !waitingTail.includes(k));
+    const waitingTail = started.filter(waitsOf);
+    const holding = started.filter((k) => !waitingTail.includes(k));
     if (!holding.length && waitingTail.length >= waitingCap) {
       aircraft.push({ ...base, waiting: waitingTail, available: false, reason: `착륙 대기 PR ${waitingTail.length}건(${waitingTail.join(", ")}) — 상한 ${waitingCap}` });
       continue;
     }
     if (holding.length) {
-      aircraft.push({ ...base, available: false, stopped: true, reason: holding.map((k) => unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k))).join(", ") });
-      continue;
+      const load = holding.reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
+      const why = holding.map((k) => (orphanKeys.has(k) ? orphanWhy(k) : unfinishedWhy(k, (s.pulls ?? []).some((p) => p.ticketKey === k)))).join(", ");
+      if (load >= cfg.slots.perTeam - 1e-9) {
+        const rest = holding.filter((k) => !orphanKeys.has(k)).reduce((a, k) => a + WAKE_SLOTS[classOf(byKey.get(k)!.labels).wake], 0);
+        const only = holding.some((k) => orphanKeys.has(k)) && rest < cfg.slots.perTeam - 1e-9;
+        aircraft.push({ ...base, available: false, stopped: true, reason: why, ...(only ? { orphanOnly: holding.filter((k) => orphanKeys.has(k)) } : {}) });
+        continue;
+      }
+      if (base.airport) {
+        aircraft.push({ ...base, ...(waitingTail.length ? { waiting: waitingTail } : {}), resting: true, available: true, room: cfg.slots.perTeam - load, reason: `${why} — 남은 슬롯 ${cfg.slots.perTeam - load}` });
+        continue;
+      }
     }
     if (!base.airport) {
       aircraft.push({ ...base, available: false, reason: "소속 AIRPORT 없음" });
