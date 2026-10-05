@@ -87,6 +87,11 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
           "더 나은 배정"으로 밀려난 DISPATCH 카드 <span className="mono">{dispatch.total.displaced}</span>건 · 그중 밀어낸 카드가 닫힌 MISFIRE <span className="mono">{dispatch.total.displacedMisfires ?? 0}</span>건 · 지난 {DAYS}일 (스위치 CONTEST GUARD)
         </p>
       )}
+      {dispatch && typeof dispatch.total.launchStopped === "number" && (
+        <p className="muted" data-testid="launch-stopped">
+          LAUNCH 직후 "AIRCRAFT 멈춤"으로 거둔 LAUNCH 카드 <span className="mono">{dispatch.total.launchStopped}</span>건 · 지난 {DAYS}일 (launch-then-stopped, 0이어야 한다)
+        </p>
+      )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (
         <>
