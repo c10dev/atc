@@ -347,3 +347,11 @@ test("브리핑(ATC-86): TOWER의 health에 cut LIMIT·RESUME·STALLED가 코드
   );
   assert.equal(brief.open.health[1]!.next, "RESUME 다음");
 });
+
+// ATC-515: 이유를 잃은 CLEARANCE는 브리핑의 clearances.moot에 실린다(기본은 비어 있다)
+test("the brief lists clearances.moot, empty by default", () => {
+  const c: Clearance = { id: "C-0416", at: iso(-120), to: "s-d", toName: "TEAM_D", type: "HOLD", stand: null, flight: "VOC-300", text: "x", readbackAt: null, cancelledAt: null };
+  const since = { events: [], reset: false, cursor: "e:0" };
+  assert.deepEqual(buildBrief(snapshot(), since, [c], T0).clearances.moot, []);
+  assert.deepEqual(buildBrief(snapshot(), since, [c], T0, undefined, null, null, [], () => null, [c]).clearances.moot.map((x) => x.id), ["C-0416"]);
+});

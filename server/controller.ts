@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance, markClearanceHand } from "./clearances.ts";
+import { mootNow } from "./clearance-moot-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
@@ -59,6 +60,7 @@ export function buildBrief(
   mcc: MccLandInfo | null = null, // MCC AIRPORT의 모드·HOLD·ESCALATE·등급(ATC-151). 없으면 모든 AIRPORT가 holder
   relays: readonly Relay[] = [], // SUPERVISOR RELAY(ATC-271): 보내지 않은(queued) 것만 brief에 실린다
   handoff: (p: PullRequest) => AutolandHandoff | null = () => null, // AUTOLAND가 이 head를 SUPERVISOR에게 넘겼나(ATC-513). 없으면 오늘과 같다
+  moot: readonly Clearance[] = [], // 이유를 잃은 CLEARANCE(ATC-515): 열려 있고 FLIGHT의 PR이 모두 끝났다. TOWER가 `atcctl cancel`한다. 없으면 오늘과 같다
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -248,6 +250,7 @@ export function buildBrief(
     github: s.github,
     clearances: {
       pending: pending.map(clearanceView),
+      moot: moot.map(clearanceView),
       overdue: pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS) && !handedLand.has(c.id)).map((c) => c.id), // 첫 STANDBY가 있으면 그때부터 다시 센다. AUTOLAND가 넘긴 PR의 LAND는 뺀다
     },
     traffic,
@@ -331,7 +334,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
     const s = await getSnapshot();
     const mcc = await (mccInfo?.(s) ?? Promise.resolve(null)).catch(() => null); // 예상 못 한 오류면 옛 흐름(holder)으로. 등급을 못 읽은 것은 mccInfo가 tiers에서 빼서 supervisor가 된다
-    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc, allRelays(), handoffResolver(s)));
+    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc, allRelays(), handoffResolver(s), mootNow(s)));
   });
 
   app.post("/api/controller/ack", async (c) => {
