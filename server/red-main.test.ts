@@ -67,3 +67,12 @@ test("스위치는 기본 on이고 정확히 off일 때만 꺼진다", () => {
   assert.equal(parseRedMainSwitch("shadow"), "on");
   assert.equal(parseRedMainSwitch("off"), "off");
 });
+
+test("스위치로 껐다 다시 켜면 아직 빨간 head의 줄이 새로 올라 카운터의 open이 화면과 맞는다", () => {
+  const [h] = redMainHoldsOf({ lines: [hold], mains: [main()], pulls: [] });
+  const raised = syncEpisodes([], [h], false, "2026-10-05T02:00:00Z");
+  const off = syncEpisodes(raised, [], true, "2026-10-05T02:30:00Z");
+  const again = syncEpisodes([...raised, ...off], [h], false, "2026-10-05T03:00:00Z");
+  assert.deepEqual(again.map((l) => l.op), ["raised"]);
+  assert.equal(redMainCounterOf([...raised, ...off, ...again], Date.parse("2026-10-06T00:00:00Z"), 7).open, 1);
+});

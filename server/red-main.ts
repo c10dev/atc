@@ -87,10 +87,13 @@ export function openEpisodesOf(lines: readonly RedMainLine[]): Map<string, RedMa
   return open;
 }
 
-// 지금 있어야 하는 줄(active, 스위치가 off면 빈 목록)에 맞춰 덧붙일 기록. head마다 한 번만 올린다: 이미 올렸던(닫힌 것 포함) head는 다시 올리지 않는다
+// 지금 있어야 하는 줄(active, 스위치가 off면 빈 목록)에 맞춰 덧붙일 기록. 스스로 닫힌 head는 다시 올리지 않는다(스위치로 내린 뒤 다시 켠 head는 새로 올린다)
 export function syncEpisodes(lines: readonly RedMainLine[], active: readonly RedMainHold[], off: boolean, now: string): RedMainLine[] {
   const open = openEpisodesOf(lines);
-  const seen = new Set(lines.filter((l) => l.op === "raised").map(redMainKey));
+  // 닫힌 head는 다시 올리지 않는다. 단 스위치로 내린 줄(end switch)은 다시 켜면 화면에 다시 보이니 다시 올린다
+  const last = new Map<string, RedMainLine>();
+  for (const l of lines) last.set(redMainKey(l), l);
+  const seen = new Set([...last].filter(([, l]) => !(l.op === "closed" && l.end === "switch")).map(([k]) => k));
   const want = new Set(active.map(redMainKey));
   const out: RedMainLine[] = [];
   for (const [k, l] of open) if (!want.has(k)) out.push({ at: now, op: "closed", airport: l.airport, head: l.head, end: off ? "switch" : "cleared" });
