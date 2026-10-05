@@ -122,6 +122,8 @@ The relation is read from Linear (`parent` / `children(first: 50)`), not guessed
 
 When slots are full, nothing is proposed instead of an `ASSIGN` (extended to ground delay in stage 3).
 
+**The open-proposal cap is shown (ATC-403).** `GET /api/dispatch/brief` has `cap: {open, cap, full, held}` (`capStateOf`, pure) and the FLEET PLAN screen shows `open proposals n/cap`. `open` counts undecided `ASSIGN` cards the way `syncOps` does (RESUME and PR HOLDER cards do not count). When `open` reaches `slots.openProposals`, `held` lists the planned FLIGHTs that got no card because of the cap, best score first, so a full cap is not read as a shortage of work or AIRCRAFT. It is display only: no cap value changes, and the decision to raise or keep the cap stays with the SUPERVISOR.
+
 ### 5.3 Score (higher goes first)
 
 | Factor | Calculation | Default weight |

@@ -122,6 +122,8 @@ Linear `children`이 있거나, 다른 FLIGHT가 `parent`로 지목한 FLIGHT는
 
 슬롯이 차면 `ASSIGN` 대신 아무것도 내지 않는다(3단계에서 ground delay로 확장).
 
+**열린 제안 상한을 보여 준다(ATC-403).** `GET /api/dispatch/brief`에 `cap: {open, cap, full, held}`(`capStateOf`, 순수)가 있고 FLEET PLAN 화면이 `열린 제안 n/상한`을 보여 준다. `open`은 `syncOps`와 같은 기준으로 결정 안 된 `ASSIGN` 카드를 센다(RESUME·PR HOLDER 카드는 세지 않는다). `open`이 `slots.openProposals`에 이르면 `held`가 상한 때문에 카드가 되지 못한 계획의 FLIGHT를 점수 높은 순으로 적어, 가득 찬 상한을 일감이나 AIRCRAFT 부족으로 읽지 않게 한다. 보여 주기만 한다: 상한 값은 바꾸지 않고, 올릴지 둘지는 SUPERVISOR가 정한다.
+
 ### 5.3 점수 (높을수록 먼저)
 
 | 요소 | 계산 | 기본 가중 |

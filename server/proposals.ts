@@ -692,6 +692,31 @@ export function droppedGuardedOf(existing: readonly Proposal[], plan: Pick<Plan,
 }
 
 // 새 계획과 열린 제안을 맞춘다. 순수 함수: 추가할 op만 돌려준다.
+// 열린 제안 수(openProposals) 상태(ATC-403). 수가 상한이면 계획이 낸 짝 가운데 상한 때문에 카드가 못 된 FLIGHT를 적는다.
+// 세는 기준은 syncOps와 같다: 결정 안 된 ASSIGN. RESUME·PR HOLDER 카드는 세지 않는다. 읽기만 하고 상한 값은 바꾸지 않는다
+export interface CapView {
+  open: number;
+  cap: number;
+  full: boolean;
+  held: { flight: string; aircraft: string | null; airport: string | null; score: number }[]; // 상한 때문에 제안되지 못한 FLIGHT(점수 높은 순)
+}
+export function capStateOf(proposals: Proposal[], plan: Pick<Plan, "assign">, cfg: Pick<DispatchConfig, "slots" | "teamPattern">, now: number): CapView {
+  const cap = cfg.slots.openProposals;
+  const openCards = proposals.filter((p) => p.kind === "ASSIGN" && p.status === "proposed" && !p.resume && !p.prHolder);
+  const open = openCards.length;
+  if (open < cap) return { open, cap, full: false, held: [] };
+  const cardFlights = new Set(proposals.filter((p) => p.kind === "ASSIGN" && p.status === "proposed").map((p) => p.flight));
+  const recent = recentPairsOf(proposals, now);
+  const held = plan.assign
+    .filter((a) => !cardFlights.has(a.flight) && !recent.has(`${a.flight}|${regOfAssign(a, cfg.teamPattern)}`))
+    .map((a) => ({ flight: a.flight, aircraft: a.aircraftName, airport: a.airport || null, score: a.score }))
+    .sort((x, y) => y.score - x.score);
+  return { open, cap, full: true, held };
+}
+
+let lastCap: CapView | null = null;
+export const lastCapView = () => lastCap;
+
 export function syncOps(
   existing: Proposal[],
   plan: Plan,
@@ -1299,6 +1324,7 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
   setHolderRoutes(holders.routes);
   const seq = ops.filter((o) => o.op === "create").length;
   append(syncOps(existing, plan, s, cfg, now, seq, landed, foldReports(readReports())));
+  lastCap = capStateOf(allProposals(), plan, cfg, now); // 방금 만든 카드까지 센다(ATC-403)
   return plan;
 }
 
@@ -1396,6 +1422,7 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       mode: cfg.mode,
       at: new Date(now).toISOString(),
       plan,
+      cap: capStateOf(proposals, plan, cfg, now), // open proposals n/cap, 가득 차면 상한 때문에 기다리는 FLIGHT(ATC-403)
       open,
       held,
       unsettled, // 열린·HELD 중 아직 SETTLED가 아닌 수(메모가 있어도 센다). CROSSCHECK 브리핑의 unsettledMarks와 다르다
