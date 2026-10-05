@@ -14,6 +14,7 @@ import { buildIndex, timeAgo } from "./derive.ts";
 import { ControlPanel } from "./ControlPanel.tsx";
 import { opensControlPanel } from "../../server/control-panel.ts";
 import { NewVersionBar } from "./NewVersion.tsx";
+import { RestoredBar } from "./RestoredBar.tsx";
 import { UpdateBar, useUpdate } from "./UpdateBar.tsx";
 import { SupervisorPairing, useSupervisorAuth } from "./SupervisorPairing.tsx";
 import { MoonIcon, Starfield } from "./Starfield.tsx";
@@ -302,6 +303,7 @@ export function App({ build }: { build: string }) {
         <SupervisorPairing auth={supervisorAuth} />
         <UpdateBar update={update} />
         <NewVersionBar own={build} server={serverBuild} />
+        <RestoredBar restored={snapshot?.restored} now={now} />
 
         {actionable.length > 0 && !alertsOpen && (
           <button className={`ticker${serious ? " is-serious" : ""}`} onClick={() => setAlertsOpen(true)} aria-label={`경보 ${actionable.length}건, 목록 펼치기`}>

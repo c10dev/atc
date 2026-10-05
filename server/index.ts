@@ -102,6 +102,8 @@ import type { AlertEvent } from "./supervisor-alerts.ts";
 import { entryScript } from "./version.ts";
 import { join } from "node:path";
 import { githubStartupWarning, githubSwitch } from "./github-switch.ts";
+import { WarmStart } from "./warm-start.ts";
+import { loadWarmStartConfig, readWarmCache, writeWarmCache } from "./warm-start-run.ts";
 
 const TICK_MS = 2_000;
 
@@ -110,6 +112,13 @@ let current: Snapshot | null = null;
 onLocalState((key, next) => {
   if (current) current = { ...current, tickets: applyWrite(current.tickets, new Map(), key, next, 0).tickets };
 });
+// WARM START(ATC-539): 재시작 직후 저장해 둔 마지막 스냅샷. 화면과 /api/snapshot만 본다. `current`에는 넣지 않는다(이벤트 비교·잡·알림·DISPATCH·AUTOLAND·MCC는 살아 있는 것만)
+const warm = new WarmStart();
+{
+  const cfg = loadWarmStartConfig();
+  warm.restore(readWarmCache(Date.now(), cfg), cfg.maxAgeMin * 60_000);
+}
+const shown = () => warm.display(current, Date.now());
 let signature = "";
 const listeners = new Set<(s: Snapshot) => void>();
 const alertListeners = new Set<(e: AlertEvent) => void>(); // SUPERVISOR alerts(ATC-87)
@@ -176,7 +185,11 @@ async function tick() {
     timed("tick:radio", () => radioFeed.poll());
 
     current = next;
-    if (sig !== signature) {
+    // 살아 있는 따뜻한 스냅샷만 1분에 한 번 저장한다. 스위치가 꺼지면 저장도 복원본 보이기도 멈춘다. 복원본을 막 버렸으면 화면에 살아 있는 것을 보낸다
+    const { save, ended: settled } = warm.tick(next, Date.now(), () => loadWarmStartConfig().mode);
+    if (save) void writeWarmCache(save);
+    if (warm.active()) signature = sig; // 복원본을 보이는 동안 화면은 이미 그것을 받았다
+    else if (settled || sig !== signature) {
       signature = sig;
       for (const l of listeners) l(next);
     }
@@ -202,7 +215,7 @@ app.get("/api/supervisor/auth", (c) => c.json({ verdict: verdictFor(c) })); // �
 
 const getSnapshot = async () => current ?? (current = await buildSnapshot());
 
-app.get("/api/snapshot", async (c) => c.json(await getSnapshot()));
+app.get("/api/snapshot", async (c) => c.json(shown() ?? (await getSnapshot()))); // 복원본이면 restored 표시가 붙는다(WARM START)
 app.get("/api/version", (c) => c.json(version()));
 mountController(app, getSnapshot, eventLog, (s) => fuelWatch(s), mccLandInfo);
 mountRelay(app, getSnapshot); // SUPERVISOR RELAY(ATC-271): 화면에서 AIRCRAFT에게 보내는 글. 만들기는 화면의 클릭뿐(fromThisApp)
@@ -336,7 +349,8 @@ app.get("/api/events", (c) => {
     const sendAlert = (e: AlertEvent) => stream.writeSSE({ event: "alert", data: JSON.stringify(e) });
     const sendSummary = (s: SupervisorSummary) => stream.writeSSE({ event: "summary", data: JSON.stringify(s) });
     if (want.has("version")) await sendVersion();
-    if (want.has("snapshot") && current) await send(current);
+    const first = shown();
+    if (want.has("snapshot") && first) await send(first);
     if (want.has("alert")) {
       const items = currentAlerts();
       await sendAlert({ raised: items, cleared: [], initial: true, items });

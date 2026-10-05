@@ -118,3 +118,7 @@ LANDING SEQUENCE 머리의 AUTOLAND 줄과 PR의 AUTOLAND 표시를 본다([개�
 ## atc 서버가 CPU를 많이 쓴다
 
 설정 → OPERATIONS → **JOB TIMING**(기본 on, SUPERVISOR 전용)이 서버의 일마다 몇 번 돌고 이벤트 루프를 얼마나 붙들었는지 5분 구간으로 `job-timing/<날짜>.jsonl`에 적습니다(ATC-525, [job-timing.md](../job-timing.ko.md)). 지난 한 시간을 출처별로 합친 값은 `curl -s localhost:7700/api/job-timing?hours=1`입니다. 재기만 하고 화면은 바뀌지 않으며, 끄면 재지도 적지도 않습니다. `dropped`가 0이 아니면 남기지 못한 시간이 있다는 뜻입니다. 구간마다 이벤트 루프 지연의 p99·max(`loop`)도 적히고, p99가 기준(기본 250ms)을 넘는 구간이 연달아 3개이면 CAUTION 알림 "서버 이벤트 루프가 느림"이 오릅니다(ATC-538, 설정 → OPERATIONS → EVENT LOOP LAG에서 끔). 동기 시간만 잡히므로 `await` 뒤에 도는 일(자식 프로세스 spawn)은 호스트에서 `top -H -p <pid>`나 시험 서버의 `NODE_OPTIONS=--cpu-prof`로 봅니다.
+
+## 재시작 직후 "마지막 상태를 보여 주는 중"이라는 줄이 뜬다
+
+서버가 막 재시작해 첫 따뜻한 스냅샷(약 90초)을 기다리는 동안 마지막으로 저장한 스냅샷(최대 10분 전 것)을 보여 주는 한 줄입니다(WARM START, ATC-539, [warm-start.ko.md](../warm-start.ko.md)). 보이기만 하고 DISPATCH·AUTOLAND·MCC·알림은 쓰지 않으며, 첫 살아 있는 스냅샷이 오면 사라집니다. 계속 남으면 Linear·GitHub 읽기가 막힌 것이니 그쪽을 봅니다. 상태 폴더의 `warm-snapshot.json`은 지워도 안전하고, 설정 → OPERATIONS → **WARM START**로 끌 수 있습니다.
