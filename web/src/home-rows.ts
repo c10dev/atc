@@ -15,8 +15,13 @@ const NEED_BY_KIND: Record<string, string> = {
   UNDELIVERED: "닿지 못한 글을 손으로 전합니다",
   GO: "CAPTAIN이 SUPERVISOR의 go를 기다립니다",
   BACKLOG: "atc가 올린 제안을 발권하거나 버립니다",
+  DECISION: "관제 세션이 사람의 결정을 기다립니다: 선택지를 고르고, 덧붙일 말은 선택입니다",
   ARRIVED: "ARRIVED인데 Linear 이슈가 아직 진행 중입니다: 확인하고 Done으로 옮깁니다",
 };
+// 줄의 단추가 HOME을 다시 불러 오지 않고 줄을 열어 상세에서 하는 동작인가(ATC-541: DECISION 추가)
+// DECISION의 서버 primary는 "열기(#home)" 링크라 단추가 HOME을 다시 불러 왔다. 서버 타입은 그대로 두고 HOME이 DECISION을 inDetail로 본다: 옵션 버튼은 DecisionAnswer 하나(Actions 경유)
+export const opensInDetail = (i: { kind: string; primary: { action: string; hash?: string }; hand?: unknown; offer?: unknown; decision?: unknown }): boolean =>
+  i.primary.action === "approve" || i.primary.action === "brake" || i.primary.action === "done" || Boolean(i.hand || i.offer || i.decision) || (i.kind === "HUMAN CHECK" && i.primary.hash === "#home");
 export const homeNeedOf = (i: { kind: string; need?: string }): string => i.need ?? NEED_BY_KIND[i.kind] ?? i.kind;
 
 // ── SCHEDULE을 나눈 뒤 HOME에 남은 것(ATC-378, docs/layout.md Y3) ──
