@@ -12,11 +12,13 @@ export interface FlightPr {
   flight: string; // "VOC-228"
   number: number;
   state: PrState;
+  at?: string; // 머지 시각(LOGBOOK ARRIVED). 모르면 비운다(stranded)
 }
 
 const isOpen = (c: Clearance) => !c.readbackAt && !c.unableAt && !c.cancelledAt;
 
-// 고르는 조건: 열려 있고(READBACK·ROGER·UNABLE·취소 없음), FLIGHT가 있고, 그 FLIGHT의 PR이 하나 이상이며 모두 머지됐거나 닫혔다.
+// 고르는 조건: 열려 있고(READBACK·ROGER·UNABLE·취소 없음), FLIGHT가 있고, 그 FLIGHT의 PR이 하나 이상이며 모두 머지됐거나 닫혔고,
+// CLEARANCE가 가장 늦은 머지보다 먼저 나갔다(머지 뒤에 나간 CLEARANCE는 후속 일일 수 있어 고르지 않는다. 머지 시각을 아는 PR이 없으면 고르지 않는다).
 // CLEARANCE에는 PR 번호가 없어 FLIGHT가 고리다. FLIGHT가 없거나 PR이 아직 없는 것은 고르지 않는다(기존 규칙대로 TOWER가 처리한다)
 export function mootClearancesOf(clearances: readonly Clearance[], prs: readonly FlightPr[], sw: MootSwitch): Clearance[] {
   if (sw === "off") return [];
@@ -25,7 +27,9 @@ export function mootClearancesOf(clearances: readonly Clearance[], prs: readonly
   return clearances.filter((c) => {
     if (!isOpen(c) || !c.flight) return false;
     const list = byFlight.get(c.flight);
-    return Boolean(list?.length) && list!.every((p) => p.state !== "open");
+    if (!list?.length || !list.every((p) => p.state !== "open")) return false;
+    const lastMerge = Math.max(...list.map((p) => (p.at ? Date.parse(p.at) : NaN)).filter((t) => !Number.isNaN(t)), -Infinity);
+    return Date.parse(c.at) <= lastMerge;
   });
 }
 

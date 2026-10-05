@@ -10,7 +10,7 @@ const H = 3_600_000;
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 const clr = (id: string, flight: string | null, over: Partial<Clearance> = {}): Clearance => ({ id, at: ago(2 * H), to: "s1", toName: "TEAM_P", type: "HOLD", stand: null, flight, text: "x", readbackAt: null, cancelledAt: null, ...over });
-const pr = (flight: string, number: number, state: FlightPr["state"]): FlightPr => ({ flight, number, state });
+const pr = (flight: string, number: number, state: FlightPr["state"], at: string | undefined = ago(H)): FlightPr => ({ flight, number, state, at });
 
 test("two open CLEARANCEs on FLIGHTs whose PRs are all merged are both picked (the C-0416 / C-0716 shape)", () => {
   const picked = mootClearancesOf([clr("C-0416", "VOC-300"), clr("C-0716", "VOC-228")], [pr("VOC-300", 10, "merged"), pr("VOC-228", 11, "merged"), pr("VOC-228", 12, "closed")], "on");
@@ -29,6 +29,13 @@ test("not picked: no FLIGHT, FLIGHT without a PR, an open PR beside a merged one
     clr("C-7", "A-3"), // picked
   ];
   assert.deepEqual(mootClearancesOf(list, prs, "on").map((c) => c.id), ["C-7"]);
+});
+
+test("not picked: a CLEARANCE sent after the last merge (follow-up work), or when no merge time is known", () => {
+  const after = clr("C-1", "A-1", { at: ago(H / 2) }); // merge was 1 h ago
+  const noTime = clr("C-2", "A-2");
+  const before = clr("C-3", "A-1", { at: ago(2 * H) });
+  assert.deepEqual(mootClearancesOf([after, noTime, before], [pr("A-1", 1, "merged"), { flight: "A-2", number: 2, state: "merged" }], "on").map((c) => c.id), ["C-3"]);
 });
 
 test("with the switch off nothing is picked and the counter does not move", () => {

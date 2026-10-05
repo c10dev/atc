@@ -58,38 +58,35 @@ function appendMootEvents(lines: readonly MootEvent[], file = EVENTS()) {
 
 // FLIGHT별 PR 상태: 열린 PR(스냅샷), 머지된 PR(LOGBOOK의 ARRIVED, 되돌린 것은 뺀다), 기본 브랜치에 닿지 않은 머지(stranded).
 // 머지 없이 닫힌 PR은 서버가 기록하지 않아 모른다(그런 FLIGHT는 고르지 않는다)
-export function flightPrsOf(s: Pick<Snapshot, "pulls" | "stranded">, logbook: readonly { flight: string | null; reverted: boolean; pr?: { number: number } }[]): FlightPr[] {
+export function flightPrsOf(s: Pick<Snapshot, "pulls" | "stranded">, logbook: readonly { flight: string | null; reverted: boolean; arrivedAt?: string; pr?: { number: number } }[]): FlightPr[] {
   const out: FlightPr[] = [];
   const seen = new Set<string>();
-  const add = (flight: string | null | undefined, number: number, state: FlightPr["state"]) => {
+  const add = (flight: string | null | undefined, number: number, state: FlightPr["state"], at?: string) => {
     if (!flight || seen.has(`${flight}#${number}`)) return;
     seen.add(`${flight}#${number}`);
-    out.push({ flight, number, state });
+    out.push({ flight, number, state, at });
   };
   for (const p of s.pulls ?? []) add(p.ticketKey, p.number, "open");
-  for (const e of logbook) if (e.pr && !e.reverted) add(e.flight, e.pr.number, "merged");
+  for (const e of logbook) if (e.pr && !e.reverted) add(e.flight, e.pr.number, "merged", e.arrivedAt);
   for (const x of s.stranded ?? []) add(x.flight, x.number, "merged");
   return out;
 }
 
-// 브리핑이 읽는다: 지금 고른 CLEARANCE(스위치 off면 없다). 처음 고른 것은 listed로 기록한다
-export function mootNow(s: Pick<Snapshot, "pulls" | "stranded">, clearances: readonly Clearance[] = allClearances(), now = Date.now(), file = EVENTS()): Clearance[] {
+// 브리핑이 읽는다: 지금 고른 CLEARANCE(스위치 off면 없다). 읽기만 한다 — listed 기록은 1분 일(trackMoot)이 한다
+export function mootNow(s: Pick<Snapshot, "pulls" | "stranded">, clearances: readonly Clearance[] = allClearances()): Clearance[] {
   const sw = loadMootSwitch();
   if (sw === "off") return [];
-  const prs = flightPrsOf(s, loadLogbook());
-  const picked = mootClearancesOf(clearances, prs, sw);
-  try {
-    appendMootEvents(listedEvents(picked, prs, readMootEvents(file), now), file);
-  } catch (e) {
-    console.error("[atc] clearance moot listing failed:", e);
-  }
-  return picked;
+  return mootClearancesOf(clearances, flightPrsOf(s, loadLogbook()), sw);
 }
 
-// 1분 일: 취소된 뒤 틀렸다고 드러난 것을 misfire로 덧붙인다
+// 1분 일: 새로 고른 것을 listed로, 취소된 뒤 틀렸다고 드러난 것을 misfire로 덧붙인다
 export function trackMoot(s: Pick<Snapshot, "pulls" | "stranded">, now = Date.now(), file = EVENTS()): MootEvent[] {
   const sw = loadMootSwitch();
-  const lines = newMisfires(readMootEvents(file), allClearances(), flightPrsOf(s, []).filter((p) => p.state === "open"), now, sw);
+  if (sw === "off") return [];
+  const clearances = allClearances();
+  const prs = flightPrsOf(s, loadLogbook());
+  const events = readMootEvents(file);
+  const lines = [...listedEvents(mootClearancesOf(clearances, prs, sw), prs, events, now), ...newMisfires(events, clearances, prs.filter((p) => p.state === "open"), now, sw)];
   appendMootEvents(lines, file);
   return lines;
 }
