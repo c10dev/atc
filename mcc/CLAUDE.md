@@ -64,7 +64,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 - `user` 등급 PR이 `kApproval.ok`라 착륙했으면 LOG에 `LANDED · user · K 승인 <release id>`(큐의 `kApproval.release`)와 선언한 K 효과를 한 줄로 적는다. `kApproval.ok`가 아닌 `user` PR은 LOG에 `kApproval.why`를 적고 넘어간다(INSPECTION은 그대로 한다).
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - `rts.due`가 true면 착륙보다 먼저 `mcc rts`를 친다(ATC-121). 한 바퀴에 한 번. 착륙시킨 바로 뒤에는 같은 바퀴에서 `mcc rts`를 치지 않는다 — 방금 착륙한 커밋의 CI는 아직 없고, 서버도 마지막 착륙이 main CI를 읽은 때보다 늦으면 "할 때가 아님"으로 답한다. 착륙한 커밋은 다음 바퀴에서 `rts.due`가 되면 배포한다.
-- ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 SUPERVISOR에게 보고한다. 풀기는 SUPERVISOR가 설정 창에서 한다.
+- ROLLBACK이 났으면(`rts.why`에 ROLLBACK) RTS를 시도하지 않고 MCC LOG로 SUPERVISOR에게 보고한다(멈출 이유가 아니다, job을 `blocked`로 두지 않는다). 풀기는 SUPERVISOR가 설정 창에서 한다.
 
 ## 컨텍스트 CAP
 
@@ -82,6 +82,8 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 ## SUPERVISOR의 결정은 카드로 (ATC-352)
 
 - **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **SUPERVISOR의 머지를 기다리는 것도 이 규칙의 예외가 아니다**(ATC-515). `user` 등급 PR이나 ESCALATE한 PR은 이미 SUPERVISOR QUEUE에 있다(`mcc escalate` 기록과 LANDING 줄). MCC LOG에 한 줄 쓰고 job을 `working`/`idle`로 둔 채 턴을 평소처럼 끝낸다. 머지를 기다리며 `blocked`로 두지 않는다.
+- 이 문서의 "SUPERVISOR에게 보고"는 **MCC LOG에 적는 보고**이지 멈추라는 뜻이 아니다. SUPERVISOR의 K1–K3 결정만 묻고, PR이면 `mcc escalate`로 묻는다.
 - **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 (이 세션에는 `decision` 명령이 없어 FLIGHT RECORDER 줄은 OCC·TOWER 세션만 남긴다) 카드로는 올리지 않는다.
 - PR에 대한 K1–K3 결정은 이미 카드다: `mcc escalate <PR> -- '<사유>'`로 user 등급으로 올린다. PR이 아닌 K1–K3 결정은 MCC LOG 줄에 적고 기본값으로 진행한다. 카드는 OCC나 TOWER가 올린다. 이 세션의 guard는 `atcctl decision`을 허용하지 않는다(바꾸려면 guard 변경이라 SUPERVISOR 승인이 필요하다).
 - K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.

@@ -64,7 +64,7 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 - When a `user`-tier PR lands because `kApproval.ok`, log `LANDED · user · K approval <release id>` (the queue's `kApproval.release`) and the declared K effects in one line. For a `user` PR that is not `kApproval.ok`, log `kApproval.why` and move on (INSPECTION is still done).
 - When a `flagged` PR lands, log the control rules (files) that changed and the side-effect files that changed (`SIDE_EFFECT` in `deploy/landing-tier.mjs`), one line each (`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
 - When `rts.due` is true, run `mcc rts` before landing (ATC-121), once per pass. Don't run `mcc rts` right after a landing in the same pass: the commit you just landed has no CI yet, and the server answers "not due" when the last landing is newer than the main CI state it read. The landed commit is deployed on a later pass, when `rts.due` is true.
-- After a ROLLBACK (`rts.why` mentions ROLLBACK), don't try RTS; report to the SUPERVISOR, who clears it in the settings window.
+- After a ROLLBACK (`rts.why` mentions ROLLBACK), don't try RTS; report to the SUPERVISOR in the MCC LOG (not a reason to stop; never leave the job `blocked`), who clears it in the settings window.
 
 ## Context cap
 
@@ -82,6 +82,8 @@ The earlier conversation is not carried over, and nothing is lost because all st
 ## SUPERVISOR decisions go on a card (ATC-352)
 
 - **Never end a turn waiting for the SUPERVISOR.** Do not leave the job `blocked` or stop with only a question: such a session shows up on screen as a rule-breach WARNING. Finish the rest of your work and end the turn normally.
+- **Waiting for the SUPERVISOR to merge a PR is no exception to this rule either** (ATC-515). A `user`-tier PR, or a PR you ESCALATEd, is already in the SUPERVISOR QUEUE (the `mcc escalate` record and the LANDING row). Write one MCC LOG line, leave the job `working`/`idle` and end the turn as usual. Never go `blocked` waiting for a merge.
+- "Report to the SUPERVISOR" anywhere in this manual is a **report in the MCC LOG**, not a reason to stop. Only a K1–K3 decision is asked, and for a PR it goes out as `mcc escalate`.
 - **Only K1–K3 decisions are asked.** Every other decision proceeds on a default you state: say the default in one line in your log (you have no `decision` command, so the FLIGHT RECORDER line comes only from OCC and TOWER sessions). It never becomes a card.
 - A K1–K3 decision about a PR is already a card: `mcc escalate <PR> -- '<reason>'` raises it to the user tier. For a K1–K3 decision that is not about a PR, say so in your MCC LOG line and carry on with the default; OCC or TOWER files the card. This session's guard does not allow `atcctl decision` (changing that is a guard change that needs the SUPERVISOR's approval).
 - K1/K2/K3 decisions stay with the SUPERVISOR. The card is only how they are asked.

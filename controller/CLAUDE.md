@@ -54,18 +54,21 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | AIRCRAFT HEALTH (`open.health`, `open.healthAlerts`, `events`의 `alert.raised`·`alertKind: "health"`) | 팀 세션이 멈췄거나 무언가를 기다린다(docs/fleet.ko.md 8.8). `level: "alert"`인 경보가 새로 뜨면 SUPERVISOR에게 한 번 보고한다(`message`와, `open.health`의 그 AIRCRAFT `next` 그대로). `NETWORK`, 그리고 같은 ACCOUNT(ACCOUNT를 모르면 같은 reset)의 `LIMIT`은 경보 하나로 온다. `level: "info"`(`PENDING`, `DENIED`, 짧은 `THROTTLE`·`HUNG`)는 ATC LOG에만 적는다. 그 팀에는 메시지를 보내지 않는다 — 다시 보내기는 지시를 보낸 쪽(OCC·사용자)이나 SUPERVISOR 몫이다. 코드가 있는 AIRCRAFT에는 새 CLEARANCE를 내지 않고, READBACK이 늦어도 재송신하지 않는다(코드가 풀리면 위 규칙대로) |
 | FUEL (`open.fuel`) | 한 ACCOUNT(모르면 AIRCRAFT)가 사용 한도의 INFO 임계값(기본 80 %) 이상을 썼다(docs/fuel.md 6, ATC-55). 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다(창이 reset되면 새 `key`). `level: "hold"`는 HOLD 임계값(기본 95 %) 이상이라는 뜻이고, DISPATCH가 실제로 건너뛰는지는 SUPERVISOR 스위치가 정한다. 팀에는 메시지를 보내지 않고, 계정을 바꾸라고 하지 않는다 |
 | FUEL LEAK·COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL 경고(docs/fuel.md 8.6, ATC-56). 경고만 하고 아무것도 막지 않는다. `open.fuelLeaks`(24시간 안 LEAK이 큰 팀 AIRCRAFT)에 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다. `open.coldCache`(캐시가 식은 HOLDING CAPTAIN)의 AIRCRAFT에 낼 CLEARANCE가 있으면 그대로 내고 `text`를 ATC LOG에 적는다. 캐시를 데우려고 미리 메시지를 보내거나 CLEARANCE를 미루지 않는다. FUEL 때문에 팀에 메시지를 보내지 않는다. `open.fuelError`가 있으면 대화 기록을 읽지 못한 것이니 ATC LOG에만 적는다 |
-| NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. SUPERVISOR에게 보고 |
-| UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
-| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 그래도 답이 없으면 SUPERVISOR 보고 |
+| NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. ATC LOG로 SUPERVISOR에게 보고(멈출 이유가 아니다) |
+| UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | ATC LOG로 SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
+| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 그래도 답이 없으면 ATC LOG로 SUPERVISOR에게 보고하고 턴을 평소처럼 끝낸다(`blocked`로 두지 않는다). 답은 다음 tick에 온다 |
 | 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
-| 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 SUPERVISOR에게 보고한다 |
+| 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 ATC LOG로 SUPERVISOR에게 보고한다 |
 | 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
 | 팀이 정한 형식 없이 거부하거나 질문 | SUPERVISOR에게 전한다(결정이 필요하면 카드로 올리고 턴을 끝낸다. 기다리며 멈추지 않는다) |
 | 상황이 풀림 (`alert.cleared`) | 그 건의 READBACK 대기 CLEARANCE가 남아 있으면 `cancel` |
+| 이유를 잃은 CLEARANCE (`clearances.moot`, ATC-515) | 열려 있는데(READBACK·ROGER·UNABLE·취소 없음) 그 FLIGHT의 PR이 모두 머지됐거나 닫혔다. 서버가 고르기만 하니 항목마다 `node atcctl.mjs cancel <id>`를 직접 내고 ATC LOG에 id를 적는다(위 `alert.cleared` 줄과 같은 취소다. 새로 보내지 않는다). 목록이 비면 아무것도 하지 않는다. SUPERVISOR가 설정 창의 CLEARANCE MOOT를 끄면 목록이 늘 비어 이 길로는 취소하지 않는다 |
 
 ## SUPERVISOR의 결정은 카드로 (ATC-352)
 
 - **SUPERVISOR를 기다리며 턴을 끝내지 않는다.** job을 `blocked`로 두거나 질문만 남기고 멈추지 않는다. 그런 세션은 화면에 규칙 위반 WARNING으로 뜬다. 하던 일을 마저 하고 턴을 평소처럼 끝낸다.
+- **팀의 답을 기다리는 것도 멈출 이유가 아니다**(ATC-515). READBACK·UNABLE·STANDBY를 기다리는 CLEARANCE가 있어도 job은 `working`/`idle`로 두고 ATC LOG 한 줄을 쓰고 턴을 평소처럼 끝낸다. 방금 보낸 CLEARANCE는 10분 창 안이고, 답은 이후 tick에서 `clearances.overdue`와 팀 답장 줄로 받는다. 턴을 붙들고 기다리지 않는다.
+- 위 표의 "SUPERVISOR에게 보고"는 **ATC LOG에 적는 보고**이지 멈추라는 뜻이 아니다. `blocked`로 두지 않는다. SUPERVISOR의 K1–K3 결정만 DECISION 카드로 묻는다(아래).
 - **묻는 것은 K1–K3 결정뿐이다.** 그 밖의 결정은 정한 기본값으로 진행한다: 기본값을 로그에 한 줄로 밝히고 `node atcctl.mjs decision default tower <key> --what '<결정, 한 줄>' --chose '<택한 기본값>'`으로 남긴다(FLIGHT RECORDER에 적히고 카드는 없다).
 - K1–K3 결정에만: `node atcctl.mjs decision file tower <key> --ask '<SUPERVISOR가 읽는 한국어 질문>' --option '<선택지 1>' --option '<선택지 2>' [--pr <번호> --head <sha>]`로 QUEUE 카드 한 장(kind DECISION)을 올린다. 선택지는 2~6개, 각자 한 줄이다. 같은 결정이면 `<key>`가 늘 같다(PR이면 `pr#<번호>@<head>`). 같은 `<key>`는 한 번만 올라가고 `ALREADY FILED`로 답한다. 같은 일로 다시 묻지 않는다. 카드를 올리는 일 외에 승인·전송·머지는 하지 않는다.
 - K1/K2/K3 결정은 그대로 SUPERVISOR 몫이다. 카드는 묻는 방법일 뿐 결정을 대신하지 않는다.
