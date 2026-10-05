@@ -315,4 +315,6 @@ export interface Snapshot {
   // 세션이 없는 백그라운드 AIRCRAFT(ATC-129): atc가 띄운 적이 있고 등록부에 있으며 RETIRED·RESTARTING이 아닌 것. DISPATCH 후보로 남고(LAUNCH on approve),
   // cut이 있으면 한도로 끊긴 마지막 턴(reset이 지나면 RESUME 카드)
   absent?: AbsentAircraft[];
+  // WARM START(ATC-539): 재시작 직후 저장해 둔 마지막 스냅샷을 보여 주는 중이면 채운다(표시 전용: 서버의 어떤 동작도 이 값을 읽지 않는다). 살아 있는 스냅샷에는 없다
+  restored?: { savedAt: string; ageSec: number };
 }

@@ -248,3 +248,16 @@ test("UNABLE(ATC-122): FLIGHT가 있는 CLEARANCE와 declined FLIGHT PLAN을 하
   );
   assert.equal(issue("VOC-5")?.key, "VOC-5|unable|D-0004");
 });
+
+test("merged-not-done(ATC-544): Linear 상태를 읽어 열려 있다고 안 FLIGHT만. 대역 티켓·쌓인 PR의 열린 윗 PR은 알리지 않는다", () => {
+  const dep = [proposal("D-1", "VOC-1", "departed", { accepted: ago(30), departed: ago(20) })];
+  const codes = (over: Partial<FollowInput>) => followingOf(input({ proposals: dep, logbook: [logEntry("VOC-1", 30)], ...over })).flatMap((f) => f.issues.map((i) => i.code));
+  // Linear를 읽었고 Backlog인 FLIGHT: 줄이 있다
+  assert.deepEqual(codes({ tickets: [ticket("VOC-1", { state: "Backlog", stateType: "backlog" })] }), ["merged-not-done"]);
+  // 읽는 창 밖이라 snapshot이 만든 대역 티켓: 줄이 없다(연결이 없을 때도 같다)
+  for (const state of ["Linear에 없음", "Linear 미연결"]) assert.deepEqual(codes({ tickets: [ticket("VOC-1", { state, stateType: "unknown" })] }), [], state);
+  // 쌓인 FLIGHT: 아래 PR은 머지됐지만 윗 PR이 아직 열려 있다
+  assert.deepEqual(codes({ tickets: [ticket("VOC-1")], pulls: [pr(22, "VOC-1", { stack: { base: null, chain: [22] } })] }), []);
+  // 열린 PR이 없으면 그대로 줄이 있다
+  assert.deepEqual(codes({ tickets: [ticket("VOC-1")] }), ["merged-not-done"]);
+});

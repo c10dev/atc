@@ -300,6 +300,25 @@
   margin-left: auto;
 }
 
+/* WARM START(ATC-539): 복원본을 보여 주는 동안 한 줄. 새 버전 알림과 같은 줄 모양. 경보가 아니라 데이터 나이를 알리는 것이라 신호색 없이 중립 토큰만 쓴다(디자인 언어 3.2) */
+.restored-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--gutter);
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.restored-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+}
+
 /* UPDATE bar(ATC-82): 서비스가 origin/main보다 뒤일 때. 새 버전 알림 바로 위. 색은 상태별 토큰 */
 .update-bar {
   --update-tone: var(--cyan);
