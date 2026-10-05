@@ -1,3 +1,5 @@
+import type { HomeControl } from "../../server/queue-contract.ts";
+
 // HOME(ATC-377)가 그릴 줄을 고르는 순수 함수. 새 규칙은 없다: 알림과 FOLLOW 보드가 이미 센 것에서 한 곳에만 둘 것을 고른다.
 
 // 알림·막힌 FLIGHT 줄을 고르는 규칙은 서버로 갔다: server/supervisor-queue.ts의 actionableAlertsOf·stuckRowsOf(ATC-454)
@@ -22,6 +24,17 @@ const NEED_BY_KIND: Record<string, string> = {
 // DECISION의 서버 primary는 "열기(#home)" 링크라 단추가 HOME을 다시 불러 왔다. 서버 타입은 그대로 두고 HOME이 DECISION을 inDetail로 본다: 옵션 버튼은 DecisionAnswer 하나(Actions 경유)
 export const opensInDetail = (i: { kind: string; primary: { action: string; hash?: string }; hand?: unknown; offer?: unknown; decision?: unknown }): boolean =>
   i.primary.action === "approve" || i.primary.action === "brake" || i.primary.action === "done" || Boolean(i.hand || i.offer || i.decision) || (i.kind === "HUMAN CHECK" && i.primary.hash === "#home");
+// 줄을 열었을 때 HOME이 그리는 동작 하나(ATC-546, server/queue-contract.ts). ItemDetail과 계약 시험이 같은 함수를 쓴다.
+// 서버 primary는 approve·brake·open·done뿐이라 hand(손으로 전하기)·answer(선택지·PASS/FAIL)는 줄이 든 자료(hand·offer·decision)나 HUMAN CHECK로 가른다
+export const homeControlOf = (i: { kind: string; primary: { action: string; op?: string; hash?: string }; hand?: unknown; offer?: unknown; decision?: unknown; brake?: unknown; flight?: string }): HomeControl => {
+  const p = i.primary;
+  if (p.action === "done") return "done";
+  if (p.action === "approve" && p.op) return "approve";
+  if (p.action === "brake" && i.brake && i.flight) return "brake";
+  if (i.decision || (i.kind === "HUMAN CHECK" && p.hash === "#home")) return "answer";
+  if (i.hand || i.offer) return "hand";
+  return "open";
+};
 export const homeNeedOf = (i: { kind: string; need?: string }): string => i.need ?? NEED_BY_KIND[i.kind] ?? i.kind;
 
 // ── SCHEDULE을 나눈 뒤 HOME에 남은 것(ATC-378, docs/layout.md Y3) ──
