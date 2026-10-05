@@ -11,11 +11,13 @@ import "./Drawer.css";
 import "./DutyDrawer.css";
 import "./DutyChat.css";
 import { apiSend } from "./api.ts";
+import type { Older } from "./dutyOlder.ts";
 
 // DUTY 대화의 공유 부품(ATC-477, docs/duty-screen.md 3.1). 로그, 입력, NEW SHIFT, 카드 맥락(context hook)을 한 곳에 두고
 // 서랍(DutyDrawer.tsx)과 화면(views/DutyScreen.tsx)은 이것을 두른 틀일 뿐이다. DUTY의 글은 소리로 읽지 않는다.
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const IMAGE_MAX = 5 * 1024 * 1024;
+const OLDER_PX = 120; // 로그 맨 위에서 이만큼 안에 오면 앞쪽 쪽을 불러온다(ATC-479)
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; error?: string; queued?: boolean }> {
   try {
@@ -156,40 +158,68 @@ function Answer({ src, live, fill }: { src: string; live: boolean; fill: (c: str
   );
 }
 
-const utcTime = (t: string) => (/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(t) ? `${t.slice(11, 16)}Z` : "");
+// 줄마다 옅은 UTC 시각(ATC-479). 가리키면 날짜까지 모두 보인다. Tab 정지점은 만들지 않고(줄마다 하나면 긴 로그가 키보드를 막는다) 스크린 리더에는 aria-label로 전체 시각을 준다. 시각이 없으면 아무것도 그리지 않는다
+const UTC_RE = /^(\d{4}-\d\d-\d\d)T(\d\d:\d\d)(:\d\d)?/;
+export function Utc({ t }: { t: string }) {
+  const m = UTC_RE.exec(t);
+  if (!m) return null;
+  const full = `${m[1]} ${m[2]}${m[3] ?? ":00"}Z`;
+  return (
+    <time className="du-time mono" dateTime={t} title={full} aria-label={`${full} UTC`}>
+      <span className="du-time-short">{m[2]}Z</span>
+      <span className="du-time-full">{full}</span>
+    </time>
+  );
+}
 
 function Item({ it, ctx, live, fill, chips, onGo }: { it: ChatItem; ctx: CardCtx; live: boolean; fill: (c: string) => void; chips: boolean; onGo: (id: string) => void }) {
+  // 화면의 chip 줄도 시각을 갖는다. data-n은 검색 결과로 갈 자리(기록의 줄 번호)
+  const stamped = (child: React.ReactNode) =>
+    chips ? (
+      <div className="du-stamped" data-n={it.n}>
+        {child}
+        <Utc t={it.t} />
+      </div>
+    ) : (
+      child
+    );
   switch (it.kind) {
     case "user":
       return (
-        <div className="du-msg du-user" id={`du-${it.id}`} title={it.t}>
-          <span className="du-who">SUPERVISOR</span>
+        <div className="du-msg du-user" id={`du-${it.id}`} data-n={it.n}>
+          <span className="du-who">
+            SUPERVISOR <Utc t={it.t} />
+          </span>
           <p className="du-text">{it.text}</p>
           {it.image && <span className="du-img mono">▣ {it.image}</span>}
         </div>
       );
     case "text":
       return (
-        <div className="du-msg du-duty" id={`du-${it.id}`}>
+        <div className="du-msg du-duty" id={`du-${it.id}`} data-n={it.n}>
           <span className="du-who">
-            DUTY <time className="du-time mono" dateTime={it.t} title={it.t}>{utcTime(it.t)}</time>
+            DUTY <Utc t={it.t} />
           </span>
           <Answer src={it.text} live={live} fill={fill} />
         </div>
       );
     case "notice":
-      return <div className="du-notice">{it.text}</div>;
+      return (
+        <div className="du-notice" data-n={it.n}>
+          {it.text} <Utc t={it.t} />
+        </div>
+      );
     case "shift":
       return (
-        <div className="du-shift" id={`du-${it.id}`}>
-          — NEW SHIFT —
+        <div className="du-shift" id={`du-${it.id}`} data-n={it.n}>
+          — NEW SHIFT — <Utc t={it.t} />
         </div>
       );
     case "card":
-      return chips ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DutyCard it={it} ctx={ctx} />;
+      return stamped(chips ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DutyCard it={it} ctx={ctx} />);
     case "draft":
       // 화면에서는 결정을 기다리는 초안도 chip 한 줄이다. 정해 둔 결정 목록 카드(retire)는 패널에 앉지 않으므로 그대로 둔다
-      return chips && it.draftKind !== "retire" ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DraftCard it={it} ctx={ctx} />;
+      return stamped(chips && it.draftKind !== "retire" ? <DecisionChip it={it} ctx={ctx} onGo={onGo} /> : <DraftCard it={it} ctx={ctx} />);
     case "tool":
       return null; // 도구 줄은 foldTools가 턴마다 묶어 낸다
   }
@@ -198,7 +228,8 @@ function Item({ it, ctx, live, fill, chips, onGo }: { it: ChatItem; ctx: CardCtx
 // 대화 로그. 맨 아래에 붙어 있으면(stick) 새 글과 창 크기 변화를 따라 내려간다. 높이는 틀의 CSS 배치가 정하고 여기서 재지 않는다
 // cards: 카드를 대화 속에 어떻게 두는가. "inline"(서랍)은 작은 카드 그대로, "chips"(화면)는 한 줄 chip이고 카드는 오른쪽 패널에 있다.
 // waitingOnly(서랍의 "결정 n" 칩): 대화를 기다리는 카드만 보인다. onGo: chip을 누르면 패널의 그 카드로 간다
-export function DutyLog({ d, filter = "", cards = "inline", waitingOnly = false, onGo = () => {} }: { d: DutyChatState; filter?: string; cards?: "inline" | "chips"; waitingOnly?: boolean; onGo?: (id: string) => void }) {
+// older(ATC-479, 화면만): 앞쪽 기록. 위로 스크롤해 맨 위에 닿으면 한 쪽 더 불러오고, 앞에 붙여도 보던 자리는 그대로다
+export function DutyLog({ d, filter = "", cards = "inline", waitingOnly = false, onGo = () => {}, older }: { d: DutyChatState; filter?: string; cards?: "inline" | "chips"; waitingOnly?: boolean; onGo?: (id: string) => void; older?: Older }) {
   const { chat, ctx, thinking, stick } = d;
   const st = chat.status;
   const logRef = useRef<HTMLDivElement>(null);
@@ -206,13 +237,34 @@ export function DutyLog({ d, filter = "", cards = "inline", waitingOnly = false,
   const resizing = useRef(false);
   const searching = filter.trim() !== "" || waitingOnly;
   const waitingIds = useMemo(() => (waitingOnly ? new Set(waitingOf(chat.items, ctx).map((i) => i.id)) : null), [waitingOnly, chat.items, ctx]);
+  const olderItems = older?.items;
+  const all = useMemo(() => (olderItems && olderItems.length > 0 ? [...olderItems, ...chat.items] : chat.items), [olderItems, chat.items]);
   const items = useMemo(() => {
-    const byWaiting = waitingIds ? chat.items.filter((i) => waitingIds.has(i.id)) : chat.items;
+    const byWaiting = waitingIds ? all.filter((i) => waitingIds.has(i.id)) : all;
     return filter.trim() !== "" ? byWaiting.filter((i) => matchesQuery(i, filter)) : byWaiting;
-  }, [chat.items, filter, waitingIds]);
+  }, [all, filter, waitingIds]);
   const rows = useMemo(() => (searching ? items.map((it) => ({ kind: "item" as const, it })) : foldTools(items, thinking)), [items, thinking, searching]);
   const lastUser = items.reduce((n, it, i) => (it.kind === "user" ? i : n), -1);
   const lastText = items.reduce((n, it, i) => (it.kind === "text" ? i : n), -1);
+
+  // 앞쪽 쪽을 붙인 뒤에도 보던 줄이 그 자리에 있게: 붙이기 전 높이와의 차이만큼 scrollTop을 더한다
+  const anchor = useRef<{ height: number; top: number } | null>(null);
+  const olderCount = older?.items.length ?? 0;
+  useLayoutEffect(() => {
+    const el = logRef.current;
+    const a = anchor.current;
+    if (el && a) {
+      el.scrollTop = a.top + (el.scrollHeight - a.height);
+      anchor.current = null;
+    }
+  }, [olderCount]);
+  const loadMore = () => {
+    const el = logRef.current;
+    if (!older || !el || older.loading || !older.hasMore) return;
+    anchor.current = { height: el.scrollHeight, top: el.scrollTop };
+    // 붙은 항목은 다음 렌더에서 그려지므로 앵커는 그 뒤에 치운다(아무것도 안 붙었을 때를 위해). 붙었다면 위 layout effect가 먼저 썼다
+    void older.loadMore().finally(() => setTimeout(() => (anchor.current = null), 100));
+  };
 
   useLayoutEffect(() => {
     const el = logRef.current;
@@ -241,9 +293,19 @@ export function DutyLog({ d, filter = "", cards = "inline", waitingOnly = false,
   }, [stick]);
 
   return (
-    <div className="du-log" ref={logRef} onScroll={(e) => void (stick.current = nextStick(stick.current, e.currentTarget, resizing.current))}>
+    <div className="du-log" ref={logRef} onScroll={(e) => {
+        stick.current = nextStick(stick.current, e.currentTarget, resizing.current);
+        if (!searching && e.currentTarget.scrollTop < OLDER_PX && !resizing.current) loadMore();
+      }}>
       <div className="du-log-inner" ref={innerRef}>
-        {chat.items.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
+        {older && !searching && (older.hasMore ? (
+          <button type="button" className="btn du-older" disabled={older.loading} onClick={loadMore}>
+            {older.loading ? "불러오는 중…" : "이전 대화 더 불러오기"}
+          </button>
+        ) : (
+          chat.items.length + olderCount > 0 && <p className="dr-note du-older-end">여기가 DUTY 대화의 처음입니다.</p>
+        ))}
+        {all.length === 0 && !chat.streaming && <p className="dr-note">아직 대화가 없습니다. 아래에 써서 보내세요.</p>}
         {searching && items.length === 0 && <p className="dr-note">{waitingOnly ? "기다리는 카드가 없습니다." : "불러온 줄에 없습니다."}</p>}
         {rows.map((r) => {
           if (r.kind === "tools") {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chatFromHistory, emptyChat, foldDuty, headLine, readoutState, type DutyStatusView, type DutyWire } from "./duty-chat.ts";
+import { chatFromHistory, emptyChat, foldDuty, headLine, itemOfLine, olderItems, readoutState, type DutyStatusView, type DutyWire } from "./duty-chat.ts";
 
 const STATUS: DutyStatusView = { enabled: true, state: "idle", error: null, account: "acct-2", sessionId: "abcd1234", model: null, context: 12_345, cap: 250_000, costUsd: null, rates: [], queued: 0, blocked: false };
 const t = "2026-09-30T00:00:00.000Z";
@@ -52,4 +52,20 @@ test("기록으로 목록을 새로 만든다(사용량 줄은 그리지 않는�
 test("머리줄: DUTY · acct-2 · context 12/250k", () => {
   assert.equal(headLine(STATUS), "DUTY · acct-2 · context 12/250k");
   assert.equal(headLine({ ...STATUS, context: null }), "DUTY · acct-2 · context —/250k");
+});
+
+test("itemOfLine·olderItems: 줄 번호 n을 항목에 싣고, 앞쪽 쪽의 id는 h<n>으로 안 바뀐다(ATC-479)", () => {
+  const lines = [
+    { t, kind: "user" as const, text: "a", n: 7 },
+    { t, kind: "usage" as const, turn: { context: 1, costUsd: null }, n: 8 },
+    { t, kind: "text" as const, text: "b", n: 9 },
+    { t, kind: "account" as const, from: "acct-1", to: "acct-2", by: "SUPERVISOR", n: 10 },
+  ];
+  const older = olderItems(lines as never);
+  assert.deepEqual(older.map((i) => [i.id, i.kind, i.n]), [["h7", "user", 7], ["h9", "text", 9], ["h10", "notice", 10]], "사용량 줄은 그리지 않고 id는 줄 번호에서 딴다");
+  assert.equal(itemOfLine({ t, kind: "usage", turn: { context: 1, costUsd: null } } as never), null);
+  assert.equal("n" in itemOfLine({ t, kind: "shift" })!, false, "줄 번호가 없으면 n도 없다(SSE로 막 들어온 줄과 같다)");
+  const c = chatFromHistory(lines as never, null, 5);
+  assert.equal(c.older, 5);
+  assert.deepEqual(c.items.map((i) => i.n), [7, 9, 10]);
 });

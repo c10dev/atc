@@ -59,7 +59,7 @@ Chosen by the SUPERVISOR. Reading text in the body font, larger, with generous l
 
 - One continuous log with SHIFT dividers.
 - **Load older** when scrolling up, through the existing `?before=` cursor. The scroll position holds still when a page is prepended.
-- A faint **UTC time** on every line (hover or focus gives the full date).
+- A faint **UTC time** on every line (hover gives the full date).
 - **Search** over `duty.jsonl` through a new **read-only** API (section 5, U3), not over the loaded 200 lines. A hit opens its place in the log: the page around it is loaded and the line is scrolled to.
 
 ### 3.6 Tool lines
@@ -143,6 +143,15 @@ Each step is one work order. U1 first; the rest are chained.
 - **Screen.** Cards in the chat are one-line chips (`DecisionChip`): waiting ones read `종류 키 → 오른쪽 패널` and scroll the panel to the card; handled ones show outcome and UTC time. The STANDING DECISIONS list card (`retire`) never waits, so it stays a full card. The left column gets a "결정 기록" list between the standing decisions and the SHIFTs; a row scrolls the chat to its chip.
 - **Drawer.** Cards stay inline. A "결정 n" chip in the head line (`aria-pressed`) filters the chat to the waiting cards; n is `waitingOf(...).length`, the same call the screen's panel uses.
 - **Not stored.** The decision log has no file. After a reload the in-session outcomes are gone: a card handled earlier shows as `gone` without a time, and confirmed drafts keep their outcome and time because the server holds them.
+
+### U3 as built (ATC-479)
+
+- **Search API.** `GET /api/duty/search?q=` reads `duty.jsonl` and writes nothing. `searchLog` (`server/duty-log.ts`, pure) matches a trimmed, case-insensitive substring of at least 2 characters in the text of `user` and `text` lines, in a draft's text and `DD-n`, and in a card's kind, key and `DD-n`. Broken lines and tool, notice, shift and usage lines are skipped. It returns `{ hits: [{ n, t, kind, snippet }], truncated }`, newest first, at most 50 hits (`truncated` says more exist); `n` is the 0-based line number that `/api/duty/history` also uses (the screen shows `n + 1`). The snippet is about 70 characters either side of the match with whitespace flattened. Tests: `server/duty-log.test.ts`, `server/duty-run.test.ts`.
+- **Origin rule.** `/api/duty/history` has no Origin check (a plain GET), so search has none either, except one step stricter: a request that carries a non-localhost `Origin` is answered 403. A query is capped at 200 characters. History gained `limit=1..5000` (default 200) so a jump can read many lines in one request.
+- **One continuous log.** `useDuty` keeps the first 200 lines and the `next` cursor of that read (`Chat.older`). `useOlder` (`web/src/dutyOlder.ts`) prepends earlier pages (`before=`) as items with ids `h<line>`; every item read from the log carries its line number `n` (`data-n` on its row). A reconnect that moves the cursor drops the prepended pages and starts again. Reaching the top of the log (within 120 px) or pressing "이전 대화 더 불러오기" loads one page. `overflow-anchor` is off on the log, and the log adds the height difference to `scrollTop` after a prepend, so the line being read stays put.
+- **UTC times.** Every line (SUPERVISOR, DUTY, notices, SHIFT dividers, card and draft chips on the screen) shows `HH:MMZ`; hover shows (no Tab stop per line, the full time is the `aria-label`) `YYYY-MM-DD HH:MM:SSZ`. The drawer keeps its cards inline and gets the times on the lines that had none.
+- **Search on the screen.** While the box holds 2 or more characters, "찾은 줄" replaces the standing decisions, decision log and SHIFT list (250 ms after typing stops). A hit is a button with kind, UTC time, line number and snippet. Pressing it loads pages up to 20 lines before the hit (reading from the loaded start down in one request, repeated if the server caps it), scrolls the line to the middle and outlines it for 2 s. The search text stays so another hit is one click away.
+- **Checked.** 7702 test server with a seeded `duty.jsonl` of 1,200 lines (one broken line, SHIFTs, one decision about "Musixmatch"): older page prepended with the probe line moving 0 px; search "musixmatch" → click → line outlined and in view in about 0.5 s; log continuous from the hit to the end.
 
 ## 6. Risks
 

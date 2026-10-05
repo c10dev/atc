@@ -202,3 +202,34 @@
 .ds-shift > :last-child {
   flex: none;
 }
+
+/* 검색 결과 한 줄(ATC-479): 종류·시각·줄 번호 위에 찾은 자리 글 */
+.ds-hit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ds-hit:hover {
+  background: var(--layer-hover);
+}
+.ds-hit:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.ds-hit-meta {
+  font-size: var(--text-2xs);
+  color: var(--faint);
+}
+.ds-hit-snip {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}

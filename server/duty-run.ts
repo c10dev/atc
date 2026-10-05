@@ -17,7 +17,7 @@ import { canResumeOn, effectiveDutyFolder } from "./duty-account.ts";
 import { cleanEnv } from "./clean-env.ts";
 import { config } from "./config.ts";
 import { type DutyConfig, loadDutyConfig, saveDutyConfig } from "./duty-config.ts";
-import { imageCheck, logLineOf, pageOf, TEXT_MAX, type DutyLogLine } from "./duty-log.ts";
+import { imageCheck, logLineOf, pageOf, searchLog, TEXT_MAX, type DutyLogLine } from "./duty-log.ts";
 import { type DutyAction, type DutyEventIn, type DutyMsg, type DutyState, initialState, step } from "./duty-machine.ts";
 import type { DraftLine } from "./duty-drafts.ts";
 import { checkDutyText } from "./duty-language.ts";
@@ -376,12 +376,21 @@ export class DutyRuntime {
     }
   }
 
-  history(before?: number) {
+  history(before?: number, size?: number) {
     let raw = "";
     try {
       raw = readFileSync(this.file("duty.jsonl"), "utf8");
     } catch {}
-    return pageOf(raw, before);
+    return pageOf(raw, before, size);
+  }
+
+  // 읽기 전용 검색(ATC-479). duty.jsonl을 쓰지 않는다
+  search(q: string) {
+    let raw = "";
+    try {
+      raw = readFileSync(this.file("duty.jsonl"), "utf8");
+    } catch {}
+    return searchLog(raw, q);
   }
 
   // 시험과 종료용: 프로세스가 끝나기를 기다린다
@@ -426,6 +435,9 @@ export async function setDutyCap(cap: number | null, by = "SUPERVISOR", rec: typ
   rec({ t: new Date().toISOString(), kind: "duty-cap", by, from, to: cap });
   return next;
 }
+
+const HISTORY_LIMIT_MAX = 5000; // 한 번에 읽는 줄 수의 위(검색 결과 자리로 갈 때 한꺼번에 불러온다)
+const SEARCH_QUERY_MAX = 200;
 
 export function mountDutyRun(app: Hono, rt: () => DutyRuntime = duty, onSupervisorText?: (text: string) => void) {
   const gate = (c: Context): Response | null => {
@@ -475,7 +487,25 @@ export function mountDutyRun(app: Hono, rt: () => DutyRuntime = duty, onSupervis
     const b = c.req.query("before");
     const before = b === undefined ? undefined : Number(b);
     if (before !== undefined && !(Number.isInteger(before) && before >= 0)) return c.json({ error: "before는 0 이상의 정수" }, 400);
-    return c.json(rt().history(before));
+    const l = c.req.query("limit");
+    const limit = l === undefined ? undefined : Number(l);
+    if (limit !== undefined && !(Number.isInteger(limit) && limit >= 1 && limit <= HISTORY_LIMIT_MAX)) return c.json({ error: `limit는 1~${HISTORY_LIMIT_MAX}의 정수` }, 400);
+    return c.json(rt().history(before, limit));
+  });
+
+  // 읽기 전용 검색(ATC-479). history와 같이 Origin 검사 없는 GET이되, 다른 사이트의 Origin이 붙어 오면 거절한다
+  app.get("/api/duty/search", (c) => {
+    const origin = c.req.header("origin");
+    if (origin) {
+      let ok = false;
+      try {
+        ok = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname);
+      } catch {}
+      if (!ok) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
+    }
+    const q = c.req.query("q") ?? "";
+    if (q.length > SEARCH_QUERY_MAX) return c.json({ error: `검색어는 ${SEARCH_QUERY_MAX}자까지` }, 400);
+    return c.json(rt().search(q));
   });
 
   app.get("/api/duty/status", (c) => c.json(rt().status()));

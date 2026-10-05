@@ -22,7 +22,7 @@ export function useDuty(): Chat {
         if (e.enabled) {
           void apiGet("/api/duty/history")
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-            .then((h: { lines: Parameters<typeof chatFromHistory>[0] }) => alive && setChat((c) => ({ ...chatFromHistory(h.lines, c.status) })))
+            .then((h: { lines: Parameters<typeof chatFromHistory>[0]; next: number | null }) => alive && setChat((c) => ({ ...chatFromHistory(h.lines, c.status, h.next ?? null) })))
             .catch(() => {});
         } else {
           setChat((c) => ({ ...emptyChat(), status: c.status }));
