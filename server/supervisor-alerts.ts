@@ -1,4 +1,5 @@
 import { type AlertLevel, alertLevel } from "./alert-level.ts";
+import { ofControlSession } from "./control-match.ts";
 import { unservedStuckOf } from "./stuck-unserved.ts";
 import type { CanceledPr } from "./canceled-flight.ts";
 import { pendingLevelOf, pendingNeedsOf, pendingTextOf, type WaitingCall } from "./pending.ts";
@@ -128,6 +129,18 @@ export function controlGoneOf(inp: { sessions: readonly string[]; running: Reado
     if (l && inp.now - Date.parse(l.t) < CONTROL_DOWN_GRACE_MS) continue;
     // since는 마지막 기록의 시각이지 내려간 시각이 아니다(며칠 전의 launch일 수 있다): 글에는 "부터"가 아니라 기록의 날짜와 시각을 적는다
     out.push({ session: name, since: l?.t ?? null, reason: l ? `마지막 기록: ${l.op}${l.ok ? "" : " 실패"}(${l.by}) ${l.t.slice(5, 10)} ${l.t.slice(11, 16)}Z` : "살아 있는 세션이 없음", gone: true });
+  }
+  return out;
+}
+
+// 순수(ATC-545): 지금 떠 있는 관제 세션 이름. 이름이나 폴더가 맞는(ofControlSession, CONTROL 띠의 controlRowsOf와 같은 하나의 판정) 세션 가운데 죽지 않은 것이 하나라도 있으면 있는 것이다.
+// 그래서 CONTROL_NAMES에 없는 REVIEW도 알아보고, job 폴더가 여러 개(다른 ACCOUNT, 옛 폴더)여도 하나라도 살아 있으면 있다. specs의 dir은 controlDirOf(realDir)다.
+// 살아 있음의 뜻만 다르다: 띠는 agents 줄의 stale을, 알림은 snapshot 세션의 dead를 뺀다(둘 다 "끝난 줄")
+export function controlPresentOf(specs: readonly { name: string; dir: string | null }[], sessions: readonly { name: string; cwd?: string | null; status: string }[], norm: (p: string) => string): Set<string> {
+  const live = sessions.filter((x) => x.status !== "dead");
+  const out = new Set<string>();
+  for (const sp of specs) {
+    if (live.some((x) => ofControlSession(sp.name, x, sp.dir, norm))) out.add(sp.name);
   }
   return out;
 }
