@@ -273,7 +273,7 @@ A `tail:` FLIGHT without a proposal counts as STAND-free when its FLIGHT TYPE is
 | `blocked-report` | a recorded arrival report has `BLOCKED` other than `none`; visible for a day | warn |
 | `review-no-pr` | Linear says In Review but there is no PR | warn |
 | `done-not-merged` | Linear says Done but there is no merged PR | warn |
-| `merged-not-done` | the PR merged but Linear isn't Done; this is what a `CLOSE` draft handles | info |
+| `merged-not-done` | the PR merged but Linear isn't Done; this is what a `CLOSE` draft handles. Only when atc read the ticket's state from Linear and found it open (a FLIGHT outside the Linear read window, a stand-in ticket, is skipped, not read on demand), and not while a PR of the FLIGHT is still open (a stacked FLIGHT whose top PR is open) (ATC-544) | info |
 
 - A recalling FLIGHT is not checked for delays, because it was told to stop.
 - For STAND-free FLIGHTs, `no-departure`, `no-pr`, `pr-not-cleared` and `landing-wait` don't apply, and neither do the Linear/PR mismatches (`review-no-pr`, `done-not-merged`, `merged-not-done`). `no-arrival` is their only delay.

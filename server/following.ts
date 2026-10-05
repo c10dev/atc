@@ -280,7 +280,8 @@ export function followOne(target: { flight: string; proposal: Proposal | null; a
   }
   if (!standFree && isReview(t) && !open && !merged) issues.push({ code: "review-no-pr", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 PR이 없음`, since: t!.updatedAt ?? iso(inp.now) });
   if (!standFree && isDone(t) && !merged) issues.push({ code: "done-not-merged", kind: "mismatch", severity: "warn", text: `Linear는 ${t!.state}인데 ${open ? `PR #${open.number}이 머지되지 않음` : "머지된 PR이 없음"}`, since: t!.updatedAt ?? iso(inp.now) });
-  if (!standFree && merged && t && !isClosed(t)) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
+  // Linear 상태를 읽어 열려 있다고 확인한 FLIGHT만(ATC-544): 읽는 창 밖이라 대역 티켓(unknown, "Linear에 없음")이 된 FLIGHT는 모르는 것이라 알리지 않는다. 쌓인 PR의 윗 PR이 아직 열려 있으면 아래 PR이 먼저 머지됐어도 알리지 않는다
+  if (!standFree && merged && t && t.stateType !== "unknown" && !isClosed(t) && !open) issues.push({ code: "merged-not-done", kind: "mismatch", severity: "info", text: `PR #${merged.pr.number}은 머지됐는데 Linear는 ${t.state} — CLOSE 초안 대상`, since: merged.arrivedAt });
 
   // 닫힌 카드(ATC-266)는 이미 정리됐으니 지연·불일치를 세지 않는다. 사유만 보인다
   if (proposal?.status === "closed") issues.length = 0;
