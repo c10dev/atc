@@ -86,6 +86,7 @@ import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountClearanceMoot } from "./clearance-moot-run.ts";
 import { mountEventLoopLag } from "./event-loop-lag-run.ts";
+import { mountRedMain, runRedMain } from "./red-main-run.ts";
 import { mountJobTiming } from "./job-timing-run.ts";
 import { jobTimer, timed } from "./job-timing.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
@@ -179,6 +180,7 @@ async function tick() {
     // SUPERVISOR alerts(ATC-87): 새로 생기거나 사라진 key를 `alert` 이벤트로. 스냅샷이 안 바뀌어도(RTS 결과 같은 파일 기록) 센다
     const alertEvent = isWarm(next) ? timed("tick:alerts", () => runSupervisorAlerts(next)) : null;
     if (alertEvent) for (const l of alertListeners) l(alertEvent);
+    if (isWarm(next)) runRedMain(next); // RED MAIN(ATC-536): 큐 줄의 올림·닫힘을 센다(읽기·기록만)
     // SUPERVISOR SUMMARY(ATC-153): 알림 목록을 센 직후, 내용이 바뀐 때만 `summary` 이벤트로
     if (isWarm(next)) await timed("tick:queue", () => supervisorQueueNow(async () => next, () => update.status())).catch(() => null); // 요약의 todo가 큐와 같은 수(ATC-454)
     const summary = isWarm(next) ? timed("tick:summary", () => runSummary(next)) : null;
@@ -323,6 +325,7 @@ mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중�
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)
 mountJobTiming(app); // JOB TIMING(ATC-525): 스위치와 일별 시간(읽기만)
+mountRedMain(app); // RED MAIN(ATC-536): 스위치와 올림·스스로 닫힘 수(읽기만)
 mountEventLoopLag(app); // EVENT LOOP LAG(ATC-538): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountClearanceMoot(app); // 이유를 잃은 CLEARANCE(ATC-515): 스위치와 MISFIRE 수(읽기만)
 mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)

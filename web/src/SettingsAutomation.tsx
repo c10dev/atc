@@ -744,6 +744,14 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
     const days = (switchOf(s, "autoRevert")?.data as { days?: RevertDayView[] } | undefined)?.days;
     return days ? <AutoRevertDays days={days} /> : null;
   },
+  redMain: (s) => {
+    const d = switchOf(s, "redMain")?.data as { raised: number; closedBySelf: number; closedBySwitch: number; open: number; days: number } | undefined;
+    return d ? (
+      <p className="settings-hint">
+        최근 {d.days}일 올린 줄 <b>{d.raised}</b> · 스스로 닫힌 줄 <b>{d.closedBySelf}</b> · 스위치로 내린 줄 <b>{d.closedBySwitch}</b> · 지금 열린 줄 <b>{d.open}</b>
+      </p>
+    ) : null;
+  },
   mccKApproval: (s) => {
     const days = (switchOf(s, "mccKApproval")?.data as { days?: KDay[] } | undefined)?.days;
     return days ? <KApprovalDays days={days} /> : null;

@@ -61,6 +61,7 @@ MCC나 AUTOLAND가 머지한 PR 때문에 main의 CI가 빨개지면 atc가 그 
 - **멈춤(breaker).** 1시간 안에 새 빨간 head가 둘째로 나오면 레인이 멈추고 AUTOLAND `merge`는 `update`로, MCC 착륙은 끔으로 내려간다. 알림(ALERTS)에 `revert|stop`이 뜬다. 설정 창 AUTOMATION → LANDING의 **AUTO REVERT**에서 스위치를 다시 고르면(같은 값을 다시 골라도) 풀린다. AUTOLAND와 MCC를 다시 올리는 것은 SUPERVISOR의 스위치다.
 - **끄기.** 같은 줄의 스위치를 `off`로 두면 atc는 되돌리지 않고 GROUND STOP과 MCC 멈춤은 사람이 읽고 푼다.
 - **결과 읽기.** AUTO REVERT 줄 아래에 최근 7일의 날짜별 `revert`·`flake 잡음`·`misfire`가 보인다. misfire는 되돌린 PR이 24시간 안에 그대로 다시 머지된 것이다(revert의 revert, 또는 같은 파일): 되돌림이 틀렸다는 신호이니 DUTY brief의 `AUTO-REVERT misfire` 줄을 본다.
+- **사람의 머지로 HOLD한 빨간 main.** AUTO REVERT가 사람의 머지는 되돌리지 않고 HOLD하는데 main이 그대로 빨가면, HOME 할 일에 NEEDS YOU 한 줄 `MAIN RED …`이 오른다: 깨진 체크, head, 그 머지의 PR, 같은 체크로 막힌 PR 번호를 한 번에 적는다(막힌 PR마다 줄이 생기지 않는다). 그 머지를 한 사람이나 SUPERVISOR가 고치거나 되돌리는 PR을 올리면 main이 초록이 되고 줄은 스스로 닫힌다. 줄은 아무것도 보내지 않는다. 설정 창 AUTOMATION → LANDING의 **RED MAIN**에서 끌 수 있고(SUPERVISOR 전용), 같은 블록에 7일의 올린 줄·스스로 닫힌 줄이 센다.
 
 ## 사람이 배포할 때
 

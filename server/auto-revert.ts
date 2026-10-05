@@ -60,6 +60,7 @@ export interface AutoRevertLine {
   runs?: { id: number; attempt: number }[]; // rerun: 다시 돌리기 전의 GitHub Actions run id와 시도 번호
   by2?: number; // misfire: 그대로 다시 머지한 PR 번호
   kind?: "revert-of-revert" | "same-files"; // misfire
+  foreign?: { sha: string; pr?: number }; // hold: 마지막 초록 뒤의 lander가 아닌(사람의) 커밋. red main 줄(ATC-536)이 읽는다
   detail?: string;
 }
 
@@ -112,7 +113,7 @@ export interface RevertInput {
 export type RevertDecision =
   | { act: "none"; why: string }
   | { act: "revert"; commit: string; pr: number; by: "mcc" | "autoland"; check: string }
-  | { act: "hold"; why: string; pr?: number }
+  | { act: "hold"; why: string; pr?: number; foreign?: { sha: string; pr?: number } }
   | { act: "stop"; why: string };
 
 const short = (s: string) => s.slice(0, 7);
@@ -157,7 +158,7 @@ export function revertDecisionOf(x: RevertInput): RevertDecision {
   }
   if (!range.length) return { act: "none", why: "범위에 되돌릴 커밋이 없음" };
   const foreign = range.find((c) => !c.revert && c.by === null);
-  if (foreign) return { act: "hold", why: `lander가 아닌 커밋 ${short(foreign.sha)}${foreign.pr ? ` (PR #${foreign.pr})` : ""}이 마지막 초록 뒤에 있음 — 사람의 머지는 자동으로 되돌리지 않음` };
+  if (foreign) return { act: "hold", foreign: { sha: foreign.sha, ...(foreign.pr != null ? { pr: foreign.pr } : {}) }, why: `lander가 아닌 커밋 ${short(foreign.sha)}${foreign.pr ? ` (PR #${foreign.pr})` : ""}이 마지막 초록 뒤에 있음 — 사람의 머지는 자동으로 되돌리지 않음` };
 
   const done = new Set(x.lines.filter((l) => l.op === "revert-opened" && l.pr != null).map((l) => l.pr as number));
   const candidates = range.filter((c) => !c.revert && c.by !== null && c.pr != null && !done.has(c.pr));

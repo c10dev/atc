@@ -1,3 +1,4 @@
+import { type RedMainHold, redMainKey, redMainText } from "./red-main.ts";
 import { type Decision } from "./decision-card.ts";
 import { waitingOnPersonOf } from "./waiting-person.ts";
 import type { LandBy, LandWhy } from "./land-by.ts";
@@ -96,6 +97,7 @@ export interface QueueInput {
   alerts?: Pick<SupervisorAlert, "key" | "level" | "group" | "aircraft" | "flight" | "text" | "next" | "link" | "since" | "dest">[];
   follow?: { bundles: Pick<FollowBundle, "rows">[]; dispatchMode: "shadow" | "approval" };
   effects?: EffectVerdict[];
+  redMain?: RedMainHold[]; // RED MAIN(ATC-536): AUTO-REVERT가 사람의 머지라서 HOLD한 head의 main이 아직 빨간 것. head마다 NEEDS YOU 한 줄(red-main.ts)
   arrived?: ArrivedOpen[]; // STAND 없는 ARRIVED인데 아직 started인 FLIGHT(arrived-open.ts, ATC-473)
   closes?: { id: string; flight: string | null; statusAt: string; url: string | null; pr: { repo: string; number: number; url: string } }[];
 }
@@ -167,6 +169,12 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   for (const w of waiting) {
     if (w.kind === "go") out.push({ kind: "GO", key: w.key, since: w.since, title: w.name, hash: "#fleet", primary: open("AIRCRAFT 보기", "#fleet") });
     else out.push({ kind: "NEEDS YOU", key: w.key, since: w.since, title: w.name, hash: "#fleet", primary: open("AIRCRAFT 보기", "#fleet") });
+  }
+
+  // NEEDS YOU(RED MAIN, ATC-536): 빨간 main을 어느 체크·어느 PR이 막는지 head마다 한 줄. main이 초록이 되거나 새 head가 오면 입력에서 빠져 사라진다. 아무것도 보내지 않는다
+  for (const h of inp.redMain ?? []) {
+    const t = redMainText(h);
+    out.push({ kind: "NEEDS YOU", key: `main-red|${redMainKey(h)}`, since: h.since, title: t.title, hash: "#flights", primary: open("PR 보기", "#flights"), detail: t.detail, need: t.need });
   }
 
   // RELAY(ATC-308): STAND를 쥔 세션이 없어 TOWER가 못 보내는 GO AROUND·FIX. head가 바뀌거나 PR이 닫히거나 쥔 세션이 생기면(offer가 없어지면) 사라진다
