@@ -67,6 +67,7 @@ cp -al /home/c10/projects/atc/node_modules /home/c10/projects/worktrees/atc-<n>-
 - [ ] 루트 `CLAUDE.md` "용어와 문서"와 `docs/rules.ko.md` "문서"의 항목을 하나씩 확인했다: 영어·한국어판, 관제 폴더의 한국어 원본, changelog 조각(`node server/changelog-fold.ts --check`), `docs/guide/`와 `DOC_NAV`.
 - [ ] 설계 문서의 상태 표시는 고치지 않고, 만든 것은 그 기능 절 바로 뒤의 자기 절(`### F7 as built (ATC-57)`)에 적었다(`docs/rules.ko.md` "계획").
 - [ ] 항공 용어는 영어로 썼다.
+- [ ] QUEUE 종류나 HOME 알림을 더했다면 `server/queue-contract.ts`에 줄(`ends`·`action`)을 더했다(`docs/alerting.md` "Queue contract").
 
 ## 5. 검증
 
