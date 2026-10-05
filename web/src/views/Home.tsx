@@ -10,7 +10,7 @@ import { Actions, useQueue } from "../DutyCards.tsx";
 import { EffectRow, useEffects } from "../EffectVerdict.tsx";
 import { FlightBrakes } from "../FlightBrakes.tsx";
 import { OpenFlight } from "../FlightLink.tsx";
-import { homeNeedOf } from "../home-rows.ts";
+import { homeNeedOf, opensInDetail } from "../home-rows.ts";
 import { planOf } from "../home-todo.ts";
 import { Empty } from "../kit/Empty.tsx";
 import { SectionHead, TodoRow } from "../kit/TodoRow.tsx";
@@ -141,7 +141,7 @@ function TodoList({ refreshKey, now, snapshot, flow }: { refreshKey: string; now
 // 줄의 단추 하나: 서버가 정한 primary 그대로. 바로 하는 것(알림 열기, 화면·Linear 열기)은 단추가 하고, 확인이 필요한 것(승인·거절, CANCEL·RECALL, 손으로 전하기, HUMAN CHECK)은 줄을 열어 상세에서 한다
 function RowAction({ item, open, toggle }: { item: QueueItem; open: boolean; toggle: () => void }) {
   const p = item.primary;
-  const inDetail = p.action === "approve" || p.action === "brake" || p.action === "done" || Boolean(item.hand || item.offer) || (item.kind === "HUMAN CHECK" && Boolean(p.hash === "#home"));
+  const inDetail = opensInDetail(item);
   if (inDetail) {
     return (
       <button type="button" className="btn is-primary" aria-expanded={open} onClick={toggle}>
@@ -182,6 +182,7 @@ function ItemDetail({ item, onDone, children }: { item: QueueItem; onDone: () =>
       {p.action === "done" && <ArrivedDone item={item} onDone={onDone} />}
       {p.action === "approve" && p.op && <Actions item={item} actions={[{ type: "inline", op: p.op }]} onDone={onDone} />}
       {p.action === "brake" && item.brake && item.flight && <FlightBrakes p={{ ...item.brake, flight: item.flight }} mode={item.brake.mode} onDone={onDone} />}
+      {item.decision && <Actions item={item} actions={[]} onDone={onDone} />}
       {(item.hand || item.offer) && <Actions item={item} actions={[{ type: "link", label: p.label, hash: p.hash ?? item.hash }]} onDone={onDone} />}
       {children}
     </>

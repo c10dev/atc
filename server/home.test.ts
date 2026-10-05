@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { homeNeedOf, prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf } from "../web/src/home-rows.ts";
+import { homeNeedOf, opensInDetail, prNameOf, scheduleHomeOf, SLIP_LABEL, slipLineOf } from "../web/src/home-rows.ts";
 import { proposalAskOf } from "./duty-card.ts";
 import { type FollowInput, followRowOf } from "./follow.ts";
 import type { Milestones } from "./milestones.ts";
@@ -85,4 +85,15 @@ test("homeNeedOf: 서버가 준 need가 이기고, 없으면 종류별 한 문�
   const kinds = ["PROPOSAL", "SCHEDULE", "FLEET PLAN", "HUMAN CHECK", "LANDING", "UPDATE", "NEEDS YOU", "RELAY", "UNDELIVERED", "GO", "BACKLOG"];
   for (const k of kinds) assert.notEqual(homeNeedOf({ kind: k }), k, k);
   assert.equal(homeNeedOf({ kind: "NEW KIND" }), "NEW KIND");
+});
+
+test("opensInDetail: DECISION 줄은 HOME을 다시 불러 오지 않고 줄을 열어 옵션 버튼(DecisionAnswer)을 보인다(ATC-541)", () => {
+  const [row] = supervisorQueueOf({ proposals: [], schedule: { mode: "approval", ops: [] }, fleetPlan: [], pulls: [], update: null, sessions: [], blockedMin: 3, decisions: [{ id: "D-1", key: "k", role: "tower", at: ago(5), ask: "머지할까요?", options: ["예", "아니오"], pr: { number: 7, head: "abcdef1234" }, status: "open" }] } as unknown as QueueInput, NOW);
+  assert.equal(row.kind, "DECISION");
+  assert.equal(row.decision?.options.length, 2);
+  assert.equal(opensInDetail(row), true);
+  assert.match(homeNeedOf(row), /결정/);
+  // 다른 링크 줄은 그대로 단추가 연다
+  assert.equal(opensInDetail({ kind: "GO", primary: { action: "open", hash: "#fleet" } }), false);
+  assert.equal(opensInDetail({ kind: "HUMAN CHECK", primary: { action: "open", hash: "#home" } }), true);
 });
