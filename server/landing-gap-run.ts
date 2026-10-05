@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
+import { JsonlCache } from "./jsonl-cache.ts";
 import { config } from "./config.ts";
 import type { FlowView } from "./home-flow.ts";
 import { type EpisodeLine, episodeStep, type GapFacts, type GapSwitch, gapCounterOf, openEpisodesOf, parseGapSwitch } from "./landing-gap.ts";
@@ -31,21 +32,10 @@ export function saveGapSwitch(v: GapSwitch, by = "SUPERVISOR", file = SWITCH_FIL
   if (file === SWITCH_FILE()) record({ t: new Date().toISOString(), kind: "policy", op: "landing-gap-mode", by, from, to: v });
 }
 
+// 자라기만 한 파일은 새 줄만 읽는다(jsonl-cache.ts, ATC-537). 돌려준 배열은 읽기 전용으로 쓴다
+const episodes = new JsonlCache<EpisodeLine>();
 export function readEpisodes(file = EPISODES()): EpisodeLine[] {
-  let text = "";
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  const out: EpisodeLine[] = [];
-  for (const line of text.split("\n")) {
-    if (!line) continue;
-    try {
-      out.push(JSON.parse(line) as EpisodeLine);
-    } catch {}
-  }
-  return out;
+  return episodes.read(file).lines as EpisodeLine[];
 }
 
 export function appendEpisodes(lines: readonly EpisodeLine[], file = EPISODES()) {
