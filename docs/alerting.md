@@ -265,3 +265,9 @@ Decided by this draft (pilot's discretion, reversible):
 - Keys are unchanged.
 - The ticker is removed.
 - LOG adds no state file.
+
+### Closed FLIGHTs and leftover STANDs, as built (ATC-543)
+
+- **Closed FLIGHTs are quiet.** A FLIGHT whose Linear state is Done, Canceled or Duplicate raises no `no-pr`, `no-arrival`, `no-departure`, `review-no-pr` or `stranded` line and no ORPHAN FLIGHT (the closed-FLIGHT filter in `server/following.ts`, which now drops `stranded` too; the others were already dropped by ATC-385). `done-not-merged` and `merged-not-done` keep their meaning.
+- **One cleanup line.** `alert|cleanup` lists a leftover STAND of a closed FLIGHT (no live session holds it, not the main checkout) together with the stale unowned changes and ended-session claims. Each STAND shows its path, its change count and its unpushed commit count (`git rev-list --count HEAD --not --remotes`). The command `git -C <checkout> worktree remove <path>` is shown only when both counts are 0; otherwise the line says what would be lost. atc never runs it. Pure part: `server/cleanup-stands.ts`.
+- **Moot DECISION cards.** A DECISION whose FLIGHT is closed, or whose PR is merged or closed (GitHub read), leaves the SUPERVISOR QUEUE. The rule is the ATC-540 `isMoot`. The card is not answered or withdrawn; the record stays and the role can still withdraw it. DECISION cards never had an alert line, so there is nothing to remove from the alert list.

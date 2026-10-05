@@ -17,6 +17,7 @@ import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
 import { type CapIdleHint, idleText } from "./other-background.ts";
 import type { HostMemory } from "./host-memory.ts";
+import { type CleanupStand, closedFlightStandsOf, standLineOf, standOf } from "./cleanup-stands.ts";
 import { type Duplicate, duplicateTextOf, type Unverified, unverifiedTextOf } from "./control-stop-check.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
@@ -42,6 +43,7 @@ export interface SupervisorAlert {
   text: string; // 한 줄. 화면에 이미 있는 문구만
   next: string; // 다음 한 걸음
   link: string; // 화면 주소(hash): 그 항목이 있는 탭
+  cleanup?: CleanupStand[]; // alert|cleanup(ATC-543): 남은 STAND와 지우는 명령(둘 다 0일 때만). atc는 실행하지 않는다
   since: string | null;
   // 무엇을 청하나(ATC-162, 음성 문구용, 선택). pending|proposal은 `assign`·`release`, pending|schedule은 SCHEDULE 종류를 소문자로(`tail`·`classify` …).
   // key 형식은 그대로다(브라우저·메뉴 막대·atc-app이 key로 중복을 거른다). 다른 항목에는 없다
@@ -184,7 +186,8 @@ export const FOLLOW_LOG_WINDOW_MS = 24 * 3_600_000; // landed·deployed 항목�
 export interface AlertsInput {
   sessions: (Pick<Session, "id" | "name" | "status" | "health"> & Partial<Pick<Session, "job" | "jobId" | "attachDir">>)[];
   alerts: Alert[];
-  workspaces: (Pick<Workspace, "path" | "ticketKey"> & Partial<Pick<Workspace, "name">>)[];
+  workspaces: (Pick<Workspace, "path" | "ticketKey"> & Partial<Pick<Workspace, "name" | "repo" | "isMain" | "dirty" | "unpushed">>)[];
+  heldStands?: ReadonlySet<string>; // 살아 있는 세션이 지금 점유한 STAND 경로(ATC-543). 없으면 닫힌 FLIGHT의 남은 STAND를 줄에 싣지 않는다
   tickets: Pick<Ticket, "key" | "stateType">[];
   following: Pick<FollowItem, "flight" | "aircraft" | "issues">[];
   proposals: Pick<Proposal, "id" | "kind" | "status" | "flight" | "aircraftName" | "holdAt" | "statusAt">[];
@@ -313,11 +316,25 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     });
   }
 
-  // 1b) 오래 주인이 없는 것은 한 줄로(ATC-385): 개수만 센다. 자동으로 지우지 않는다
-  if (stale.length) {
+  // 1b) 남은 STAND는 한 줄로(ATC-385·543): 오래 주인이 없는 것, 종료된 세션의 점유, 닫힌 FLIGHT의 STAND. 경로·변경 수·미푸시 수를 싣고 둘 다 0이면 지우는 명령을 보인다. atc는 지우지 않는다
+  const wsByPathFull = new Map(inp.workspaces.map((w) => [w.path, w]));
+  const stands = new Map<string, CleanupStand>();
+  for (const x of stale) {
+    const p = x.a.workspacePath;
+    if (!p) continue;
+    const w = wsByPathFull.get(p);
+    stands.set(p, standOf(w ?? { path: p, ticketKey: null }, x.a.kind === "orphan" ? "ended-claim" : "unattended"));
+  }
+  if (inp.heldStands) for (const c of closedFlightStandsOf({ workspaces: inp.workspaces, tickets: inp.tickets, held: inp.heldStands })) if (!stands.has(c.path)) stands.set(c.path, c);
+  if (stale.length || stands.size) {
     const changes = stale.filter((x) => x.a.kind === "unattended");
     const claims = stale.filter((x) => x.a.kind === "orphan");
-    const names = stale.slice(0, 3).map((x) => (x.a.workspacePath ? standNameOf(x.a.workspacePath, standNames) : x.a.message));
+    const closed = [...stands.values()].filter((x) => x.why === "closed-flight");
+    const list = [...stands.values()];
+    const names = [...stale.map((x) => (x.a.workspacePath ? standNameOf(x.a.workspacePath, standNames) : x.a.message)), ...closed.map((x) => x.name)];
+    const hours = Math.round((inp.unowned?.afterMs ?? UNOWNED_AFTER_MS) / 3_600_000);
+    const staleText = `주인 없는 변경 ${changes.length}곳, 종료된 세션의 점유 ${claims.length}곳이 ${hours}시간 넘게 그대로`;
+    const body = closed.length ? `${stale.length ? `${staleText}, ` : ""}닫힌 FLIGHT의 STAND ${closed.length}곳` : staleText;
     out.push({
       key: CLEANUP_KEY,
       group: "alert",
@@ -325,10 +342,11 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       cue: null,
       aircraft: null,
       flight: null,
-      text: `정리 대기 ${stale.length}건 — 주인 없는 변경 ${changes.length}곳, 종료된 세션의 점유 ${claims.length}곳이 ${Math.round((inp.unowned!.afterMs ?? UNOWNED_AFTER_MS) / 3_600_000)}시간 넘게 그대로 (${names.join(", ")}${stale.length > 3 ? " …" : ""})`,
-      next: "STAND를 확인해 커밋·푸시하거나 직접 정리한다. atc는 변경을 지우지 않는다",
+      text: `정리 대기 ${stale.length + closed.length}건 — ${body} (${names.slice(0, 3).join(", ")}${stale.length + closed.length > 3 ? " …" : ""})`,
+      next: `${list.slice(0, 5).map(standLineOf).join("\n")}${list.length > 5 ? "\n…" : ""}${list.length ? "\n" : ""}atc는 STAND를 지우지 않는다. 명령이 없는 것은 커밋·푸시하거나 직접 정리한다`,
       link: "#flights",
-      since: new Date(Math.min(...stale.map((x) => x.first))).toISOString(),
+      since: stale.length ? new Date(Math.min(...stale.map((x) => x.first))).toISOString() : null,
+      cleanup: list,
     });
   }
 

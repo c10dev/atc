@@ -37,7 +37,7 @@ atc가 이미 찾아내는 것을 알릴 뿐, 새로 찾아내지는 않습니�
 | UNABLE | ① UNABLE이 가리킨 **PR이 머지되거나 닫힘**(CLEARANCE 본문의 `PR #n`. GitHub를 아직 읽지 못했을 때는 쓰지 않습니다) ② 그 **FLIGHT가 닫힘** ③ 같은 주제에 **나중에 READBACK**이 옴(같은 FLIGHT·같은 종류의 CLEARANCE가 READBACK됐거나, 같은 FLIGHT의 FLIGHT PLAN이 READBACK됨) |
 | 도착 보고의 BLOCKED | 그 **FLIGHT가 닫힘**, 또는 그 FLIGHT의 **더 나중 보고에 BLOCKED가 없음**(FLIGHT마다 마지막 보고만 봅니다) |
 | 진행 중인데 워크트리가 없음 | STAND가 필요한 FLIGHT가 In Progress인데 워크트리가 없음. **STAND 없는 FLIGHT(SURVEY·CHECK)에는 이 알림이 없다**(워크트리가 있을 수 없다). 그런 FLIGHT가 ARRIVED인데 아직 In Progress면 알림이 아니라 HOME의 할 일 한 줄(`ARRIVED`)이 된다 | CAUTION. 그 FLIGHT의 팀에 STAND를 확인한다 |
-| 주인 없는 변경, 종료된 세션의 점유 | 주인(세션)이 없는 채로 **6시간**이 지나면 CAUTION 수에서 빠지고 **`정리 대기 n건`** 한 줄(ADVISORY)로 접힙니다. 주인이 생기거나 정리하면 줄에서도 빠집니다. **STAND의 변경은 atc가 지우지 않습니다.** 정리는 직접 합니다 |
+| 주인 없는 변경, 종료된 세션의 점유 | 주인(세션)이 없는 채로 **6시간**이 지나면 CAUTION 수에서 빠지고 **`정리 대기 n건`** 한 줄(ADVISORY)로 접힙니다. 주인이 생기거나 정리하면 줄에서도 빠집니다. **STAND의 변경은 atc가 지우지 않습니다.** 정리는 직접 합니다. **닫힌(Done·Canceled) FLIGHT의 남은 STAND**도 같은 줄에 바로 실립니다. 줄에는 STAND마다 경로, 변경 수, 미푸시 커밋 수가 있고, 둘 다 0이면 `git -C <체크아웃> worktree remove <경로>` 명령이 붙습니다(복사해서 직접 실행). 0이 아니면 명령 없이 지우면 잃는 것이 적힙니다. 닫힌 FLIGHT는 `no-pr`·`no-arrival`·ORPHAN FLIGHT 같은 지연 알림도, 그 FLIGHT의 DECISION 카드(PR이 머지·닫힌 카드도)도 더는 내지 않습니다 |
 
 끝 규칙이 틀렸는지 알 수 있게, 규칙이 뺀 알림이 **24시간 안에 다시 나타나면** 세어 둡니다. `GET /api/supervisor-alerts/ends`가 규칙별로 뺀 수와 돌아온 수, 그리고 같은 상태에서 끝 규칙 없이 센 CAUTION 수(`before`)와 지금 CAUTION 수(`after`)를 읽기 전용으로 보여 줍니다. 돌아온 수가 0이 아니면 그 규칙을 의심합니다.
 
