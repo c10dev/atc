@@ -292,7 +292,7 @@ OCC의 guard는 TOWER의 Bash guard에 읽기 전용 `gh` 하위 명령을 더�
 | `blocked-report` | 기록된 도착 보고의 `BLOCKED`가 `none`이 아님. 하루 보임 | warn |
 | `review-no-pr` | Linear는 In Review인데 PR이 없음 | warn |
 | `done-not-merged` | Linear는 Done인데 머지된 PR이 없음 | warn |
-| `merged-not-done` | PR은 머지됐는데 Linear가 Done이 아님. `CLOSE` 초안이 다루는 경우다 | info |
+| `merged-not-done` | PR은 머지됐는데 Linear가 Done이 아님. `CLOSE` 초안이 다루는 경우다. atc가 Linear에서 상태를 읽어 열려 있다고 확인했을 때만 낸다(읽는 창 밖이라 대역 티켓이 된 FLIGHT는 그때 읽지 않고 건너뛴다). 그 FLIGHT의 PR이 아직 열려 있으면(쌓인 PR의 윗 PR) 내지 않는다(ATC-544) | info |
 
 - RECALL 중인 FLIGHT는 멈추라고 한 것이라 지연을 보지 않는다.
 - STAND 없는 FLIGHT에는 `no-departure`, `no-pr`, `pr-not-cleared`, `landing-wait`를 쓰지 않는다. Linear·PR 불일치(`review-no-pr`, `done-not-merged`, `merged-not-done`)도 보지 않는다. 지연은 `no-arrival` 하나다.
