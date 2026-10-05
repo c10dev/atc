@@ -28,6 +28,9 @@ export const config = {
   handoffGraceMs: Number(env.ATC_HANDOFF_GRACE_MIN || 5) * 60_000,
   // ORPHAN FLIGHT(ATC-516): 앞 세션이 멈춘 뒤 이만큼 비어 있어야 ALERT·HOME 줄이 나온다(DISPATCH 셈은 기다리지 않는다). 최소 1분
   orphanGraceMin: Math.max(1, Number(env.ATC_ORPHAN_GRACE_MIN || 15)),
+  // EVENT LOOP LAG(ATC-538): 이벤트 루프 지연 p99가 이 값(ms)을 넘는 JOB TIMING 구간이 연달아 이 수만큼이면 CAUTION. 최소 1
+  eventLoopLagMs: Math.max(1, Number(env.ATC_EVENT_LOOP_LAG_MS || 250)),
+  eventLoopLagWindows: Math.max(1, Math.round(Number(env.ATC_EVENT_LOOP_LAG_WINDOWS || 3))),
   linearApiKey: env.LINEAR_API_KEY || "",
   // AUTOLAND 마이그레이션 게이트(ATC-329): 호스티드 DB 적용 버전을 읽는 토큰. 읽기에만 쓰고 로그·기록·화면에 쓰지 않는다
   supabaseAccessToken: env.SUPABASE_ACCESS_TOKEN || "",
