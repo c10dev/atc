@@ -44,5 +44,5 @@ test("misfireView: per approval day, share of approvals, window and empty days",
   assert.deepEqual(v.daily.map((d) => d.day), ["2026-09-30", "2026-10-01", "2026-10-02"]);
   assert.deepEqual(v.daily.map((d) => [d.approvals, d.misfires, d.share]), [[0, 0, null], [1, 0, 0], [2, 1, 0.5]]);
   assert.equal(v.today.by.declined, 1);
-  assert.deepEqual(v.total, { approvals: 3, misfires: 1, share: 1 / 3, crossAccount: 0 });
+  assert.deepEqual(v.total, { approvals: 3, misfires: 1, share: 1 / 3, crossAccount: 0, displaced: 0, displacedMisfires: 0 });
 });

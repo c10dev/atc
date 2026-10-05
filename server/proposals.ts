@@ -246,13 +246,16 @@ export interface Proposal {
   prHolder?: PrHolder; // PR HOLDER 카드(ATC-354): STAND를 쥔 세션이 없는 PR의 GO AROUND·FIX를 이어받는다. 이 카드는 머지하지 않는다
   waitingFlights?: string[]; // 이 카드를 낼 때 그 AIRCRAFT가 착륙만 기다리던 FLIGHT(ATC-387). FLIGHT PLAN이 "새 STAND에서 시작" 줄을 싣는다. 옛 기록에는 없다
   supervisorConfirm?: string[]; // SUPERVISOR CONFIRM AT AIRCRAFT(ATC-120): 예측 경로 중 사용자 등급 파일. 표시만 하고 승인을 막지 않는다. 옛 기록에는 없다
+  displacedBy?: string; // 경합 보호(ATC-547): 이 카드를 "더 나은 배정"으로 밀어낸 새 카드 id(supersede의 by). 밀어낸 기록의 한 줄이다
+  displacedGap?: number; // 밀어낸 점수 차(새 점수 − 이 카드 점수)
   undelivered?: { at: string; reason: string; n: number; cause?: string }; // 보낸 FLIGHT PLAN이 닿지 않았다고 OCC가 알림(ATC-183, op undelivered). 마지막 시각·사유와 횟수. 상태가 바뀌어도 지우지 않는다
   awaitSupervisor?: { at: string; reason: string }; // CAPTAIN이 READBACK도 거절도 아닌 채 사용자의 go를 기다림(ATC-120). sent인 동안만 — 상태가 바뀌면(READBACK 등) 지운다
 }
 
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
 export type Op =
-  | ({ op: "create" } & Create)
+  // ageFrom(ATC-547): 밀려난 카드의 FLIGHT를 다시 제안하는 카드가 원래 카드의 나이(at)를 이어받는다. SETTLED·자동 승인·TTL이 이 시각부터 센다
+  | ({ op: "create"; ageFrom?: string } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | ({ op: "brief"; id: string } & Briefing)
@@ -275,7 +278,7 @@ export type Op =
   | { op: "arrived"; id: string; at: string; note: string } // STAND 없는 FLIGHT: CAPTAIN 보고
   | { op: "recall"; id: string; at: string; reason: string; message: string } // SUPERVISOR 요청
   | { op: "recalled"; id: string; at: string } // CAPTAIN이 RECALL을 READBACK
-  | { op: "supersede"; id: string; at: string; reason: string }
+  | { op: "supersede"; id: string; at: string; reason: string; by?: string; gap?: number } // by·gap: 경합 보호가 켜졌을 때 "더 나은 배정"으로 밀어낸 새 카드와 점수 차(ATC-547)
   | { op: "close"; id: string; at: string; reason: string } // 보낸 뒤 FLIGHT가 이미 끝나 정리(ATC-266). sent·accepted·STAND 없는 departed에만
   | { op: "expire"; id: string; at: string; reason?: string };
 
@@ -334,9 +337,9 @@ export function fold(ops: Op[]): Proposal[] {
   const byId = new Map<string, Proposal>();
   for (const o of ops) {
     if (o.op === "create") {
-      const { op: _op, ...rest } = o;
+      const { op: _op, ageFrom, ...rest } = o;
       byId.set(o.id, {
-        ...rest, status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
+        ...rest, ...(ageFrom ? { at: ageFrom } : {}), status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
         reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null, crosscheck: null,
       });
       continue;
@@ -430,6 +433,10 @@ export function fold(ops: Op[]): Proposal[] {
     p.timeline[next] = o.at;
     delete p.awaitSupervisor; // READBACK·거절·RECALL·만료 어느 쪽이든 대기는 끝났다
     if ("reason" in o && o.reason) p.reason = o.reason;
+    if (o.op === "supersede" && o.by) {
+      p.displacedBy = o.by;
+      if (typeof o.gap === "number") p.displacedGap = o.gap;
+    }
     if (o.op === "send") {
       p.message = o.message;
       if (o.via) p.sentVia = o.via;
@@ -658,6 +665,32 @@ export function arrivedWhyNot(
   return null;
 }
 
+// ── 경합 보호(ATC-547) ──
+// 열린 ASSIGN 카드가 자리를 잡은(settled) 순간에 더 높은 점수의 새 카드가 같은 AIRCRAFT를 가져가면, 점수가 낮은 FLIGHT는 자동 승인 직전마다 카드를 잃고 계속 기다렸다(10-05 ATC-539, 30분에 세 번).
+// 보호하는 카드: (a) 자동 운항에서 settleMin이 지났거나 다음 계획 주기(DISPATCH_MS) 안에 지날 카드, (c) 24시간에 두 번 밀려난 FLIGHT의 카드. 보호한 카드는 "더 나은 배정"으로 닫지 않는다.
+// 계획이 그 카드의 짝을 뺐으면(droppedGuardedOf) 호출부가 그 짝을 예약으로 넣어 다시 계획한다: 점수가 더 높은 FLIGHT는 다른 빈 AIRCRAFT(자격·AIRPORT는 planner가 따진다)로 가고, 없으면 한 주기 기다린다
+export const DISPLACE_MAX_24H = 2;
+// 밀려난 FLIGHT의 새 카드가 나이를 이어받는 창: 밀려난 지 이 안이어야 한다(옛 나이로 곧바로 AUTO_STALE이 되지 않게)
+const DISPLACE_AGE_WINDOW_MS = 30 * 60_000;
+// 24시간 안에 이 FLIGHT의 카드가 "더 나은 배정"으로 밀려난 횟수(밀어낸 기록 by가 있는 것만)
+export const displacedCountOf = (existing: readonly Proposal[], flight: string, now: number): number =>
+  existing.filter((x) => x.kind === "ASSIGN" && x.flight === flight && x.status === "superseded" && x.displacedBy && now - Date.parse(x.statusAt) < DAY).length;
+export function guardedOf(existing: readonly Proposal[], cfg: Pick<DispatchConfig, "contestGuard" | "autoDispatch" | "settleMin">, now: number): Set<string> {
+  const out = new Set<string>();
+  if (cfg.contestGuard !== "on") return out;
+  for (const p of existing) {
+    if (p.kind !== "ASSIGN" || p.status !== "proposed" || isHeld(p) || p.prHolder || p.resume) continue;
+    const settling = cfg.autoDispatch === "on" && now - Date.parse(p.at) + DISPATCH_MS >= cfg.settleMin * 60_000;
+    if (settling || displacedCountOf(existing, p.flight, now) >= DISPLACE_MAX_24H) out.add(p.id);
+  }
+  return out;
+}
+// 보호하는데 계획이 짝을 뺀 카드: 호출부가 이 카드의 AIRCRAFT·FLIGHT를 예약으로 넣고 다시 계획한다
+export function droppedGuardedOf(existing: readonly Proposal[], plan: Pick<Plan, "assign">, guarded: ReadonlySet<string>, teamPattern?: string): Proposal[] {
+  const planned = new Set(plan.assign.map((a) => `${a.flight}|${regOfAssign(a, teamPattern)}`));
+  return existing.filter((p) => guarded.has(p.id) && !planned.has(`${p.flight}|${regOfProposal(p, teamPattern)}`));
+}
+
 // 새 계획과 열린 제안을 맞춘다. 순수 함수: 추가할 op만 돌려준다.
 export function syncOps(
   existing: Proposal[],
@@ -747,11 +780,15 @@ export function syncOps(
     return ac && canTakeNow(ac, stateOf.get(p.flight)) ? "PR HOLDER 불필요 — PR이 머지·닫힘, 쥔 세션이 생김, head가 바뀜 또는 다른 AIRCRAFT가 더 맞음" : `${AIRCRAFT_WHY}: ${ac?.reason ?? "세션 없음"}`;
   };
 
+  const guarded = guardedOf(existing, cfg, now);
+  // 계획이 보호한 카드의 짝을 예약으로 뺐을 때 planner가 적는 제외 사유(dispatch.ts): 이 카드 자신이 잡은 것이라 닫을 사유가 아니다
+  const ownHoldWhy = (p: Proposal) => `진행 중인 제안 ${p.id}`;
   let open = 0;
   let openRelease = 0;
   // 다른 사유 없이 "더 나은 배정"으로만 계획에서 빠진 판정 대기 제안. 바로 닫지 않고, 아래에서 같은 FLIGHT나
   // AIRCRAFT에 점수가 충분히 높은 새 제안이 실제로 만들어질 때만 닫는다(판정할 기회를 잃지 않게).
   const contested: Proposal[] = [];
+  const keptByGuard: Proposal[] = []; // 경합 보호가 "더 나은 배정"으로 닫지 않고 둔 카드
   for (const p of existing) {
     // 보낸 뒤 FLIGHT가 이미 끝났으면(Done·Canceled·Duplicate) 닫는다. recalling은 RECALL READBACK이 남아 건드리지 않는다(ATC-266)
     if (p.status === "sent" || p.status === "accepted" || p.status === "departed") {
@@ -790,7 +827,12 @@ export function syncOps(
       }
       else if (p.kind === "ASSIGN" && !planned.has(`${p.flight}|${regOf(p)}`)) {
         const reason = why(p);
-        if (reason === BETTER_WHY) {
+        if (guarded.has(p.id) && (reason === BETTER_WHY || reason === ownHoldWhy(p))) {
+          // 보호한 카드: 더 나은 배정이 밀어내지 않는다
+          keptByGuard.push(p);
+          open++;
+        }
+        else if (reason === BETTER_WHY) {
           contested.push(p);
           open++;
         } else if (waits(p, reason)) open++;
@@ -840,9 +882,24 @@ export function syncOps(
   const seen = new Set(recent.map((x) => (x.kind === "ASSIGN" ? `${x.flight}|${regOf(x)}` : `R|${x.flight}`)));
   const nextId = () => `D-${String(++seq).padStart(4, "0")}`;
   const replaced = new Set<string>();
+  // 보호한 카드가 쥔 AIRCRAFT·FLIGHT: 호출부가 예약으로 다시 계획했으면 계획에 없다. 안 했으면 여기서 새 카드를 만들지 않는다(같은 FLIGHT·AIRCRAFT에 카드가 둘이 되지 않게)
+  // (이번 바퀴에 다른 사유로 닫는 카드와 계획에 짝이 남은 카드는 넣지 않는다: 앞의 것은 이미 닫히고, 뒤의 것은 계획이 그 AIRCRAFT를 이미 준 것이다)
+  const heldByGuard = keptByGuard;
+  const guardedFlights = new Set(heldByGuard.map((p) => p.flight));
+  const guardedRegs = new Set(heldByGuard.map((p) => regOf(p)).filter(Boolean) as string[]);
+  // 밀려난 FLIGHT의 새 카드는 원래 카드의 나이를 이어받는다(경합 보호가 켜졌을 때). 이번 바퀴에 민 카드와 최근에 밀려난 카드 가운데 가장 나중 것
+  const displacedAt = new Map<string, string>();
+  if (cfg.contestGuard === "on") {
+    for (const x of [...existing].sort((m, n) => Date.parse(m.statusAt) - Date.parse(n.statusAt))) {
+      if (x.kind !== "ASSIGN" || x.status !== "superseded" || !x.displacedBy || now - Date.parse(x.statusAt) > DISPLACE_AGE_WINDOW_MS) continue;
+      displacedAt.set(x.flight, x.at);
+    }
+  }
+  const ageOf = (flight: string) => (displacedAt.has(flight) ? { ageFrom: displacedAt.get(flight)! } : {});
   for (const a of plan.assign) {
     const reg = regOfAssign(a, tp);
     if (seen.has(`${a.flight}|${reg}`)) continue;
+    if (guardedFlights.has(a.flight) || guardedRegs.has(reg)) continue;
     const rivals = contested.filter((p) => !replaced.has(p.id) && (p.flight === a.flight || regOf(p) === reg));
     if (rivals.length) {
       // 판정 대기 중인 제안보다 REPLACE_MARGIN 이상 높을 때만 바꾼다. 아니면 새 제안을 만들지 않고 기존 것을 둔다
@@ -850,16 +907,18 @@ export function syncOps(
       if (a.score - best < Math.abs(best) * REPLACE_MARGIN) continue;
       const id = nextId();
       for (const p of rivals) {
-        ops.push({ op: "supersede", id: p.id, at, reason: `${BETTER_WHY} — ${id} (${p.score} → ${a.score})` });
+        const record = cfg.contestGuard === "on" ? { by: id, gap: Math.round((a.score - p.score) * 100) / 100 } : {};
+        ops.push({ op: "supersede", id: p.id, at, reason: `${BETTER_WHY} — ${id} (${p.score} → ${a.score})`, ...record });
         replaced.add(p.id);
+        if (cfg.contestGuard === "on") displacedAt.set(p.flight, p.at); // 같은 바퀴에 계획이 그 FLIGHT를 다른 AIRCRAFT에 주었으면 그 카드가 이 나이를 이어받는다
         open--;
       }
-      ops.push({ op: "create", id, at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}), ...(a.waiting?.length ? { waitingFlights: a.waiting } : {}) });
+      ops.push({ op: "create", id, at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...ageOf(a.flight), ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}), ...(a.waiting?.length ? { waitingFlights: a.waiting } : {}) });
       open++;
       continue;
     }
     if (open >= cfg.slots.openProposals) continue;
-    ops.push({ op: "create", id: nextId(), at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}) });
+    ops.push({ op: "create", id: nextId(), at, kind: "ASSIGN", flight: a.flight, aircraft: a.aircraft, aircraftName: a.aircraftName, registration: reg, airport: a.airport, score: a.score, factors: a.factors, ...ageOf(a.flight), ...(a.launch ? { launch: true as const } : {}), ...(a.supervisorConfirm?.length ? { supervisorConfirm: a.supervisorConfirm } : {}) });
     open++;
   }
   // RESUME 카드(ATC-129): 한 cut에 한 번. 그 FLIGHT를 이미 쥔 진행 중인 제안이 있으면 만들지 않는다
@@ -1221,7 +1280,20 @@ export function runDispatch(s: Snapshot, now = Date.now(), events: () => readonl
     reserved.aircraftFlights?.set(reg, [...new Set([...(reserved.aircraftFlights.get(reg) ?? []), h.flight])]);
     if (!reserved.flights.has(h.flight)) reserved.flights.set(h.flight, by);
   }
-  const plan = holders.plans.length ? applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reserved, fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders(), undefined, orphans), s.atfm?.groundStops ?? []) : plan0;
+  const replan = () => applyGroundStops(planDispatch(s, readFlightHistory(), cfg, now, reserved, fleet, landed, logbook, activeWaypointsOf(readLinearProjects().milestones), filesInFlight(), resumes, mccAirportNow(), accountFolders(), undefined, orphans), s.atfm?.groundStops ?? []);
+  let plan = holders.plans.length ? replan() : plan0;
+  // 경합 보호(ATC-547): 보호한 카드(자리 잡았거나 24시간에 두 번 밀려난 FLIGHT)의 짝을 계획이 뺐으면 그 짝을 예약으로 넣고 다시 계획한다.
+  // 더 높은 점수의 FLIGHT는 다른 빈 AIRCRAFT가 받고, 없으면 한 주기 기다린다. 보호한 카드는 syncOps가 닫지 않는다
+  const dropped = droppedGuardedOf(existing, plan, guardedOf(existing, cfg, now), cfg.teamPattern);
+  if (dropped.length) {
+    for (const p of dropped) {
+      const reg = regOfProposal(p, cfg.teamPattern);
+      if (reg && !reserved.aircraft.has(reg)) reserved.aircraft.set(reg, p.id);
+      if (reg) reserved.aircraftFlights?.set(reg, [...new Set([...(reserved.aircraftFlights.get(reg) ?? []), p.flight])]);
+      if (!reserved.flights.has(p.flight)) reserved.flights.set(p.flight, p.id);
+    }
+    plan = replan();
+  }
   noteDispatchHolds(plan.aircraft, now); // ORPHAN FLIGHT 때문에만 막힌 REGISTRATION을 기록(MISFIRE 셈)
   plan.holders = holders.plans;
   setHolderRoutes(holders.routes);

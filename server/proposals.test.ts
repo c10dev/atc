@@ -587,11 +587,12 @@ test("판정 대기 제안: 새 제안이 실제로 만들어지지 않으면 '�
 test("판정 대기 제안: 같은 FLIGHT·AIRCRAFT에 20% 이상 높은 새 제안이 만들어질 때만 바꾼다", () => {
   const existing = fold([scored("D-0001", "VOC-1", "b", 30, 10)]);
   const tickets = [t("VOC-1"), t("VOC-2")].map((x) => ({ ...x, priority: 3, project: "Beta Readiness", labels: [] })) as Ticket[];
-  const run = (score: number) => syncOps(existing, planOf({ assign: [planned("VOC-2", "b", score)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  const off = { ...DEFAULT_DISPATCH_CONFIG, contestGuard: "off" as const };
+  const run = (score: number) => syncOps(existing, planOf({ assign: [planned("VOC-2", "b", score)] }), { tickets, workspaces: [] }, off, NOW, 1); // 30분 된 카드는 자리를 잡아 보호된다(ATC-547): 옛 규칙은 스위치 off로 본다
   assert.deepEqual(pairOps(run(11.9)), []); // 19% 높음: 그대로
   assert.deepEqual(pairOps(run(12)), ["supersede:D-0001:더 나은 배정으로 바뀜 — D-0002 (10 → 12)", "create:D-0002:VOC-2>b"]);
   // 같은 FLIGHT를 다른 AIRCRAFT에 줄 때도 같은 기준
-  const other = syncOps(existing, planOf({ assign: [planned("VOC-1", "c", 13)] }), { tickets, workspaces: [] }, DEFAULT_DISPATCH_CONFIG, NOW, 1);
+  const other = syncOps(existing, planOf({ assign: [planned("VOC-1", "c", 13)] }), { tickets, workspaces: [] }, off, NOW, 1);
   assert.deepEqual(pairOps(other), ["supersede:D-0001:더 나은 배정으로 바뀜 — D-0002 (10 → 13)", "create:D-0002:VOC-1>c"]);
 });
 

@@ -103,6 +103,8 @@ export interface DispatchConfig {
   duplicateTitle: "on" | "off";
   // 채팅 발권(ATC-471): "on"(기본)이면 SUPERVISOR 글이 시작한 DUTY 턴의 `duty linear create --release`가 만든 이슈를 그 글로 발권한다. "off"면 403(RELEASE 화면에서 발권)
   chatRelease: "on" | "off";
+  // 경합 보호(ATC-547): "on"(기본)이면 자리 잡은(settled) 열린 ASSIGN 카드는 더 높은 점수의 새 카드에 밀려나지 않고(그 FLIGHT는 다른 빈 AIRCRAFT로), 24시간에 두 번 밀려난 FLIGHT는 세 번째로 밀지 않으며, 밀려난 FLIGHT의 새 카드는 나이를 이어받는다. 밀어낸 기록과 날짜별 수가 남는다. "off"면 옛 동작(올라온 높은 점수가 곧바로 대신함)
+  contestGuard: "on" | "off";
   stuckUnserved: "on" | "off"; // 막힘 알림 문구(ATC-522): plan.unserved인 Todo FLIGHT의 follow|stuck에 사유와 다음 한 걸음을 적는다. off면 옛 문구
 }
 export type K3HoldMode = "on" | "off";
@@ -159,6 +161,7 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   duplicateTitle: "on",
   chatRelease: "on",
   stuckUnserved: "on",
+  contestGuard: "on",
   bgMemoryCap: "on",
   bgMemoryHigh: "20G",
   bgMemoryMax: "24G",
@@ -249,6 +252,18 @@ export function saveStuckUnserved(mode: "on" | "off", file = CONFIG_FILE) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ ...user, stuckUnserved: mode }, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
+// contestGuard만 바꿔 저장한다(설정 창, ATC-547). 다른 설정은 그대로 둔다
+export function saveContestGuard(mode: "on" | "off", file = CONFIG_FILE) {
+  let user: Record<string, unknown> = {};
+  try {
+    user = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...user, contestGuard: mode }, null, 2) + "\n");
   renameSync(tmp, file);
 }
 
@@ -412,6 +427,8 @@ export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
       chatRelease: user.chatRelease === "off" ? "off" : "on",
       // 막힘 알림 문구(ATC-522): 파일에 "off"라고 적었을 때만 끈다
       stuckUnserved: user.stuckUnserved === "off" ? "off" : "on",
+      // 경합 보호(ATC-547): 파일에 "off"라고 적었을 때만 끈다
+      contestGuard: user.contestGuard === "off" ? "off" : "on",
     };
   } catch (e) {
     // 파일이 없으면 기본. 있는데 못 읽으면(깨짐) 자동 운항은 끈다 — 깨진 파일이 사람 없는 승인을 켜 두지 않게(ATC-367)
