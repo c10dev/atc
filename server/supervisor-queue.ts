@@ -16,7 +16,7 @@ import { waitsOnHuman } from "./human-check.ts";
 import { type HandCard, handCardOf, liveSessionOf, type Relay } from "./relay.ts";
 import type { RelayOffer } from "./relay-offer.ts";
 import type { UpdateKind } from "./update.ts";
-import { isMoot, type MootCtx } from "./undelivered-moot.ts";
+import { decisionFlightOf, isMoot, type MootCtx } from "./undelivered-moot.ts";
 
 // SUPERVISOR QUEUE(ATC-194, docs/ui-visibility.md 3.1, docs/duty.md Q1): SUPERVISOR의 결정을 기다리는 것 하나의 목록.
 // 새 감지는 없다 — 화면이 이미 쓰는 상태를 그대로 읽는다. 항목은 밑의 상태가 바뀔 때만 사라진다(읽음·미룸 없음).
@@ -228,6 +228,8 @@ export function supervisorQueueOf(inp: QueueInput, now: number): QueueItem[] {
   // DECISION(ATC-352): 관제 세션이 올린 결정. 답이 오거나 세션이 거두면 사라진다
   for (const d of inp.decisions ?? []) {
     if (d.status !== "open") continue;
+    // FLIGHT가 닫혔거나 PR이 머지·닫혔으면 줄을 뺀다(ATC-543, ATC-540의 isMoot). 답하거나 거두지 않는다: 기록은 그대로고 role은 여전히 거둘 수 있다
+    if (isMoot({ at: null, flight: decisionFlightOf(d, inp.tickets ?? []), type: null, pr: d.pr?.number ?? null, text: null, stand: null, closed: false, newerDelivered: false }, moot)) continue;
     out.push({ kind: "DECISION", key: d.id, since: d.at, title: `${d.role.toUpperCase()}${d.pr ? ` PR #${d.pr.number}` : ""}: ${d.ask.length > 80 ? `${d.ask.slice(0, 79)}…` : d.ask}`, hash: d.pr ? "#strips" : "#home", primary: open("답하기", "#home"), decision: { id: d.id, role: d.role, ask: d.ask, options: d.options, pr: d.pr } });
   }
 

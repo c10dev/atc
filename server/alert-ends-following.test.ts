@@ -42,14 +42,14 @@ test("끝 규칙: 닫힌 FLIGHT의 UNABLE·BLOCKED·LAUNCH 실패·전달 실패
   assert.deepEqual(followingOf(input({ tickets: closed, unables, undelivered, arrivalReports })), []);
 });
 
-test("끝 규칙: STRANDED는 FLIGHT가 닫혀도 남고 같은 FLIGHT의 다른 문제만 빠진다", () => {
+test("끝 규칙: 닫힌 FLIGHT는 STRANDED도 함께 빠진다(ATC-543: 남은 변경은 정리 줄이 알린다)", () => {
   const closed = [ticket("VOC-1", { state: "Done", stateType: "completed" })];
   const dep = [proposal("D-1", "VOC-1", "accepted", { accepted: ago(400) })];
   const unables = [{ flight: "VOC-1", id: "C-1", aircraft: "TEAM_B", reason: "x", at: ago(5) }];
   const stranded = [{ flight: "VOC-1", number: 4, base: "feat/x", mergedAt: ago(60) }] as unknown as FollowInput["stranded"];
   const ended: Ended = [];
-  assert.deepEqual(codes(followingOf(input({ proposals: dep, tickets: closed, stranded, unables, ended }))), ["VOC-1|stranded"]);
-  assert.deepEqual(ended.map((e) => e.key).sort(), ["VOC-1|done-not-merged", "VOC-1|no-departure", "VOC-1|unable|C-1"]);
+  assert.deepEqual(codes(followingOf(input({ proposals: dep, tickets: closed, stranded, unables, ended }))), []);
+  assert.deepEqual(ended.map((e) => e.key).sort(), ["VOC-1|done-not-merged", "VOC-1|no-departure", "VOC-1|stranded|4", "VOC-1|unable|C-1"]);
 });
 
 test("끝 규칙: UNABLE은 가리킨 PR이 열려 있지 않으면 끝난다", () => {

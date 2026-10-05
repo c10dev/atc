@@ -65,6 +65,7 @@ interface Detail {
   dirty: number;
   lastCommitAt: string | null;
   pushed: boolean | null;
+  unpushed: number | null; // 어느 원격에도 없는 커밋 수(ATC-543). 모르면 null
   checkedAt: number;
 }
 
@@ -73,21 +74,23 @@ const DETAIL_TTL_MS = 30_000;
 
 async function refreshDetail(ws: Workspace) {
   try {
-    const [status, log, remote] = await Promise.all([
+    const [status, log, remote, ahead] = await Promise.all([
       git(ws.path, ["status", "--porcelain"]),
       git(ws.path, ["log", "-1", "--format=%H %cI"]),
       // origin/<branch> 추적 ref(push가 갱신한다). 없으면 빈 글
       ws.branch ? git(ws.path, ["for-each-ref", "--format=%(objectname)", `refs/remotes/origin/${ws.branch}`]) : Promise.resolve(null),
+      git(ws.path, ["rev-list", "--count", "HEAD", "--not", "--remotes"]).catch(() => null),
     ]);
     const [sha, at] = log.trim().split(" ");
     details.set(ws.path, {
       dirty: status.split("\n").filter(Boolean).length,
       lastCommitAt: at || null,
       pushed: remote === null || !sha ? null : remote.trim() === sha,
+      unpushed: ahead === null || !/^\d+$/.test(ahead.trim()) ? null : Number(ahead.trim()),
       checkedAt: Date.now(),
     });
   } catch {
-    details.set(ws.path, { dirty: 0, lastCommitAt: null, pushed: null, checkedAt: Date.now() });
+    details.set(ws.path, { dirty: 0, lastCommitAt: null, pushed: null, unpushed: null, checkedAt: Date.now() });
   }
 }
 
@@ -106,7 +109,7 @@ export async function readWorkspaces(repos: string[]): Promise<Workspace[]> {
   }
   for (const w of all) {
     const d = details.get(w.path);
-    if (d) Object.assign(w, { dirty: d.dirty, lastCommitAt: d.lastCommitAt, pushed: d.pushed });
+    if (d) Object.assign(w, { dirty: d.dirty, lastCommitAt: d.lastCommitAt, pushed: d.pushed, unpushed: d.unpushed });
   }
   return all;
 }
