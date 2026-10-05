@@ -69,7 +69,14 @@ export default function DutyScreen({ chat, onClose, airports, refreshKey, now }:
     let tries = 0;
     const find = () => {
       const el = document.querySelector<HTMLElement>(`.du-log [data-n="${h.n}"]`);
-      if (!el) return tries++ < 20 ? void requestAnimationFrame(find) : undefined;
+      if (!el) {
+        if (tries++ < 20) return void requestAnimationFrame(find);
+        // 이 화면을 연 뒤 SSE로 들어온 줄에는 줄 번호가 없다. 그런 줄은 로그의 맨 끝에 있으니 맨 아래로 간다
+        const log = document.querySelector(".du-log");
+        if (log) log.scrollTop = log.scrollHeight;
+        d.stick.current = true;
+        return;
+      }
       el.scrollIntoView({ block: "center" });
       el.classList.add("is-hit");
       setTimeout(() => el.classList.remove("is-hit"), 2000);

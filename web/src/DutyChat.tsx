@@ -158,14 +158,14 @@ function Answer({ src, live, fill }: { src: string; live: boolean; fill: (c: str
   );
 }
 
-// 줄마다 옅은 UTC 시각(ATC-479). 가리키거나 초점을 주면 날짜까지 모두 보인다(키보드로 갈 수 있게 tabIndex 0). 시각이 없으면 아무것도 그리지 않는다
+// 줄마다 옅은 UTC 시각(ATC-479). 가리키면 날짜까지 모두 보인다. Tab 정지점은 만들지 않고(줄마다 하나면 긴 로그가 키보드를 막는다) 스크린 리더에는 aria-label로 전체 시각을 준다. 시각이 없으면 아무것도 그리지 않는다
 const UTC_RE = /^(\d{4}-\d\d-\d\d)T(\d\d:\d\d)(:\d\d)?/;
 export function Utc({ t }: { t: string }) {
   const m = UTC_RE.exec(t);
   if (!m) return null;
   const full = `${m[1]} ${m[2]}${m[3] ?? ":00"}Z`;
   return (
-    <time className="du-time mono" dateTime={t} tabIndex={0} aria-label={`${full} UTC`}>
+    <time className="du-time mono" dateTime={t} title={full} aria-label={`${full} UTC`}>
       <span className="du-time-short">{m[2]}Z</span>
       <span className="du-time-full">{full}</span>
     </time>
