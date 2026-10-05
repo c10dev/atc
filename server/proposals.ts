@@ -1,3 +1,4 @@
+import { JsonlCache } from "./jsonl-cache.ts";
 import { accountFolders } from "./accounts.ts";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import type { ArrivalSuggestion } from "./standfree.ts";
@@ -1150,21 +1151,10 @@ export function selfCheck2b(atcctlSource: string | null, now = Date.now()) {
 
 // ── 파일 ──
 
+// 자라기만 한 파일은 새 줄만 읽는다(jsonl-cache.ts, ATC-537). 돌려준 배열은 읽기 전용으로 쓴다
+const opsCache = new JsonlCache<Op>();
 export function readOps(file = FILE): Op[] {
-  let text = "";
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  const ops: Op[] = [];
-  for (const line of text.split("\n")) {
-    if (!line) continue;
-    try {
-      ops.push(JSON.parse(line));
-    } catch {}
-  }
-  return ops;
+  return opsCache.read(file).lines as Op[];
 }
 
 export function append(ops: Op[]) {
@@ -1197,8 +1187,13 @@ export function proposalsOfFlight<T extends Pick<Proposal, "flight" | "at">>(all
   return all.filter((p) => p.flight === flight).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
 }
 
+// 기록이 바뀌지 않았으면 접은 결과를 그대로 쓴다(tick마다 부르는 곳이 여럿이다, ATC-537). 배열은 복사해 주고 항목은 읽기 전용으로 쓴다(fold 밖에서 바꾸는 곳은 없다)
+let folded: { gen: number; proposals: Proposal[] } | null = null;
 export function allProposals(): Proposal[] {
-  return fold(readOps());
+  const { lines, gen } = opsCache.read(FILE);
+  if (gen === 0) return fold([]);
+  if (folded?.gen !== gen) folded = { gen, proposals: fold(lines as Op[]) };
+  return folded.proposals.slice();
 }
 
 // 서버 tick에서 5분마다 부른다.

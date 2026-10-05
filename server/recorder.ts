@@ -1,5 +1,6 @@
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { JsonlCache } from "./jsonl-cache.ts";
 import type { HandoffRecord } from "./autoland-handoff.ts";
 import { config } from "./config.ts";
 import { inSequence } from "./landing.ts";
@@ -138,6 +139,12 @@ export function sampleOf(s: Snapshot): Sample {
   };
 }
 
+// 날짜 파일마다 한 번 파싱하고(자라기만 하면 새 줄만, jsonl-cache.ts, ATC-537) 시각(ms)을 같이 둔다. 거르기만 tick마다 한다
+const dayCache = new JsonlCache<{ ms: number; r: RecordLine }>((raw) => {
+  const r = raw as RecordLine;
+  return { ms: Date.parse(r.t), r };
+});
+
 // sinceMs 이후 기록. 해당 날짜 파일만 읽는다.
 export function readRecords(sinceMs: number, dir = DIR): RecordLine[] {
   const firstDay = dayOf(new Date(sinceMs).toISOString());
@@ -149,13 +156,7 @@ export function readRecords(sinceMs: number, dir = DIR): RecordLine[] {
   }
   const out: RecordLine[] = [];
   for (const f of files) {
-    for (const line of readFileSync(join(dir, f), "utf8").split("\n")) {
-      if (!line) continue;
-      try {
-        const r = JSON.parse(line) as RecordLine;
-        if (Date.parse(r.t) >= sinceMs) out.push(r);
-      } catch {}
-    }
+    for (const { ms, r } of dayCache.read(join(dir, f)).lines) if (ms >= sinceMs) out.push(r);
   }
   return out;
 }

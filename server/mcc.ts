@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { JsonlCache } from "./jsonl-cache.ts";
 import { config } from "./config.ts";
 import { type KVerdict, kWhyOf } from "./k-approval.ts";
 import { severityOf } from "./landing.ts";
@@ -97,27 +98,10 @@ export function appendMccRecord(r: MccRecord, file = RECORD_FILE()) {
   appendFileSync(file, `${JSON.stringify(r)}\n`);
 }
 
-// 파일이 바뀌었을 때만 다시 읽는다(스냅샷마다 부른다)
-const caches = new Map<string, { key: string; lines: unknown[] }>();
+// 파일이 바뀌었을 때만 읽는다. 자라기만 했으면 새 바이트만(jsonl-cache.ts, ATC-537). 돌려준 배열은 읽기 전용으로 쓴다
+const jsonl = new JsonlCache<unknown>();
 export function readJsonl<T>(file: string): T[] {
-  let key = "";
-  try {
-    const st = statSync(file);
-    key = `${st.size}:${st.mtimeMs}`;
-  } catch {
-    return [];
-  }
-  const hit = caches.get(file);
-  if (hit?.key === key) return hit.lines as T[];
-  const lines: unknown[] = [];
-  for (const l of readFileSync(file, "utf8").split("\n")) {
-    if (!l) continue;
-    try {
-      lines.push(JSON.parse(l));
-    } catch {}
-  }
-  caches.set(file, { key, lines });
-  return lines as T[];
+  return jsonl.read(file).lines as T[];
 }
 export const readMccRecords = (file = RECORD_FILE()) => readJsonl<MccRecord>(file);
 
