@@ -166,6 +166,24 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
                 onSave={(v) => save({ orphanGraceMin: Number(v) })}
               />
               <EditRow
+                label="EVENT LOOP LAG 기준"
+                env="ATC_EVENT_LOOP_LAG_MS"
+                value={String(s.agents.eventLoopLagMs)}
+                unit="ms"
+                note="이벤트 루프 지연 p99가 이 값을 넘는 5분 구간이 연달아 아래 수만큼이면 CAUTION(1–60000)"
+                input={{ kind: "number", min: 1, max: 60000 }}
+                onSave={(v) => save({ eventLoopLagMs: Number(v) })}
+              />
+              <EditRow
+                label="EVENT LOOP LAG 구간 수"
+                env="ATC_EVENT_LOOP_LAG_WINDOWS"
+                value={String(s.agents.eventLoopLagWindows)}
+                unit="개"
+                note="기준을 연달아 넘어야 하는 5분 구간 수(1–288). 기준 밑인 구간이 오면 알림이 내려감"
+                input={{ kind: "number", min: 1, max: 288 }}
+                onSave={(v) => save({ eventLoopLagWindows: Number(v) })}
+              />
+              <EditRow
                 label="AIRPORT 폴더"
                 env="ATC_PROJECTS_DIR"
                 value={s.agents.projectsDir}

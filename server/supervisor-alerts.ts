@@ -210,6 +210,7 @@ export interface AlertsInput {
   hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
   repositionStuck?: RepositionStuck[];
   orphans?: { flight: string; registration: string; line: string; since: string }[]; // ORPHAN FLIGHT(ATC-516): grace가 지난 것. 쥔 세션이 생기거나 PR이 머지되거나 취소되면 사라진다
+  eventLoopLag?: { line: string; since: string } | null; // EVENT LOOP LAG(ATC-538): 서버 이벤트 루프가 느린 구간이 이어지는 동안만. 기준 밑인 구간이 오면 사라진다
   landBy?: ReadonlyMap<string, LandBy>;
   capIdle?: CapIdleHint[]; // 상한 때문에 LAUNCH가 막힌 채 120분 넘게 논 그 밖의 백그라운드 세션(ATC-184). 알리기만 한다
   schedule?: { mode: ScheduleMode; ops: Pick<ScheduleOp, "id" | "kind" | "flight" | "status" | "statusAt">[] };
@@ -627,6 +628,21 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "RELAY 초안(RESUME 글)을 읽고 보내거나, FLIGHT를 CANCEL한다",
       link: `#flight/${o.flight}`,
       since: o.since,
+    });
+  }
+  // EVENT LOOP LAG(ATC-538): 서버가 느리다는 것을 화면이 아니라 atc가 먼저 알린다. 한 줄
+  if (inp.eventLoopLag) {
+    out.push({
+      key: "alert|event-loop-lag",
+      group: "alert",
+      level: "caution",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: inp.eventLoopLag.line,
+      next: "METRICS나 JOB TIMING(/api/job-timing)에서 어느 일이 이벤트 루프를 붙드는지 본다",
+      link: "#metrics",
+      since: inp.eventLoopLag.since,
     });
   }
   for (const r of inp.repositionStuck ?? []) {

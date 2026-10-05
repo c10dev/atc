@@ -38,6 +38,8 @@ export interface ServerSettings {
     claimTtlMin: number;
     handoffGraceMin: number;
     orphanGraceMin: number;
+    eventLoopLagMs: number;
+    eventLoopLagWindows: number;
     projectsDir: string;
   };
   // 외부 착륙 리뷰(ATC-30): 보안 규칙에만 걸린 PR을 REVIEW 세션(Claude Sonnet)에 보낼까(dispatch.json externalReview.security)
@@ -74,6 +76,8 @@ export interface SettingsPatch {
   claimTtlMin?: number;
   handoffGraceMin?: number;
   orphanGraceMin?: number;
+  eventLoopLagMs?: number;
+  eventLoopLagWindows?: number;
   projectsDir?: string;
   ttsEngine?: string; // none·piper·espeak·kokoro·stub. .env.local의 ATC_TTS_ENGINE(ATC-140)
   ttsVoice?: string; // 고른 목소리 이름. 비우면 첫 번째. ATC_TTS_VOICE
@@ -109,6 +113,8 @@ export function readServerSettings(registry: SwitchRegistry = switchRegistry): S
       claimTtlMin: Math.round(config.claimTtlMs / 60_000),
       handoffGraceMin: Math.round(config.handoffGraceMs / 60_000),
       orphanGraceMin: config.orphanGraceMin,
+      eventLoopLagMs: config.eventLoopLagMs,
+      eventLoopLagWindows: config.eventLoopLagWindows,
       projectsDir: config.projectsDir,
     },
     review: { security: loadDispatchConfig().externalReview.security },
@@ -165,6 +171,14 @@ export function validatePatch(patch: Record<string, unknown>): { env: Record<str
       case "orphanGraceMin":
         if (intIn(raw, 1, 1440)) env.ATC_ORPHAN_GRACE_MIN = String(raw);
         else errors.orphanGraceMin = "1–1440분 사이의 정수";
+        break;
+      case "eventLoopLagMs":
+        if (intIn(raw, 1, 60_000)) env.ATC_EVENT_LOOP_LAG_MS = String(raw);
+        else errors.eventLoopLagMs = "1–60000ms 사이의 정수";
+        break;
+      case "eventLoopLagWindows":
+        if (intIn(raw, 1, 288)) env.ATC_EVENT_LOOP_LAG_WINDOWS = String(raw);
+        else errors.eventLoopLagWindows = "1–288개 사이의 정수";
         break;
       case "handoffGraceMin":
         if (intIn(raw, 0, 120)) env.ATC_HANDOFF_GRACE_MIN = String(raw);
@@ -226,6 +240,8 @@ function applyToConfig(env: Record<string, string | null>) {
   if (keysChanged) config.linearTeamKeys = parseTeamKeys(config.linearTeamKey, "LINEAR_TEAM_KEYS" in env ? (env.LINEAR_TEAM_KEYS ?? "") : config.linearTeamKeys.slice(1).join(","));
   if (env.ATC_CLAIM_TTL_MIN) config.claimTtlMs = Number(env.ATC_CLAIM_TTL_MIN) * 60_000;
   if (env.ATC_ORPHAN_GRACE_MIN) config.orphanGraceMin = Math.max(1, Number(env.ATC_ORPHAN_GRACE_MIN));
+  if (env.ATC_EVENT_LOOP_LAG_MS) config.eventLoopLagMs = Math.max(1, Number(env.ATC_EVENT_LOOP_LAG_MS));
+  if (env.ATC_EVENT_LOOP_LAG_WINDOWS) config.eventLoopLagWindows = Math.max(1, Number(env.ATC_EVENT_LOOP_LAG_WINDOWS));
   if (env.ATC_HANDOFF_GRACE_MIN) config.handoffGraceMs = Number(env.ATC_HANDOFF_GRACE_MIN) * 60_000;
   if (env.ATC_PROJECTS_DIR) config.projectsDir = env.ATC_PROJECTS_DIR;
   if (env.ATC_TTS_ENGINE) config.ttsEngine = env.ATC_TTS_ENGINE;

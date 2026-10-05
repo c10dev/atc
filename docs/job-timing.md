@@ -29,6 +29,17 @@ Each window also carries `cpu` (`userMs`, `systemMs` of this process from `proce
 - `jobTiming` (Settings → OPERATIONS → JOB TIMING, default `on`, SUPERVISOR only, no `atcctl` command). `off`: no timing, no file writes; every wrapped call runs exactly as before. Recorded as `policy / job-timing-mode`.
 - `dropped`: a running count of timings that were not kept: a new source name past the limit of 96 names, or a window that could not be written. It is in every line and in the API.
 
+## Event loop lag (ATC-538)
+
+JOB TIMING counts what each source costs; EVENT LOOP LAG tells the SUPERVISOR that the server as a whole is slow, so it is learned from atc and not from a slow screen.
+
+- **Measured.** `perf_hooks.monitorEventLoopDelay` (10 ms resolution, the resolution itself is subtracted). Each window line carries `loop: { p99Ms, maxMs }`, the delay of the same 5-minute window. `null` when it could not be measured. `GET /api/job-timing` shows the worst `p99Ms` and `maxMs` of the lines it sums. Lines written before this change have no `loop` and are skipped.
+- **Alert.** When `p99Ms` is above the threshold for N consecutive windows, one CAUTION alert `alert|event-loop-lag` is raised ("server event loop is slow …"). A window at or under the threshold clears it. Defaults: 250 ms and 3 windows (15 minutes); both are in Settings → server (`ATC_EVENT_LOOP_LAG_MS`, `ATC_EVENT_LOOP_LAG_WINDOWS`). The run of windows is counted in memory; after a restart an open episode continues and a new run starts from zero.
+- **Switch.** `eventLoopLag` (Settings → OPERATIONS → EVENT LOOP LAG, default `on`, SUPERVISOR only, no `atcctl` command), same pattern as `jobTiming`. `off`: no alert, and an alert that is up comes down at once. The `p99Ms`/`maxMs` recording stays (it belongs to JOB TIMING). Recorded as `policy / event-loop-lag-mode`.
+- **Episodes** are appended to `event-loop-lag-episodes.jsonl`: `open` when the alert is raised, `close` when it clears (`endedBy`: `cleared`, `switch`, or `no-data` when JOB TIMING is off and the window could not be measured). A **MISFIRE** is a closed episode that was `cleared` within 10 minutes of being raised, a short blip the SUPERVISOR did not need to hear about. Closes by `switch` or `no-data` are not counted: they do not say the alert was wrong. `GET /api/event-loop-lag?days=7` returns the switch, the thresholds, `episodes`, `closed`, `misfires`, `share` and the recent closes; METRICS → MISFIRE shows it as one lane row next to the others.
+- **EFFECT CHECK.** `metric: timing:event-loop-p99` in a work order's `## Measure`: the median of the per-window `p99Ms` before and after the deploy (a single spiky window does not move a median). Like the flow medians it needs at least 3 windows on both sides, and the lines must cover the whole before window. JOB TIMING keeps 14 days, so use `window: 7d` or less.
+- It changes no value, order or freshness of any screen: the delay is read from a histogram once per window.
+
 ## Cost
 
 Two `performance.now()` calls and one map update per run; the file is written once per window. Nothing waits for the timing, and nothing reads it on the request path.

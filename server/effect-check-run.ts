@@ -4,7 +4,7 @@ import type { Hono } from "hono";
 import { type AutoSwitch, parseAutoSwitch } from "./autonomy-auto.ts";
 import { allClearances } from "./clearances.ts";
 import { config } from "./config.ts";
-import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
+import { type EffectData, type EffectLine, effectLine, foldEffects, judge, type Measure, measureOf, misfireOf as effectMisfireOf, openBadOf, timingDataOf, windowElapsed, WINDOW_MAX_DAYS } from "./effect-check.ts";
 import { appendEffectLine, readEffectLines, VERDICTS_FILE } from "./effect-store.ts";
 import { flowDataOf } from "./flow.ts";
 import { loadFlow } from "./flow-run.ts";
@@ -20,6 +20,7 @@ import { readReleaseView } from "./release-store.ts";
 import { readLeaks } from "./leaks-run.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { timed } from "./job-timing.ts";
+import { readTimingLines } from "./job-timing-run.ts";
 
 // EFFECT CHECK의 읽고 쓰기(ATC-402). 규칙은 effect-check.ts(순수). 평결은 effect-verdicts.jsonl에 추가만 한다(FLIGHT마다 하나, 그 뒤 SUPERVISOR의 표시 줄).
 // 끄는 스위치는 effect-check.json의 `on`(on·off, 없으면 on). 바꾸는 길은 설정 창뿐이다(SUPERVISOR 자격이 있는 요청만, atcctl 명령은 없다).
@@ -67,6 +68,7 @@ export function gatherEffectData(sinceMs: number, tickets: Snapshot["tickets"] =
   const flow = loadFlow(tickets, Date.now()); // FLOW(ATC-468): flow:<name> 측정
   return {
     flow: flowDataOf(flow.input, flow.samples),
+    timing: timingDataOf(readTimingLines(0)), // JOB TIMING(ATC-538): timing:event-loop-p99 측정
     leaks,
     misfires: proposals.filter((p) => isAutoApproved(p) && misfireOf(p)).map((p) => ({ at: p.timeline.approved! })),
     alerts: events,

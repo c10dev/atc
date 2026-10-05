@@ -2,7 +2,8 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSyn
 import { dirname, join } from "node:path";
 import type { Hono } from "hono";
 import { config } from "./config.ts";
-import { type JobTimingSwitch, jobTimer, parseJobTimingSwitch, sumTimings, type TimingLine } from "./job-timing.ts";
+import { trackLag } from "./event-loop-lag-run.ts";
+import { type JobTimingSwitch, jobTimer, parseJobTimingSwitch, sumTimings, type TimingLine, type TimingWindow } from "./job-timing.ts";
 import { record } from "./recorder.ts";
 
 // JOB TIMING의 읽고 쓰기(ATC-525). 시간을 재는 것은 job-timing.ts(순수). 스위치는 job-timing.json(원자적 JSON, 기본 on)이고 설정 창(fromThisApp)에서만 바꾼다 — atcctl 명령은 없다(K3).
@@ -61,11 +62,14 @@ function pruneTimings(now: number, dir = DIR()) {
   } catch {}
 }
 
-// 지금 구간을 줄로 적는다. 꺼져 있거나 잰 것이 없으면 쓰지 않는다
-export function flushTimings(now = Date.now(), dir = DIR()): boolean {
+// 지금 구간을 줄로 적는다. 꺼져 있거나 잰 것이 없으면 쓰지 않는다. onWindow는 구간이 닫힐 때마다(적지 않는 구간도) 불린다: EVENT LOOP LAG가 이 구간으로 알림을 판정한다(ATC-538)
+export function flushTimings(now = Date.now(), dir = DIR(), onWindow?: (w: TimingWindow) => void): boolean {
   if (!jobTimer.enabled) return false;
   const n = jobTimer.runsInWindow();
   const w = jobTimer.take();
+  try {
+    onWindow?.(w);
+  } catch {}
   if (n === 0) return false;
   const t = new Date(now).toISOString();
   try {
@@ -81,9 +85,11 @@ export function flushTimings(now = Date.now(), dir = DIR()): boolean {
 export function mountJobTiming(app: Hono) {
   const sw = loadJobTimingSwitch();
   jobTimer.setEnabled(sw === "on");
+  jobTimer.startLoop();
   setInterval(() => {
     try {
-      flushTimings();
+      if (!jobTimer.enabled) trackLag(null); // 못 재면 올라간 알림을 그대로 두지 않는다
+      flushTimings(Date.now(), DIR(), (w) => trackLag(w.loop));
       pruneTimings(Date.now());
     } catch {}
   }, FLUSH_MS).unref();

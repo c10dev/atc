@@ -12,6 +12,7 @@ import { handoffResolver } from "./autoland-handoff-run.ts";
 import { type ControlName, controlNameOf } from "./crew.ts";
 import type { Snapshot } from "./model.ts";
 import { landedOf, loadDispatchConfig } from "./dispatch.ts";
+import { lagAlertNow } from "./event-loop-lag-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import { orphanViewsNow } from "./orphan-flight-run.ts";
 import { allProposals } from "./proposals.ts";
@@ -193,6 +194,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
     orphans: orphanViewsNow(s, now, proposals, landedOf(loadLogbook()), teamPattern).map((o) => ({ flight: o.flight, registration: o.registration, line: o.line, since: o.since })),
+    eventLoopLag: lagAlertNow(),
     landBy: landByMap(s),
     schedule: { mode: loadScheduleMode(), ops: loadScheduleOps() },
     recycles: recentRecycles(rs, now),

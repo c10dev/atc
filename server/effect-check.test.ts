@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { type EffectData, type EffectLine, effectLine, foldEffects, judge, MIN_BASELINE, type Measure, measureOf, misfireOf, openBadOf, windowElapsed } from "./effect-check.ts";
+import { type EffectData, type EffectLine, effectLine, foldEffects, judge, MIN_BASELINE, type Measure, measureOf, misfireOf, openBadOf, timingDataOf, windowElapsed } from "./effect-check.ts";
 import { appendEffectLine, type EffectDeps, loadEffectSwitch, readEffectLines, resetEffectCache, runEffectCheck, saveEffectSwitch } from "./effect-check-run.ts";
 import type { LeakOpen, LeakRecord } from "./leaks.ts";
 import { releaseIdOf } from "./release.ts";
@@ -258,4 +258,40 @@ test("한 주기: 배포 뒤 하루가 안 지난 FLIGHT는 본문을 읽지 않
   const { skippedCount } = await import("./effect-check-run.ts");
   assert.equal(skippedCount(), 5);
   resetEffectCache();
+});
+
+// timing:event-loop-p99(ATC-538): JOB TIMING 구간의 이벤트 루프 지연 p99의 중앙값을 배포 앞뒤로 견준다
+test("timing 측정: ## Measure가 timing:event-loop-p99를 읽고, 모르는 이름은 잘못된 모양이다", () => {
+  assert.deepEqual(measureOf(WORK_ORDER("metric: timing:event-loop-p99\ndirection: down\nwindow: 7d")), { kind: "measure", measure: { source: "timing", name: "event-loop-p99", direction: "down", windowDays: 7 } });
+  assert.deepEqual(measureOf(WORK_ORDER("metric: timing:Event-Loop-P99\ndirection: down\nwindow: 7d")), { kind: "measure", measure: { source: "timing", name: "event-loop-p99", direction: "down", windowDays: 7 } });
+  assert.equal(measureOf(WORK_ORDER("metric: timing:cpu\ndirection: down\nwindow: 7d")).kind, "invalid");
+});
+
+test("timing 판정: 앞뒤 창의 구간 p99 중앙값을 견준다(한 번 튄 구간은 끌지 않는다)", () => {
+  const m: Measure = { source: "timing", name: "event-loop-p99", direction: "down", windowDays: 7 };
+  const win = (from: number, p: number[]) => p.map((p99Ms, i) => ({ at: from + i * 3_600_000, p99Ms }));
+  const timing = (before: number[], after: number[]) => ({ windows: [...win(DEPLOYED - 6 * DAY, before), ...win(DEPLOYED + DAY, after)], coverage: DEPLOYED - 8 * DAY });
+  const j = judge(m, DEPLOYED, data({ timing: timing([300, 320, 310, 900], [100, 110, 120, 5000]) }));
+  assert.deepEqual([j.verdict, j.before, j.after], ["improved", 315, 115]); // 중앙값: (310+320)/2, (110+120)/2
+  assert.equal(judge(m, DEPLOYED, data({ timing: timing([300, 310, 320], [305, 310, 315]) })).verdict, "not improved");
+  assert.equal(judge(m, DEPLOYED, data({ timing: timing([100, 110, 120], [300, 310, 320]) })).verdict, "worse");
+  assert.equal(judge({ ...m, direction: "up" }, DEPLOYED, data({ timing: timing([100, 110, 120], [300, 310, 320]) })).verdict, "improved");
+});
+
+test("timing 판정: 기록이 앞 창을 덮지 않거나 구간이 앞뒤 3개 미만이면, 또 timing 자료가 없으면 too little data", () => {
+  const m: Measure = { source: "timing", name: "event-loop-p99", direction: "down", windowDays: 7 };
+  const win = (from: number, p: number[]) => p.map((p99Ms, i) => ({ at: from + i * 3_600_000, p99Ms }));
+  const w = [...win(DEPLOYED - 6 * DAY, [300, 310, 320]), ...win(DEPLOYED + DAY, [100, 110, 120])];
+  assert.equal(judge(m, DEPLOYED, data({ timing: { windows: w, coverage: DEPLOYED - 3 * DAY } })).verdict, "too little data"); // 기록이 3일 전에야 시작
+  assert.equal(judge(m, DEPLOYED, data({ timing: { windows: w.slice(1), coverage: DEPLOYED - 8 * DAY } })).verdict, "too little data"); // 앞 창이 2개
+  assert.equal(judge(m, DEPLOYED, data({ timing: { windows: [], coverage: null } })).verdict, "too little data");
+  assert.equal(judge(m, DEPLOYED, data()).verdict, "too little data");
+});
+
+test("timingDataOf: loop가 적힌 줄만 구간으로 세고, 그 가장 이른 시각이 coverage다(옛 줄은 몰랐던 때)", () => {
+  assert.deepEqual(timingDataOf([{ t: "2026-10-01T00:00:00Z" }, { t: "2026-10-02T00:00:00Z", loop: { p99Ms: 5 } }, { t: "2026-10-03T00:00:00Z", loop: null }, { t: "2026-10-04T00:00:00Z", loop: { p99Ms: 9 } }]), {
+    windows: [{ at: Date.parse("2026-10-02T00:00:00Z"), p99Ms: 5 }, { at: Date.parse("2026-10-04T00:00:00Z"), p99Ms: 9 }],
+    coverage: Date.parse("2026-10-02T00:00:00Z"),
+  });
+  assert.deepEqual(timingDataOf([{ t: "2026-10-01T00:00:00Z" }]), { windows: [], coverage: null });
 });
