@@ -82,6 +82,11 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
           ACCOUNT 불일치로 닫은 DISPATCH 카드 <span className="mono">{dispatch.total.crossAccount}</span>건 · 지난 {DAYS}일 (OCC가 닿지 못하는 AIRCRAFT의 카드, 스위치 ACCOUNT RELEASE)
         </p>
       )}
+      {dispatch && typeof dispatch.total.displaced === "number" && (
+        <p className="muted" data-testid="contest-displaced">
+          "더 나은 배정"으로 밀려난 DISPATCH 카드 <span className="mono">{dispatch.total.displaced}</span>건 · 그중 밀어낸 카드가 닫힌 MISFIRE <span className="mono">{dispatch.total.displacedMisfires ?? 0}</span>건 · 지난 {DAYS}일 (스위치 CONTEST GUARD)
+        </p>
+      )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (
         <>

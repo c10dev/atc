@@ -731,6 +731,18 @@ DISPATCH가 `plan.unserved`에 올린 Todo FLIGHT는 `follow|stuck`가 `제안 �
 - **카운터.** 새 글로 올라온 알림마다 올라올 때 한 번 `policy / stuck-unserved`(`flight`, `why`, `airport`)를 기록한다. `GET /api/stuck-unserved?days=7`이 스위치와 수를 읽는다.
 - **형식.** `dispatch.json`의 `stuckUnserved`, 두 `policy` 기록 op, 알림 항목의 `unserved`는 덧붙은 것이다.
 
+## 자리 잡은 카드는 "더 나은 배정"에 밀려나지 않는다, 만든 것 (ATC-547)
+
+자동 운항에서 점수가 낮은 FLIGHT가 카드가 자동 승인되려는 바로 그 순간에 카드를 잃었다. 계획이 `더 나은 배정으로 바뀜`으로 뺀 열린 ASSIGN은 "판정 대기(contested)"로 남았다가 같은 FLIGHT·AIRCRAFT의 더 높은 점수 카드가 만들어지는 즉시 닫혔고, 새 카드는 settle과 같은 주기로 나온다. 2026-10-05에 ATC-539가 30분에 카드를 세 번 잃고 끝내 출발하지 못했다.
+
+- **보호하는 카드**(`guardedOf`, `server/proposals.ts`, 순수). 열린 ASSIGN(HELD·RESUME·PR HOLDER 제외)은 (a) 자동 운항이 켜져 있고 settle(`settleMin`)이 지났거나 다음 계획 주기(`DISPATCH_MS`, 5분) 안에 지날 때, 또는 (c) 그 FLIGHT가 24시간에 이미 두 번 밀려났을 때 보호한다. 보호한 카드는 `더 나은 배정`으로 닫지 않는다. 다른 닫는 사유(FLIGHT 상태, AIRCRAFT 불가, `autoCardTtlMin` 뒤 자동 카드의 STALE)는 그대로라서, 승인되지 못하는 보호 카드가 AIRCRAFT를 쥐는 시간은 길어야 `autoCardTtlMin`(60분)이다.
+- **빈 AIRCRAFT가 점수 높은 FLIGHT를 받는다.** 계획이 보호한 카드의 짝을 뺐으면 `runDispatch`가 그 AIRCRAFT와 FLIGHT를 예약으로 넣고 다시 계획한다(`droppedGuardedOf`, PR HOLDER와 같은 두 번 계획): 점수가 높은 FLIGHT는 자격이 맞는 다른 빈 AIRCRAFT로 가고(RATING·AIRPORT 슬롯은 planner가 따진다), 보호한 카드는 AIRCRAFT와 나이를 그대로 지킨다. 빈 AIRCRAFT가 없으면 점수 높은 FLIGHT는 한 주기 기다린다. `syncOps`도 보호한 카드의 FLIGHT·AIRCRAFT에 둘째 카드를 만들지 않는다.
+- **그래도 밀려나야 하는 카드**(보호 아님)는 전처럼 SUPERSEDED하되 `supersede` op에 `by`(새 카드)와 `gap`(점수 차)을 적는다. 밀려난 FLIGHT의 다음 카드(같은 바퀴나 30분 안)는 원래 카드의 나이를 이어받는다: `create` op의 `ageFrom`을 `fold`가 카드의 `at`으로 저장하고, SETTLED·자동 승인·TTL이 그 시각부터 센다. `timeline.proposed`는 실제 시각 그대로다.
+- **24시간에 두 번.** `displacedCountOf`는 지난 24시간에 `by`가 있는 채 SUPERSEDED된 그 FLIGHT의 카드를 센다. 둘이면 세 번째 카드는 보호한다. 24시간 짝 규칙은 `더 나은 배정` 닫힘을 그대로 뺀다.
+- **끄는 스위치.** `dispatch.json`의 `contestGuard`(기본 켜짐, 설정 → OPERATIONS → CONTEST GUARD, SUPERVISOR만, `atcctl` 명령 없음, 바꾸면 `policy / contest-guard-mode`로 기록). `off`면 위 규칙이 모두 빠지고 `syncOps`가 옛 `supersede`를 그대로 쓴다(`by`·`gap`·`ageFrom` 없음).
+- **카운터와 misfire.** `GET /api/dispatch/misfire`가 날짜별과 `total`에 `displaced`·`displacedMisfires`를 싣고, METRICS → MISFIRE의 ACCOUNT 줄 옆에 보인다. 밀려난 날에 세고, 밀어낸 카드가 나중에 SUPERSEDED·EXPIRED로 닫히면 misfire다(`displacementMisfire`).
+- **형식.** `contestGuard`, `supersede`의 `by`·`gap`, `create`의 `ageFrom`, 접은 카드의 `displacedBy`·`displacedGap`, misfire 두 수는 덧붙은 것이다.
+
 ## orphan FLIGHT는 그 REGISTRATION의 슬롯을 쓴다, 만든 것 (ATC-516)
 
 `planDispatch`는 [fleet.md](fleet.md)의 ORPHAN FLIGHT("ORPHAN FLIGHT, 만든 것")를 마지막 선택 입력(`orphans`, REGISTRATION → FLIGHT들. 다섯 호출부 모두 `orphanCountsNow`가 채운다)으로 받는다.
