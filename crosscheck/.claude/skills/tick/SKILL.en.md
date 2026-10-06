@@ -6,7 +6,7 @@
 
 **Description:** One CROSSCHECK pass — check whether the manual changed, then for each open DISPATCH proposal and SCHEDULE draft without a mark, read the FLIGHT body and leave a provisional verdict (agree/disagree) with a one-line reason. It never approves or rejects. Run it with `/loop 10m /tick`.
 
-0. `node ../controller/atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, then continue under the reread manual.
+0. `node ../controller/atcctl.mjs tick crosscheck` (it already runs `manual check`; do not call that separately, ATC-553). On `TICK QUIET crosscheck` there is nothing to do: go to step 7 (LOG). On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, and continue under the reread rules. On `TICK ACT crosscheck`, go to step 1.
 1. Run `node ../controller/atcctl.mjs crosscheck brief`. If both `dispatch.pending` and `schedule.pending` are empty, go to 7.
 2. Read `examples` first. What the SUPERVISOR recently decided, and why, is the standard for this pass.
 3. For each item in `pending` (at most 5 per pass in total, DISPATCH first). DISPATCH's `pending` holds only SETTLED proposals (ATC-117); the ones that aren't yet are only counted in `dispatch.unsettledMarks` and get no mark:

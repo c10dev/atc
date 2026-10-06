@@ -63,7 +63,7 @@ import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
 import { mountControlShare } from "./control-share-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
-import { mountSquelch } from "./squelch-run.ts";
+import { migrateOnce, mountSquelch } from "./squelch-run.ts";
 import { mountSquelchSwitch } from "./squelch-switch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
@@ -305,7 +305,15 @@ mountSettings(app);
 mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)
 mountAccounts(app, getSnapshot);
 mountJudges(app);
-mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
+try {
+  // SQUELCH ships on(ATC-553): 배포 뒤 첫 시작에 모든 역할을 on·v2로 한 번 올린다(기록이 있으면 아무것도 안 한다)
+  const m = migrateOnce();
+  if (m === "migrated") console.log("[atc] squelch: ATC-553 — 모든 역할을 on·v2로 올림(squelch.json의 migrated에 옛 값)");
+  else if (m === "unreadable") console.warn("[atc] squelch: squelch.json을 읽을 수 없음 — 올리지 않고 shadow·v1로 둔다");
+} catch (e) {
+  console.warn(`[atc] squelch: 올리기 실패 — ${e instanceof Error ? e.message : e}`);
+}
+mountSquelch(app); // SQUELCH(ATC-94): 판정 API. 기본은 on·v2(ATC-553)
 mountControlShare(app); // CONTROL SHARE(ATC-551): 관제 몫과 일을 한 turn당 토큰(읽기만)
 mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tick을 열었고 그 tick이 일을 했는지(읽기만)
 mountSquelchSwitch(app); // SQUELCH 스위치(ATC-552): 역할마다 mode·heartbeatMin·fingerprint를 SUPERVISOR 화면에서(Origin 검사)

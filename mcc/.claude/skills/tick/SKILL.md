@@ -7,7 +7,7 @@ description: MCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 열린 a
 
 **한국어** · [English](SKILL.en.md)
 
-0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
+0. `node ../controller/atcctl.mjs tick mcc`(`manual check`를 이미 한다. 따로 부르지 않는다, ATC-553). `TICK QUIET mcc`면 할 일이 없다: 아래 5단계(LOG)로 간다. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다. `TICK ACT mcc`면 1단계로.
 1. `node ../controller/atcctl.mjs mcc queue`. `pulls`, `rts`, `groundStop`을 본다. `rts.due`가 true면 여기서 먼저 `node ../controller/atcctl.mjs mcc rts`(한 번, 착륙보다 앞). ROLLBACK 뒤 멈춤이면 하지 않고 보고한다.
 2. `inspection`이 없는 PR마다(오래된 것부터, 한 바퀴에 3건까지):
    - Agent `subagent_type: inspector`를 부른다. 프롬프트는 `PR <번호>, head <queue의 head>`. 여러 PR이면 한 번에 부른다. **packet·diff를 이 세션에서 읽지 않는다**(`mcc packet`, `gh pr diff`, diff 주변 코드 모두). 기준은 CLAUDE.md "INSPECTION하는 법".

@@ -14,8 +14,10 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 
 const file = (n: string) => join(dir, n);
 const lines = () => (existsSync(file("squelch.jsonl")) ? readFileSync(file("squelch.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+// ATC-553: 코드 기본값이 on·v2라, 이 시험들이 보는 shadow·v1 흐름은 파일에 적어서 만든다
+const SHADOW_FILE = JSON.stringify({ config: { mode: "shadow", fingerprint: { tower: "v1", mcc: "v1", occ: "v1", crosscheck: "v1", review: "v1" } }, roles: {} });
 const reset = () => {
-  rmSync(file("squelch.json"), { force: true });
+  writeFileSync(file("squelch.json"), SHADOW_FILE);
   rmSync(file("squelch.jsonl"), { force: true });
 };
 
@@ -67,7 +69,7 @@ test("호출마다 jsonl 한 줄: { t, role, open, reason, fp }", async () => {
   await post("mcc"); // 다른 역할(stub은 review 모양을 주지만 죽지 않는다)
   const l = lines();
   assert.equal(l.length, 3);
-  assert.deepEqual(Object.keys(l[0]).sort(), ["fingerprint", "fp", "fp2", "open", "reason", "reason2", "role", "t", "would"]); // ATC-297: v2 그림자 칸이 더해졌다
+  assert.deepEqual(Object.keys(l[0]).sort(), ["fingerprint", "fp", "fp2", "mode", "open", "reason", "reason2", "role", "t", "would"]); // ATC-297: v2 그림자 칸, ATC-553: mode
   assert.deepEqual(l.map((x) => x.role), ["review", "review", "mcc"]);
   assert.match(l[0].fp, /^[0-9a-f]{64}$/);
   assert.equal(l[0].fp, l[1].fp);
@@ -79,7 +81,7 @@ test("모르는 역할은 404이고 아무것도 쓰지 않는다", async () => 
   const r = await post("nobody");
   assert.equal(r.status, 404);
   assert.equal(box.calls.length, 0);
-  assert.equal(existsSync(file("squelch.json")), false);
+  assert.equal(readFileSync(file("squelch.json"), "utf8"), SHADOW_FILE); // 아무것도 쓰지 않았다
   assert.equal(lines().length, 0);
   assert.equal((await post("tower")).status, 200);
 });
@@ -97,7 +99,7 @@ test("오류는 200 fail-open이고 절대 막지 않는다", async () => {
   assert.deepEqual([j.open, j.reason, j.error], [true, "fail-open", "boom"]);
   assert.deepEqual(lines().map((x) => [x.role, x.open, x.reason, x.fp]), [["tower", true, "fail-open", null]]);
   // 상태 파일은 그 오류로 바뀌지 않는다
-  assert.equal(existsSync(file("squelch.json")), false);
+  assert.equal(readFileSync(file("squelch.json"), "utf8"), SHADOW_FILE); // 아무것도 쓰지 않았다
 });
 
 test("manual check가 던져도 fail-open", async () => {

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { Hono } from "hono";
 import { config } from "./config.ts";
-import { modeOf } from "./squelch.ts";
+import { modeOf, ROLES } from "./squelch.ts";
 import { defaultConfig, mountSquelch, readState } from "./squelch-run.ts";
 import { mountSquelchSwitch, readChanges } from "./squelch-switch-run.ts";
 import { applyPatch, changesThisWeek, lastChanges, parsePatch, resetAll, WEEK_MS } from "./squelch-switch.ts";
@@ -15,16 +15,26 @@ const dir = mkdtempSync(join(tmpdir(), "squelch-switch-"));
 config.stateDir = dir;
 after(() => rmSync(dir, { recursive: true, force: true }));
 const file = (n: string) => join(dir, n);
+// shadow·v1에서 시작하는 설정(ATC-553: defaultConfig는 on·v2다)
+const shadowConfig = () => {
+  const c = defaultConfig();
+  c.mode = "shadow";
+  for (const r of ROLES) c.fingerprint[r] = "v1";
+  return c;
+};
+const SHADOW_FILE = JSON.stringify({ config: { mode: "shadow", fingerprint: { tower: "v1", mcc: "v1", occ: "v1", crosscheck: "v1", review: "v1" } }, roles: {} });
 const reset = () => {
   for (const n of ["squelch.json", "squelch.jsonl", "squelch-changes.jsonl"]) rmSync(file(n), { force: true });
+  writeFileSync(file("squelch.json"), SHADOW_FILE); // ATC-553: 기본값이 on·v2라 shadow·v1 시작은 파일로
 };
 
-test("modeOf: 역할 모드가 먼저, 없으면 전체 모드, 둘 다 틀리면 shadow", () => {
+test("modeOf: 역할 모드가 먼저, 없으면 전체 모드, 둘 다 없으면 on, 값이 틀리면 shadow", () => {
   assert.equal(modeOf({ mode: "shadow", roles: { tower: { mode: "on" } } }, "tower"), "on");
   assert.equal(modeOf({ mode: "shadow", roles: { tower: { mode: "on" } } }, "mcc"), "shadow");
   assert.equal(modeOf({ mode: "on", roles: {} }, "mcc"), "on");
   assert.equal(modeOf({ mode: "bogus", roles: { mcc: { mode: 7 } } }, "mcc"), "shadow");
-  assert.equal(modeOf({}, "occ"), "shadow");
+  assert.equal(modeOf({}, "occ"), "on"); // ATC-553: 없는 값은 기본값 on
+  assert.equal(modeOf({ roles: { occ: { mode: "loud" } } }, "occ"), "shadow"); // 있는데 모르는 값은 shadow
 });
 
 test("parsePatch: 값을 검사한다(틀린 값·모르는 필드·빈 본문은 거절)", () => {
@@ -35,7 +45,7 @@ test("parsePatch: 값을 검사한다(틀린 값·모르는 필드·빈 본문�
 });
 
 test("applyPatch: 한 역할만 바뀌고, 같은 값은 바뀐 것으로 세지 않는다", () => {
-  const cfg = defaultConfig();
+  const cfg = shadowConfig();
   const r = applyPatch(cfg, "tower", { mode: "on", fingerprint: "v2", heartbeatMin: 50 });
   assert.deepEqual(r.changes, [
     { role: "tower", field: "mode", from: "shadow", to: "on" },
@@ -52,7 +62,7 @@ test("applyPatch: 한 역할만 바뀌고, 같은 값은 바뀐 것으로 세지
 });
 
 test("resetAll: 모든 역할 shadow·v1, 바뀐 것만 기록, heartbeatMin은 그대로", () => {
-  let cfg = defaultConfig();
+  let cfg = shadowConfig();
   cfg = applyPatch(cfg, "tower", { mode: "on", fingerprint: "v2", heartbeatMin: 20 }).config;
   cfg = applyPatch(cfg, "review", { mode: "off" }).config;
   cfg.mode = "on";
@@ -92,7 +102,7 @@ test("route: Origin이 없거나 다른 사이트면 403이고 아무것도 쓰�
     assert.equal((await put("tower", { mode: "on" }, h)).status, 403);
     assert.equal((await off(h)).status, 403);
   }
-  assert.equal(existsSync(file("squelch.json")), false);
+  assert.equal(readFileSync(file("squelch.json"), "utf8"), SHADOW_FILE); // 파일을 바꾸지 않았다
   assert.equal(existsSync(file("squelch-changes.jsonl")), false);
 });
 
@@ -129,7 +139,7 @@ test("route: 틀린 값은 400이고 파일을 바꾸지 않는다. 모르는 �
   assert.equal((await put("tower", { mode: "loud" })).status, 400);
   assert.equal((await put("tower", { heartbeatMin: -1 })).status, 400);
   assert.equal((await put("nobody", { mode: "on" })).status, 404);
-  assert.equal(existsSync(file("squelch.json")), false);
+  assert.equal(readFileSync(file("squelch.json"), "utf8"), SHADOW_FILE); // 파일을 바꾸지 않았다
   assert.equal(readChanges().length, 0);
 });
 

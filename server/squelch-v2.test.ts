@@ -14,8 +14,10 @@ config.stateDir = dir;
 after(() => rmSync(dir, { recursive: true, force: true }));
 const file = (n: string) => join(dir, n);
 const lines = () => (existsSync(file("squelch.jsonl")) ? readFileSync(file("squelch.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
+// ATC-553: 코드 기본값이 on·v2라, 이 시험들이 보는 shadow·v1 흐름은 파일에 적어서 만든다
+const SHADOW_FILE = JSON.stringify({ config: { mode: "shadow", fingerprint: { tower: "v1", mcc: "v1", occ: "v1", crosscheck: "v1", review: "v1" } }, roles: {} });
 const reset = () => {
-  rmSync(file("squelch.json"), { force: true });
+  writeFileSync(file("squelch.json"), SHADOW_FILE);
   rmSync(file("squelch.jsonl"), { force: true });
 };
 

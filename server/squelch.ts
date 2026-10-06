@@ -13,13 +13,19 @@ export const MODES: readonly Mode[] = ["off", "shadow", "on"];
 export type Fingerprint = "v1" | "v2";
 export const FINGERPRINTS: readonly Fingerprint[] = ["v1", "v2"];
 export const DEFAULT_HEARTBEAT_MIN = 50; // 1시간 캐시가 식기 전에 한 번(docs/squelch.md 5장)
-export const DEFAULT_MODE: Mode = "shadow";
-export const DEFAULT_FINGERPRINT: Fingerprint = "v1";
-// 역할의 모드(ATC-552): config.roles.<role>.mode가 있으면 그것, 없으면 전체 config.mode. 둘 다 모르는 값이면 shadow(버리지 않는다)
+// 기본값(ATC-553): 파일이 없거나 역할 칸이 없으면 on·v2로 읽는다. 켜고 끄는 것은 SUPERVISOR의 스위치(squelch-switch.ts)뿐이다
+export const DEFAULT_MODE: Mode = "on";
+export const DEFAULT_FINGERPRINT: Fingerprint = "v2";
+// 끄기(스위치)와 읽을 수 없을 때(fail-open)의 값: tick이 늘 돌고 후보 지문을 켜지 않는다
+export const SAFE_MODE: Mode = "shadow";
+export const SAFE_FINGERPRINT: Fingerprint = "v1";
+// 역할의 모드(ATC-552): config.roles.<role>.mode가 있으면 그것, 없으면 전체 config.mode, 둘 다 없으면 DEFAULT_MODE.
+// 값이 있는데 모르는 값이면 shadow(버리지 않는다): 없는 것과 틀린 것은 다르다
 export function modeOf(cfg: { mode?: unknown; roles?: Partial<Record<Role, { mode?: unknown }>> }, role: Role): Mode {
   const own = cfg.roles?.[role]?.mode;
-  if (MODES.includes(own as Mode)) return own as Mode;
-  return MODES.includes(cfg.mode as Mode) ? (cfg.mode as Mode) : DEFAULT_MODE;
+  if (own !== undefined) return MODES.includes(own as Mode) ? (own as Mode) : SAFE_MODE;
+  if (cfg.mode === undefined) return DEFAULT_MODE;
+  return MODES.includes(cfg.mode as Mode) ? (cfg.mode as Mode) : SAFE_MODE;
 }
 
 // 응답 본문(brief JSON)은 서버가 이미 만든 모양 그대로 들어온다. 필드가 빠져도 죽지 않게 느슨하게 읽는다.

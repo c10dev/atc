@@ -29,6 +29,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | PR facts when needed |
 | Read, Grep | The rules (`../CLAUDE.md`), design docs (`../docs/`). `inspector` reads the code around a diff |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
+| `node ../controller/atcctl.mjs tick mcc` | First step of `/tick` (ATC-553): `manual check` plus reading the briefs in one call. `TICK QUIET mcc — …` (nothing to act on, go to the LOG) · `TICK ACT mcc` + `REASONS:` · `CHANGED …` first when the manual changed |
 
 The four writes (inspect, escalate, land, rts) run only after the guard checks the **real model** in this session's transcript, and the guard attaches its name (`ATC_MCC_MODEL`). Anything but Claude is blocked. Don't write it as an environment prefix or `--model`. Run a write alone, without pipes or chains. Quote text in single quotes.
 

@@ -7,7 +7,7 @@ description: 착륙 리뷰(REVIEW) 한 바퀴 — 규정이 바뀌었는지 확�
 
 **한국어** · [English](SKILL.en.md)
 
-0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
+0. `node ../controller/atcctl.mjs tick review`(`manual check`를 이미 한다. 따로 부르지 않는다, ATC-553). `TICK QUIET review`면 할 일이 없다: 아래 4단계(LOG)로 간다. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다. `TICK ACT review`면 1단계로.
 1. `node ../controller/atcctl.mjs landing queue`를 실행한다. `pending`이 비었으면 4로 간다. `excluded`는 건드리지 않는다.
 2. `pending`의 PR마다(한 바퀴에 2건까지):
    - `node ../controller/atcctl.mjs landing review <pr>`로 자료를 읽는다. 403(외부 리뷰 제외)·409(Codex를 쓸 수 있게 됨, head 바뀜, FLIGHT를 못 읽음)면 다시 시도하지 않고 LOG에 적는다.
