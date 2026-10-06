@@ -61,6 +61,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 ## 착륙과 RTS
 
+- 서버 자동(ATC-556): `mcc queue`의 `serverAuto.switch`가 `on`이면 서버가 `auto` 등급 PR을 스스로 착륙시키고(그 PR의 `mcc land`는 이미 닫혔으면 `LAND 안 함`이다) 그 PR만 쌓인 main은 스스로 RTS한다. `serverAuto.recent`에 서버가 거절·실패한 줄이 있으면 그 PR은 이 세션이 이어받고 LOG에 적는다. INSPECTION·ESCALATE와 `flagged`·`user` 등급 착륙은 그대로 이 세션 몫이다.
 - `mcc queue`에서 `blocks`가 빈 PR만 `mcc land <PR> --head <queue의 head>`. 서버가 조건을 다시 보고 막으면 그 조건을 LOG에 적고 넘어간다. 같은 바퀴에 다시 시도하지 않는다.
 - `user` 등급 PR이 `kApproval.ok`라 착륙했으면 LOG에 `LANDED · user · K 승인 <release id>`(큐의 `kApproval.release`)와 선언한 K 효과를 한 줄로 적는다. `kApproval.ok`가 아닌 `user` PR은 LOG에 `kApproval.why`를 적고 넘어간다(INSPECTION은 그대로 한다).
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).

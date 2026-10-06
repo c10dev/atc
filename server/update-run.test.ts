@@ -116,7 +116,7 @@ test("시작: 조건이 맞으면 유닛(스텁)을 시작하고 by supervisor�
 test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서버는 유닛을 시작하지 않는다", async () => {
   config.stateDir = mkdtempSync(join(tmpdir(), "update-mcc-")); // 앞 시험의 시작·RTS 기록이 섞이지 않게
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
-  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" });
+  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on", serverAuto: "off" });
   const app = new Hono();
   mountMcc(app, async () => snap(B), () => A);
   const r = await app.request("/api/mcc/rts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "claude-opus-5-5" }) });
@@ -131,7 +131,7 @@ test("/api/mcc/rts도 같은 규칙: land+rts여도 임시 상태 폴더의 서�
 const fresh = (mode: "shadow" | "land" | "land+rts" | "rts") => {
   config.stateDir = mkdtempSync(join(tmpdir(), "update-auto-"));
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
-  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" });
+  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on", serverAuto: "off" });
 };
 
 test("자동 RTS: shadow·land에서는 아무것도 하지 않는다", async () => {
@@ -210,4 +210,50 @@ test("/api/mcc/rts: rts 모드에서 서버가 이미 시작했으면 그렇다�
   const body = await r.json();
   assert.equal(body.serverStarted, true);
   assert.match(body.why, /서버가 이미 RTS를 시작함/);
+});
+
+// ── 서버 자동(ATC-556): shadow·land 모드에서도 서버가 착륙시킨 PR만 쌓인 main은 서버가 RTS한다 ──
+const freshAuto = (mode: "shadow" | "land" | "land+rts" | "rts", serverAuto: "on" | "off") => {
+  fresh(mode);
+  saveMcc({ mode, airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on", serverAuto });
+};
+const landed = (pr: number, by?: "server" | "supervisor") => appendFileSync(join(config.stateDir, "mcc.jsonl"), JSON.stringify({ op: "land", at: new Date(Date.now() - 600_000).toISOString(), pr, head: "a".repeat(40), tier: "auto", result: "ok", ...(by ? { by } : {}) }) + "\n");
+
+test("서버 자동 RTS: shadow에서 범위의 PR이 모두 서버가 착륙시킨 것이면 시작하고 by server로 남긴다", async () => {
+  freshAuto("shadow", "on");
+  landed(2, "server");
+  const { pass, calls } = setup();
+  const r = await pass();
+  assert.equal(r.started, true);
+  assert.equal(calls.start, 1);
+  const rec = mccLines().at(-1);
+  assert.deepEqual([rec.op, rec.by, rec.result, rec.to], ["rts", "server", "started", B]);
+});
+
+test("서버 자동 RTS: 사람이 머지한 PR이 범위에 섞였거나 스위치가 off거나 범위를 못 읽었으면 시작하지 않는다", async () => {
+  freshAuto("shadow", "on");
+  landed(2); // by 없음: MCC 세션이 착륙
+  const mixed = setup();
+  const r = await mixed.pass();
+  assert.equal(r.started, false);
+  assert.match(r.why, /사람이 배포/);
+  assert.equal(mixed.calls.start, 0);
+  freshAuto("land", "off");
+  landed(2, "server");
+  const off = setup();
+  assert.equal((await off.pass()).started, false);
+  assert.equal(off.calls.start, 0);
+  freshAuto("shadow", "on");
+  landed(2, "server");
+  const unknown = setup({ compare: async () => { throw new Error("GitHub 오류"); } });
+  assert.equal((await unknown.pass()).started, false);
+  assert.equal(unknown.calls.start, 0);
+});
+
+test("서버 자동 RTS: 시험 서버 guard면 shadow에서도 시작하지 않는다", async () => {
+  freshAuto("shadow", "on");
+  landed(2, "server");
+  const guarded = setup({ guard: rtsGuard });
+  assert.equal((await guarded.pass()).started, false);
+  assert.equal(guarded.calls.start, 0);
 });

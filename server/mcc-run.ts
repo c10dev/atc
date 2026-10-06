@@ -13,6 +13,7 @@ import {
   appendMccRecord,
   type CiState,
   escalationOf,
+  inspectionOf,
   inspectionComment,
   reviewOfHead,
   landBlocksOf,
@@ -39,6 +40,8 @@ import {
   tierOfFiles,
 } from "./mcc.ts";
 import type { MccLandInfo } from "./land-by.ts";
+import { autoCountsOf, autoLandOf, autoRecentOf, recheckDueOf, recheckOf } from "./mcc-auto.ts";
+import { readRecords, record } from "./recorder.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
 import { isRevertPr, loadAutoRevert, readAutoRevertLines } from "./auto-revert.ts";
@@ -105,6 +108,16 @@ export function setRemovalGuard(mode: "on" | "off") {
   if (cfg.removalGuard === mode) return;
   saveMcc({ ...cfg, removalGuard: mode });
   appendMccRecord({ op: "mode", at: new Date().toISOString(), mode: cfg.mode, removalGuard: mode, detail: `removalGuard ${cfg.removalGuard} → ${mode}` });
+}
+
+// 서버 자동 스위치(ATC-556): 설정 창에서 SUPERVISOR만(PUT /api/settings의 mccServerAuto, fromThisApp). mcc.jsonl에 mode 줄, FLIGHT RECORDER에 policy 줄을 남긴다
+export function setServerAuto(mode: "on" | "off") {
+  const cfg = loadMcc();
+  if (cfg.serverAuto === mode) return;
+  saveMcc({ ...cfg, serverAuto: mode });
+  const at = new Date().toISOString();
+  appendMccRecord({ op: "mode", at, mode: cfg.mode, serverAuto: mode, detail: `serverAuto ${cfg.serverAuto} → ${mode}` });
+  record({ t: at, kind: "policy", op: "mcc-server-auto-mode", by: "supervisor", from: cfg.serverAuto, to: mode });
 }
 
 // MCC가 맡은 AIRPORT: 저장소 경로, GitHub slug, 기본 브랜치와 그 CI
@@ -278,6 +291,19 @@ async function judge(s: Snapshot, number: number, head?: string) {
   return { ap, pr, files, tier, reasons, ci, inspection, escalated, kApproval, blocks };
 }
 
+// 판단한 PR을 머지하고 mcc.jsonl에 land 줄을 남긴다(MCC 세션의 `mcc land`와 서버 자동이 같이 쓴다). 정확한 head만 머지한다(sha). atc는 merge 커밋을 쓴다. auto-merge를 켜지 않는다
+async function mergeJudged(j: Awaited<ReturnType<typeof judge>>, n: number, base: { at: string; pr: number; head: string; tier: string; model: string; by?: "supervisor" | "server" }) {
+  try {
+    await gh(["api", "-X", "PUT", `repos/${j.ap.slug}/pulls/${n}/merge`, "-f", `sha=${j.pr.head.sha}`, "-f", "merge_method=merge"]);
+    appendMccRecord({ op: "land", ...base, result: "ok", ...(j.tier === "user" && j.kApproval?.ok ? { k: { release: j.kApproval.release, flight: j.kApproval.flight, channel: j.kApproval.channel } } : {}) });
+    return { ok: true as const };
+  } catch (e) {
+    const r = writeResultOf(errText(e));
+    appendMccRecord({ op: "land", ...base, ...r });
+    return { ok: false as const, r };
+  }
+}
+
 // ── SHADOW GATE(docs/mcc.md 9장) ──
 // LOGBOOK에는 머지된 head가 없다(형식은 그대로 둔다). 닫힌 PR 목록(REST)에서 읽어 PR 번호별로 계속 둔다 — 머지된 head는 바뀌지 않는다
 const mergedHeads = new Map<string, Map<number, string>>();
@@ -381,6 +407,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         // CONTROL RECYCLE 스위치(ATC-166). MCC는 상태 폴더를 읽지 못해서 컨텍스트 CAP 안내를 어떻게 받을지 여기서 안다
         recycle: { mode: loadRecycle().mode },
         gate,
+        // 서버 자동(ATC-556): 스위치와 서버가 한 일. 서버가 거절·실패한 줄이 여기 보여 MCC 세션이 이어받는다
+        serverAuto: { switch: ap.cfg.serverAuto, ...autoData() },
         repo: ap.slug,
         service: { head: deployed?.slice(0, 7) ?? null },
         main: { branch: ap.defaultBranch, head: ap.main?.slice(0, 7) ?? null, ci: ap.mainCi },
@@ -506,16 +534,9 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         appendMccRecord({ op: "would-land", ...base, result: "ok", detail: j.ap.cfg.mode });
         return c.json({ landed: false, would: true, tier: j.tier });
       }
-      try {
-        // 정확한 head만 머지한다(sha). atc는 merge 커밋을 쓴다. auto-merge를 켜지 않는다
-        await gh(["api", "-X", "PUT", `repos/${j.ap.slug}/pulls/${n}/merge`, "-f", `sha=${j.pr.head.sha}`, "-f", "merge_method=merge"]);
-        appendMccRecord({ op: "land", ...base, result: "ok", ...(j.tier === "user" && j.kApproval?.ok ? { k: { release: j.kApproval.release, flight: j.kApproval.flight, channel: j.kApproval.channel } } : {}) });
-        return c.json({ landed: true, tier: j.tier, ...(j.tier === "user" && j.kApproval?.ok ? { kApproval: { release: j.kApproval.release, flight: j.kApproval.flight } } : {}), flagged: j.tier === "flagged" ? j.reasons.filter((r) => r.tier === "flagged").map((r) => r.file) : [] });
-      } catch (e) {
-        const r = writeResultOf(errText(e));
-        appendMccRecord({ op: "land", ...base, ...r });
-        return c.json({ landed: false, ...r }, 409);
-      }
+      const merged = await mergeJudged(j, n, base);
+      if (!merged.ok) return c.json({ landed: false, ...merged.r }, 409);
+      return c.json({ landed: true, tier: j.tier, ...(j.tier === "user" && j.kApproval?.ok ? { kApproval: { release: j.kApproval.release, flight: j.kApproval.flight } } : {}), flagged: j.tier === "flagged" ? j.reasons.filter((r) => r.tier === "flagged").map((r) => r.file) : [] });
     } catch (e) {
       const f = fail(e);
       return c.json(f.body, f.status);
@@ -584,6 +605,84 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
     appendMccRecord({ op: b.hold ? "hold" : "unhold", at: new Date().toISOString(), pr });
     return c.json({ holds });
   });
+
+  return { autoPass: (s: Snapshot) => autoPass(s) };
+}
+
+// ── 서버 자동(ATC-556, docs/mcc.md "Server auto") ──
+// MCC 세션의 /tick을 기다리지 않고 서버가 auto 등급 PR을 착륙시킨다. 판정은 `mcc land`와 같은 judge·landBlocksOf, 한 번에 PR 하나만(머지마다 main이 바뀌므로).
+// INSPECTION은 아직 MCC 세션이 한다: 이 head에 pass가 있는 PR만 judge한다(GitHub을 읽지 않고 거르는 길). 착륙한 PR은 몇 분 뒤 다시 읽어 오작동을 센다
+let autoRunning = false;
+const autoTried = new Set<string>(); // 이미 거절·실패한 pr@head: 같은 head로 30초마다 같은 줄을 남기지 않는다
+export async function autoPass(s: Snapshot): Promise<{ landed: number | null; rechecked: number }> {
+  if (autoRunning) return { landed: null, rechecked: 0 };
+  autoRunning = true;
+  try {
+    const cfg = loadMcc();
+    if (cfg.serverAuto !== "on") return { landed: null, rechecked: 0 };
+    const out = { landed: null as number | null, rechecked: 0 };
+    const ap = airportOf(s);
+    out.rechecked = await autoRecheck(s);
+    const records = readMccRecords();
+    for (const p of minePulls(s, ap.repo)) {
+      if (reviewOfHead(records, p.number, p.head)?.verdict !== "pass") continue;
+      const key = `${p.number}@${p.head}`;
+      if (autoTried.has(key)) continue;
+      let j: Awaited<ReturnType<typeof judge>>;
+      try {
+        j = await judge(s, p.number);
+      } catch (e) {
+        continue; // GitHub을 못 읽음: 다음 점검에서 다시. 착륙은 하지 않는다
+      }
+      const d = autoLandOf({ mode: ap.cfg.mode, serverAuto: cfg.serverAuto, tier: j.tier, blocks: j.blocks.length, escalated: Boolean(j.escalated) });
+      if (!d.land) continue;
+      const at = new Date().toISOString();
+      const head = j.pr.head.sha;
+      const merged = await mergeJudged(j, p.number, { at, pr: p.number, head, tier: j.tier, model: "server", by: "server" });
+      if (merged.ok) {
+        record({ t: at, kind: "mcc-auto", op: "land", pr: p.number, head, tier: j.tier });
+        out.landed = p.number;
+        console.log(`[atc] MCC auto LAND #${p.number} ${head.slice(0, 7)}`);
+        break;
+      }
+      autoTried.add(key);
+      record({ t: at, kind: "mcc-auto", op: "refused", pr: p.number, head, why: `${merged.r.result}${merged.r.detail ? `: ${merged.r.detail}` : ""}` });
+      break;
+    }
+    return out;
+  } catch (e) {
+    console.warn(`[atc] MCC auto pass: ${errText(e)}`);
+    return { landed: null, rechecked: 0 };
+  } finally {
+    autoRunning = false;
+  }
+}
+
+// 서버가 착륙시킨 PR을 다시 읽는다(3분 뒤부터 24시간 안, PR마다 한 번). 지금이라면 막았을 조건이 있으면 misfire
+async function autoRecheck(s: Snapshot): Promise<number> {
+  const now = Date.now();
+  const records = readMccRecords();
+  const due = recheckDueOf(records, readRecords(now - 25 * 3_600_000), now).slice(0, 3);
+  if (!due.length) return 0;
+  const ap = airportOf(s);
+  let n = 0;
+  for (const d of due) {
+    try {
+      const ci = await fetchCi(ap.slug, d.head, ap.cfg.ciCheck);
+      const latest = inspectionOf(records, d.pr, d.head);
+      const esc = escalationOf(records, d.pr);
+      const misfire = recheckOf({ ci, ciCheck: ap.cfg.ciCheck, inspection: latest ? latest.verdict : null, escalatedAfter: Boolean(esc && Date.parse(esc.at) > Date.parse(d.at)), held: ap.cfg.holds.includes(d.pr) });
+      record({ t: new Date().toISOString(), kind: "mcc-auto", op: "recheck", pr: d.pr, head: d.head, misfire });
+      n++;
+    } catch {}
+  }
+  return n;
+}
+
+// 설정 창과 MCC queue가 보이는 서버 자동의 숫자와 최근 줄
+export function autoData(now = Date.now()) {
+  const lines = readRecords(now - 7 * 86_400_000);
+  return { last7d: autoCountsOf(lines, now, 7), recent: autoRecentOf(lines, 5) };
 }
 
 // 지우기 규칙의 오작동 수(ATC-495): 지우기로 ESCALATE한 PR을 SUPERVISOR가 같은 head 그대로 착륙시킨 수(최근 7일)와 지우기 ESCALATE의 총수.

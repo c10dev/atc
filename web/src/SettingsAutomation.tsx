@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import type { KDay } from "../../server/k-approval.ts";
+import type { AutoCounts } from "../../server/mcc-auto.ts";
 import type { RemovalStats } from "../../server/removal-rule.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
@@ -512,6 +513,35 @@ function RemovalGuardStats({ d }: { d: RemovalStats & { headsKnown: boolean } })
     </ul>
   );
 }
+// MCC SERVER AUTO(ATC-556)의 숫자: 최근 7일. 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface AutoData {
+  last7d: AutoCounts;
+  recent: { t: string; kind: string; op: string; pr?: number; head?: string; why?: string; misfire?: string[]; result?: string }[];
+}
+function ServerAutoStats({ d }: { d: AutoData }) {
+  const c = d.last7d;
+  return (
+    <ul className="dp-misfire" data-code="MCC-SERVER-AUTO">
+      <li>
+        최근 7일 서버 착륙 <b>{c.lands}</b> · 서버 RTS <b>{c.rts}</b>
+        {c.rtsFailed ? <span className="is-warn"> · RTS 실패 {c.rtsFailed}</span> : null} · 서버가 거절·실패 <b>{c.refused}</b>
+      </li>
+      <li>
+        오작동(착륙 뒤 다시 읽으면 막았을 조건이 있음) <b className={c.misfires ? "is-warn" : undefined}>{c.misfires}</b>
+        <span className="faint"> — 다시 읽은 착륙 {c.rechecks}/{c.lands}</span>
+      </li>
+      {d.recent.slice(0, 3).map((r) => (
+        <li key={`${r.t}${r.op}`} className="faint">
+          <span className="mono">{r.t.slice(5, 16).replace("T", " ")}</span> {r.op}
+          {r.pr ? ` #${r.pr}` : ""}
+          {r.head ? ` ${r.head.slice(0, 7)}` : ""}
+          {r.why ? ` — ${r.why}` : ""}
+          {r.misfire?.length ? ` — ${r.misfire.join(", ")}` : ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
 // VERIFY GATE 세기(ATC-517): 줄 선 실행·가장 긴 기다림·한도 실패·바로 실행·죽은 명령이 놓은 슬롯. 0도 보여 "한 번도 안 울렸다"와 구분한다
 interface GateCounts {
   runs: number;
@@ -767,6 +797,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   removalGuard: (s) => {
     const d = switchOf(s, "removalGuard")?.data as (RemovalStats & { headsKnown: boolean }) | undefined;
     return d ? <RemovalGuardStats d={d} /> : null;
+  },
+  mccServerAuto: (s) => {
+    const d = switchOf(s, "mccServerAuto")?.data as AutoData | undefined;
+    return d ? <ServerAutoStats d={d} /> : null;
   },
   verifyGate: (s) => {
     const d = switchOf(s, "verifyGate")?.data as VerifyGateData | undefined;
