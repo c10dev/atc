@@ -274,7 +274,11 @@ export async function fetchWithRetry(method, path, body) {
     const res = await withRetry(
       async () => {
         const r = await fetch(BASE + path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
-        if (r.status === 429 || r.status === 503) throw new HttpFailure(r.status, `HTTP ${r.status}`, retryAfterMs(r.headers.get("retry-after")));
+        if (r.status === 429 || r.status === 503) {
+          const f = new HttpFailure(r.status, `HTTP ${r.status}`, retryAfterMs(r.headers.get("retry-after")));
+          f.response = r;
+          throw f;
+        }
         return r;
       },
       {
@@ -286,6 +290,8 @@ export async function fetchWithRetry(method, path, body) {
     if (events.length) void noteAttempts(events);
     return res;
   } catch (e) {
+    // 끝까지 429·503이면 그 응답을 돌려준다: call()이 서버가 적은 오류 글(예: "Linear 미연결")을 그대로 보인다. 설정 상태일 수 있어 네트워크 실패로 세지 않는다(기록하지 않는다)
+    if (e instanceof HttpFailure && e.response) return e.response;
     if (events.length) await noteAttempts(events);
     if (e instanceof Error && !(e instanceof HttpFailure)) e.message = hopText(e.message, "atcctl-to-atc-server");
     throw e;

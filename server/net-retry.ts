@@ -47,6 +47,7 @@ export const retryable = (c: Cause): boolean => (c.cls === "http" ? RETRY_STATUS
 export class HttpFailure extends Error {
   status: number;
   retryAfterMs: number | null;
+  response?: unknown; // 이 실패를 만든 HTTP 응답(있으면). 호출한 쪽이 마지막에 그 응답의 본문을 읽을 수 있게
   constructor(status: number, message: string, retryAfterMs: number | null = null) {
     super(message);
     this.name = "HttpFailure";

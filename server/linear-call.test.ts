@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { callCountsOf, type LinearCallLine, linearGql, noteLinesOf } from "./linear-call.ts";
+import { Hono } from "hono";
+import { callCountsOf, type LinearCallLine, lineOf, linearGql, noteLinesOf } from "./linear-call.ts";
+import { mountLinearCalls } from "./linear-call-run.ts";
 import { backoffMs, causeOf, hopText, HttpFailure, parseRetries, retryable, retryAfterMs, withRetry } from "./net-retry.ts";
 import { createDutyBlocks, createDutyComment, createDutyIssue, fetchDutyIssue } from "./sources/linear-write.ts";
 
@@ -327,4 +329,29 @@ test("callCountsOf: 날·구간·원인마다 실패한 시도, 복구, 포기",
     { day: "2026-10-06", hop: S, cause: "dns", failedAttempts: 3, recovered: 1, gaveUp: 1 },
     { day: "2026-10-05", hop: "atcctl-to-atc-server", cause: "connect", failedAttempts: 1, recovered: 0, gaveUp: 1 },
   ]);
+});
+
+test("id 필드를 모르는 Linear: 대체 길로 가는 검증 거절은 기록하지 않는다", async () => {
+  process.env.ATC_LINEAR_WRITE_URL = "http://127.0.0.1:1/graphql";
+  const h = harness();
+  const f = fakeLinear(["ok"], { unknownId: true });
+  assert.equal((await createDutyIssue(input, write(h, f))).key, "ATC-101");
+  assert.deepEqual(h.lines, []); // 첫 보내기의 400이 포기로 세이지 않는다
+});
+
+test("기록의 key는 이슈 key 모양일 때만(내부 UUID는 넣지 않는다)", () => {
+  const e = { attempt: 1, outcome: "retry" as const, cause: { cls: "dns" as const, code: "ENOTFOUND", mayHaveSent: false } };
+  assert.equal(lineOf(e, "atc-server-to-linear", "update", "ATC-561").key, "ATC-561");
+  assert.equal("key" in lineOf(e, "atc-server-to-linear", "update", "3f2b8c1e-0d7a-4c55-9d3e-2a1b7c9e0f11"), false);
+});
+
+test("POST /api/linear-calls/note: Origin이 붙은 요청(브라우저)은 403", async () => {
+  const app = new Hono();
+  mountLinearCalls(app);
+  const body = JSON.stringify({ events: [] });
+  const withOrigin = await app.request("/api/linear-calls/note", { method: "POST", headers: { origin: "http://evil.example", "content-type": "application/json" }, body });
+  assert.equal(withOrigin.status, 403);
+  const plain = await app.request("/api/linear-calls/note", { method: "POST", headers: { "content-type": "application/json" }, body });
+  assert.equal(plain.status, 200);
+  assert.deepEqual(await plain.json(), { recorded: 0 });
 });

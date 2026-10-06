@@ -46,6 +46,7 @@ export function saveRetries(n: number, by = "SUPERVISOR", file = SETTING_FILE())
   if (file === SETTING_FILE()) record({ t: new Date().toISOString(), kind: "policy", op: "linear-retry-count", by, from: String(from), to: String(n) });
 }
 
+const ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 export const lineOf = (e: AttemptEvent, hop: LinearCallLine["hop"], op: LinearOp, key: string | undefined, now = new Date()): LinearCallLine => ({
   t: now.toISOString(),
   kind: "linear-call",
@@ -55,7 +56,7 @@ export const lineOf = (e: AttemptEvent, hop: LinearCallLine["hop"], op: LinearOp
   outcome: e.outcome,
   cause: e.cause.cls,
   ...(e.cause.code ? { code: e.cause.code } : {}),
-  ...(key ? { key } : {}),
+  ...(key && ISSUE_KEY.test(key) ? { key } : {}),
 });
 
 export interface GqlCall {
@@ -64,7 +65,9 @@ export interface GqlCall {
   query: string;
   variables: Record<string, unknown>;
   op: LinearOp;
-  key?: string; // 이슈 key(기록에만 들어간다)
+  key?: string; // 이슈 key(기록에만 들어간다). 이슈 key 모양(ATC-1)이 아니면(내부 UUID 등) 기록하지 않는다
+  // 이 오류는 기록하지 않는다(다시 시도가 아니라 대체 길로 가는 검증 거절: id 필드를 모르는 Linear)
+  quietWhen?: (e: Error) => boolean;
   // 보냈는지 모르는 실패 뒤, 다시 보내기 전에 이미 적용됐는지 찾는다(쓰기). 값이 있으면 그것이 결과다
   beforeRetry?: (c: Cause) => Promise<unknown | undefined>;
   // 쓰기를 다시 보내도 되는가(기본: 읽기와 멱등한 쓰기). false면 요청이 닿기 전에 실패한 경우에만 다시 보낸다
@@ -129,7 +132,7 @@ export async function linearGql<T>(c: GqlCall): Promise<T> {
         return found as T;
       }
     }
-    if (pendingGaveUp) put(pendingGaveUp);
+    if (pendingGaveUp && !(e instanceof Error && c.quietWhen?.(e))) put(pendingGaveUp);
     if (e instanceof Error && cause.cls !== "other") e.message = hopText(e.message, "atc-server-to-linear");
     throw e;
   }

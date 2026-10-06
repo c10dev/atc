@@ -24,6 +24,8 @@ export function mountLinearCalls(app: Hono) {
     return c.json(callsData(p.days));
   });
   app.post("/api/linear-calls/note", async (c) => {
+    // atcctl은 Origin을 보내지 않는다. 브라우저 쪽 요청(Origin이 있다)은 받지 않는다
+    if (c.req.header("origin")) return c.json({ error: "atcctl만 보낼 수 있음" }, 403);
     const body = await c.req.json().catch(() => null);
     const lines = noteLinesOf(body);
     for (const l of lines) record(l);

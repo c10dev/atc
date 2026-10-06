@@ -19,6 +19,7 @@ const server = createServer((req, res) => {
   hits.push(req.method);
   if (mode === "reset-once" && hits.length === 1) return req.socket.destroy();
   if (mode === "reset-always") return req.socket.destroy();
+  if (mode === "503-json") return void res.writeHead(503, { "content-type": "application/json" }).end(JSON.stringify({ error: "Linear 미연결" }));
   if (mode === "503-once" && hits.length === 1) return void res.writeHead(503, { "retry-after": "0" }).end("{}");
   res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true }));
 });
@@ -43,6 +44,22 @@ test("GET: 503은 다시 시도한다", async () => {
   reset("503-once");
   assert.equal((await fetchWithRetry("GET", "/api/x")).status, 200);
   assert.equal(hits.length, 2);
+});
+
+test("끝까지 503이면 그 응답을 돌려줘 서버의 오류 글이 보이고, 기록하지 않는다(GET은 다시 시도, POST는 한 번)", async () => {
+  await new Promise((r) => setTimeout(r, 150)); // 앞 시험의 늦은 기록 알림이 도착한 뒤에 비운다
+  reset("503-json");
+  notes.length = 0;
+  const g = await fetchWithRetry("GET", "/api/x");
+  assert.equal(g.status, 503);
+  assert.deepEqual(await g.json(), { error: "Linear 미연결" });
+  assert.equal(hits.length, 3);
+  reset("503-json");
+  const p = await fetchWithRetry("POST", "/api/x", { a: 1 });
+  assert.equal(p.status, 503);
+  assert.deepEqual(await p.json(), { error: "Linear 미연결" });
+  assert.equal(hits.length, 1);
+  assert.deepEqual(notes, []);
 });
 
 test("POST: 서버가 받았는지 모르는 끊김은 다시 보내지 않는다(쓰기가 두 번 가지 않게)", async () => {

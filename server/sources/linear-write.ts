@@ -8,7 +8,7 @@ import type { MoveIssue } from "../flight-state.ts";
 const ENDPOINT = "https://api.linear.app/graphql";
 
 // 다시 시도·기록·구간 이름은 linear-call.ts(ATC-561). 쓰기의 중복 방지는 아래 create 함수들이 beforeRetry로 건다
-type Extra = Pick<GqlCall, "key" | "beforeRetry" | "idempotent" | "retries" | "fetchFn" | "sink" | "sleep" | "rand" | "timeoutMs">;
+type Extra = Pick<GqlCall, "key" | "quietWhen" | "beforeRetry" | "idempotent" | "retries" | "fetchFn" | "sink" | "sleep" | "rand" | "timeoutMs">;
 async function gql<T>(query: string, variables: Record<string, unknown>, op: LinearOp = "read", extra: Extra = {}): Promise<T> {
   return linearGql<T>({ endpoint: ENDPOINT, apiKey: config.linearApiKey, query, variables, op, ...extra });
 }
@@ -139,7 +139,7 @@ export async function createDutyIssue(input: CreateInput, extra: Extra = {}): Pr
     ).catch(() => null);
     return found(d?.issues.nodes[0]);
   };
-  const send = (withId: boolean) => gqlDuty<{ issueCreate: { success: boolean; issue: { identifier: string; url: string } | null } }>(CREATE_MUTATION, { input: withId ? { ...input, id } : input }, "create", { idempotent: false, beforeRetry: withId ? byId : byTitle, ...extra });
+  const send = (withId: boolean) => gqlDuty<{ issueCreate: { success: boolean; issue: { identifier: string; url: string } | null } }>(CREATE_MUTATION, { input: withId ? { ...input, id } : input }, "create", { idempotent: false, beforeRetry: withId ? byId : byTitle, ...(withId ? { quietWhen: (e: Error) => UNKNOWN_ID_FIELD.test(e.message) } : {}), ...extra });
   let d;
   try {
     d = await send(true);
@@ -218,7 +218,7 @@ export async function createDutyComment(issueId: string, body: string, extra: Ex
       `mutation DutyComment($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { id } } }`,
       { input: withId ? { issueId, body, id } : { issueId, body } },
       "comment",
-      { key: issueId, idempotent: false, beforeRetry: withId ? byId : byBody, ...extra },
+      { key: issueId, idempotent: false, beforeRetry: withId ? byId : byBody, ...(withId ? { quietWhen: (e: Error) => UNKNOWN_ID_FIELD.test(e.message) } : {}), ...extra },
     );
   let d;
   try {
