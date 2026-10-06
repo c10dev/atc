@@ -81,6 +81,8 @@ import { holderLines, holderPlansOf, type PrHolder } from "./pr-holder.ts";
 import { setHolderRoutes } from "./pr-holder-state.ts";
 import { ticketKeyFromBranch } from "./sources/git.ts";
 import { k3LaunchWaits, k3WaitOf } from "./k3-launch-wait.ts";
+import { flightPlanCalls } from "./stale-reply.ts";
+import { refuseStaleReply } from "./stale-reply-run.ts";
 import {
   approveLaunch,
   LAUNCH_FAILED_WHY,
@@ -1497,6 +1499,11 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       const mode = loadDispatchConfig().mode;
       const at = new Date().toISOString();
       const closed = (op: StatusOp) => (canApply(p, op) ? null : c.json({ error: `지금 상태(${p.status})에서는 할 수 없음` }, 409));
+      // CAPTAIN의 답(accept=READBACK·decline=UNABLE·standby·await-supervisor)은 같은 FLIGHT로 뒤에 나간 FLIGHT PLAN이 있으면 최신 id로 안내하고 받지 않는다(ATC-554). RECALL의 답(recalled)은 거르지 않는다
+      if (name === "accept" || name === "decline" || name === "standby" || name === "await-supervisor") {
+        const stale = refuseStaleReply("flight-plan", id, name, flightPlanCalls(allProposals()));
+        if (stale) return c.json({ error: stale }, 409);
+      }
       if (JUDGE_ACTIONS.includes(name) && isBlind(id) && viaOf(body) === "crosscheck")
         return c.json({ error: "BLIND 카드는 CROSSCHECK 한 번 클릭으로 판정하지 않는다 — 카드를 보고 직접 판정" }, 409);
       if (JUDGE_ACTIONS.includes(name) && p.status === "proposed" && isHeld(p))

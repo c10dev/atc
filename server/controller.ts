@@ -5,6 +5,8 @@ import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance, markClearanceHand } from "./clearances.ts";
 import { mootNow } from "./clearance-moot-run.ts";
+import { clearanceCalls } from "./stale-reply.ts";
+import { refuseStaleReply } from "./stale-reply-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
@@ -371,7 +373,13 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
   for (const op of ["readback", "roger", "unable", "standby", "cancel", "undeliverable"] as const) {
     app.post(`/api/clearances/:id/${op}`, async (c) => {
       const body = op === "unable" || op === "undeliverable" ? await c.req.json().catch(() => ({})) : {};
-      const r = markClearance(c.req.param("id").toUpperCase(), op, typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
+      const id = c.req.param("id").toUpperCase();
+      // 같은 주제로 뒤에 나간 CLEARANCE가 있으면 옛 id에 온 답은 받지 않는다(ATC-554). cancel·undeliverable은 TOWER의 동작이라 거르지 않는다
+      if (op !== "cancel" && op !== "undeliverable") {
+        const stale = refuseStaleReply("clearance", id, op, clearanceCalls(allClearances()));
+        if (stale) return c.json({ error: stale }, 409);
+      }
+      const r = markClearance(id, op, typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
       if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
       if (!("error" in r) && op === "undeliverable") bustQueue();
       return "error" in r ? c.json(r, 409) : c.json({ clearance: r });

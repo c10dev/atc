@@ -30,7 +30,7 @@ CLEARANCE 종류: `TRAFFIC`(교통 정보) `HOLD`(대기) `CONTINUE`(계속) `LA
 
 SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버릴 수 있다. guard가 아니다: 버려진 tick은 ATC LOG 줄 없이 없던 일이고, 팀 메시지와 SUPERVISOR 프롬프트는 그대로 온다.
 
-응답 속성(ATC-122): 문구 끝줄이 어떤 답을 청하는지 atc가 정한다. 따를 지시(`LAND`·`GO AROUND`·`FIX`·`HOLD`·`CONTINUE`)는 **W/U**: READBACK이나 UNABLE이 닫고, STANDBY는 열어 둔다. 알림(`INFO`·`TRAFFIC`·`REPORT`)은 **R**: ROGER가 닫는다. READBACK은 어느 쪽이든 받는다. 받을 수 없는 답(W/U에 ROGER, R에 STANDBY)은 서버가 사유와 함께 거절한다 — 그러면 기록하지 않고 SUPERVISOR 보고 목록에 올린다.
+응답 속성(ATC-122): 문구 끝줄이 어떤 답을 청하는지 atc가 정한다. 따를 지시(`LAND`·`GO AROUND`·`FIX`·`HOLD`·`CONTINUE`)는 **W/U**: READBACK이나 UNABLE이 닫고, STANDBY는 열어 둔다. 알림(`INFO`·`TRAFFIC`·`REPORT`)은 **R**: ROGER가 닫는다. READBACK은 어느 쪽이든 받는다. 받을 수 없는 답(W/U에 ROGER, R에 STANDBY)은 서버가 사유와 함께 거절한다 — 그러면 기록하지 않고 SUPERVISOR 보고 목록에 올린다. 409 `… answer the latest call C-yyyy`(ATC-554)는 다시 보낸 W/U CLEARANCE의 옛 id로 팀이 답했다는 뜻이다: 옛 id에는 기록하지 않고, 팀의 답이 그 부름에 대한 것이면 오류가 알려 준 최신 id에 `readback`·`unable`·`standby C-yyyy`로 기록하고, 아니면 SUPERVISOR 보고 목록에 올린다.
 
 ## 판단 기준
 

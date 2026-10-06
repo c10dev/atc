@@ -32,7 +32,7 @@ CLEARANCE types: `TRAFFIC` (traffic information) `HOLD` (hold) `CONTINUE` (conti
 
 SQUELCH (a `UserPromptSubmit` hook, `docs/squelch.md`) may drop a plain `/tick`; it is not a guard. A dropped tick leaves no ATC LOG line, and team messages and SUPERVISOR prompts still arrive.
 
-Response attributes (ATC-122): atc decides which answer the closing line asks for. Instructions to follow (`LAND`, `GO AROUND`, `FIX`, `HOLD`, `CONTINUE`) are **W/U**: READBACK or UNABLE closes them, and STANDBY keeps them open. Notices (`INFO`, `TRAFFIC`, `REPORT`) are **R**: ROGER closes them. READBACK is accepted for either. The server refuses an answer the CLEARANCE can't take (ROGER on W/U, STANDBY on R) and says why; then don't record it, and put it on the SUPERVISOR report list.
+Response attributes (ATC-122): atc decides which answer the closing line asks for. Instructions to follow (`LAND`, `GO AROUND`, `FIX`, `HOLD`, `CONTINUE`) are **W/U**: READBACK or UNABLE closes them, and STANDBY keeps them open. Notices (`INFO`, `TRAFFIC`, `REPORT`) are **R**: ROGER closes them. READBACK is accepted for either. The server refuses an answer the CLEARANCE can't take (ROGER on W/U, STANDBY on R) and says why; then don't record it, and put it on the SUPERVISOR report list. A 409 `… answer the latest call C-yyyy` (ATC-554) means the team answered an older id of a resent W/U CLEARANCE: don't record it on the old id; record the team's answer on the latest id named in the error (`readback`/`unable`/`standby C-yyyy`) only if the team's message is about that call, otherwise put it on the SUPERVISOR report list.
 
 ## Decision rules
 
