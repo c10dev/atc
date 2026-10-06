@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LivenessData } from "../../../server/job-liveness-run.ts";
+import type { CallsData } from "../../../server/linear-call-run.ts";
 import { type AutoView, type DispatchMisfire, type GapView, type LagView, type OrphanView, LANE_OF_KIND, laneRowsOf, recentLinesOf, WHY_LABEL } from "../misfire-rows.ts";
 import { apiGet } from "../api.ts";
 import { timeAgo } from "../derive.ts";
@@ -20,6 +21,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
   const [gap, setGap] = useState<GapView | null>(null);
   const [orphan, setOrphan] = useState<OrphanView | null>(null);
   const [lag, setLag] = useState<LagView | null>(null);
+  const [calls, setCalls] = useState<CallsData | null>(null);
   const [live, setLive] = useState<LivenessData | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -98,6 +100,45 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
         <p className="muted" data-testid="job-liveness">
           job이 사라져 다시 LAUNCH하거나 다른 AIRCRAFT로 넘긴 승인 카드 <span className="mono">{live.last7d.misfires}</span>건(LAUNCH {live.last7d.relaunch} · 넘김 {live.last7d.handoff}) · 사라진 job {live.last7d.gone} · init에서 죽은 LAUNCH {live.last7d.initDeath} · 지난 {DAYS}일 (스위치 JOB LIVENESS {live.mode.toUpperCase()})
         </p>
+      )}
+      {calls && (
+        <>
+          <h2 className="label">
+            LINEAR CALLS <em>실패한 시도 {calls.total.failedAttempts} · 다시 시도해 복구 {calls.total.recovered} · 포기 {calls.total.gaveUp} · 지난 {DAYS}일 · 다시 시도 {calls.retries}회</em>
+          </h2>
+          {calls.counts.length === 0 ? (
+            <p className="muted" data-testid="linear-calls-empty">
+              지난 {DAYS}일 동안 실패한 Linear 호출 없음.
+            </p>
+          ) : (
+            <TableScroll label="구간·원인별 LINEAR CALLS 표">
+              <table className="kit-table" aria-label="구간·원인별 LINEAR CALLS">
+                <thead>
+                  <tr>
+                    <th scope="col">DAY</th>
+                    <th scope="col">HOP</th>
+                    <th scope="col">CAUSE</th>
+                    <th scope="col" className="num">실패한 시도</th>
+                    <th scope="col" className="num">복구</th>
+                    <th scope="col" className="num">포기</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calls.counts.map((c) => (
+                    <tr key={`${c.day}|${c.hop}|${c.cause}`}>
+                      <td className="mono">{c.day}</td>
+                      <td className="mono">{c.hop === "atc-server-to-linear" ? "atc server → Linear" : "atcctl → atc server"}</td>
+                      <td className="mono">{c.cause}</td>
+                      <td className="num">{c.failedAttempts}</td>
+                      <td className="num">{c.recovered}</td>
+                      <td className="num">{c.gaveUp}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+          )}
+        </>
       )}
       <AutoMisfire refreshKey={refreshKey} />
       {recent.length > 0 && (

@@ -5,6 +5,7 @@ import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSyn
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HttpFailure, hopText, parseRetries, retryAfterMs, withRetry } from "../server/net-retry.ts";
 import { atcBase, ROLES as SQUELCH_ROLES, squelchLine } from "./squelch.mjs";
 
 const BASE = atcBase();
@@ -256,14 +257,50 @@ DUTY (DUTY 세션, duty/ 폴더, L1 — docs/duty.md. 읽기와 초안, 자기 S
                                             --release: SUPERVISOR가 이 채팅 글로 "만들고 진행해"라고 했을 때만. Todo로 만들고 그 글로 발권한다(--state Backlog와 같이 못 씀). SUPERVISOR 글이 시작한 턴이 아니면(REVIEW 턴·턴 없음)·K 효과가 있으면·스위치 CHAT RELEASE가 꺼져 있으면 거절하고 아무것도 만들지 않는다 — 그때는 Backlog로 만들어 RELEASE 화면에서 쏘게 한다
                                             서버가 자기 키로 Linear ATC 팀에 쓴다(D7a). 상태는 Backlog·Todo까지, 라벨은 있는 것만 더한다. 한 번마다 FLIGHT RECORDER 한 줄`;
 
+// atcctl → atc 서버 구간의 짧은 다시 시도(ATC-561, docs/linear-retry.md). 네트워크 수준 실패(서버가 잠깐 안 받음·연결이 끊김)와 429·503만 다시 한다.
+// GET은 모두, 쓰기(POST 등)는 요청이 서버에 닿기 전에 실패한 경우(연결 거절·DNS)에만 다시 보낸다: 서버가 받았는지 모르는 쓰기는 다시 보내지 않는다.
+// 횟수는 서버 설정 파일(linear-retry.json, SUPERVISOR만 바꾼다)에서 읽는다. 마지막까지 실패하면 오류에 구간과 원인 종류를 적는다. 시도 기록은 서버가 받아 FLIGHT RECORDER에 남긴다(받지 못하면 못 남는다)
+function retriesSetting() {
+  try {
+    return parseRetries(JSON.parse(readFileSync(join(STATE, "linear-retry.json"), "utf8")).retries);
+  } catch {
+    return parseRetries(undefined);
+  }
+}
+export async function fetchWithRetry(method, path, body) {
+  const events = [];
+  const op = method === "GET" ? "read" : "update";
+  try {
+    const res = await withRetry(
+      async () => {
+        const r = await fetch(BASE + path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+        if (r.status === 429 || r.status === 503) throw new HttpFailure(r.status, `HTTP ${r.status}`, retryAfterMs(r.headers.get("retry-after")));
+        return r;
+      },
+      {
+        retries: retriesSetting(),
+        canRetry: (c) => method === "GET" || !c.mayHaveSent,
+        onEvent: (e) => events.push({ op, attempt: e.attempt, outcome: e.outcome, cause: e.cause.cls, ...(e.cause.code ? { code: e.cause.code } : {}) }),
+      },
+    );
+    if (events.length) void noteAttempts(events);
+    return res;
+  } catch (e) {
+    if (events.length) await noteAttempts(events);
+    if (e instanceof Error && !(e instanceof HttpFailure)) e.message = hopText(e.message, "atcctl-to-atc-server");
+    throw e;
+  }
+}
+async function noteAttempts(events) {
+  try {
+    await fetch(BASE + "/api/linear-calls/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ events: events.slice(0, 8) }), signal: AbortSignal.timeout(1000) });
+  } catch {}
+}
+
 // limit: 409(한도 참)일 때 오류 대신 보여 줄 안내. 호출한 세션이 곧바로 멈추게 LIMIT으로 시작한다.
 // soft: 409를 오류로 끝내지 않고 응답을 돌려준다(MCC land·rts의 "막힘"은 정상 답이다)
 async function call(method, path, body, { limit, soft } = {}) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await fetchWithRetry(method, path, body);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (soft && res.status === 409) return data;
   if (limit && res.status === 409) {

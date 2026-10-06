@@ -94,6 +94,7 @@ import { mountJobTiming } from "./job-timing-run.ts";
 import { jobTimer, timed } from "./job-timing.ts";
 import { mountLandingGap } from "./landing-gap-run.ts";
 import { mountStuckUnserved } from "./stuck-unserved-run.ts";
+import { mountLinearCalls } from "./linear-call-run.ts";
 import { mountStopCheck } from "./control-stop-check-run.ts";
 import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
 import { mountNotices } from "./notices-run.ts";
@@ -335,6 +336,7 @@ mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).c
 mountStatus(app, getSnapshot, currentAlerts); // STATUS(ATC-384): "현재 상태"·"ATC-n 어디까지"에 한 번에 답하는 읽기 전용 요약
 provideService("flowDeps", { updateStatus: () => update.status(), alerts: currentAlerts });
 mountJobLiveness(app); // JOB LIVENESS(ATC-534): 스위치·수·최근 줄(읽기)
+mountLinearCalls(app); // LINEAR CALL(ATC-561): 구간·원인별 실패·복구·포기 수(읽기)와 atcctl의 시도 기록 받기
 mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)

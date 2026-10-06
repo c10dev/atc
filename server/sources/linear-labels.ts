@@ -1,3 +1,4 @@
+import { linearGql } from "../linear-call.ts";
 import { config } from "../config.ts";
 
 // SCHEDULE TAIL(ATC-68)용: Linear에 있는 `tail:` 라벨 이름. 읽기 전용, 10분 캐시.
@@ -24,15 +25,8 @@ async function fetchTailLabels(key: string): Promise<Set<string>> {
   const names: unknown[] = [];
   let after: string | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res: Response = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: key },
-      body: JSON.stringify({ query: LABELS_QUERY, variables: { after } }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body: { data?: { issueLabels?: { pageInfo?: { hasNextPage?: boolean; endCursor?: string | null }; nodes?: { name?: unknown }[] } }; errors?: { message?: string }[] } = await res.json();
-    if (!res.ok || body.errors) throw new Error(body.errors?.[0]?.message ?? `HTTP ${res.status}`);
-    const q = body.data?.issueLabels;
+    const body: { issueLabels?: { pageInfo?: { hasNextPage?: boolean; endCursor?: string | null }; nodes?: { name?: unknown }[] } } = await linearGql({ endpoint: ENDPOINT, apiKey: key, query: LABELS_QUERY, variables: { after }, op: "read" }); // 다시 시도·기록은 linear-call.ts(ATC-561)
+    const q = body.issueLabels;
     names.push(...(q?.nodes ?? []).map((n) => n?.name));
     if (!q?.pageInfo?.hasNextPage || !q.pageInfo.endCursor) break;
     after = q.pageInfo.endCursor;

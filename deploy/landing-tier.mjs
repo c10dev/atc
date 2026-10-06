@@ -36,6 +36,7 @@ export const SIDE_EFFECT = [
   ["server/migrate-run.ts", "마이그레이션 리허설 실행: gh로 PR 파일을 읽고 supabase-sql로 시험·실전 DB에 적용(ATC-368, K1·K2)"],
   ["server/mcc-run.ts", "PR 머지·INSPECTION 코멘트·atc-rts 유닛 시작"],
   ["server/human-check-run.ts", "PR 본문 수정·코멘트(gh api)"],
+  ["server/linear-call.ts", "Linear GraphQL 호출의 다시 시도(ATC-561): 쓰기(이슈 만들기·댓글·관계·상태)를 다시 보낼 수 있다. 중복 방지는 클라이언트 id와 다시 보내기 전 조회"],
   ["server/sources/linear-write.ts", "Linear GraphQL mutation: 이슈 상태 옮기기(DUTY G3), 이슈 만들기·고치기·댓글(DUTY D7a). 서버가 Linear에 쓰는 유일한 파일"],
   ["server/duty-l1-run.ts", "DUTY L1 쓰기 길(D7a): git worktree add·remove·fetch와 node_modules 하드링크(STAND), Linear 쓰기 요청(duty.json l1이 켜졌을 때만, Origin 있는 요청 거절)"],
   ["server/session-control.ts", "claude --bg 세션 시작·정지, tmux pane 닫기"],

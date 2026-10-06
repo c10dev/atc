@@ -7,6 +7,7 @@ import { inSequence } from "./landing.ts";
 import type { Milestone } from "./milestones.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import type { QrhNamedLine } from "./qrh.ts";
+import type { LinearCallLine } from "./linear-call.ts";
 import type { LivenessLine } from "./job-liveness.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
@@ -77,6 +78,8 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "warm-start-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "linear-retry-count"; by: string; from: string; to: string }
+  | LinearCallLine // LINEAR CALL(ATC-561): Linear·atc 서버 호출의 실패한 시도·다시 시도·복구·포기. 구간·종류·원인만(글·제목·토큰 없음)
   | { t: string; kind: "policy"; op: "job-liveness-mode"; by: string; from: string; to: string }
   | LivenessLine // JOB LIVENESS(ATC-534): job이 사라진 때(gone)·init에서 죽은 LAUNCH·그 때문에 카드를 다시 띄우거나 넘긴 것(relaunch·handoff)·자동 LAUNCH를 막은 것(hold)
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }

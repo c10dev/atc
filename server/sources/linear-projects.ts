@@ -1,3 +1,4 @@
+import { linearGql } from "../linear-call.ts";
 import { config } from "../config.ts";
 
 // NETWORK 탭용: 읽는 팀 전부(LINEAR_TEAM_KEYS)의 Linear 프로젝트(ROUTE) 목표와 마일스톤(WAYPOINT). 읽기 전용, 10분 캐시.
@@ -91,15 +92,7 @@ let inflight: Promise<void> | null = null;
 let cacheFor = ""; // 키·TEAM이 바뀌면 이전 결과를 버린다
 
 async function gql(key: string, query: string, variables: Record<string, unknown>) {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: key },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const body = await res.json();
-  if (!res.ok || body.errors) throw new Error(body.errors?.[0]?.message ?? `HTTP ${res.status}`);
-  return body.data;
+  return linearGql<any>({ endpoint: ENDPOINT, apiKey: key, query, variables, op: "read" }); // 다시 시도·기록은 linear-call.ts(ATC-561)
 }
 
 async function fetchProjects(team: string, key: string) {
