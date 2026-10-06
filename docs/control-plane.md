@@ -1,6 +1,6 @@
 # Control plane: routine control as code, judgment as one-shot calls
 
-Status (2026-10-06): design draft. The SUPERVISOR decided to go ahead and answered the open questions (section 7). Nothing in this document is built; the work orders in section 5 are filed as Backlog issues after this document is merged.
+Status (2026-10-06): design draft. The SUPERVISOR decided to go ahead and answered the open questions (section 7). Nothing in this document is built; the work orders in section 4 are filed as Backlog issues after this document is merged.
 
 Why now: control sessions (TOWER, MCC, OCC, CROSSCHECK, REVIEW) spend most of their tokens re-reading, not deciding. A set of controlled studies of atc-style coordination (section 1) points the same way as atc's own measurement: routine control belongs in server code, and an LLM should be woken only for judgment, with only the delta.
 
