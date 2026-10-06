@@ -13,6 +13,14 @@ export const MODES: readonly Mode[] = ["off", "shadow", "on"];
 export type Fingerprint = "v1" | "v2";
 export const FINGERPRINTS: readonly Fingerprint[] = ["v1", "v2"];
 export const DEFAULT_HEARTBEAT_MIN = 50; // 1시간 캐시가 식기 전에 한 번(docs/squelch.md 5장)
+export const DEFAULT_MODE: Mode = "shadow";
+export const DEFAULT_FINGERPRINT: Fingerprint = "v1";
+// 역할의 모드(ATC-552): config.roles.<role>.mode가 있으면 그것, 없으면 전체 config.mode. 둘 다 모르는 값이면 shadow(버리지 않는다)
+export function modeOf(cfg: { mode?: unknown; roles?: Partial<Record<Role, { mode?: unknown }>> }, role: Role): Mode {
+  const own = cfg.roles?.[role]?.mode;
+  if (MODES.includes(own as Mode)) return own as Mode;
+  return MODES.includes(cfg.mode as Mode) ? (cfg.mode as Mode) : DEFAULT_MODE;
+}
 
 // 응답 본문(brief JSON)은 서버가 이미 만든 모양 그대로 들어온다. 필드가 빠져도 죽지 않게 느슨하게 읽는다.
 type J = any; // eslint-disable-line @typescript-eslint/no-explicit-any

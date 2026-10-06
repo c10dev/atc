@@ -4,6 +4,7 @@ import type { ServerSettings, SettingsErrors, SettingsPatch, SwitchPatchBody } f
 import { callsign } from "./aviation.ts";
 import { timeAgo } from "./derive.ts";
 import { apiGet, apiSend } from "./api.ts";
+import { SquelchSwitch } from "./SettingsSquelch.tsx";
 
 // 설정 창의 LINEAR, AGENTS 분류(ACCOUNTS는 SettingsAccounts.tsx, 정책 스위치는 SettingsAutomation.tsx의 LANDING·OPERATIONS). 서버 설정을 읽고 고친다.
 // 저장하면 서버가 .env.local에 쓰고 실행 중인 설정에도 바로 반영한다(재시작 필요 없음).
@@ -132,6 +133,7 @@ export function AgentSettings({ snapshot, server, save, onNavigate }: { snapshot
         <p className="settings-hint">
           관제 세션은 <a href="#fleet/control" onClick={() => (onNavigate?.(), location.hash === "#fleet/control" && dispatchEvent(new HashChangeEvent("hashchange")))}>아래 CONTROL 패널</a>로 옮겼다. LAUNCH·STOP과 ACCOUNT도 거기서 한다.
         </p>
+        <SquelchSwitch />
       </Block>
 
       <Block code="STANDS" label="점유 규칙">

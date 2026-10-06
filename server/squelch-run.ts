@@ -12,6 +12,7 @@ import {
   type Inputs,
   isRole,
   type Mode,
+  modeOf,
   MODES,
   naturalReason,
   project,
@@ -40,7 +41,8 @@ export interface RoleState extends Pass {
   v2?: Pass; // v2 지문의 지난 열린 통과(그림자 또는 판정)
 }
 export interface SquelchConfig {
-  mode: Mode;
+  mode: Mode; // 전체 모드. 역할에 모드가 없으면 이것(ATC-552)
+  roles: Partial<Record<Role, { mode: Mode }>>; // 역할마다 고른 모드(ATC-552). 없으면 전체 모드
   heartbeatMin: Record<Role, number>;
   fingerprint: Record<Role, Fingerprint>; // 역할마다 판정에 쓸 지문. 기본 v1
 }
@@ -55,6 +57,7 @@ const logFile = () => join(config.stateDir, "squelch.jsonl");
 export function defaultConfig(): SquelchConfig {
   return {
     mode: "shadow",
+    roles: {},
     heartbeatMin: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_HEARTBEAT_MIN])) as Record<Role, number>,
     fingerprint: Object.fromEntries(ROLES.map((r) => [r, "v1"])) as Record<Role, Fingerprint>,
   };
@@ -74,6 +77,8 @@ export function readState(): SquelchFile {
   }
   if (MODES.includes(raw?.config?.mode)) out.config.mode = raw.config.mode;
   for (const r of ROLES) {
+    const rm = raw?.config?.roles?.[r]?.mode;
+    if (MODES.includes(rm)) out.config.roles[r] = { mode: rm };
     const m = raw?.config?.heartbeatMin?.[r];
     if (typeof m === "number" && Number.isFinite(m) && m > 0) out.config.heartbeatMin[r] = m;
     const f = raw?.config?.fingerprint?.[r];
@@ -183,10 +188,11 @@ export async function squelchRun(role: Role, get: Fetcher, now = Date.now(), man
   const nat2 = fp2 === null ? undefined : naturalReason({ fp: fp2, last: last2, now, heartbeatMin, manualChanged });
   const live: Fingerprint = file.config.fingerprint[role] === "v2" && fp2 !== null ? "v2" : "v1";
   const liveNat = live === "v2" ? (nat2 ?? null) : nat1;
-  const d = decide({ fp: live === "v2" ? fp2! : fp, last: live === "v2" ? last2 : last1, now, heartbeatMin, manualChanged, mode: file.config.mode });
+  const mode = modeOf(file.config, role);
+  const d = decide({ fp: live === "v2" ? fp2! : fp, last: live === "v2" ? last2 : last1, now, heartbeatMin, manualChanged, mode });
   const iso = new Date(now).toISOString();
   let next: RoleState;
-  if (file.config.mode === "off") next = s ?? { fp: null, openedAt: null, quietSince: null, quietCount: 0 };
+  if (mode === "off") next = s ?? { fp: null, openedAt: null, quietSince: null, quietCount: 0 };
   else {
     next = {
       ...(nat1 ? { fp, openedAt: iso, proj: proj1 } : { fp: s!.fp, openedAt: s!.openedAt, ...(s!.proj !== undefined ? { proj: s!.proj } : {}) }),
@@ -195,8 +201,10 @@ export async function squelchRun(role: Role, get: Fetcher, now = Date.now(), man
     if (fp2 !== null && nat2) next.v2 = { fp: fp2, openedAt: iso, proj: proj2 };
     else if (s?.v2) next.v2 = s.v2;
   }
-  file.roles[role] = next;
-  writeState(file);
+  // 판정 사이에 SUPERVISOR가 설정을 바꿨을 수 있다: 설정은 지금 파일 것을 두고 이 역할의 상태만 얹는다(ATC-552)
+  const cur = readState();
+  cur.roles[role] = next;
+  writeState(cur);
   const line: LogLine = { t: iso, role, open: d.open, reason: d.reason, fp, fingerprint: live };
   if (fp2 !== null) {
     line.fp2 = fp2;
