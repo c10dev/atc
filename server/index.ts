@@ -61,6 +61,7 @@ import { mountSettings } from "./settings.ts";
 import { mountMigrate } from "./migrate-api.ts";
 import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
+import { mountControlShare } from "./control-share-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
 import { mountTick } from "./tick-run.ts";
@@ -304,6 +305,7 @@ mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 
 mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
+mountControlShare(app); // CONTROL SHARE(ATC-551): 관제 몫과 일을 한 turn당 토큰(읽기만)
 mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tick을 열었고 그 tick이 일을 했는지(읽기만)
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 

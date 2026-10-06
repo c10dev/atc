@@ -68,6 +68,13 @@ Each is filed as its own Backlog issue after this document merges. DUTY sets the
 
 Suggested sequence: W8 and W9, W1, then W2 and W6, then W5, then W3 and W4, W7 last.
 
+### W8 as built (ATC-551)
+
+- **Panel.** METRICS has a CONTROL tab (`#metrics/control`). For the last 14 UTC days it shows, for all control sessions and for each role (TOWER, MCC, OCC, CROSSCHECK, REVIEW), **control share** (control-session tokens divided by all tokens) and **tokens per working control turn**. `GET /api/control-share?days=N` returns the same rows.
+- **Where the numbers come from.** Tokens are the FUEL reader's per-request usage (CREW included, keyed by the parent session). A control session is a session opened in a control folder, found by the ATC-289 reader (`readSessionCalls` with `uses`). A turn starts at a user turn (a person or another session; tool results and system messages are not turns) and ends at the next one. A **working** turn made 3 or more tool calls, the same threshold as the opens table in [squelch.md](squelch.md). No text is read and no new data leaves atc.
+- **Pilot's discretion.** Tokens per working turn is the role's tokens for the day divided by its working turns, so the quiet turns' cost is charged to the work (that is the cost of one useful turn). A day with no working turn shows a dash. Days are UTC; a turn is counted on the day it starts.
+- **Measure names.** `control:share`, `control:tokens-per-turn`, and per role `control:share-<role>` and `control:tokens-per-turn-<role>` (role: tower, mcc, occ, crosscheck, review). `share` is in percent, `tokens-per-turn` in thousands of tokens. They are judged like the flow medians: at least 3 samples (days for `share`, working turns for `tokens-per-turn`) on both sides and a transcript record that covers the whole before window, otherwise `too little data`. Transcripts are read lazily, only when a Measure uses `control:`, for twice the window.
+
 ## 5. Risks
 
 | Risk | Guard |

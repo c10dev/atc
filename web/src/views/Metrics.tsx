@@ -3,6 +3,7 @@ import type { MetricsView as MetricsData, SeriesPoint } from "../../../server/me
 import type { Snapshot } from "../../../server/model.ts";
 import type { Sample } from "../../../server/recorder.ts";
 import { formatClock, useSettings } from "../settings.ts";
+import { MetricsControl } from "./MetricsControl.tsx";
 import { MetricsFuel } from "./MetricsFuel.tsx";
 import { MetricsLeaks } from "./MetricsLeaks.tsx";
 import { MetricsTouches } from "./MetricsTouches.tsx";
@@ -51,12 +52,13 @@ const mins = (x: number | null) => (x === null ? "—" : `${x}분`);
 
 // 하위 화면(ATC-137, ATC-380): #metrics는 운용 지표, #metrics/leaks·touches·misfire·fuel·network. 주소로 고른다.
 // 옛 #network는 #metrics/network로 열린다(legacy-hash.ts)
-type Sub = "ops" | "leaks" | "touches" | "misfire" | "fuel" | "network";
+type Sub = "ops" | "leaks" | "touches" | "misfire" | "control" | "fuel" | "network";
 const SUBS: readonly (readonly [Sub, string])[] = [
   ["ops", "OPERATIONS"],
   ["leaks", "LEAKS"],
   ["touches", "TOUCHES"],
   ["misfire", "MISFIRE"],
+  ["control", "CONTROL"],
   ["fuel", "FUEL"],
   ["network", "NETWORK"],
 ];
@@ -93,6 +95,8 @@ export function Metrics({ refreshKey, snapshot }: { refreshKey: string; snapshot
         <MetricsTouches refreshKey={refreshKey} />
       ) : sub === "misfire" ? (
         <MetricsMisfire refreshKey={refreshKey} />
+      ) : sub === "control" ? (
+        <MetricsControl refreshKey={refreshKey} />
       ) : sub === "network" ? (
         <Network refreshKey={refreshKey} />
       ) : (

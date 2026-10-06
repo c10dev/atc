@@ -153,7 +153,7 @@ test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 �
 });
 
 test("METRICS 하위 화면과 HOME 닻: 이름·주소가 고정이고 검색이 거른다", () => {
-  assert.deepEqual(METRICS_ITEMS.map((m) => m.label), ["OPERATIONS", "LEAKS", "MISFIRE", "FUEL", "NETWORK"]);
+  assert.deepEqual(METRICS_ITEMS.map((m) => m.label), ["OPERATIONS", "LEAKS", "MISFIRE", "CONTROL", "FUEL", "NETWORK"]);
   assert.deepEqual(HOME_FILTERS.map((a) => a.label), ["전체", "QUEUE", "ALERT", "STUCK", "EFFECT", "DONE"]);
   assert.deepEqual(filterLabeled(METRICS_ITEMS, "fuel").map((m) => m.id), ["fuel"]);
   assert.equal(filterLabeled(HOME_FILTERS, "").length, 6);
