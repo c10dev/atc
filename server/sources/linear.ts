@@ -1,3 +1,4 @@
+import { linearGql } from "../linear-call.ts";
 import { config } from "../config.ts";
 import { teamOfKey } from "../linear-keys.ts";
 import { k3CheckOf } from "../k3-allow.ts";
@@ -83,15 +84,7 @@ let overlays = new Map<string, StateOverlay>();
 let seq = 0;
 
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: config.linearApiKey },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const body = await res.json();
-  if (!res.ok || body.errors) throw new Error(body.errors?.[0]?.message ?? `HTTP ${res.status}`);
-  return body.data;
+  return linearGql<T>({ endpoint: ENDPOINT, apiKey: config.linearApiKey, query, variables, op: "read", ...(typeof variables.id === "string" ? { key: variables.id } : {}) }); // 다시 시도·기록은 linear-call.ts(ATC-561)
 }
 
 // atc 밖에서 이 이슈를 맡은 사람·agent: 위임 대상, 없으면 담당자가 API 키 주인(viewer)이 아닐 때 그 이름.
