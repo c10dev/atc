@@ -50,7 +50,7 @@ Read from `origin/main` on 2026-10-06; the work orders re-read them before build
 6. **Every control change ships with an off switch and a misfire counter.** Live first, with the switch; shadow only for an irreversible step. A new switch is the SUPERVISOR's.
 7. **Measure first.** Control share of tokens and tokens per working control turn are shown per role before any of the above is turned on (W8).
 
-## 4. Candidate work orders
+## 4. Implementation order
 
 Each is filed as its own Backlog issue after this document merges. DUTY sets the K effects, priority and blockedBy then. Most touch a guard or a control and are probably K3, which means the SUPERVISOR fires them from the RELEASE screen.
 
