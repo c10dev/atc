@@ -62,6 +62,7 @@ import { mountMigrate } from "./migrate-api.ts";
 import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
 import { mountControlShare } from "./control-share-run.ts";
+import { mountJobLiveness } from "./job-liveness-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { migrateOnce, mountSquelch } from "./squelch-run.ts";
 import { mountSquelchSwitch } from "./squelch-switch-run.ts";
@@ -333,6 +334,7 @@ mountDutyReview(app, getSnapshot); // DUTY REVIEW(ATC-396): 주기·트리거로
 mountDutyRun(app, undefined, (text) => void releaseFromChat(text, getSnapshot).catch(() => {})); // DUTY D2(ATC-220): 글 보내기·중단·NEW SHIFT(Origin 검사)·기록·상태. duty.json enabled가 꺼져 있으면 아무것도 띄우지 않는다
 mountStatus(app, getSnapshot, currentAlerts); // STATUS(ATC-384): "현재 상태"·"ATC-n 어디까지"에 한 번에 답하는 읽기 전용 요약
 provideService("flowDeps", { updateStatus: () => update.status(), alerts: currentAlerts });
+mountJobLiveness(app); // JOB LIVENESS(ATC-534): 스위치·수·최근 줄(읽기)
 mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)

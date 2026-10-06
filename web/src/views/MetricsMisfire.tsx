@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { LivenessData } from "../../../server/job-liveness-run.ts";
 import { type AutoView, type DispatchMisfire, type GapView, type LagView, type OrphanView, LANE_OF_KIND, laneRowsOf, recentLinesOf, WHY_LABEL } from "../misfire-rows.ts";
 import { apiGet } from "../api.ts";
 import { timeAgo } from "../derive.ts";
@@ -19,6 +20,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
   const [gap, setGap] = useState<GapView | null>(null);
   const [orphan, setOrphan] = useState<OrphanView | null>(null);
   const [lag, setLag] = useState<LagView | null>(null);
+  const [live, setLive] = useState<LivenessData | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -26,7 +28,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       apiGet(path)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((d: T) => alive && set(d));
-    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap), get<OrphanView>(`/api/orphan-flight?days=${DAYS}`, setOrphan), get<LagView>(`/api/event-loop-lag?days=${DAYS}`, setLag)])
+    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap), get<OrphanView>(`/api/orphan-flight?days=${DAYS}`, setOrphan), get<LagView>(`/api/event-loop-lag?days=${DAYS}`, setLag), get<LivenessData>("/api/job-liveness", setLive)])
       .then(() => alive && setError(null))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => {
@@ -90,6 +92,11 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       {dispatch && typeof dispatch.total.launchStopped === "number" && (
         <p className="muted" data-testid="launch-stopped">
           LAUNCH 직후 "AIRCRAFT 멈춤"으로 거둔 LAUNCH 카드 <span className="mono">{dispatch.total.launchStopped}</span>건 · 지난 {DAYS}일 (launch-then-stopped, 0이어야 한다)
+        </p>
+      )}
+      {live && (
+        <p className="muted" data-testid="job-liveness">
+          job이 사라져 다시 LAUNCH하거나 다른 AIRCRAFT로 넘긴 승인 카드 <span className="mono">{live.last7d.misfires}</span>건(LAUNCH {live.last7d.relaunch} · 넘김 {live.last7d.handoff}) · 사라진 job {live.last7d.gone} · init에서 죽은 LAUNCH {live.last7d.initDeath} · 지난 {DAYS}일 (스위치 JOB LIVENESS {live.mode.toUpperCase()})
         </p>
       )}
       <AutoMisfire refreshKey={refreshKey} />

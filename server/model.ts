@@ -44,6 +44,8 @@ export interface Session {
   keptFlights?: string[];
   // 백그라운드 job 상태(ATC-99): ~/.claude/jobs/<jobId>/state.json에서 읽은 state·detail·needs. bg 세션이 아니거나 못 읽으면 없다(null)
   job?: Job | null;
+  // job이 없어진 세션(ATC-534): pid는 있어 보이지만 daemon roster에도 확인된 pid에도 그 job의 프로세스가 없다. status는 dead, 값은 `job gone (last state 13:16Z)`
+  jobGone?: string;
   // 마지막 턴의 REPORT 판정(ATC-89, 그림자 전용): Jev가 CAPTAIN의 마지막 메시지를 분류한 것. 꺼져 있거나 아직 판정 전이면 없다
   report?: ReportView;
 }

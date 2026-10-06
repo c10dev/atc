@@ -1,3 +1,5 @@
+import { jobGoneWhyOf } from "../job-liveness.ts";
+import { loadLivenessSwitch, proofOfSession, procAlive as isAlive } from "../job-liveness-io.ts";
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "../config.ts";
@@ -42,17 +44,6 @@ export function sessionKindOf(s: Pick<SessionFile, "kind" | "jobId">): Pick<Sess
   return {};
 }
 
-// pid 재사용을 피하려고 /proc/<pid>/stat의 starttime(22번째 필드)까지 맞춘다.
-function isAlive(pid: number, procStart?: string): boolean {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    if (!procStart) return true;
-    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] === procStart;
-  } catch {
-    return false;
-  }
-}
-
 // 세션 폴더(~/.claude/projects/<cwd>/<sessionId>/). 대화 기록은 그 옆 <sessionId>.jsonl, 서브에이전트는 안의 subagents/
 // account: 세션이 있는 ACCOUNT 라벨(ATC-146). 없거나 모르는 라벨이면 기본 폴더
 export function sessionDir(cwd: string, sessionId: string, account?: string | null, folders: readonly AccountFolder[] = accountFolders()): string {
@@ -95,9 +86,14 @@ export function readClaudeSessions(folders: readonly AccountFolder[] = accountFo
       } catch {}
     }
   }
+  const livenessOn = loadLivenessSwitch() === "on";
   const sessions = files.map((s): Session => {
-    const alive = isAlive(s.pid, s.procStart);
+    const pidAlive = isAlive(s.pid, s.procStart);
     const lastActiveAt = mtime(transcriptPath(s))?.toISOString() ?? null;
+    // JOB LIVENESS(ATC-534): bg 세션은 pid만으로 살았다고 하지 않는다. daemon roster에도 세션 pid의 procStart 확인에도 증거가 없으면 job이 없어진 것(absent). 스위치가 off면 지금 규칙
+    const gone = pidAlive && livenessOn && proofOfSession(s, s.configDir ?? config.claudeDir) === "gone";
+    const alive = pidAlive && !gone;
+    const jobGone = gone ? jobGoneWhyOf(readJob(s.jobId, join(s.configDir ?? config.claudeDir, "jobs"))?.writtenAt ?? lastActiveAt) : null;
     // 출처(ATC-76): 살아 있는 세션만, pid마다 한 번 읽는다(session-origin.ts가 캐시)
     const proc = alive ? sessionProcOf(s.pid, s.kind, s.entrypoint) : null;
     return {
@@ -114,6 +110,7 @@ export function readClaudeSessions(folders: readonly AccountFolder[] = accountFo
       ...(proc ? { origin: proc.origin, permissionMode: proc.permissionMode } : {}),
       ...(s.account ? { account: s.account } : {}),
       ...sessionKindOf(s),
+      ...(jobGone ? { jobGone } : {}),
       ...attachDirField(s),
       // 백그라운드 job 상태(ATC-99): 살아 있는 bg 세션만. 파일은 mtime으로 캐시하고 읽기만 한다
       ...(alive && s.kind === "bg" ? { job: settleJob(readJob(s.jobId, join(s.configDir ?? config.claudeDir, "jobs")), lastActiveAt) ?? null } : {}),

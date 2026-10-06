@@ -1365,6 +1365,17 @@ FLEET PLAN 블록의 FUEL(8.6의 "주간 사용량 줄")은 만들었다(ATC-63)
 3. ✅ President에게 알렸다: 배정은 Linear에 `tail:TEAM_X`로 한다. OCC 인계는 occ.ko.md 8장을 따른다.
 4. ✅ `occ/CLAUDE.md`, README, CHANGELOG에서 이름을 바꿨다.
 
+### JOB LIVENESS, 만든 것 (ATC-534)
+
+job의 프로세스가 없어진 백그라운드 AIRCRAFT는 `idle`이 아니라 `absent`다. 사건: 2026-10-04, TEAM_B(VCDO)가 13:16Z에 job `c528fe7b`로 LAUNCH됐고 `state.json`·`timeline.jsonl`에 `TEAM_B IN SERVICE` 한 줄만 쓰인 뒤 다시 쓰이지 않았다. 14:05Z에 프로세스가 없었는데 `/api/fleet`은 `idle`로 보였다. D-0764(VOC-379)가 그 AIRCRAFT에 자동 승인되고도 보내지지 않았고, `approvedNoSession`이 0이라 ATC-388이 움직이지 않았다.
+
+- **증거는 프로세스.** `server/job-liveness.ts`(순수 `jobProofOf`). 백그라운드 세션은 daemon roster(`<설정 폴더>/daemon/roster.json`, job마다 `pid`와 `procStart`를 적은 worker)가 그 job을 올려 두고 그 프로세스가 맞게 살아 있거나, 세션 파일의 `pid`가 살아 있고 **`procStart`까지 맞을 때** 산다(`procStart`가 없는 세션 파일은 아무것도 증명하지 못한다). 둘 다 없고 roster를 믿을 수 있으면 증거는 `gone`이다: 세션은 `dead`, `jobGone`은 `job gone (last state 13:16Z)`. 그러면 `absentOf`가 그 AIRCRAFT를 absent로 올리고(사유가 absent 줄에 붙는다) ATC-388의 길이 적용된다. `state.json`은 살아 있다는 증거가 아니다. roster는 `supervisorPid`가 살아 있을 때만 믿는다. 그 밖(모르는 모양, 백그라운드가 아닌 세션 포함)은 증거 `unknown`이고 지금 규칙(세션 파일의 pid)이 그대로다.
+- **승인된 카드의 길.** 이렇게 absent가 된 AIRCRAFT의 카드는 `approvedNoSession.waiting`(그리고 새 `approvedNoSession.jobGone`)에 센다. `runApprovedRelaunch`가 다시 LAUNCH하거나(ATC-388과 같은 상한·FUEL hold) `approvedWaitMin`이 지나면 카드를 닫고, FLIGHT는 planner로 돌아가 다른 AIRCRAFT를 찾는다. 닫은 카드의 사유에 원인이 들어간다: `승인 뒤 세션 없음 (job gone (last state 13:16Z)) — LAUNCH 못 함(…)`.
+- **init에서 죽음.** `job-liveness` 일(1분)이 사라진 job마다 FLIGHT RECORDER에 `job-liveness gone` 한 줄을, atc가 띄운 LAUNCH의 job이 `timeline.jsonl` 줄이 하나 이하이고 LAUNCH 뒤 10분(`INIT_DEATH_MIN`) 안에 마지막으로 썼고 프로세스가 없으면 `init-death` 한 줄을 적는다. 같은 REGISTRATION의 성공한 LAUNCH 가장 최근 둘이 모두 init에서 죽었고 가장 최근이 SUPERVISOR가 직접 띄운 것이 아니면 서버는 스스로 또 띄우지 않는다(`init-death` 보류). 승인된 카드는 기다리다 `approvedWaitMin` 뒤 다른 AIRCRAFT로 넘어간다. SUPERVISOR의 LAUNCH(FLEET 카드)는 막지 않고, 그것이 살아남으면 보류가 풀린다.
+- **스위치.** `jobLiveness`(`off`·`on`, 기본 `on`), `job-liveness.json`(원자적 JSON), 설정 → OPERATIONS → JOB LIVENESS, SUPERVISOR만(`fromThisApp`, `atcctl` 명령 없음, 바꾸면 `policy job-liveness-mode`로 기록). off면 지금 규칙(세션 파일의 pid)으로 돌아가고 새 기록도 멈춘다. 선언이 `server/switches/`에 있어 이 PR은 `user` 등급이다.
+- **MISFIRE 셈.** FLIGHT RECORDER의 `job-liveness` 줄: `op`는 `gone`, `init-death`, `relaunch`(AIRCRAFT가 사라져 카드를 다시 LAUNCH함), `handoff`(그 이유로 카드를 닫아 planner에 넘김), `hold`. misfire 수는 `relaunch + handoff`다. `GET /api/job-liveness`(읽기만)가 스위치·7일·30일 수·최근 줄을 주고, METRICS → MISFIRE에 7일 줄이 보인다.
+- **PILOT'S DISCRETION.** (1) 작업 지시서의 Measure `alert:approved-no-send`는 atc가 기록하는 알림 종류가 아니고 이 FLIGHT도 알림 종류를 더하지 않았다. 원인은 `misfire:dispatch`(틀린 발송)와 새 `job-liveness` 줄로 잴 수 있고, SUPERVISOR가 원하면 후속으로 알림 종류를 더한다. (2) "연달아 두 번째 relaunch"는 init에서 두 번 연달아 죽으면 서버가 스스로 띄우기를 멈추는 것으로 읽었다. (3) roster는 ACCOUNT 폴더마다 크기·mtime으로 캐시해 읽고, 스위치 파일은 5초 캐시한다.
+
 ## 10. 구현 순서
 
 1. ✅ planner의 `tail:`과 `lane:` 별칭. 이어서 Linear 라벨, VOC-196, President에게 알림

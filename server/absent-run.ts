@@ -107,7 +107,7 @@ function cutOfTranscript(path: string): { cutAt: number; report: string | null }
 }
 
 export interface AbsentInput {
-  sessions: readonly Pick<Session, "name" | "status">[];
+  sessions: readonly (Pick<Session, "name" | "status"> & Partial<Pick<Session, "jobId" | "jobGone">>)[];
   restarting: readonly Pick<Restarting, "registration">[];
   fleet: FleetFile;
   teamPattern: string;
@@ -144,5 +144,7 @@ export function readAbsent(i: AbsentInput): AbsentAircraft[] {
       };
     },
     (registration) => stuckLaunchOf(attempts.get(registration), (jobId) => jobStateOf(jobId)),
+    // JOB LIVENESS(ATC-534): 그 LAUNCH의 job이 프로세스 없이 사라졌다고 읽은 세션이 있으면 그 사유
+    (_registration, jobId) => (jobId ? (i.sessions.find((x) => x.status === "dead" && x.jobId === jobId && x.jobGone)?.jobGone ?? null) : null),
   );
 }

@@ -568,8 +568,11 @@ export function approvedNoSessionOf(proposals: readonly Proposal[], s: Pick<Snap
     return p.kind === "ASSIGN" && p.status === "approved" && Boolean(reg) && !live(reg!);
   });
   const age = (p: Proposal) => now - Date.parse(p.timeline.approved ?? p.statusAt);
+  // ATC-534: 그 AIRCRAFT가 job이 사라져(프로세스 없음) 세션이 없는 카드. waiting에 이미 들어 있다
+  const gone = (p: Proposal) => s.sessions.some((x) => x.status === "dead" && x.jobGone && regKey(x.name, teamPattern) === regOfProposal(p, teamPattern));
   return {
     waiting: waiting.length,
+    jobGone: waiting.filter(gone).length,
     overdue: waiting.filter((p) => age(p) > waitMin * 60_000).length,
     closed24h: proposals.filter((p) => p.status === "superseded" && (p.reason ?? "").startsWith(APPROVED_NO_SESSION_WHY) && now - Date.parse(p.statusAt) < 86_400_000).length,
     waitMin,
