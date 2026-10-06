@@ -30,7 +30,7 @@ export function MetricsMisfire({ refreshKey }: { refreshKey: string }) {
       apiGet(path)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((d: T) => alive && set(d));
-    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap), get<OrphanView>(`/api/orphan-flight?days=${DAYS}`, setOrphan), get<LagView>(`/api/event-loop-lag?days=${DAYS}`, setLag), get<LivenessData>("/api/job-liveness", setLive)])
+    Promise.all([get<DispatchMisfire>(`/api/dispatch/misfire?days=${DAYS}`, setDispatch), get<AutoView>(`/api/autonomy/auto?days=${DAYS}`, setAuto), get<GapView>(`/api/landing-gap?days=${DAYS}`, setGap), get<OrphanView>(`/api/orphan-flight?days=${DAYS}`, setOrphan), get<LagView>(`/api/event-loop-lag?days=${DAYS}`, setLag), get<LivenessData>("/api/job-liveness", setLive), get<CallsData>(`/api/linear-calls?days=${DAYS}`, setCalls)])
       .then(() => alive && setError(null))
       .catch((e) => alive && setError(String(e.message ?? e)));
     return () => {

@@ -219,6 +219,7 @@ test("이슈 만들기: 마지막 시도가 받은 뒤 끊겨도 거짓 실패 �
   assert.equal((await createDutyIssue(input, write(h, f))).key, "ATC-101");
   assert.equal(f.creates(), 1);
   assert.equal(h.lines.at(-1)?.outcome, "recovered");
+  assert.ok(h.lines.every((l) => l.outcome !== "gave-up")); // 한 호출이 gave-up과 recovered 둘로 세이지 않는다
 });
 
 test("이슈 만들기: 끝까지 닿지 않으면 포기하고, 아무것도 만들지 않고, 오류에 구간과 원인이 적힌다", async () => {

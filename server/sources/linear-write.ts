@@ -118,7 +118,7 @@ export interface CreateInput {
   projectId?: string;
 }
 // 만들기는 Linear가 받은 뒤 답이 오기 전에 끊길 수 있다. 클라이언트가 고른 id(IssueCreateInput.id)로 만들어, 다시 보내기 전에 그 id의 이슈가 있는지 먼저 본다(ATC-561).
-// 이 입력 필드를 Linear가 모른다고 답하면(아무것도 만들어지지 않은 검증 오류) id 없이 다시 보내고, 대신 같은 팀의 같은 제목을 최근 5분 안에서 찾아 중복을 막는다
+// 이 입력 필드를 Linear가 모른다고 답하면(아무것도 만들어지지 않은 검증 오류) id 없이 다시 보내고, 대신 같은 팀의 같은 제목을 이 호출이 시작된 뒤에 만들어진 것 가운데서 찾아 중복을 막는다
 const CREATE_MUTATION = `mutation DutyCreate($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { identifier url } } }`;
 const UNKNOWN_ID_FIELD = /\bid\b.*(not defined|unknown|is not a valid)|unknown (field|argument).*\bid\b/i;
 export async function createDutyIssue(input: CreateInput, extra: Extra = {}): Promise<{ key: string; url: string }> {
@@ -203,14 +203,14 @@ export async function createDutyComment(issueId: string, body: string, extra: Ex
     return d?.comment ? { id: d.comment.id } : undefined;
   };
   const byBody = async () => {
-    const d = await gqlDuty<{ issue: { comments: { nodes: { id: string; body: string; createdAt: string }[] } } | null }>(
-      `query DutyCommentedByBody($id: String!) { issue(id: $id) { comments(last: 5) { nodes { id body createdAt } } } }`,
+    const d = await gqlDuty<{ viewer: { id: string }; issue: { comments: { nodes: { id: string; body: string; createdAt: string; user: { id: string } | null }[] } } | null }>(
+      `query DutyCommentedByBody($id: String!) { viewer { id } issue(id: $id) { comments(last: 5) { nodes { id body createdAt user { id } } } } }`,
       { id: issueId },
       "read",
       { ...extra, retries: 0 },
     ).catch(() => null);
     const cutoff = Date.now() - 2 * 60_000;
-    const hit = d?.issue?.comments.nodes.find((c) => c.body === body && Date.parse(c.createdAt) >= cutoff);
+    const hit = d?.issue?.comments.nodes.find((c) => c.body === body && c.user?.id === d.viewer.id && Date.parse(c.createdAt) >= cutoff); // 같은 본문·같은 글쓴이(API 키 주인)·최근 2분
     return hit ? { id: hit.id } : undefined;
   };
   const send = (withId: boolean) =>

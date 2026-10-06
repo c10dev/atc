@@ -82,6 +82,13 @@ export async function linearGql<T>(c: GqlCall): Promise<T> {
   const doFetch = c.fetchFn ?? fetch;
   const sink = c.sink ?? ((l: LinearCallLine) => record(l));
   const idempotent = c.idempotent ?? c.op === "read";
+  // gave-up 줄은 마지막 조회가 이미 적용된 쓰기를 찾지 못했을 때만 적는다(찾으면 recovered 한 줄뿐이라 한 호출이 둘로 세이지 않는다)
+  let pendingGaveUp: LinearCallLine | null = null;
+  const put = (l: LinearCallLine) => {
+    try {
+      sink(l);
+    } catch {}
+  };
   try {
     return await withRetry<T>(
       async () => {
@@ -106,9 +113,9 @@ export async function linearGql<T>(c: GqlCall): Promise<T> {
         ...(c.beforeRetry ? { beforeRetry: (cause: Cause) => (cause.mayHaveSent ? c.beforeRetry!(cause) : Promise.resolve(undefined)) } : {}),
         onEvent: (e) => {
           if (e.cause.cls === "other") return; // 네트워크 실패가 아니다(GraphQL 오류 등)
-          try {
-            sink(lineOf(e, "atc-server-to-linear", c.op, c.key));
-          } catch {}
+          const line = lineOf(e, "atc-server-to-linear", c.op, c.key);
+          if (e.outcome === "gave-up") pendingGaveUp = line;
+          else put(line);
         },
       },
     );
@@ -118,12 +125,11 @@ export async function linearGql<T>(c: GqlCall): Promise<T> {
     if (c.beforeRetry && (c.retries ?? loadRetries()) > 0 && retryable(cause) && cause.mayHaveSent) {
       const found = await c.beforeRetry(cause).catch(() => undefined);
       if (found !== undefined) {
-        try {
-          sink(lineOf({ attempt: (c.retries ?? loadRetries()) + 1, outcome: "recovered", cause }, "atc-server-to-linear", c.op, c.key));
-        } catch {}
+        put(lineOf({ attempt: (c.retries ?? loadRetries()) + 1, outcome: "recovered", cause }, "atc-server-to-linear", c.op, c.key));
         return found as T;
       }
     }
+    if (pendingGaveUp) put(pendingGaveUp);
     if (e instanceof Error && cause.cls !== "other") e.message = hopText(e.message, "atc-server-to-linear");
     throw e;
   }

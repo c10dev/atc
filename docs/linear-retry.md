@@ -28,8 +28,8 @@ An error now reads `fetch failed (atc server → Linear) [dns ENOTFOUND]`: the h
 
 Only writes that may have reached Linear need care; a failure before the request left the machine is simply sent again.
 
-- **Issue create.** The request carries a client-chosen UUID in `IssueCreateInput.id`. Before each retry after a failure that may have reached Linear, the server asks for `issue(id)`; if it exists, that issue is the result and nothing is sent. The same check runs once more after the last attempt fails, so a create Linear accepted is not reported as a failure. If Linear rejects the `id` field as unknown (a validation error, so nothing was created), the request is sent again without it and the server looks the issue up by team, title and creation time (the last 5 minutes) before each retry. The title check against open ATC issues (409, ATC-488) is unchanged.
-- **Comment.** Same, with `CommentCreateInput.id` and `comment(id)`; without `id`, the last five comments of the issue are searched for the same body from the last 2 minutes.
+- **Issue create.** The request carries a client-chosen UUID in `IssueCreateInput.id`. Before each retry after a failure that may have reached Linear, the server asks for `issue(id)`; if it exists, that issue is the result and nothing is sent. The same check runs once more after the last attempt fails, so a create Linear accepted is not reported as a failure. If Linear rejects the `id` field as unknown (a validation error, so nothing was created), the request is sent again without it and the server looks the issue up by team, title and creation time (only issues created after the call started) before each retry. The title check against open ATC issues (409, ATC-488) is unchanged.
+- **Comment.** Same, with `CommentCreateInput.id` and `comment(id)`; without `id`, the last five comments of the issue are searched for the same body, by the API key's owner, from the last 2 minutes.
 - **Relation (`blocks`).** Before a retry the issue's relations are read; an existing `blocks` relation counts as done.
 - **State, label and field updates** set a value, so repeating them changes nothing.
 - A read is always safe to repeat.
@@ -38,7 +38,7 @@ Only writes that may have reached Linear need care; a failure before the request
 
 Every failed attempt, retry, recovery and final failure is a FLIGHT RECORDER line `linear-call`: `hop`, `op` (`read`, `create`, `update`, `comment`), `attempt`, `outcome` (`retry`, `recovered`, `gave-up`), `cause` (`dns`, `connect`, `timeout`, `tls`, `network`, `http`) and `code` (`ENOTFOUND`, `ECONNRESET`, `UND_ERR_HEADERS_TIMEOUT`, `503` …), plus the issue key if there is one. No issue text, no title and no token. A GraphQL error in a 200 reply is not recorded.
 
-`atcctl` cannot write the recorder itself: after a call that failed at least once it posts its attempts to `POST /api/linear-calls/note` (every value checked against a fixed list, at most 8 per call, nothing else accepted). If the server cannot be reached at all, that attempt is not recorded; the error text still carries the cause.
+`atcctl` cannot write the recorder itself: after a call that failed at least once it posts its attempts to `POST /api/linear-calls/note` (every value checked against a fixed list, at most 8 per call, nothing else accepted; the route has no Origin check because `atcctl` is not a browser, so any local process could add lines to the atcctl-hop count: the server listens on this computer only and the lines carry no text). If the server cannot be reached at all, that attempt is not recorded; the error text still carries the cause.
 
 `GET /api/linear-calls?days=N` (read only) returns the daily counts by hop and cause: failed attempts, calls recovered by a retry and calls that gave up. METRICS → MISFIRE shows them for the last 7 days (`LINEAR CALLS`). These counts are the misfire counter.
 
