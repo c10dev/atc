@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Hono } from "hono";
 import { appendMccRecord, autoRtsInfoOf, autoRtsOf, lastRtsFailureOf, mccDeploys, readMccRecords, rtsDueOf } from "./mcc.ts";
+import { rtsViaAutoOf, serverLandedOf } from "./mcc-auto.ts";
+import { record } from "./recorder.ts";
 import { airportOf, errText, gh, rtsGuard, rtsState, startRtsUnit } from "./mcc-run.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
@@ -123,7 +125,8 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
     passing = true;
     try {
       const ap = airportOf(s);
-      if (!mccDeploys(ap.cfg.mode)) return { started: false, why: `모드 ${ap.cfg.mode}: 자동 배포 꺼짐` };
+      // 서버 자동(ATC-556): 모드가 배포하지 않아도(shadow·land) 스위치가 on이면 서버가 착륙시킨 PR만 쌓인 main은 아래에서 범위를 보고 배포한다
+      if (!mccDeploys(ap.cfg.mode) && ap.cfg.serverAuto !== "on") return { started: false, why: `모드 ${ap.cfg.mode}: 자동 배포 꺼짐` };
       const records = readMccRecords();
       const state = rtsState(records);
       const deployed = head();
@@ -131,22 +134,30 @@ export function mountUpdate(app: Hono, getSnapshot: () => Promise<Snapshot>, hea
       const due = rtsDueOf({ deployed, main: ap.main, mainCi: ap.mainCi, last: state.last, lastStartAt: state.spacingAt, mainReadAt: ap.mainReadAt, lastLandAt: state.lastLandAt, now }, state.stop);
       // 범위 거절은 시작하기 전에 안다(UPDATE 바와 같은 planRts). 할 때가 아니면 GitHub을 읽지 않는다
       let rangeRefusal: string | null = null;
+      let viaAuto = false;
       if (due.due && deployed && ap.main) {
-        if (!checkoutAtMain(await deps.checkout(), ap.main)) {
-          const range = await rangeOf(ap.slug, deployed, ap.main);
+        const atMain = checkoutAtMain(await deps.checkout(), ap.main);
+        const deploying = mccDeploys(ap.cfg.mode);
+        // 본 체크아웃이 이미 main이면 배포하는 모드는 범위를 읽지 않는다. 서버 자동은 범위의 PR을 봐야 하므로 늘 읽는다
+        const range = !atMain || !deploying ? await rangeOf(ap.slug, deployed, ap.main) : null;
+        if (!deploying) viaAuto = rtsViaAutoOf(ap.cfg.serverAuto, range ? range.prs.map((p) => p.number) : null, serverLandedOf(records));
+        if (!atMain) {
           if (range) rangeRefusal = rangeRefusalOf(await deps.planRts(), deployed, ap.main, range.files, range.depsChanged);
-          else return { started: false, why: "범위를 읽지 못함 — 다음 점검에서 다시" };
+          else if (deploying) return { started: false, why: "범위를 읽지 못함 — 다음 점검에서 다시" };
         }
       }
-      const decision = autoRtsOf({ mode: ap.cfg.mode, due, main: ap.main, rangeRefusal, guard: deps.guard(), last: state.last, lastFailedAt: lastRtsFailureOf(records, ap.main), now });
+      if (!mccDeploys(ap.cfg.mode) && !viaAuto) return { started: false, why: due.due ? "서버가 착륙시키지 않은 PR이 main에 있음 — 사람이 배포(UPDATE 바)" : due.why };
+      const decision = autoRtsOf({ mode: ap.cfg.mode, due, main: ap.main, rangeRefusal, guard: deps.guard(), last: state.last, lastFailedAt: lastRtsFailureOf(records, ap.main), viaAuto, now });
       if (!decision.start) return { started: false, why: decision.why };
       const base = { at: new Date(now).toISOString(), from: deployed, to: ap.main!, by: "server" as const };
       try {
         await deps.startUnit();
         appendMccRecord({ op: "rts", ...base, result: "started" });
+        record({ t: base.at, kind: "mcc-auto", op: "rts", from: deployed, to: ap.main!, result: "started", mode: viaAuto ? `${ap.cfg.mode}+server-auto` : ap.cfg.mode });
         return { started: true, why: decision.why };
       } catch (e) {
         appendMccRecord({ op: "rts", ...base, result: "failed", detail: errText(e) });
+        record({ t: base.at, kind: "mcc-auto", op: "rts", from: deployed, to: ap.main!, result: "failed", mode: viaAuto ? `${ap.cfg.mode}+server-auto` : ap.cfg.mode, detail: errText(e) });
         return { started: false, why: errText(e) };
       }
     } finally {

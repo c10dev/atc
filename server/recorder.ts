@@ -95,6 +95,13 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "verify-remote-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "browser-gate-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "scope-oom"; unit: string; total: number; delta: number } // 백그라운드 session scope 안의 OOM kill(ATC-505): cgroup memory.events의 oom_kill가 늘 때마다 한 줄
+  // 서버가 MCC 세션 없이 한 기계적 판단(ATC-556). 입력을 줄에 함께 둔다(autonomy.md 원칙 7): land·refused·recheck는 pr+head, rts는 from→to.
+  // recheck는 착륙 뒤 PR을 다시 읽은 결과이고 misfire에 다시 읽으면 막았을 조건이 있다. refused는 서버가 하려다 막힌 것(MCC 세션도 queue에서 본다)
+  | { t: string; kind: "mcc-auto"; op: "land"; pr: number; head: string; tier: string }
+  | { t: string; kind: "mcc-auto"; op: "refused"; pr: number; head: string; why: string }
+  | { t: string; kind: "mcc-auto"; op: "recheck"; pr: number; head: string; misfire: string[] }
+  | { t: string; kind: "mcc-auto"; op: "rts"; from: string | null; to: string; result: "started" | "failed"; mode: string; detail?: string }
+  | { t: string; kind: "policy"; op: "mcc-server-auto-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }

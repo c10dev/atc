@@ -26,8 +26,10 @@ export interface MccConfig {
   kApproval: "on" | "off";
   // 지우기 규칙(ATC-495): 작업 지시서가 이름 붙이지 않은 기능을 지우는 PR을 inspector가 ESCALATE하고 `Removed:` 줄을 요구한다. 기본 on, 끄는 것은 SUPERVISOR만(설정 창)
   removalGuard: "on" | "off";
+  // 서버의 기계적 판단(ATC-556): auto 등급 PR의 LAND와 그 RTS를 MCC 세션의 /tick 없이 서버가 한다. 기본 on, 끄면 MCC 세션이 다시 한다(SUPERVISOR만, 설정 창)
+  serverAuto: "on" | "off";
 }
-export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" };
+export const DEFAULT_MCC: MccConfig = { mode: "shadow", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on", serverAuto: "on" };
 
 const CONFIG_FILE = () => join(config.stateDir, "mcc.json");
 export const RECORD_FILE = () => join(config.stateDir, "mcc.jsonl");
@@ -45,6 +47,7 @@ export function parseMcc(raw: unknown): MccConfig {
     holds: [...new Set((Array.isArray(r.holds) ? r.holds : []).filter((n): n is number => Number.isInteger(n) && n > 0))],
     kApproval: r.kApproval === "off" ? "off" : d.kApproval, // 꺼지는 것은 정확히 "off"일 때뿐
     removalGuard: r.removalGuard === "off" ? "off" : d.removalGuard, // 꺼지는 것은 정확히 "off"일 때뿐. 깨진 파일은 기본(on)이다: 읽을 수 없는 설정이 규칙을 끄지 않는다
+    serverAuto: r.serverAuto === "off" ? "off" : d.serverAuto, // 꺼지는 것은 정확히 "off"일 때뿐
   };
 }
 
@@ -59,7 +62,7 @@ const readJson = (file: string): unknown => {
 export function loadMcc(file = CONFIG_FILE()): MccConfig {
   const parsed = parseMcc(readJson(file));
   if (!existsSync(file) || readJson(file) !== null) return parsed;
-  return { ...parsed, kApproval: "off" };
+  return { ...parsed, kApproval: "off", serverAuto: "off" }; // 깨진 파일이면 서버 자동 착륙도 끈다(읽을 수 없는 설정이 머지를 켠 채로 두지 않는다)
 }
 // 사용자가 적어 둔 다른 키는 그대로 두고 바꾼 것만 쓴다
 export function saveMcc(next: MccConfig, file = CONFIG_FILE()) {
@@ -88,9 +91,9 @@ export interface Inspection {
 export type MccRecord =
   | Inspection
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
-  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
+  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server"; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
   | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
-  | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off"; removalGuard?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
+  | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off"; removalGuard?: "on" | "off"; serverAuto?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
   | { op: "hold" | "unhold"; at: string; pr: number };
 
 export function appendMccRecord(r: MccRecord, file = RECORD_FILE()) {
@@ -273,10 +276,12 @@ export interface AutoRtsInput {
   guard: string | null; // 이 서버가 유닛을 시작할 수 없는 사유(시험 서버)
   last: RtsRecord | null; // rts.jsonl 마지막 줄
   lastFailedAt: string | null; // mcc.jsonl의 마지막 rts failed(같은 main, 유닛 시작 오류)
+  // 서버 자동(ATC-556): 스위치가 on이고 deployed..main 범위의 PR이 모두 서버가 착륙시킨 것이면 shadow·land 모드에서도 RTS를 시작한다
+  viaAuto?: boolean;
   now: number;
 }
 export function autoRtsOf(x: AutoRtsInput): { start: boolean; why: string } {
-  if (!mccDeploys(x.mode)) return { start: false, why: `모드 ${x.mode}: 자동 배포 꺼짐` };
+  if (!mccDeploys(x.mode) && !x.viaAuto) return { start: false, why: `모드 ${x.mode}: 자동 배포 꺼짐` };
   if (x.guard) return { start: false, why: x.guard };
   if (!x.due.due) return { start: false, why: x.due.why };
   if (x.rangeRefusal) return { start: false, why: `사람이 배포: ${x.rangeRefusal}` };

@@ -276,7 +276,7 @@ mountQrh(app); // QRH shadow(ATC-288): qrh.named 줄을 읽기만 한다
 mountAtfm(app, getSnapshot);
 mountAutoland(app, getSnapshot);
 mountMigrate(app); // 마이그레이션 리허설 기록 읽기(ATC-368). 스위치는 설정 창(PUT /api/settings)뿐
-mountMcc(app, getSnapshot, () => head);
+const mcc = mountMcc(app, getSnapshot, () => head);
 const update = mountUpdate(app, getSnapshot, () => head); // UPDATE bar(ATC-82)
 // CONTROL RECYCLE(ATC-166)의 안전 조건·동작: 라우트(APPLY NOW·일괄 동작)와 주기 일(server/jobs/control-recycle.ts)이 같이 쓴다
 const recycleFacts = {
@@ -299,6 +299,7 @@ mountControlBulk(app, getSnapshot, { facts: recycleFacts, act: defaultActDeps(()
 // 주기 일이 이름으로 받는 것(mount가 돌려준 객체와 이 파일에서 만든 것). 일을 더해도 여기는 그대로다
 provideService("eventLog", eventLog);
 provideService("update", update);
+provideService("mcc", mcc);
 provideService("applyNow", applyNow);
 provideService("recycleDeps", { facts: recycleFacts, act: recycleAct });
 mountControlRecycle(app);

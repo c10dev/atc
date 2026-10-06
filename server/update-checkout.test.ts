@@ -15,7 +15,7 @@ import { loadPlanRts, mountUpdate, type RangeInfo, type UpdateDeps } from "./upd
 const fresh = () => {
   config.stateDir = mkdtempSync(join(tmpdir(), "update-checkout-"));
   after(() => rmSync(config.stateDir, { recursive: true, force: true }));
-  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on" });
+  saveMcc({ mode: "land+rts", airport: "ATCC", ciCheck: "check", holds: [], kApproval: "on", removalGuard: "on", serverAuto: "off" });
 };
 
 const A = "c0ca22e" + "0".repeat(33);
