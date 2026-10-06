@@ -173,5 +173,5 @@ test("GET /api/squelch는 지난 통과의 투영(proj)을 내보내지 않는�
   assert.equal(body.roles.review.proj, undefined);
   assert.equal(body.roles.review.v2.proj, undefined);
   assert.ok(body.roles.review.v2.fp);
-  assert.deepEqual(Object.keys(body.config).sort(), ["fingerprint", "heartbeatMin", "mode"]);
+  assert.deepEqual(Object.keys(body.config).sort(), ["fingerprint", "heartbeatMin", "mode", "roles"]);
 });

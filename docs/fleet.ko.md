@@ -730,6 +730,8 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 
 백그라운드 관제 세션의 STOP은 `claude stop`이 종료 코드 0으로 돌아온 뒤 약 20초 안에 그 job의 `state.json`이 `stopped`가 될 때만 `ok: true`로 기록된다. 아니면 따로 적은 사유와 함께 `ok: false`이고, WARNING `control|unverified|…`이 뜨고, RECYCLE은 새 세션을 띄우지 않는다. 같은 관제 이름의 살아 있는 job이 둘이면 WARNING `control|duplicate|<세션>`이 뜬다(글에 job id와 ACCOUNT가 든다. STALE 줄은 세지 않는다). 스위치는 하나, 기본 on, 설정 창 OPERATIONS의 CONTROL STOP CHECK(SUPERVISOR만), 오작동 수가 같은 블록에 보인다. 자세히는 [control-recycle.ko.md](control-recycle.ko.md).
 
+**SQUELCH 스위치(ATC-552).** 설정 창의 CONTROL 블록에는 SQUELCH 스위치도 있다. 관제 역할(TOWER, MCC, OCC, CROSSCHECK, REVIEW)마다 모드(`off`, `shadow`, `on`. 자기 모드가 없는 역할은 전체 모드를 따른다), `heartbeatMin`(1–720분), `fingerprint`(`v1`, `v2`), 필드마다 마지막 바뀜, 최근 7일 바뀐 횟수, 모든 역할을 `shadow`·`v1`로 되돌리는 **끄기** 단추가 있다. SUPERVISOR만(설정 창의 Origin. `atcctl`은 403). 바꿀 때마다 누가·언제·역할·필드·이전 값·이후 값을 `squelch-changes.jsonl`에 한 줄로 적는다. 저장된 값이 없거나 틀리면 `shadow`, 50, `v1`로 읽어 tick은 늘 돈다. 자세히는 [squelch.md](squelch.md) "Switch as built (ATC-552)".
+
 ##### FLEET 탭의 CONTROL SESSIONS as built (ATC-130)
 
 - **옮겼을 뿐 바꾸지 않았다.** 설정 창 AGENTS 탭의 블록을 FLEET의 `CONTROL SESSIONS` 구역(AIRCRAFT 목록 아래)으로 옮겼다. 보이는 것은 같다: LAUNCH·STOP(같은 tmux 확인), 배지, job 상태와 NEEDS YOU, STALE 줄, ACCOUNT 라벨, daemon 경고, 모델 안내. API와 `session-control.ts`는 그대로이고, LAUNCH·STOP은 SUPERVISOR 전용이다.

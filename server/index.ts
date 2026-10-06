@@ -63,6 +63,7 @@ import { mountPolicy } from "./policy-run.ts";
 import { mountAccounts } from "./accounts-run.ts";
 import { mountSquelchOpens } from "./squelch-opens-run.ts";
 import { mountSquelch } from "./squelch-run.ts";
+import { mountSquelchSwitch } from "./squelch-switch-run.ts";
 import { mountTick } from "./tick-run.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { mountHomeFlow } from "./home-flow-run.ts";
@@ -305,6 +306,7 @@ mountAccounts(app, getSnapshot);
 mountJudges(app);
 mountSquelch(app); // SQUELCH S1(ATC-94): 아직 어떤 hook도 부르지 않고 shadow라 버리지 않는다
 mountSquelchOpens(app); // SQUELCH opens-by-field(ATC-297): 어떤 필드가 tick을 열었고 그 tick이 일을 했는지(읽기만)
+mountSquelchSwitch(app); // SQUELCH 스위치(ATC-552): 역할마다 mode·heartbeatMin·fingerprint를 SUPERVISOR 화면에서(Origin 검사)
 mountTick(app); // `atcctl tick <역할>`(ATC-297): 브리핑에 할 일이 있는가(읽기만)
 
 mountSupervisorQueue(app, getSnapshot, () => update.status(), () => eventLog.since(null).events); // SUPERVISOR QUEUE(ATC-194, 읽기만)
