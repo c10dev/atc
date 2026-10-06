@@ -17,6 +17,8 @@
 - The counts in `GET /api/skills/usage` are right for what they count, but three reader quirks hide the per-FLIGHT picture (section 7).
 - FUEL per FLIGHT is about 20% above the baseline median, but the sample is small and the mix differs; it does not separate called from missed FLIGHTs (section 6).
 
+**Check on 2026-10-06 (read-only, `GET /api/skills/usage?days=7`).** The daily lines up to 2026-10-05 show the same pattern: `diagnosing-bugs` and `codebase-locator` were not called on any day, `codebase-analyzer` was called 2 times on each of 2026-10-02 and 2026-10-03, and `ui-review` kept being called (11 and 15 times on 2026-10-02 and 2026-10-03, 1 on 2026-10-05). No verdict changes, so the per-FLIGHT counts above (from 2026-10-02) are not recomputed.
+
 ## 2. Window and method
 
 - **Window.** The pilot (`diagnosing-bugs`, `codebase-*`) reached `main` at 2026-10-01 06:04Z (#345), `ui-review` at 06:20Z (#350). The window runs to 2026-10-02 04:50Z. Merged atc PRs in it: 49, of which 41 are FLIGHTs whose STAND started at or after 06:04Z, and 23 of those change `web/src` and started at or after 06:20Z.
