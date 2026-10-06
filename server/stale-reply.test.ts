@@ -3,10 +3,11 @@ import test from "node:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ClearanceType } from "./model.ts";
 import { clearanceCalls, crewChangeCalls, flightPlanCalls, latestOfReason, parseStaleReplySwitch, staleReplyCounterOf, staleReplyWhy } from "./stale-reply.ts";
 
 // ATC-554: 옛 id에 온 답을 거절하는 순수 함수와 센 기록. 파일은 임시 폴더만 쓴다(운영 상태 폴더를 읽지 않으려고 run은 동적으로 가져온다)
-const clr = (id: string, over: Partial<{ to: string; type: string; flight: string | null }> = {}) => ({ id, to: "s1", type: "FIX", flight: "ATC-1", ...over });
+const clr = (id: string, over: Partial<{ to: string; type: ClearanceType; flight: string | null; stand: string | null; text: string }> = {}) => ({ id, to: "s1", type: "FIX" as ClearanceType, flight: "ATC-1" as string | null, stand: null as string | null, text: "fix review on PR #10", ...over });
 
 test("old id after a resend (same subject, later id): refused, names the latest id", () => {
   const calls = clearanceCalls([clr("C-0001"), clr("C-0002")]);
@@ -22,6 +23,24 @@ test("the latest id passes, and the first of several names the newest", () => {
 test("a different subject (other team, type or FLIGHT) is not superseded", () => {
   const calls = clearanceCalls([clr("C-0001"), clr("C-0002", { to: "s2" }), clr("C-0003", { type: "HOLD" }), clr("C-0004", { flight: "ATC-2" })]);
   assert.equal(staleReplyWhy("C-0001", calls), null);
+});
+
+test("notice types (INFO, TRAFFIC, REPORT) and CLEARANCEs without a FLIGHT never supersede and are never refused", () => {
+  for (const type of ["INFO", "TRAFFIC", "REPORT"] as const) {
+    const calls = clearanceCalls([clr("C-0001", { type }), clr("C-0002", { type })]);
+    assert.equal(staleReplyWhy("C-0001", calls), null, type);
+  }
+  const noFlight = clearanceCalls([clr("C-0001", { type: "HOLD", flight: null }), clr("C-0002", { type: "HOLD", flight: null })]);
+  assert.equal(staleReplyWhy("C-0001", noFlight), null);
+});
+
+test("two FIX or GO AROUND clearances for different PRs (or STANDs) on one FLIGHT are different subjects; the same PR is one", () => {
+  const diffPr = clearanceCalls([clr("C-0001", { text: "fix on PR #10" }), clr("C-0002", { text: "fix on PR #11" })]);
+  assert.equal(staleReplyWhy("C-0001", diffPr), null);
+  const diffStand = clearanceCalls([clr("C-0001", { type: "GO AROUND", stand: "/a" }), clr("C-0002", { type: "GO AROUND", stand: "/b" })]);
+  assert.equal(staleReplyWhy("C-0001", diffStand), null);
+  const samePr = clearanceCalls([clr("C-0001", { text: "RESEND fix on PR #10" }), clr("C-0002", { text: "fix PR #10 again" })]);
+  assert.match(staleReplyWhy("C-0001", samePr)!, /answer the latest call C-0002$/);
 });
 
 test("an id that never existed is not judged here (the route answers 404)", () => {
@@ -72,6 +91,14 @@ test("refuseStaleReply: off switch lets it through and counts nothing; on refuse
     assert.match(refuseStaleReply("clearance", "C-0001", "readback", calls, now, file, "on")!, /answer the latest call C-0002$/);
     assert.deepEqual(readStaleReplyEvents(file), [{ t: new Date(now).toISOString(), kind: "clearance", id: "C-0001", op: "readback", latest: "C-0002" }]);
     assert.equal(readFileSync(file, "utf8").split("\n").filter(Boolean).length, 1);
+    // 파일에 쓸 수 없으면(경로가 파일) 거절은 그대로이고 줄은 메모리에 남아 다음 번에 다시 쓴다
+    const { unwrittenCount, flushUnwritten } = await import("./stale-reply-run.ts");
+    const bad = join(dir, "events.jsonl", "x.jsonl");
+    assert.match(refuseStaleReply("clearance", "C-0001", "unable", calls, now, bad, "on")!, /answer the latest call C-0002$/);
+    assert.equal(unwrittenCount(), 1);
+    flushUnwritten(file);
+    assert.equal(unwrittenCount(), 0);
+    assert.equal(readStaleReplyEvents(file).length, 2);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

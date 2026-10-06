@@ -47,27 +47,41 @@ export function readStaleReplyEvents(file = EVENTS()): StaleReplyEvent[] {
   return out;
 }
 
-// 거절할 사유(없으면 null)를 돌려주고, 거절하면 한 줄 센다. 스위치가 off면 아무것도 하지 않는다. 기록을 못 써도 거절은 그대로(닫는 쪽으로 실패)
+// 거절할 사유(없으면 null)를 돌려주고, 거절하면 한 줄 센다. 스위치가 off면 아무것도 하지 않는다. 기록을 못 써도 거절은 그대로(닫는 쪽으로 실패), 센 줄은 메모리에 남는다
 export function refuseStaleReply(kind: CallKind, id: string, op: string, calls: readonly CallRef[], now = Date.now(), file = EVENTS(), sw = loadStaleReplySwitch()): string | null {
   if (sw === "off") return null;
   const why = staleReplyWhy(id, calls);
   if (!why) return null;
-  try {
-    mkdirSync(dirname(file), { recursive: true });
-    appendFileSync(file, JSON.stringify({ t: new Date(now).toISOString(), kind, id, op, latest: latestOfReason(why) } satisfies StaleReplyEvent) + "\n");
-  } catch (e) {
-    console.warn(`[atc] stale-reply: ${e instanceof Error ? e.message : e}`);
-  }
+  unwritten.push({ t: new Date(now).toISOString(), kind, id, op, latest: latestOfReason(why) });
+  flushUnwritten(file);
   return why;
 }
 
-export const staleReplyData = (now = Date.now()) => staleReplyCounterOf(readStaleReplyEvents(), now, 7);
+// 파일에 못 쓴 줄은 메모리에 남겨 다음 거절 때 다시 쓰고, 그 사이에도 셈에 넣는다(조용히 덜 세지 않게). 서버가 꺼지면 사라지므로 실패는 error로 남긴다
+const unwritten: StaleReplyEvent[] = [];
+export function flushUnwritten(file = EVENTS()) {
+  if (!unwritten.length) return;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, unwritten.map((e) => JSON.stringify(e) + "\n").join(""));
+    unwritten.length = 0;
+  } catch (e) {
+    console.error(`[atc] stale-reply: 거절 ${unwritten.length}건을 기록하지 못함(메모리에 남김): ${e instanceof Error ? e.message : e}`);
+  }
+}
+export const unwrittenCount = () => unwritten.length;
+
+export const staleReplyData = (now = Date.now()) => {
+  flushUnwritten();
+  return staleReplyCounterOf([...readStaleReplyEvents(), ...unwritten], now, 7);
+};
 
 export function mountStaleReply(app: Hono) {
   // 스위치와 거절 수(읽기 전용). 스위치는 설정 창(PUT /api/settings)에서만 바꾼다
   app.get("/api/stale-reply", (c) => {
     const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || 7));
-    const events = readStaleReplyEvents();
+    flushUnwritten();
+    const events = [...readStaleReplyEvents(), ...unwritten];
     return c.json({ switch: loadStaleReplySwitch(), ...staleReplyCounterOf(events, Date.now(), days), recent: events.slice(-10).reverse() });
   });
 }

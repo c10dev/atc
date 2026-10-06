@@ -35,9 +35,9 @@ Status (2026-10-03): [layout.md](layout.md)로 **대체됨(superseded)**. 만든
 ### 닫혔거나 밀린 부름에 온 답은 거절한다 (ATC-554)
 
 - **검사가 있는 곳.** 서버, 팀의 답을 기록하는 길이다. 답이 "답한 것"으로 세어지는 곳이 거기라서다. 답하는 쪽에는 검사가 없다: 팀 CAPTAIN은 `SendMessage`로 답하고 TOWER·OCC가 `atcctl`(`readback`·`unable`·`standby`·`dispatch …`·`crew-change …`)로 기록한다. guard 파일과 hook은 건드리지 않아 guard의 fail-closed는 그대로다. 파일: `server/stale-reply.ts`(순수 규칙), `server/stale-reply-run.ts`(스위치·기록·`GET /api/stale-reply`), `server/switches/stale-reply.ts`(선언), 그리고 `POST /api/clearances/:id/{readback,roger,unable,standby}`(`server/controller.ts`), `POST /api/dispatch/proposals/:id/{accept,decline,standby,await-supervisor}`(`server/proposals.ts`), `POST /api/fleet/crew-changes/:id/{readback,unable,standby}`(`server/crew-change.ts`) 맨 앞의 호출 한 줄.
-- **규칙.** 같은 주제로 뒤에 나간 부름이 있으면 그 부름은 밀린 것이다: CLEARANCE는 같은 세션·같은 종류·같은 FLIGHT, FLIGHT PLAN은(보낸 것만) 같은 FLIGHT·같은 종류, CREW CHANGE는(보낸 것만) 같은 REGISTRATION. 밀린 id에 온 답은 409 `C-0001 is closed or superseded by a later call for the same subject — answer the latest call C-0002`. 최신 id에 온 답은 전처럼 받는다(닫힌 최신 부름에 다시 온 READBACK 포함). 없는 id는 그대로 404. RECALL의 답(`recalled`)과 TOWER의 `cancel`·`undeliverable`은 검사하지 않는다.
+- **규칙.** 같은 주제로 뒤에 나간 부름이 있으면 그 부름은 밀린 것이다: CLEARANCE는 따르라는 것(W/U: INFO·TRAFFIC·REPORT가 아니고 FLIGHT가 있다)만, 같은 세션·같은 종류·같은 FLIGHT·같은 STAND·글에 든 PR 번호가 같을 때(같은 FLIGHT의 다른 PR에 나간 FIX는 다른 주제다. 알림과 FLIGHT 없는 CLEARANCE는 거절하지 않는다), FLIGHT PLAN은(보낸 것만) 같은 FLIGHT·같은 종류, CREW CHANGE는(보낸 것만) 같은 REGISTRATION. 밀린 id에 온 답은 409 `C-0001 is closed or superseded by a later call for the same subject — answer the latest call C-0002`. 최신 id에 온 답은 전처럼 받는다(닫힌 최신 부름에 다시 온 READBACK 포함). 없는 id는 그대로 404. RECALL의 답(`recalled`)과 TOWER의 `cancel`·`undeliverable`은 검사하지 않는다.
 - **스위치.** SUPERVISOR 전용 `STALE REPLY`(설정 창, `stale-reply.json`, 기본 on, `atcctl` 명령 없음). off면 모든 답을 전처럼 받고 셈도 하지 않는다.
-- **셈.** 거절마다 `stale-reply-events.jsonl`에 한 줄(종류·id·동작·최신 id)을 더한다. 설정 창 블록이 최근 7일의 거절 수를 종류별로 보여 주어 틀린 거절이 보인다. 기록을 못 써도 답은 통과시키지 않는다.
+- **셈.** 거절마다 `stale-reply-events.jsonl`에 한 줄(종류·id·동작·최신 id)을 더한다. 설정 창 블록이 최근 7일의 거절 수를 종류별로 보여 주어 틀린 거절이 보인다. 기록을 못 써도 답은 통과시키지 않는다. 못 쓴 줄은 메모리에 남아 다음 거절 때 다시 쓰고 그 사이에도 센다. 실패는 error로 남는다. 409가 오면 어떻게 하는지는 TOWER·OCC 매뉴얼에 있다.
 
 ### QUEUE 계약(ATC-546)
 

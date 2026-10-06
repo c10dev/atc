@@ -379,7 +379,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
         const stale = refuseStaleReply("clearance", id, op, clearanceCalls(allClearances()));
         if (stale) return c.json({ error: stale }, 409);
       }
-      const r = markClearance(id, op,typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
+      const r = markClearance(id, op, typeof body.reason === "string" ? body.reason : undefined, typeof body.cause === "string" ? body.cause : undefined);
       if (!r) return c.json({ error: "그런 CLEARANCE가 없음" }, 404);
       if (!("error" in r) && op === "undeliverable") bustQueue();
       return "error" in r ? c.json(r, 409) : c.json({ clearance: r });

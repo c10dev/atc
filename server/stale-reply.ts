@@ -2,6 +2,9 @@
 // 같은 주제로 뒤에 나간 부름이 있으면 옛 id에 온 READBACK·UNABLE·STANDBY는 받지 않고 "answer the latest call <id>"로 최신 id를 알린다.
 // 다시 보낸 부름에 옛 id로 답한 팀이 답한 것으로 세어지지 않게 한다. 스위치는 SUPERVISOR만 바꾼다(기본 on).
 
+import type { ClearanceType } from "./model.ts";
+import { responseOf } from "./response.ts";
+
 export const STALE_REPLY_SWITCHES = ["off", "on"] as const;
 export type StaleReplySwitch = (typeof STALE_REPLY_SWITCHES)[number];
 export const parseStaleReplySwitch = (raw: unknown): StaleReplySwitch => (raw === "off" ? "off" : "on");
@@ -29,10 +32,16 @@ export function staleReplyWhy(id: string, calls: readonly CallRef[]): string | n
 interface ClearanceLike {
   id: string;
   to: string;
-  type: string;
+  type: ClearanceType;
   flight: string | null;
+  stand: string | null;
+  text: string;
 }
-export const clearanceCalls = (list: readonly ClearanceLike[]): CallRef[] => list.map((c) => ({ id: c.id, subject: `${c.to}|${c.type}|${c.flight ?? ""}` }));
+// 주제를 좁게 잡는다(MCC INSPECTION P1): 알림(R: INFO·TRAFFIC·REPORT)과 FLIGHT 없는 CLEARANCE는 부름으로 세지 않는다 — 서로 밀지 않고 답도 거르지 않는다.
+// 따를 지시(W/U)는 같은 세션·종류·FLIGHT·STAND에 더해 글에 든 PR 번호가 같을 때만 같은 주제다(같은 FLIGHT의 다른 PR에 나간 FIX·GO AROUND는 서로 밀지 않는다)
+export const prNumbersOf = (text: string): string => [...new Set([...text.matchAll(/#(\d+)/g)].map((m) => m[1]!))].sort().join(",");
+export const clearanceCalls = (list: readonly ClearanceLike[]): CallRef[] =>
+  list.filter((c) => c.flight && responseOf("clearance", c.type) === "W/U").map((c) => ({ id: c.id, subject: `${c.to}|${c.type}|${c.flight}|${c.stand ?? ""}|${prNumbersOf(c.text)}` }));
 
 interface ProposalLike {
   id: string;
