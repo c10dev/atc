@@ -7,6 +7,7 @@ import { inSequence } from "./landing.ts";
 import type { Milestone } from "./milestones.ts";
 import type { Snapshot, TrafficEvent } from "./model.ts";
 import type { QrhNamedLine } from "./qrh.ts";
+import type { LivenessLine } from "./job-liveness.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
 // - event: 스냅샷 차이 이벤트(events.ts)
@@ -76,6 +77,8 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "warm-start-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "job-liveness-mode"; by: string; from: string; to: string }
+  | LivenessLine // JOB LIVENESS(ATC-534): job이 사라진 때(gone)·init에서 죽은 LAUNCH·그 때문에 카드를 다시 띄우거나 넘긴 것(relaunch·handoff)·자동 LAUNCH를 막은 것(hold)
   | { t: string; kind: "policy"; op: "cross-account-release-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "stuck-unserved-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "contest-guard-mode"; by: string; from: string; to: string }

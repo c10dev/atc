@@ -7,6 +7,7 @@ import { type DispatchConfig, loadDispatchConfig } from "./dispatch.ts";
 import { fuelHolds } from "./fuel-remaining.ts";
 import type { Snapshot } from "./model.ts";
 import { isNetworkKind } from "./network-drafts.ts";
+import { initHoldOf, noteLiveness } from "./job-liveness-run.ts";
 import { allProposals, APPROVED_NO_SESSION_WHY, append, type Op, type Proposal, regOfProposal } from "./proposals.ts";
 import { k3LaunchWaits, k3WaitClear } from "./k3-launch-wait.ts";
 import { regKey } from "./registration.ts";
@@ -56,6 +57,9 @@ export interface AutoIO {
   appendOps: (ops: Op[]) => void;
   approveSchedule: (id: string, at: string) => void;
   stamp: () => string;
+  // JOB LIVENESS(ATC-534): 이 검사 때문에 카드를 다시 띄우거나 넘긴 것을 센다(없으면 적지 않는다). initHold: init에서 연달아 죽은 REGISTRATION은 서버가 또 띄우지 않는다
+  liveness?: (op: "relaunch" | "handoff" | "hold", registration: string, proposal: string, detail?: string) => void;
+  initHold?: (registration: string) => boolean;
 }
 
 const realIO = (): AutoIO => ({
@@ -68,6 +72,8 @@ const realIO = (): AutoIO => ({
   appendOps: append,
   approveSchedule: (id, at) => appendScheduleApprove(id, at),
   stamp: () => new Date().toISOString(),
+  liveness: (op, registration, proposal, detail) => noteLiveness(op, registration, { proposal, ...(detail ? { detail } : {}) }),
+  initHold: (registration) => initHoldOf(registration, loadDispatchConfig().teamPattern),
 });
 
 let running = false;
@@ -224,23 +230,27 @@ export async function runApprovedRelaunch(s: Snapshot, deps: AutoDeps, now = Dat
       if (s.restarting?.some((r) => r.registration === reg)) continue; // /clear 뒤 첫 메시지를 기다리는 중: 기존 유예가 기다린다(ATC-91)
       const a = s.absent?.find((x) => x.registration === reg);
       const f = s.fuel?.[reg];
+      const jobGone = Boolean(a?.jobGone); // job의 프로세스가 사라져 absent가 된 AIRCRAFT(ATC-534)
       const fuelHold = Boolean(f && fuelHolds(f, cfg.fuel));
       const cap = launchCapOf(s.sessions, io.proposals(), deps.max, tp, now);
       // launch 카드와 같은 조건(launchWhyNot). 이미 SUPERVISOR가 승인한 카드라 blind·주의는 보지 않는다(live)
       const why: string | null = !a
         ? "no-absent" // atc가 띄운 적이 없는 AIRCRAFT(등록부·RETIRED 등)라 띄울 길이 없다
         : (cutHoldWhy(a.cut, now) ? "limit" : null) ??
+          (io.initHold?.(reg) ? "init-death" : null) ?? // init에서 연달아 죽었다: CREW CHANGE나 SUPERVISOR의 LAUNCH까지 서버가 또 띄우지 않는다(ATC-534)
           launchWhyNot({ ...p, status: "proposed", launch: true }, { now, settleMin: cfg.settleMin, dispatchMode: cfg.mode, fuelHold, cap, stuck: Boolean(a.stuck), backedOff: fails.has(reg), counts, launchMax: cfg.autoLaunchMax, live: true });
       const at = io.stamp();
       if (why) {
         const waited = now - Date.parse(p.timeline.approved ?? p.statusAt);
         if (waited > cfg.approvedWaitMin * 60_000) {
-          io.appendOps([{ op: "supersede", id: p.id, at, reason: `${APPROVED_NO_SESSION_WHY} — LAUNCH 못 함(${why}), ${cfg.approvedWaitMin}분 지남 — 다른 AIRCRAFT로 다시 제안` }]);
+          io.appendOps([{ op: "supersede", id: p.id, at, reason: `${APPROVED_NO_SESSION_WHY}${jobGone ? ` (${a!.jobGone})` : ""} — LAUNCH 못 함(${why}), ${cfg.approvedWaitMin}분 지남 — 다른 AIRCRAFT로 다시 제안` }]);
+          if (jobGone) io.liveness?.("handoff", reg, p.id, why);
           result.closed++;
         } else result.waiting++;
         continue;
       }
       io.appendOps([{ op: "relaunch", id: p.id, at }]);
+      if (jobGone) io.liveness?.("relaunch", reg, p.id, a!.jobGone);
       let r: { ok: boolean; jobId?: string; error?: string; wait?: string };
       try {
         r = await deps.launch(s, reg, p.id, false, p.flight);

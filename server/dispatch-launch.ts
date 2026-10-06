@@ -21,6 +21,7 @@ export interface AbsentAircraft {
   model?: string;
   account?: string; // 그 LAUNCH의 ACCOUNT(ATC-147). RESUME은 같은 ACCOUNT에서
   cut: CutInfo | null; // 그 세션의 마지막 턴이 사용 한도로 잘렸고 그 뒤 새 턴이 없다(ATC-86 cut)
+  jobGone?: string; // 그 LAUNCH의 job이 프로세스 없이 사라졌다(ATC-534): `job gone (last state 13:16Z)`. 세션 파일은 남았지만 absent로 본다
   stuck?: StuckLaunch; // 마지막 LAUNCH가 "이미 떠 있음"으로 거절됐고 그 job 줄이 아직 남아 있다(ATC-213). 카드를 다시 내지 않는다
 }
 
@@ -122,11 +123,13 @@ export function absentOf(
   input: { liveRegs: ReadonlySet<string>; restarting: ReadonlySet<string>; registered: ReadonlySet<string>; retired: ReadonlySet<string> },
   cutOf: (reg: string, jobId: string | null) => CutInfo | null = () => null,
   stuckOf: (reg: string) => StuckLaunch | null = () => null,
+  goneOf: (reg: string, jobId: string | null) => string | null = () => null,
 ): AbsentAircraft[] {
   const out: AbsentAircraft[] = [];
   for (const [reg, l] of [...launches].sort(([a], [b]) => a.localeCompare(b))) {
     if (input.liveRegs.has(reg) || input.restarting.has(reg) || !input.registered.has(reg) || input.retired.has(reg)) continue;
     const stuck = stuckOf(reg);
+    const jobGone = goneOf(reg, l.jobId ?? null);
     out.push({
       registration: reg,
       launchedAt: l.t,
@@ -136,6 +139,7 @@ export function absentOf(
       ...(l.account ? { account: l.account } : {}),
       cut: cutOf(reg, l.jobId ?? null),
       ...(stuck ? { stuck } : {}),
+      ...(jobGone ? { jobGone } : {}),
     });
   }
   return out;
