@@ -752,6 +752,14 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
       </p>
     ) : null;
   },
+  staleReply: (s) => {
+    const d = switchOf(s, "staleReply")?.data as { refused: number; clearance: number; flightPlan: number; crewChange: number; days: number } | undefined;
+    return d ? (
+      <p className="settings-hint">
+        최근 {d.days}일 거절한 답 <b>{d.refused}</b> · CLEARANCE <b>{d.clearance}</b> · FLIGHT PLAN <b>{d.flightPlan}</b> · CREW CHANGE <b>{d.crewChange}</b>
+      </p>
+    ) : null;
+  },
   mccKApproval: (s) => {
     const days = (switchOf(s, "mccKApproval")?.data as { days?: KDay[] } | undefined)?.days;
     return days ? <KApprovalDays days={days} /> : null;

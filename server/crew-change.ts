@@ -9,6 +9,8 @@ import { type CrewDrift, OBSERVED_WINDOW_DAYS, type ObservedMember, observeCrew,
 import { loadDispatchConfig } from "./dispatch.ts";
 import type { Snapshot } from "./model.ts";
 import { regKey } from "./registration.ts";
+import { crewChangeCalls } from "./stale-reply.ts";
+import { refuseStaleReply } from "./stale-reply-run.ts";
 import { closingLine, overdueBase, responseOf } from "./response.ts";
 
 // CREW CHANGE: 운항 중인 AIRCRAFT의 CREW COMPLEMENT가 바뀌면 CAPTAIN에게 줄 지시문을 만든다. 설계: docs/fleet.md 8.4.
@@ -500,6 +502,8 @@ export function mountCrewChange(app: Hono) {
   app.post("/api/fleet/crew-changes/:id/readback", (c) => {
     const change = find(c.req.param("id") ?? "");
     if (!change) return c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
+    const stale = refuseStaleReply("crew-change", change.id, "readback", crewChangeCalls(allCrewChanges())); // 같은 REGISTRATION에 뒤에 나간 CREW CHANGE가 있으면 최신 id로 안내(ATC-554)
+    if (stale) return c.json({ error: stale }, 409);
     if (!canApplyCrewChange(change, "acknowledged")) return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
     append([{ op: "acknowledged", id: change.id, at: new Date().toISOString() }]);
     return c.json({ ok: true, change: find(change.id) });
@@ -511,6 +515,8 @@ export function mountCrewChange(app: Hono) {
     const body = await c.req.json().catch(() => ({}));
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
     if (!reason) return c.json({ error: "UNABLE에는 CAPTAIN의 사유(reason)가 필요함" }, 400);
+    const stale = refuseStaleReply("crew-change", change.id, "unable", crewChangeCalls(allCrewChanges()));
+    if (stale) return c.json({ error: stale }, 409);
     if (!canApplyCrewChange(change, "unable")) return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
     append([{ op: "unable", id: change.id, at: new Date().toISOString(), reason }]);
     return c.json({ ok: true, change: find(change.id) });
@@ -519,6 +525,8 @@ export function mountCrewChange(app: Hono) {
   app.post("/api/fleet/crew-changes/:id/standby", (c) => {
     const change = find(c.req.param("id") ?? "");
     if (!change) return c.json({ error: "그런 CREW CHANGE가 없음" }, 404);
+    const stale = refuseStaleReply("crew-change", change.id, "standby", crewChangeCalls(allCrewChanges()));
+    if (stale) return c.json({ error: stale }, 409);
     if (change.status !== "sent") return c.json({ error: `${change.id}는 READBACK 대기가 아님(${change.status})` }, 409);
     append([{ op: "standby", id: change.id, at: new Date().toISOString() }]);
     return c.json({ ok: true, change: find(change.id) });

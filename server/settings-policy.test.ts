@@ -128,6 +128,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "EVENT LOOP LAG", "서버 느림 알림(이벤트 루프 지연)", "event loop lag 이벤트 루프 지연 서버 느림 p99 job timing misfire eventLoopLag"],
     ["operations", "CLEARANCE MOOT", "이유를 잃은 CLEARANCE 정리", "clearance moot 이유 잃은 취소 cancel 머지된 PR 브리핑 clearanceMoot"],
     ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
+    ["operations", "STALE REPLY", "닫혔거나 밀린 부름에 온 답 거절", "stale reply 옛 id 거절 refused superseded 다시 보낸 READBACK UNABLE STANDBY latest call staleReply"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);
