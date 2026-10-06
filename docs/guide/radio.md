@@ -35,8 +35,10 @@ Wait until DELTA finishes
 PR이 base와 충돌하거나(`dirty`) 뒤처지거나(`behind`), LAND 문구가 "앞 PR 머지 뒤 origin/main 병합"이라고 한 그 앞 PR이 머지되면 atc는 그 PR의 STAND를 쥔 팀에 `GO AROUND`를 보낸다(ATC-128). 알림(INFO)이 아니라 **행동 지시**다. 문구는 서버가 만들고 TOWER는 그대로 보낸다. 어느 머지가 원인인지, 그 PR들과 함께 고친 파일, 할 일이 들어 있다:
 
 ```
-GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 merged. Shared files: server/fleet.ts, server/model.ts. Merge origin/main into the branch, resolve, run the checks, push with a plain git push. Keep the merged PR's behaviour. If the two PRs change the same behaviour differently, answer UNABLE with the reason.
+GO AROUND: PR #194 (ATC-89) head 1a2b3c4 conflicts with base after #190, #192 merged. Shared files: server/fleet.ts, server/model.ts. Merge origin/main and resolve the conflicts. If a conflicted file is generated, run its generator again. Do not pick lines from either side. Run the checks. Then push with a plain git push. Keep the behaviour of the merged PR. If the two PRs change the same behaviour in different ways, answer UNABLE with the reason.
 ```
+
+- 충돌한 파일이 스크립트가 만드는 생성 파일(타입 파일, 스냅숏·기준 JSON)이면 양쪽 줄을 고르지 않고 생성 스크립트를 다시 돌려 그 결과를 커밋한다(ATC-550). 어느 스크립트인지는 그 저장소의 규칙이 정한다.
 
 - 팀 리더는 `READBACK C-xxxx`로 답하고, `origin/main`을 합치고(rebase하지 않는다) 충돌 조각을 대화에 보이고, 검사를 모두 돌린 뒤 평범한 `git push`로 올린다. 팀이 자기 세션에서 SUPERVISOR 승인 없이 할 수 있는 일만 청한다. PR 본문에 무엇을 풀었는지 적는다. 두 PR이 같은 동작을 다르게 바꿨으면 `UNABLE C-xxxx — 사유`로 답한다. push한 뒤 MCC가 새 head를 다시 INSPECTION한다.
 - SUPERVISOR는 팀이 풀지 못할 때만 듣는다: UNABLE, 받을 세션이 없음, 같은 PR에 한 시간 안 두 번째 GO AROUND.

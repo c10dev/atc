@@ -24,6 +24,9 @@ export function sharedFiles(a: readonly string[] | undefined, b: readonly string
 const MAX_FILES = 8;
 const prList = (nums: readonly number[]) => nums.map((n) => `#${n}`).join(", ");
 
+// 생성 파일(스크립트가 쓰는 타입·스냅숏·기준 JSON)의 충돌은 다시 생성하는 것만 맞다(ATC-550). 어느 스크립트인지는 저장소 규칙이 말한다
+export const GENERATED_RULE = "If a conflicted file is generated, run its generator again. Do not pick lines from either side.";
+
 // CLEARANCE 본문(영어, ATC-126). TOWER는 landingQueue[].goAround.text를 고치지 않고 그대로 `atcctl issue … "GO AROUND" -- <text>`로 보낸다.
 // 본문의 `head <7자리>`는 어느 head에 대한 지시인지 적는 표지다: 같은 head에는 한 번만 내고, 새로 push한 head에는 다시 낸다.
 export function goAroundTextOf(x: { reason: GoAroundReason; pr: number; head: string; flight: string | null; merged: readonly number[]; shared: readonly string[] }): string {
@@ -36,8 +39,9 @@ export function goAroundTextOf(x: { reason: GoAroundReason; pr: number; head: st
         ? `${who} conflicts with base${after}.`
         : `${who} is behind base${after}.`;
   const files = x.shared.length ? ` Shared files: ${x.shared.slice(0, MAX_FILES).join(", ")}${x.shared.length > MAX_FILES ? ` (+${x.shared.length - MAX_FILES} more)` : ""}.` : "";
-  return `GO AROUND: ${cause}${files} Merge origin/main and resolve the conflicts. Run the checks. Then push with a plain git push. Keep the behaviour of the merged PR. If the two PRs change the same behaviour in different ways, answer UNABLE with the reason.`;
+  return `GO AROUND: ${cause}${files} Merge origin/main and resolve the conflicts. ${GENERATED_RULE} Run the checks. Then push with a plain git push. Keep the behaviour of the merged PR. If the two PRs change the same behaviour in different ways, answer UNABLE with the reason.`;
 }
+
 
 // 두 스냅샷 사이의 GO AROUND 이벤트. events.ts의 diffLanding 쪽에서 부른다.
 //   landing.conflict: DIRTY·BEHIND가 새로 생겼거나(전에 없었거나 head가 바뀌었거나) 이미 그런 채 SEQUENCE에 들어옴. head마다 한 번
