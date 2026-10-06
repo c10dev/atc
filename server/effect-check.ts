@@ -1,4 +1,5 @@
 import { type FlowData, type FlowName, isFlowName, SAMPLE_MINUTES, stretchStat, type StretchName } from "./flow.ts";
+import { type ControlData, controlValueOf, isControlName, CONTROL_NAMES } from "./control-share.ts";
 import type { LeakRecord } from "./leaks.ts";
 
 // EFFECT CHECK(ATC-402, docs/autonomy.md 원칙 7): 작업 지시서가 `## Measure`에 적은 것을 배포 앞뒤로 비교해 FLIGHT마다 평결 하나를 남긴다. 순수 함수만.
@@ -6,9 +7,9 @@ import type { LeakRecord } from "./leaks.ts";
 // flow(ATC-468: 놀고-큐가 빈 분의 합, 이슈가 지나는 세 구간의 중앙값. flow.ts), timing(ATC-538: JOB TIMING 구간의 이벤트 루프 지연 p99의 중앙값).
 
 // ── ## Measure ──
-export const MEASURE_SOURCES = ["leak", "leak-minutes", "misfire", "alert", "clearance", "flow", "timing"] as const;
+export const MEASURE_SOURCES = ["leak", "leak-minutes", "misfire", "alert", "clearance", "flow", "timing", "control"] as const;
 export type MeasureSource = (typeof MEASURE_SOURCES)[number];
-export type CountSource = Exclude<MeasureSource, "flow" | "timing">; // 세는 종류. flow·timing은 분과 중앙값이라 따로 읽는다
+export type CountSource = Exclude<MeasureSource, "flow" | "timing" | "control">; // 세는 종류. flow·timing·control은 분·중앙값·비율이라 따로 읽는다
 // timing 이름(ATC-538): 구간별 이벤트 루프 지연 p99(ms)의 중앙값. job-timing/의 줄이 읽는 값이다
 export const TIMING_NAMES = ["event-loop-p99"] as const;
 export const isTimingName = (n: string) => (TIMING_NAMES as readonly string[]).includes(n.toLowerCase());
@@ -50,13 +51,14 @@ export function measureOf(description: string | null | undefined): MeasureParse 
   if (!name) return { kind: "invalid", reason: "metric에 이름이 없음(source:name)" };
   if (src.toLowerCase() === "flow" && !isFlowName(name)) return { kind: "invalid", reason: `모르는 flow 이름 ${name}(idle-empty-min·created-todo·todo-release·release-launch)` };
   if (src.toLowerCase() === "timing" && !isTimingName(name)) return { kind: "invalid", reason: `모르는 timing 이름 ${name}(${TIMING_NAMES.join("·")})` };
+  if (src.toLowerCase() === "control" && !isControlName(name)) return { kind: "invalid", reason: `모르는 control 이름 ${name}(${CONTROL_NAMES.join("·")})` };
   if (!NAME_RE.test(name)) return { kind: "invalid", reason: `metric 이름은 글자·숫자·-·_·:·공백 ${NAME_MAX}자까지` }; // 본문의 글이 DUTY REVIEW 프롬프트에 산문으로 들어가지 못하게
   if (dir !== "down" && dir !== "up") return { kind: "invalid", reason: "direction은 down 또는 up" };
   const w = /^(\d{1,2})\s*d(ays?)?$/i.exec(win ?? "");
   const windowDays = w ? Number(w[1]) : 0;
   if (windowDays < 1 || windowDays > WINDOW_MAX_DAYS) return { kind: "invalid", reason: `window는 1d~${WINDOW_MAX_DAYS}d` };
   const source = src.toLowerCase() as MeasureSource;
-  return { kind: "measure", measure: { source, name: source === "flow" || source === "timing" ? name.toLowerCase() : name, direction: dir, windowDays } };
+  return { kind: "measure", measure: { source, name: source === "flow" || source === "timing" || source === "control" ? name.toLowerCase() : name, direction: dir, windowDays } };
 }
 export const measureText = (m: Measure) => `${m.source}:${m.name} ${m.direction} ${m.windowDays}d`;
 
@@ -71,6 +73,7 @@ export interface EffectData {
   coverageFrom: Readonly<Record<CountSource, number | null>>;
   flow?: FlowData; // flow 측정에 쓰는 것(없으면 flow는 too little data)
   timing?: TimingData; // timing 측정에 쓰는 것(없으면 timing은 too little data)
+  control?: ControlData; // control 측정에 쓰는 것(ATC-551. 없으면 control은 too little data)
 }
 
 // JOB TIMING 줄(job-timing/)에서 읽은 구간별 이벤트 루프 지연. loop가 없는 줄(ATC-538 앞)은 넣지 않는다
@@ -92,6 +95,8 @@ export function countOf(m: Pick<Measure, "source" | "name">, d: EffectData, from
       return flowValueOf(m.name, d, from, to).value ?? 0;
     case "timing":
       return timingValueOf(m.name, d, from, to).value ?? 0;
+    case "control":
+      return controlValueOf(m.name, d, from, to).value ?? 0;
     case "leak":
       return d.leaks.filter((r) => r.ev === "open" && same(r.kind, m.name) && inWin(r.t, from, to)).length;
     case "leak-minutes": {
@@ -151,18 +156,18 @@ export function judge(m: Measure, deployedAt: number, d: EffectData): Judged {
   const w = m.windowDays * DAY;
   let before = countOf(m, d, deployedAt - w, deployedAt);
   let after = countOf(m, d, deployedAt, deployedAt + w);
-  const cov = m.source === "flow" ? (d.flow?.coverage[m.name.toLowerCase() as FlowName] ?? null) : m.source === "timing" ? (d.timing?.coverage ?? null) : d.coverageFrom[m.source];
+  const cov = m.source === "flow" ? (d.flow?.coverage[m.name.toLowerCase() as FlowName] ?? null) : m.source === "timing" ? (d.timing?.coverage ?? null) : m.source === "control" ? (d.control?.coverage ?? null) : d.coverageFrom[m.source];
   const j = (verdict: Verdict, reason: string): Judged => ({ verdict, before, after, reason });
   if (cov === null || cov > deployedAt - w) return j("too little data", "그 기록이 앞 구간 전체를 덮지 않는다");
   // 구간 중앙값: 앞뒤 창 모두 이슈가 MIN_BASELINE 이상이어야 중앙값을 견줄 수 있다. 그 밖은 아래 20% 규칙을 그대로 쓴다
-  const isMedian = (m.source === "flow" && m.name.toLowerCase() !== "idle-empty-min") || m.source === "timing";
+  const isMedian = (m.source === "flow" && m.name.toLowerCase() !== "idle-empty-min") || m.source === "timing" || m.source === "control";
   if (isMedian) {
-    const of = m.source === "timing" ? timingValueOf : flowValueOf;
+    const of = m.source === "timing" ? timingValueOf : m.source === "control" ? controlValueOf : flowValueOf;
     const b = of(m.name, d, deployedAt - w, deployedAt);
     const a = of(m.name, d, deployedAt, deployedAt + w);
     before = b.value ?? 0;
     after = a.value ?? 0;
-    const unit = m.source === "timing" ? "구간" : "이슈";
+    const unit = m.source === "timing" ? "구간" : m.source === "control" ? "표본(날·turn)" : "이슈";
     if (b.n < MIN_BASELINE || a.n < MIN_BASELINE) return j("too little data", `중앙값에 쓸 ${unit}이 앞 ${b.n}건·뒤 ${a.n}건뿐(각각 ${MIN_BASELINE}건 이상이어야 한다)`);
   }
   if (m.direction === "down") {

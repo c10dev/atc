@@ -176,6 +176,7 @@ export const METRICS_ITEMS = [
   { id: "ops", label: "OPERATIONS", hash: "metrics" },
   { id: "leaks", label: "LEAKS", hash: "metrics/leaks" },
   { id: "misfire", label: "MISFIRE", hash: "metrics/misfire" },
+  { id: "control", label: "CONTROL", hash: "metrics/control" },
   { id: "fuel", label: "FUEL", hash: "metrics/fuel" },
   { id: "network", label: "NETWORK", hash: "metrics/network" },
 ] as const;

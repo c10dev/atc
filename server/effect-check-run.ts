@@ -21,6 +21,8 @@ import { readLeaks } from "./leaks-run.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { timed } from "./job-timing.ts";
 import { readTimingLines } from "./job-timing-run.ts";
+import { controlDataSince } from "./control-share-run.ts";
+import type { ControlData } from "./control-share.ts";
 
 // EFFECT CHECK의 읽고 쓰기(ATC-402). 규칙은 effect-check.ts(순수). 평결은 effect-verdicts.jsonl에 추가만 한다(FLIGHT마다 하나, 그 뒤 SUPERVISOR의 표시 줄).
 // 끄는 스위치는 effect-check.json의 `on`(on·off, 없으면 on). 바꾸는 길은 설정 창뿐이다(SUPERVISOR 자격이 있는 요청만, atcctl 명령은 없다).
@@ -66,7 +68,12 @@ export function gatherEffectData(sinceMs: number, tickets: Snapshot["tickets"] =
   const clearances = allClearances();
   const events = readRecords(sinceMs).flatMap((r) => (r.kind === "event" && r.event.kind === "alert.raised" && r.event.alertKind ? [{ at: r.event.at, kind: String(r.event.alertKind) }] : []));
   const flow = loadFlow(tickets, Date.now()); // FLOW(ATC-468): flow:<name> 측정
+  let control: ControlData | undefined;
   return {
+    // CONTROL SHARE(ATC-551): control:<name> 측정. 대화 기록을 읽어 무거우니 쓸 때 한 번만(창 앞뒤 최대 2×WINDOW_MAX_DAYS)
+    get control() {
+      return (control ??= controlDataSince(Date.now(), 2 * WINDOW_MAX_DAYS));
+    },
     flow: flowDataOf(flow.input, flow.samples),
     timing: timingDataOf(readTimingLines(0)), // JOB TIMING(ATC-538): timing:event-loop-p99 측정
     leaks,
