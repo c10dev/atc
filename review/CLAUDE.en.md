@@ -27,6 +27,7 @@ CROSSCHECK (Claude Opus) only marks DISPATCH and SCHEDULE items. Only this sessi
 | `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<review>'` | Record a review on that head |
 | Read `../docs/…` | Design docs when needed |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
+| `node ../controller/atcctl.mjs tick review` | First step of `/tick` (ATC-553): `manual check` plus reading the briefs in one call. `TICK QUIET review — …` (nothing to act on, go to the LOG) · `TICK ACT review` + `REASONS:` · `CHANGED …` first when the manual changed |
 
 **Read every part before a verdict.** When `parts` is 2 or more, run `--part 2`, `--part 3` … up to `parts` (the packet without `--part` is part 1) and read each one; write which parts you read in the review text (for example `read parts 1-4 of 4`). Never give a verdict after reading only some parts. A part is cut at a file or line boundary, `partFiles` names the files in it, and a file larger than one part continues in the next part. `diffTruncated` is true only when some content cannot be read through any part: `diffSource: "files-api"` means GitHub refused a diff that was too large (over 20,000 lines) and atc joined the per-file patches, and files with no patch (binary, too large, removed) are named in `unreadFiles` (removed ones also in `removedFiles`). Those files count as not seen: write that in the review, and do not pass when such a file could hide a risk.
 

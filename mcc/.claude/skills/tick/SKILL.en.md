@@ -4,7 +4,7 @@
 
 > English translation for readers. The skill that runs is the Korean [`SKILL.md`](SKILL.md); this file is not loaded.
 
-0. `node ../controller/atcctl.mjs manual check`. On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, and continue under the reread rules.
+0. `node ../controller/atcctl.mjs tick mcc` (it already runs `manual check`; do not call that separately, ATC-553). On `TICK QUIET mcc` there is nothing to do: go to step 5 (LOG). On `CHANGED`, reread `CLAUDE.md` and this file, run `node ../controller/atcctl.mjs manual ack`, and continue under the reread rules. On `TICK ACT mcc`, go to step 1.
 1. `node ../controller/atcctl.mjs mcc queue`. Look at `pulls`, `rts` and `groundStop`. If `rts.due` is true, run `node ../controller/atcctl.mjs mcc rts` here first (once, before any landing). If it is stopped after a ROLLBACK, don't; report it.
 2. For each PR without an `inspection` (oldest first, at most 3 a pass):
    - Call Agent with `subagent_type: inspector`. Prompt: `PR <number>, head <head from queue>`. Call several PRs together. **Don't read the packet or the diff in this session** (not `mcc packet`, not `gh pr diff`, not the code around a diff). The standard is CLAUDE.md "How to inspect".

@@ -29,6 +29,7 @@
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | 필요할 때 PR 사실 확인 |
 | Read·Grep | 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`). diff 주변 코드는 `inspector`가 읽는다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
+| `node ../controller/atcctl.mjs tick mcc` | `/tick`의 첫 단계(ATC-553): `manual check` + 브리핑 읽기를 한 번에. `TICK QUIET mcc — …`(할 일 없음, LOG로) · `TICK ACT mcc` + `REASONS:` · 규정이 바뀌었으면 `CHANGED …`를 먼저 |
 
 쓰기 넷(inspect·escalate·land·rts)은 guard가 이 세션 기록의 **실제 모델**을 확인한 뒤에만 실행되고, 그 이름을 guard가 붙인다(`ATC_MCC_MODEL`). Claude가 아니면 막힌다. 명령 앞 환경 변수나 `--model`로 적지 않는다. 쓰기 명령은 파이프·이어 쓰기 없이 단독으로 쓴다. 글은 작은따옴표로 감싼다.
 

@@ -4,7 +4,9 @@ import type { Hono } from "hono";
 import { config } from "./config.ts";
 import {
   changedFields,
+  DEFAULT_FINGERPRINT,
   DEFAULT_HEARTBEAT_MIN,
+  DEFAULT_MODE,
   decide,
   type Fingerprint,
   FINGERPRINTS,
@@ -19,7 +21,10 @@ import {
   projectV2,
   type Role,
   ROLES,
+  SAFE_FINGERPRINT,
+  SAFE_MODE,
 } from "./squelch.ts";
+import { type Migrated, MIGRATION_ID, upgradeOnce } from "./squelch-switch.ts";
 
 // SQUELCH I/O와 API(docs/squelch.md 5장). 이 이슈(S1)에서는 아무 hook도 부르지 않고, 기본 모드는 shadow라 어떤 tick도 버리지 않는다.
 // ATC-297: v2 지문(squelch.ts)이 v1 옆에서 그림자로 돈다. 역할마다 config.fingerprint가 v2일 때만 v2가 판정을 정한다(기본 v1).
@@ -49,40 +54,53 @@ export interface SquelchConfig {
 export interface SquelchFile {
   config: SquelchConfig;
   roles: Partial<Record<Role, RoleState>>;
+  migrated?: Migrated; // 한 번 올린 기록(ATC-553). 있으면 다시 올리지 않는다
 }
 
 const stateFile = () => join(config.stateDir, "squelch.json");
 const logFile = () => join(config.stateDir, "squelch.jsonl");
 
+// 코드 기본값(ATC-553): 파일이 없거나 값이 없는 역할은 on·v2
 export function defaultConfig(): SquelchConfig {
   return {
-    mode: "shadow",
+    mode: DEFAULT_MODE,
     roles: {},
     heartbeatMin: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_HEARTBEAT_MIN])) as Record<Role, number>,
-    fingerprint: Object.fromEntries(ROLES.map((r) => [r, "v1"])) as Record<Role, Fingerprint>,
+    fingerprint: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_FINGERPRINT])) as Record<Role, Fingerprint>,
   };
+}
+// 읽을 수 없을 때의 값(fail-open): 늘 열고(shadow) 후보 지문(v2)을 켜지 않는다
+function safeConfig(): SquelchConfig {
+  const c = defaultConfig();
+  c.mode = SAFE_MODE;
+  for (const r of ROLES) c.fingerprint[r] = SAFE_FINGERPRINT;
+  return c;
 }
 
 const passOf = (s: any): Pass | undefined =>
   s && typeof s === "object" ? { fp: typeof s.fp === "string" ? s.fp : null, openedAt: typeof s.openedAt === "string" ? s.openedAt : null, ...(s.proj !== undefined ? { proj: s.proj } : {}) } : undefined;
 
-// 없거나 깨진 파일, 모르는 값은 기본값으로 읽는다(모드는 shadow로, 지문은 v1로 — 모르면 버리지 않고, 후보를 켜지 않는다)
-export function readState(): SquelchFile {
-  const out: SquelchFile = { config: defaultConfig(), roles: {} };
+// 파일이 없으면 기본값(on·v2), 파싱할 수 없으면 shadow·v1(tick은 늘 돈다). 파일 안에서 값이 없는 칸은 기본값, 있는데 모르는 값은 shadow·v1
+export type Source = "missing" | "ok" | "unreadable";
+export function readStateWith(): { file: SquelchFile; source: Source; raw?: any } {
   let raw: any;
   try {
     raw = JSON.parse(readFileSync(stateFile(), "utf8"));
-  } catch {
-    return out;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return { file: { config: defaultConfig(), roles: {} }, source: "missing" };
+    return { file: { config: safeConfig(), roles: {} }, source: "unreadable" };
   }
-  if (MODES.includes(raw?.config?.mode)) out.config.mode = raw.config.mode;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { file: { config: safeConfig(), roles: {} }, source: "unreadable" };
+  const out: SquelchFile = { config: defaultConfig(), roles: {} };
+  const c = raw.config;
+  if (c?.mode !== undefined) out.config.mode = MODES.includes(c.mode) ? c.mode : SAFE_MODE;
   for (const r of ROLES) {
-    const rm = raw?.config?.roles?.[r]?.mode;
-    if (MODES.includes(rm)) out.config.roles[r] = { mode: rm };
-    const m = raw?.config?.heartbeatMin?.[r];
+    const rm = c?.roles?.[r]?.mode;
+    if (rm !== undefined) out.config.roles[r] = { mode: MODES.includes(rm) ? rm : SAFE_MODE };
+    const m = c?.heartbeatMin?.[r];
     if (typeof m === "number" && Number.isFinite(m) && m > 0) out.config.heartbeatMin[r] = m;
-    const f = raw?.config?.fingerprint?.[r];
-    if (FINGERPRINTS.includes(f)) out.config.fingerprint[r] = f;
+    const f = c?.fingerprint?.[r];
+    if (f !== undefined) out.config.fingerprint[r] = FINGERPRINTS.includes(f) ? f : SAFE_FINGERPRINT;
     const s = raw?.roles?.[r];
     if (s && typeof s === "object") {
       const v2 = passOf(s.v2);
@@ -94,7 +112,30 @@ export function readState(): SquelchFile {
       };
     }
   }
-  return out;
+  const mg = raw.migrated;
+  if (mg && typeof mg === "object" && mg.id === MIGRATION_ID && typeof mg.at === "string") out.migrated = { id: MIGRATION_ID, at: mg.at, from: mg.from ?? null };
+  return { file: out, source: "ok", raw };
+}
+export const readState = (): SquelchFile => readStateWith().file;
+
+// 서버가 시작할 때 한 번(ATC-553): 파일이 없거나 읽을 수 있는데 아직 올린 기록이 없으면 모든 역할을 on·v2로 쓰고 기록을 남긴다.
+// 읽을 수 없는 파일은 건드리지 않는다(덮어쓰면 SUPERVISOR의 값을 잃는다). 기록이 있으면 아무것도 하지 않는다 — 그 뒤로는 스위치만 값을 바꾼다
+export function migrateOnce(now = Date.now()): "migrated" | "already" | "unreadable" {
+  const { file, source, raw } = readStateWith();
+  if (source === "unreadable") return "unreadable";
+  if (file.migrated) return "already";
+  const rc = raw?.config;
+  const from: Migrated["from"] =
+    source === "missing"
+      ? null
+      : {
+          mode: rc?.mode,
+          roles: Object.fromEntries(ROLES.flatMap((r) => (rc?.roles?.[r]?.mode !== undefined ? [[r, { mode: rc.roles[r].mode }]] : []))),
+          fingerprint: Object.fromEntries(ROLES.flatMap((r) => (rc?.fingerprint?.[r] !== undefined ? [[r, rc.fingerprint[r]]] : []))),
+        };
+  const up = upgradeOnce(file.config, now, from);
+  writeState({ ...file, config: up.config, migrated: up.migrated });
+  return "migrated";
 }
 
 // 임시 파일에 쓴 뒤 바꿔 놓는다(중간에 죽어도 반쯤 쓴 파일이 남지 않는다)
@@ -113,8 +154,10 @@ export interface LogLine {
   reason: string;
   fp: string | null;
   fingerprint?: Fingerprint;
+  mode?: Mode; // 이 판정을 정한 모드(ATC-553: 켜진 뒤에 버린 tick을 가르는 데 쓴다)
   fp2?: string;
   would?: "open" | "quiet";
+  would1?: "open" | "quiet"; // 판정이 v2일 때 v1이 어땠을지(틀린 skip 점검용, ATC-553)
   reason2?: string;
   fields?: string[];
   fields2?: string[];
@@ -205,7 +248,8 @@ export async function squelchRun(role: Role, get: Fetcher, now = Date.now(), man
   const cur = readState();
   cur.roles[role] = next;
   writeState(cur);
-  const line: LogLine = { t: iso, role, open: d.open, reason: d.reason, fp, fingerprint: live };
+  const line: LogLine = { t: iso, role, open: d.open, reason: d.reason, fp, fingerprint: live, mode };
+  if (live === "v2") line.would1 = nat1 ? "open" : "quiet";
   if (fp2 !== null) {
     line.fp2 = fp2;
     line.would = nat2 ? "open" : "quiet";

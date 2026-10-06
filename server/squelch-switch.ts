@@ -1,7 +1,7 @@
-import { DEFAULT_FINGERPRINT, DEFAULT_MODE, type Fingerprint, FINGERPRINTS, type Mode, MODES, modeOf, type Role, ROLES } from "./squelch.ts";
+import { DEFAULT_FINGERPRINT, DEFAULT_MODE, type Fingerprint, FINGERPRINTS, type Mode, MODES, modeOf, type Role, ROLES, SAFE_FINGERPRINT, SAFE_MODE } from "./squelch.ts";
 
 // SQUELCH 스위치(ATC-552, docs/squelch.md "Switch as built"): SUPERVISOR가 역할 하나의 mode·heartbeatMin·fingerprint를 고친다.
-// 여기는 순수 함수만 둔다(파일과 route는 squelch-switch-run.ts). 틀린 값은 쓰기를 거절하고, 저장된 틀린 값은 읽을 때 기본값(shadow·50·v1)이라 tick은 늘 돈다.
+// 여기는 순수 함수만 둔다(파일과 route는 squelch-switch-run.ts). 틀린 값은 쓰기를 거절하고, 저장된 틀린 값은 읽을 때 shadow·v1이라 tick은 늘 돈다.
 
 export const FIELDS = ["mode", "heartbeatMin", "fingerprint"] as const;
 export type Field = (typeof FIELDS)[number];
@@ -76,17 +76,38 @@ export function applyPatch(cfg: SwitchConfig, role: Role, patch: RoleSwitch): { 
   return { config, changes };
 }
 
-// 끄기: 모든 역할의 모드를 shadow로(역할 칸은 지우고 전체 모드도 shadow), 지문을 v1으로. heartbeatMin은 그대로(shadow에서는 늘 열려 영향이 없다)
+// 끄기: 모든 역할의 모드를 shadow로(역할 칸은 지우고 전체 모드도 shadow), 지문을 v1으로. heartbeatMin은 그대로(shadow에서는 늘 열려 영향이 없다).
+// 전체 모드를 shadow로 적어 두므로 파일에 값이 없을 때의 기본값(on)이 끄기를 되돌리지 않는다
 export function resetAll(cfg: SwitchConfig): { config: SwitchConfig; changes: Change[] } {
-  const config: SwitchConfig = { ...cfg, mode: DEFAULT_MODE, roles: {}, heartbeatMin: { ...cfg.heartbeatMin }, fingerprint: { ...cfg.fingerprint } };
+  const config: SwitchConfig = { ...cfg, mode: SAFE_MODE, roles: {}, heartbeatMin: { ...cfg.heartbeatMin }, fingerprint: { ...cfg.fingerprint } };
   const changes: Change[] = [];
   for (const role of ROLES) {
     const from = modeOf(cfg, role);
-    if (from !== DEFAULT_MODE) changes.push({ role, field: "mode", from, to: DEFAULT_MODE });
-    if (cfg.fingerprint[role] !== DEFAULT_FINGERPRINT) changes.push({ role, field: "fingerprint", from: cfg.fingerprint[role], to: DEFAULT_FINGERPRINT });
-    config.fingerprint[role] = DEFAULT_FINGERPRINT;
+    if (from !== SAFE_MODE) changes.push({ role, field: "mode", from, to: SAFE_MODE });
+    if (cfg.fingerprint[role] !== SAFE_FINGERPRINT) changes.push({ role, field: "fingerprint", from: cfg.fingerprint[role], to: SAFE_FINGERPRINT });
+    config.fingerprint[role] = SAFE_FINGERPRINT;
   }
   return { config, changes };
+}
+
+// 한 번만 하는 올리기(ATC-553): 모든 역할을 on·v2로 적고, 옛 값(역할마다 모드와 지문)을 기록으로 남긴다.
+// 옛 파일에 명시 값이 들어 있으면 코드 기본값은 아무것도 바꾸지 못하기 때문이다. heartbeatMin은 건드리지 않는다
+export const MIGRATION_ID = "ATC-553";
+export interface Migrated {
+  id: typeof MIGRATION_ID;
+  at: string;
+  from: { mode: unknown; roles: Partial<Record<Role, { mode: Mode }>>; fingerprint: Partial<Record<Role, Fingerprint>> } | null; // null: 파일이 없었다
+}
+// from: 파일에 적혀 있던 값 그대로(기본값으로 채우기 전). 파일이 없었으면 null
+export function upgradeOnce(cfg: SwitchConfig, now: number, from: Migrated["from"]): { config: SwitchConfig; migrated: Migrated } {
+  const config: SwitchConfig = {
+    ...cfg,
+    mode: DEFAULT_MODE,
+    roles: Object.fromEntries(ROLES.map((r) => [r, { mode: DEFAULT_MODE }])) as SwitchConfig["roles"],
+    heartbeatMin: { ...cfg.heartbeatMin },
+    fingerprint: Object.fromEntries(ROLES.map((r) => [r, DEFAULT_FINGERPRINT])) as Record<Role, Fingerprint>,
+  };
+  return { config, migrated: { id: MIGRATION_ID, at: new Date(now).toISOString(), from } };
 }
 
 // 역할마다, 필드마다 마지막으로 바뀐 줄

@@ -7,6 +7,8 @@ export interface Decision {
   open: boolean;
   reason: string; // off | quiet | first | manual | signal | heartbeat | fail-open, shadow일 때는 앞에 `shadow:`
   would?: "open" | "quiet"; // v2가 on이었다면
+  would1?: "open" | "quiet"; // 판정이 v2일 때 v1이 어땠을지(ATC-553)
+  fingerprint?: "v1" | "v2"; // 이 판정에 쓴 지문
   fields?: string[]; // v1 신호로 열렸을 때 바뀐 필드
   fields2?: string[];
 }
@@ -46,9 +48,28 @@ export interface RoleOpens {
   signal: { total: number; idle: number; worked: number; unknown: number };
   fields: FieldRow[]; // 신호 열림 가운데 일을 하지 않은 것이 많은 필드부터
   v2: { shadowed: number; wouldQuiet: number; wouldQuietIdle: number; wrongSkips: number; wouldQuietUnknown: number };
+  live: LiveMisfire;
 }
 
-const blank = (): RoleOpens => ({ decisions: 0, opens: 0, reasons: {}, signal: { total: 0, idle: 0, worked: 0, unknown: 0 }, fields: [], v2: { shadowed: 0, wouldQuiet: 0, wouldQuietIdle: 0, wrongSkips: 0, wouldQuietUnknown: 0 } });
+// 켜진 뒤의 틀린 skip 점검(ATC-553). since: 이 역할이 처음 tick을 버린 판정의 시각(창 안에서). 아직 버린 적이 없으면 null.
+// dropped: 버린 tick 수. disagreed: 그 가운데 판정에 쓰지 않은 다른 지문이 열렸을 tick(두 지문이 갈린 것). 모델이 안 본 tick은 일을 했는지 알 수 없으니
+// 갈린 tick의 다음 열린 tick이 일을 했으면 wrongSkips로 센다(버린 변화가 실제로 일이었을 가능성). 일을 안 했으면 idle, 모르면 unknown.
+// 판정 기록만 보고 센 점검용 수다: 아무것도 막지 않는다
+export interface LiveMisfire {
+  since: string | null;
+  dropped: number;
+  disagreed: number;
+  wrongSkips: number;
+  idle: number;
+  unknown: number;
+}
+const blankLive = (): LiveMisfire => ({ since: null, dropped: 0, disagreed: 0, wrongSkips: 0, idle: 0, unknown: 0 });
+// 판정에 쓰지 않은 지문의 그림자 판정
+const otherWould = (d: Decision) => (d.fingerprint === "v2" ? d.would1 : d.would);
+// 판정이 버린 tick(켜진 모드의 QUIET)
+export const isDropped = (d: Decision) => !d.open && baseReason(d.reason) === "quiet";
+
+const blank = (): RoleOpens => ({ decisions: 0, opens: 0, reasons: {}, signal: { total: 0, idle: 0, worked: 0, unknown: 0 }, fields: [], v2: { shadowed: 0, wouldQuiet: 0, wouldQuietIdle: 0, wrongSkips: 0, wouldQuietUnknown: 0 }, live: blankLive() });
 
 export function opensTable(decisions: readonly Decision[], usesOf: (role: string) => number[] | null, nowMs: number): Record<string, RoleOpens> {
   const out: Record<string, RoleOpens> = {};
@@ -63,6 +84,22 @@ export function opensTable(decisions: readonly Decision[], usesOf: (role: string
       const base = baseReason(d.reason);
       r.reasons[base] = (r.reasons[base] ?? 0) + 1;
       if (d.would) r.v2.shadowed++;
+      if (isDropped(d)) {
+        r.live.dropped++;
+        r.live.since ??= d.t;
+        if (otherWould(d) === "open") {
+          r.live.disagreed++;
+          // 이 tick을 건너뛴 뒤 처음 열린 tick이 일을 했는가
+          const nextIdx = list.findIndex((x, j) => j > i && x.open);
+          if (nextIdx < 0) r.live.unknown++;
+          else {
+            const ns = Date.parse(list[nextIdx].t);
+            const after = list.slice(nextIdx + 1).find((x) => x.open);
+            const v = verdictOf(uses, ns, Math.min(after ? Date.parse(after.t) : Infinity, ns + TICK_WINDOW_MS), nowMs);
+            r.live[v === "worked" ? "wrongSkips" : v === "idle" ? "idle" : "unknown"]++;
+          }
+        }
+      }
       if (!isNaturalOpen(d)) return;
       r.opens++;
       const start = Date.parse(d.t);
@@ -104,6 +141,8 @@ export function decisionOf(raw: string): Decision | null {
       open: o.open === true,
       reason: o.reason,
       ...(o.would === "open" || o.would === "quiet" ? { would: o.would } : {}),
+      ...(o.would1 === "open" || o.would1 === "quiet" ? { would1: o.would1 } : {}),
+      ...(o.fingerprint === "v1" || o.fingerprint === "v2" ? { fingerprint: o.fingerprint } : {}),
       ...(strs(o.fields) ? { fields: strs(o.fields) } : {}),
       ...(strs(o.fields2) ? { fields2: strs(o.fields2) } : {}),
     };

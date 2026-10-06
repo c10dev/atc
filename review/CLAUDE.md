@@ -25,6 +25,7 @@ CROSSCHECK(Claude Opus)는 DISPATCH·SCHEDULE 예비 판정만 한다. 착륙 �
 | `node ../controller/atcctl.mjs landing review <owner/name>#<PR> --head <sha> --verdict pass\|findings -- '<리뷰>'` | 그 head에 리뷰 기록 |
 | Read `../docs/…` | 필요할 때 설계 문서 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
+| `node ../controller/atcctl.mjs tick review` | `/tick`의 첫 단계(ATC-553): `manual check` + 브리핑 읽기를 한 번에. `TICK QUIET review — …`(할 일 없음, LOG로) · `TICK ACT review` + `REASONS:` · 규정이 바뀌었으면 `CHANGED …`를 먼저 |
 
 **판정 전에 모든 쪽을 읽는다.** `parts`가 2 이상이면 `--part 2`, `--part 3` … `parts`까지 차례로 불러 읽는다(`--part` 없는 자료가 1쪽이다). 읽은 쪽을 리뷰 글에 적는다(예: `read parts 1-4 of 4`). 일부 쪽만 읽고 판정하지 않는다. 쪽은 파일이나 줄 경계에서 끊기고, `partFiles`가 그 쪽의 파일 이름이며, 한 쪽보다 큰 파일은 다음 쪽으로 이어진다. `diffTruncated`는 어느 쪽으로도 읽을 수 없는 글이 있을 때만 true다: `diffSource`가 `files-api`면 GitHub가 너무 큰 diff(20,000줄 넘음)를 거절해 atc가 파일별 patch를 이어 붙인 자료이고, patch가 없는 파일(이진·너무 큼·지워짐)은 `unreadFiles`에 이름이 있다(지워진 파일은 `removedFiles`에도). 그 파일들은 본 것으로 치지 않는다: 리뷰 글에 적고, 그 파일에 위험이 있을 수 있으면 pass하지 않는다.
 

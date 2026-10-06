@@ -384,3 +384,21 @@ test("REVIEW(--review, ATC-489): landing review --part <n>은 읽기라 지금�
   const REVIEW = HERE.replace(/controller$/, "review");
   for (const c of ["node ../controller/atcctl.mjs landing review vocado_nextjs#385 --part 2", "node ../controller/atcctl.mjs landing review vocado_nextjs#385 --part 3 | jq '.partFiles'"]) assert.equal(check(c, REVIEW, { review: true }), null, c);
 });
+
+test("atcctl tick(ATC-553): MCC·CROSSCHECK·REVIEW는 자기 역할의 tick 하나만 더 쓸 수 있다. 다른 역할의 tick과 다른 명령은 그대로 막힌다", () => {
+  const CTL = "node ../controller/atcctl.mjs";
+  const MCC = HERE.replace(/controller$/, "mcc");
+  const REVIEW = HERE.replace(/controller$/, "review");
+  const modes = [
+    ["mcc", MCC, { mcc: true, ghRead: true }],
+    ["crosscheck", CROSSCHECK, { crosscheck: true, ghRead: true }],
+    ["review", REVIEW, { review: true }],
+  ];
+  for (const [role, cwd, opts] of modes) {
+    assert.equal(check(`${CTL} tick ${role}`, cwd, opts), null, role);
+    assert.equal(check(`${CTL} tick ${role} | jq '.act'`, cwd, opts), null, role);
+    for (const [other] of modes.filter(([r]) => r !== role)) assert.notEqual(check(`${CTL} tick ${other}`, cwd, opts), null, `${role} → tick ${other}`);
+    assert.notEqual(check(`${CTL} tick tower`, cwd, opts), null, `${role} → tick tower`); // TOWER의 tick은 cursor를 ack한다
+    assert.notEqual(check(`${CTL} tick ${role} > out.txt`, cwd, opts), null, role);
+  }
+});

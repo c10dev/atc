@@ -7,7 +7,7 @@ description: CROSSCHECK 한 바퀴 — 규정이 바뀌었는지 확인하고, m
 
 **한국어** · [English](SKILL.en.md)
 
-0. `node ../controller/atcctl.mjs manual check`. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다.
+0. `node ../controller/atcctl.mjs tick crosscheck`(`manual check`를 이미 한다. 따로 부르지 않는다, ATC-553). `TICK QUIET crosscheck`면 할 일이 없다: 아래 7단계(LOG)로 간다. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다. `TICK ACT crosscheck`면 1단계로.
 1. `node ../controller/atcctl.mjs crosscheck brief`를 실행한다. `dispatch.pending`과 `schedule.pending`이 모두 비었으면 7로 간다.
 2. `examples`를 먼저 읽는다. SUPERVISOR가 최근에 무엇을 어떤 사유로 판정했는지가 이번 바퀴의 기준이다.
 3. `pending`의 건마다(한 바퀴에 모두 합쳐 5건까지, DISPATCH 먼저). DISPATCH의 `pending`에는 SETTLED 제안만 든다(ATC-117). 아직 아닌 제안은 `dispatch.unsettledMarks`에 수만 있고 mark를 달지 않는다:

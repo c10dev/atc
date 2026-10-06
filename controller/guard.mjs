@@ -68,12 +68,13 @@ const CROSSCHECK_CMDS = new Set([
   "crosscheck brief",
   "dispatch brief", "dispatch flight", "dispatch crosscheck",
   "schedule brief", "schedule crosscheck",
+  "tick crosscheck", // /tick의 첫 단계(ATC-553). 읽기 하나, 자기 역할만
 ]);
 // REVIEW 세션(착륙 리뷰, Claude Sonnet)이 쓸 수 있는 atcctl 하위 명령. 착륙 리뷰는 CROSSCHECK에서 옮겨 왔다(ATC-27)
-const REVIEW_CMDS = new Set(["manual check", "manual ack", "landing queue", "landing review"]);
+const REVIEW_CMDS = new Set(["manual check", "manual ack", "landing queue", "landing review", "tick review"]); // tick review: /tick의 첫 단계(ATC-553), 읽기
 // MCC 세션이 쓸 수 있는 atcctl 하위 명령(docs/mcc.md). 쓰기 넷은 MCC 세션에서만
 const MCC_WRITES = new Set(["inspect", "escalate", "land", "rts"]);
-const MCC_CMDS = new Set(["manual check", "manual ack", "mcc queue", "mcc packet", ...[...MCC_WRITES].map((w) => `mcc ${w}`)]);
+const MCC_CMDS = new Set(["manual check", "manual ack", "tick mcc", "mcc queue", "mcc packet", ...[...MCC_WRITES].map((w) => `mcc ${w}`)]);
 
 // CROSSCHECK로 쓸 수 있는 모델: Claude Opus(SUPERVISOR 결정 2026-09-29). OCC(Sonnet)와 다른 모델이 다시 본다.
 // ocx로 돌리던 Muse·GPT-5.6 Terra는 끊었다(claude-ocx-… 이름은 막힌다)
