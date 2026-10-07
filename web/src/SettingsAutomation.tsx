@@ -735,9 +735,8 @@ function ServerSendStats({ d }: { d: ServerSendData }) {
         최근 7일 보냄 <b>{c.delivered}</b> · 잘못 보냄 <b className={c.wrong ? "is-warn" : undefined}>{c.wrong}</b>
         <span className="faint"> (기대 0)</span> · 두 번 보냄 <b className={c.twice ? "is-warn" : undefined}>{c.twice}</b> · 검사가 막음 <b>{c.refused}</b> · 실패 <b>{c.failed}</b> · 받는 세션에 안 보임 <b className={c.unseen ? "is-warn" : undefined}>{c.unseen}</b> · OCC에게 넘김 <b>{c.handback}</b>
       </li>
-      <li className={d.suspended ? "is-warn" : "faint"}>
-        {d.suspended ? `멈춤 — ${d.suspendedWhy ?? ""}` : d.live ? `서버 job 도는 중${d.lastPassAt ? ` · 마지막 ${d.lastPassAt.slice(11, 16)}Z` : ""}` : "서버 job이 3분 넘게 돌지 않음 — OCC가 보낸다"}
-      </li>
+      {/* 평소(도는 중)에는 줄이 없다(원칙 1). 멈췄거나 job이 돌지 않을 때만 */}
+      {d.suspended ? <li className="is-warn">멈춤 — {d.suspendedWhy}</li> : !d.live && d.lastPassAt ? <li className="is-warn">서버 job이 {d.lastPassAt.slice(11, 16)}Z 뒤로 돌지 않음 — OCC가 보낸다</li> : null}
       {d.reasons.slice(0, 3).map((r) => (
         <li key={r.reason} className="faint">
           막은 사유 <b>{r.n}</b> — {r.reason}
