@@ -69,8 +69,10 @@ test("FLIGHT PLAN: L·M은 SOLO 줄, H는 CREW 줄, 스위치 off는 오늘과 �
   for (const w of ["L", "M"]) {
     const text = formatFlightPlan(proposal, ticket, "TEAM_A", null, Date.now(), [], crewPlanOf([`wake:${w}`], true));
     assert.ok(text.split("\n").includes(SOLO_M.replace("WAKE M", `WAKE ${w}`)));
-    // 줄은 PILOT'S DISCRETION 줄 바로 앞, 그 밖은 오늘과 같다
-    assert.equal(text.split("\n").filter((l) => !l.startsWith("SOLO (")).join("\n"), today);
+    // 줄은 PILOT'S DISCRETION 줄 바로 앞, 그 밖은 오늘과 같다(work-order 해시는 줄까지 덮으니 달라진다, ATC-555)
+    const noHash = (x: string) => x.replace(/@[0-9a-f]{6}\b/g, "@HASH");
+    assert.equal(noHash(text.split("\n").filter((l) => !l.startsWith("SOLO (")).join("\n")), noHash(today));
+    assert.notEqual(/@[0-9a-f]{6}/.exec(text)?.[0], /@[0-9a-f]{6}/.exec(today)?.[0]);
     assert.equal(crewCallOfMessage(text), "SOLO");
   }
   const heavy = formatFlightPlan(proposal, ticket, "TEAM_A", null, Date.now(), [], crewPlanOf(["wake:H"], true));

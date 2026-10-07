@@ -816,7 +816,7 @@ vocado의 SOLO 규칙(위 표의 SOLO 줄)을 모든 AIRPORT로 넓힌다. 지�
 - **줄.** FLIGHT PLAN(`formatFlightPlan`)과 DIRECT 배정 문구(`formatAssignment`, FLEET LAUNCH with a FLIGHT와 K3 RELAUNCH의 첫 프롬프트도 이것)의 PILOT'S DISCRETION 줄 앞에 한 줄:
   - SOLO: `SOLO (WAKE M): fly this FLIGHT as a solo CAPTAIN. Implement it yourself, with no CREW; subagents may search or review but do not write code. If it turns out to need CREW, add it and say why under Pilot's discretion in the PR.`
   - CREW: `CREW (WAKE H): you may split the implementation across your CREW COMPLEMENT.` 또는 `CREW (multi-area: Database, Web): …`.
-  - 라벨은 스냅샷의 티켓에서, 티켓이 스냅샷에 없으면 이슈 상세에서 읽는다(상세 조회가 이제 라벨도 읽는다). AIRPORT는 카드의 것이고, DIRECT 문구는 이슈의 프로젝트·팀 매핑(`airportOfTicket`)이다. CREW BRIEFING과 CREW COMPLEMENT는 그대로다.
+  - 라벨은 스냅샷의 티켓에서, 티켓이 스냅샷에 없으면 이슈 상세에서 읽는다(상세 조회가 이제 라벨도 읽는다). AIRPORT는 카드의 것이고, DIRECT 문구는 이슈의 프로젝트·팀 매핑(`airportOfTicket`)이다. CREW BRIEFING과 CREW COMPLEMENT는 그대로다. 줄은 저장된 문구의 일부라 work-order 해시(ATC-555)가 함께 덮는다.
 - **스위치**(SUPERVISOR 전용): 설정 창 AUTOMATION → OPERATIONS → **SOLO**, 열린 AIRPORT마다 `on`/`off` 줄 하나, 상태 폴더의 `solo-default.json`(`{default, airports, migrated}`, 원자적으로 바꿔 쓴다. `PUT /api/settings {soloDefault: {CODE: "on"|"off"}}`, `fromThisApp`, `atcctl` 명령 없음). `off`면 FLIGHT PLAN이 ATC-559 전과 똑같다(줄이 아예 없다). **모든 AIRPORT on**으로 내놓는다: 배포 뒤 첫 서버 시작이 열린 AIRPORT마다 `on`과 `migrated: {id: "ATC-559", at}`를 한 번 쓴다. 파일이 없어도 `on`, 깨졌으면 `off`로 읽고 블록에 그렇게 적힌다. 파일에 없는 AIRPORT는 `default`를 따른다. 다시 보내는 FLIGHT PLAN은 저장된 문구 그대로라, 스위치를 바꾸면 그 뒤에 보내는 것만 달라진다.
 - **FLIGHT가 어느 쪽을 받았나**는 제안에 저장된 FLIGHT PLAN 문구(`message`)에서 읽는다: 새 기록이나 칸이 없다.
 - **오작동 수**: 스위치 밑에 AIRPORT마다 최근 7일(보여 주기만 하고 어느 것도 스위치를 끄지 않는다). 기준은 `migrated.at` 앞 7일, 같은 AIRPORT, 같은 WAKE다:
