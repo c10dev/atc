@@ -17,9 +17,7 @@ import {
   METRICS_ITEMS,
   metricsSubOf,
   NO_AIRPORT,
-  partitionRelease,
   RELEASE_SECTIONS,
-  treeSize,
   releaseSectionCounts,
   releaseSectionOf,
 } from "../web/src/sidebar-rows.ts";
@@ -126,28 +124,20 @@ test("AIRCRAFT 묶음: 퇴역은 빼고, 비행 중 → 쉬는 중 → NORDO →
   assert.equal(aircraftStateWord("absent"), "ABSENT");
 });
 
-test("RELEASE 구역 색인: 이름·주소 고정, 나무 줄을 구역으로 가르고 수를 센다", () => {
-  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["발권 순서", "Todo 발권 전", "최근 발권"]);
-  interface R {
-    key: string;
-    fire: "fire" | "release" | null;
-    children: R[];
-  }
-  const row = (key: string, fire: R["fire"], children: R[] = []): R => ({ key, fire, children });
-  const tree = [{ rows: [row("A-1", "fire", [row("A-2", null, [row("A-3", "release")])]), row("A-4", "release")] }, { rows: [row("B-1", "fire")] }];
-  const p = partitionRelease(tree);
-  assert.deepEqual(p.candidates.map((r) => r.key), ["A-1", "B-1"]);
-  assert.deepEqual(p.unreleased.map((r) => r.key), ["A-3", "A-4"]);
-  assert.deepEqual(p.rest.map((r) => r.key), ["A-2"]);
-  // 발권 순서의 수는 나무가 그리는 줄 전부(중첩 포함)에 SCHEDULE NEW 제안을 더한 것, 최근 발권은 기록 수(ATC-494)
-  assert.equal(treeSize(tree), 5);
-  assert.equal(treeSize([]), 0);
-  assert.deepEqual(releaseSectionCounts({ tree, proposals: [{}, {}], recent: [{}] }).map((x) => x.count), [7, 2, 1]);
-  assert.deepEqual(releaseSectionCounts({ tree: [{ rows: [row("A-1", null, [row("A-2", null, [row("A-3", null)])])] }] }).map((x) => x.count), [3, 0, 0]);
-  assert.deepEqual(releaseSectionCounts(null).map((x) => x.count), [0, 0, 0]);
-  assert.equal(releaseSectionOf("#release/order"), "order");
+test("RELEASE 구역 색인: 이름·주소 고정, queue·PARKED·기록에서 수를 센다, 옛 주소는 발권 대기로", () => {
+  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.label), ["발권 대기", "순서 지도", "PARKED", "최근 발권"]);
+  assert.deepEqual(RELEASE_SECTIONS.map((x) => x.hash), ["release/queue", "release/map", "release/parked", "release/recent"]);
+  const d = { queue: { rows: [{}, {}, {}], map: [{}] }, parked: { on: true, rows: [{}, {}] }, recent: [{}] };
+  assert.deepEqual(releaseSectionCounts(d).map((x) => x.count), [3, 1, 2, 1]);
+  // PARKED 스위치가 꺼지면 그 구역은 화면에도 색인에도 없다
+  assert.deepEqual(releaseSectionCounts({ ...d, parked: { on: false, rows: [] } }).map((x) => x.id), ["queue", "map", "recent"]);
+  assert.deepEqual(releaseSectionCounts(null).map((x) => x.count), [0, 0, 0, 0]);
+  assert.equal(releaseSectionOf("#release/queue"), "queue");
+  assert.equal(releaseSectionOf("#release/map"), "map");
+  assert.equal(releaseSectionOf("#release/parked"), "parked", "서버의 missing[].href(ATC-488)");
+  assert.equal(releaseSectionOf("#release/order"), "queue", "ATC-494의 나무 주소");
+  assert.equal(releaseSectionOf("#release/unreleased"), "queue");
   assert.equal(releaseSectionOf("#release/candidates"), null, "옛 구역 이름은 화면만 연다");
-  assert.equal(releaseSectionOf("#release/unreleased"), "unreleased");
   assert.equal(releaseSectionOf("#release"), null);
   assert.equal(releaseSectionOf("#release/x"), null);
 });
