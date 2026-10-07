@@ -772,7 +772,7 @@ Status: built 2026-09-28. The SUPERVISOR observed that current agents do better 
 |---|---|
 | **VECTORS** | The old brief. The controller gives headings step by step: numbered build steps, full templates, "ask before implementing" |
 | **DIRECT** | The new brief, "cleared direct to" the goal: the goal, the exit criteria, only the constraints specific to this task, and "finish it in one pass". The team flies its own route |
-| **SOLO** | The CAPTAIN implemented the FLIGHT; subagents only supported (research, review, docs). Since 2026-09-28 vocado `CLAUDE.md` has leaders implement directly and split only WAKE H or multi-area work |
+| **SOLO** | The CAPTAIN implemented the FLIGHT; subagents only supported (research, review, docs). Since 2026-09-28 vocado `CLAUDE.md` has leaders implement directly and split only WAKE H or multi-area work. Since ATC-559 every AIRPORT's FLIGHT PLAN says the same ("Solo by default as built" below) |
 | **CREW** | Implementation was split: at least one teammate (subagent) wrote code in the FLIGHT's STAND |
 | **PILOT'S DISCRETION** | Inside a DIRECT flight the team settles ordinary ambiguity itself: it picks a reasonable default, notes it in the PR and keeps going. It stops to ask only for a decision that is truly the SUPERVISOR's (a guard, a record format, approval gates, anything the SUPERVISOR owns) |
 
@@ -807,6 +807,22 @@ atc reads only the transcript lines it needs (received messages, SendMessage and
 **The comparison.** The DISPATCH tab shows **VECTORS · DIRECT** under FLIGHT FOLLOWING, grouped by brief, by SOLO/CREW, or as a 2×2 of both: for 14, 30 or 90 days, FLIGHTs, mid-task questions per FLIGHT, share with no questions, median READBACK → PR, P0–P2 findings per FLIGHT and rework commits per FLIGHT, side by side, with the per-FLIGHT rows folded below. `GET /api/logbook/briefs?days=30` returns `{days, rows, stats: {VECTORS, DIRECT}, crewStats: {SOLO, CREW}, grid: {"VECTORS·SOLO", …}, unmeasured, crewUnknown}`; rows carry `crew`, and rows with `crew: null` drop out of the SOLO/CREW groupings. It is shown only; nothing is scored or used for assignment. With fewer than 5 FLIGHTs on a side it says the sample is thin.
 
 Not built yet: vocado's own templates (the four-section rule in vocado `CLAUDE.md`, the Linear `Codex Engineering Task` template) are the SUPERVISOR's to change; the matching wording is proposed in the ATC-32 PR.
+
+## Solo by default as built (ATC-559)
+
+Generalizes vocado's SOLO rule (the SOLO row above) to every AIRPORT, through the brief text: other AIRPORTs learn it from the FLIGHT PLAN, not from their own rules files. DISPATCH still sends FLIGHTs in parallel across AIRCRAFT; only the split inside one FLIGHT changes. Design: [control-plane.md](control-plane.md) principle 5 and W7.
+
+- **The rule** (`server/solo-default.ts` `crewPlanOf`, pure). WAKE comes from the FLIGHT's labels as everywhere else (`classOf`; no WAKE label reads as M). WAKE **L** and **M** → **SOLO**. WAKE **H** and **J** → **CREW**. A **multi-area** FLIGHT → **CREW** at any WAKE: its labels name two or more distinct labels of a Linear `Area` label group (`Area:Web`, `Area:Database`), or two or more TYPE RATINGs other than DOCS (`rating:UI`, `rating:DATA`, `rating:SEC`; a `Risk:*` label counts as SEC). The two kinds are not counted together, since `Area:Web` and `rating:UI` can name the same area.
+- **The line.** One line before the PILOT'S DISCRETION line of the FLIGHT PLAN (`formatFlightPlan`) and of the DIRECT assignment text (`formatAssignment`, which FLEET LAUNCH with a FLIGHT and K3 RELAUNCH also use as the first prompt):
+  - SOLO: `SOLO (WAKE M): fly this FLIGHT as a solo CAPTAIN. Implement it yourself, with no CREW; subagents may search or review but do not write code. If it turns out to need CREW, add it and say why under Pilot's discretion in the PR.`
+  - CREW: `CREW (WAKE H): you may split the implementation across your CREW COMPLEMENT.` or `CREW (multi-area: Database, Web): …`.
+  - The labels come from the snapshot's ticket, or from the issue detail when the ticket is not in the snapshot (the detail query now reads labels too). The AIRPORT is the card's; for the DIRECT text it is the issue's project or team mapping (`airportOfTicket`). The CREW BRIEFING and the CREW COMPLEMENT are unchanged.
+- **Switch** (SUPERVISOR only): settings window AUTOMATION → OPERATIONS → **SOLO**, one `on`/`off` row per open AIRPORT, stored in `solo-default.json` in the state folder (`{default, airports, migrated}`, atomic write; `PUT /api/settings {soloDefault: {CODE: "on"|"off"}}`, `fromThisApp`; no `atcctl` command). `off` leaves the FLIGHT PLAN exactly as before ATC-559 (no line at all). It ships **on for every AIRPORT**: the first server start after deploy writes `on` for every open AIRPORT and `migrated: {id: "ATC-559", at}` once; a missing file also reads `on`, a broken file reads `off` and the block says so. An AIRPORT not in the file follows `default`. A resent FLIGHT PLAN keeps the stored text, so turning the switch changes only plans sent afterwards.
+- **Which plan a FLIGHT got** is read back from the stored FLIGHT PLAN text (`message`) of the proposal: no new record or field.
+- **Misfire counters**, per AIRPORT for the last 7 days, under the switch (shown only; none turns the switch off). The baseline is the 7 days before `migrated.at`, the same AIRPORT and the same WAKE:
+  - (a) **took CREW**: SOLO FLIGHT PLANs whose FLIGHT was later measured `crew: CREW` (ATC-33: a subagent wrote non-doc files in the STAND), or whose BLOCKED line in the arrival report, UNABLE reason or SUPERVISOR question (`await-supervisor`) mentions CREW.
+  - (b) **slower**: SOLO FLIGHTs whose block time (LOGBOOK `blockMin`, DEPARTED → PR opened; the wait for landing after the PR is MCC's and left out) is above the baseline median for their WAKE. Shown as over / judged; a WAKE with fewer than 3 baseline FLIGHTs is not judged.
+  - (c) **tokens per landed FLIGHT by WAKE**: the median of CAPTAIN + CREW tokens (LOGBOOK `fuel`, the FUEL F4 burn of the FLIGHT) of FLIGHTs that arrived in the last 7 days against the baseline, for L, M and H. ATC-551's control share is per control role, not per FLIGHT, so this is a small read of its own (`server/solo-default-run.ts`).
 
 ## Turning on 2b
 

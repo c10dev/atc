@@ -235,6 +235,7 @@ const DETAIL_QUERY = `query Detail($id: String!) {
     identifier title url description priority
     state { name }
     project { name }
+    labels(first: 20) { nodes { name parent { name } } }
     comments(first: 20) { nodes { body createdAt user { displayName } } }
   }
 }`;
