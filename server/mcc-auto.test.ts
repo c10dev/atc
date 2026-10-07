@@ -95,8 +95,8 @@ test("ATC-564: 2026-10-06 06:59–07:00Z의 가짜 rts 20줄(from c0ca22e000…)
   ];
   assert.deepEqual(real.map(testWriteOf), [false, false, false, false]);
   const lines = [...fakes, ...real].sort((a, b) => a.t.localeCompare(b.t));
-  assert.deepEqual(autoCountsOf(lines, now), { lands: 0, rechecks: 0, misfires: 0, refused: 1, rts: 1, rtsFailed: 2 });
-  assert.deepEqual(autoCountsOf(fakes, now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 });
+  assert.deepEqual(autoCountsOf(lines, now), { lands: 0, rechecks: 0, misfires: 0, refused: 1, alreadyLanded: 0, rts: 1, rtsFailed: 2 });
+  assert.deepEqual(autoCountsOf(fakes, now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, alreadyLanded: 0, rts: 0, rtsFailed: 0 });
   assert.ok(autoRecentOf(lines, 50).every((l) => !testWriteOf(l)));
   assert.equal(autoRecentOf(lines, 50).length, real.length);
   assert.equal(TEST_WRITE_2026_10_06.fromPrefix, "c0ca22e000");
