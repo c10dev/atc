@@ -6,15 +6,23 @@ import { jobIdle, loadRecycle, safeBlocksOf, type SafeFacts } from "./control-re
 import { type ActDeps, contextOfRow, type FactDeps, recycleOnce, recyclingNow, safeFactsOf } from "./control-recycle-run.ts";
 import {
   allMenu,
+  dailyAtLabel,
+  dailyDaysOf,
+  dailyDigestOf,
+  dailyDueOf,
+  dailyPromptOf,
   delivered,
   emptyRoleState,
   infoOnlyAckOf,
   launchedModeOf,
   openFlightsOf,
+  MIN_GAP_MS,
   planWake,
+  RETRY_MS,
   ROLE_NAME,
   type RoleState,
   transitionWhy,
+  WAKE_CAP,
   WAKE_ROLES,
   wakeCountsOf,
   wakeEventsOf,
@@ -24,9 +32,9 @@ import {
   wakeResultOf,
   type WakeRole,
 } from "./control-wake.ts";
-import { effectiveWakeOf, loadWakeSwitch, wakeScope } from "./control-wake-switch.ts";
+import { effectiveWakeOf, loadWakeDaily, loadWakeSwitch, wakeScope } from "./control-wake-switch.ts";
 import { allDecisions } from "./decision-card-run.ts";
-import { answerLineOf, unackedAnswers } from "./decision-card.ts";
+import { answerLineOf, isDecisionRole, unackedAnswers } from "./decision-card.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import type { Snapshot } from "./model.ts";
 import { readRecords, record } from "./recorder.ts";
@@ -40,9 +48,9 @@ import { SERVER_CLEARANCE_KINDS } from "./server-clearance.ts";
 import { loadServerClearanceSwitch } from "./server-clearance-run.ts";
 import { exceptionWakeEvents } from "./judges/exceptions-run.ts";
 
-// CONTROL WAKE(ATC-557 a)의 입출력. 판단은 control-wake.ts(순수), 검사는 send-checks.ts checkControlWake, 세션에 쓰기는 session-socket.ts deliverChecked뿐이다.
-// 30초마다(jobs/control-wake.ts): ① 닿은 깨움이 대화 기록에 보이는지·끝에 WAKE RESULT가 있는지 ② 역할마다(TOWER 30초, OCC 1분, MCC 2분) 판단할 일을 모아
-// 새 것이 있으면 깨운다 ③ 스위치와 다른 모드로 떠 있는 세션(/loop로 뜬 세션)을 안전한 순간에 한 번 다시 띄운다(운영 서버만)
+// CONTROL WAKE(ATC-557 a, REVIEW와 하루 한 번 점검 턴은 d)의 입출력. 판단은 control-wake.ts(순수), 검사는 send-checks.ts checkControlWake, 세션에 쓰기는 session-socket.ts deliverChecked뿐이다.
+// 30초마다(jobs/control-wake.ts): ① 닿은 깨움이 대화 기록에 보이는지·끝에 WAKE RESULT가 있는지 ② 역할마다(TOWER 30초, OCC·REVIEW 1분, MCC 2분) 판단할 일을 모아
+// 새 것이 있으면 깨운다. 깨울 일이 없고 그 역할의 점검 시각이 지났으면 하루 한 번 점검 턴 ③ 스위치와 다른 모드로 떠 있는 세션(/loop로 뜬 세션)을 안전한 순간에 한 번 다시 띄운다(운영 서버만)
 
 const DAY = 86_400_000;
 const STATE_FILE = () => join(config.stateDir, "control-wake-state.json");
@@ -73,7 +81,7 @@ export { wakeScope } from "./control-wake-switch.ts";
 let lastPassAt: number | null = null;
 const startedAt = Date.now();
 const lastRoleRun: Partial<Record<WakeRole, number>> = {};
-export const CADENCE_MS: Record<WakeRole, number> = { tower: 30_000, occ: 60_000, mcc: 120_000 }; // MCC queue는 PR마다 GitHub를 읽는다(mcc-auto와 같은 값)
+export const CADENCE_MS: Record<WakeRole, number> = { tower: 30_000, occ: 60_000, mcc: 120_000, review: 60_000 }; // MCC queue는 PR마다 GitHub를 읽는다(mcc-auto와 같은 값). REVIEW는 스냅숏만 읽는다
 const waiting: Partial<Record<WakeRole, string>> = {}; // 옮기기를 기다리는 이유(화면)
 // 깨움 BREAKER가 멈췄는데 /loop로 다시 띄우지 못한 역할(CAUTION 카드, supervisor-alerts-run.ts가 읽는다)
 export interface WakeFallbackStuck {
@@ -96,7 +104,7 @@ export function wakeModeLive(role: WakeRole, now = Date.now()): { live: boolean;
   return { live: true, why: "wake" };
 }
 
-// 시험 opt-in(ATC_SERVER_SEND_TEST=1)에서만: 진짜 TOWER·OCC·MCC 대신 이 머리를 붙인 버리는 세션을 깨운다(OS 임시 폴더 아래 cwd만, deliverChecked가 다시 본다)
+// 시험 opt-in(ATC_SERVER_SEND_TEST=1)에서만: 진짜 TOWER·OCC·MCC·REVIEW 대신 이 머리를 붙인 버리는 세션을 깨운다(OS 임시 폴더 아래 cwd만, deliverChecked가 다시 본다)
 const TEST_PREFIX = () => process.env.ATC_CONTROL_WAKE_TEST_PREFIX || "";
 export function recipientNameOf(role: WakeRole, mode: WriterMode): string | null {
   if (mode === "production") return ROLE_NAME[role];
@@ -155,7 +163,7 @@ function confirmPass(lines: readonly AnyLine[], now: number) {
     if (!c) continue;
     const all = readRecords(now - 30 * DAY) as unknown as AnyLine[];
     const before = breakerOf(all, now, wakeScope(role));
-    record({ t: iso(now), kind: "control-wake", op: "confirm", id: d.id, role, msgId: d.msgId, sessionId: d.sessionId, ...c });
+    record({ t: iso(now), kind: "control-wake", op: "confirm", id: d.id, role, msgId: d.msgId, sessionId: d.sessionId, ...c, ...((d as unknown as { daily?: unknown }).daily === true ? { daily: true as const } : {}) });
     const after = breakerOf(readRecords(now - 30 * DAY) as unknown as AnyLine[], now, wakeScope(role));
     const event = breakerEventOf(before, after);
     if (event) {
@@ -172,7 +180,7 @@ function confirmPass(lines: readonly AnyLine[], now: number) {
     if (d.op !== "deliver" || done.has(String(d.msgId))) continue;
     const age = now - Date.parse(d.t);
     const res = typeof d.transcript === "string" ? wakeResultOf(readTail(d.transcript), String(d.msgId)) : null;
-    const base = { t: iso(now), kind: "control-wake" as const, op: "result" as const, id: String(d.id), role: d.role as WakeRole, msgId: String(d.msgId) };
+    const base = { t: iso(now), kind: "control-wake" as const, op: "result" as const, id: String(d.id), role: d.role as WakeRole, msgId: String(d.msgId), ...(d.daily === true ? { daily: true as const } : {}) };
     if (res) {
       record({ ...base, result: res });
       continue;
@@ -191,10 +199,11 @@ export interface WakeDeps {
   now?: () => number;
   recycle?: { facts: FactDeps; act: ActDeps }; // /loop ↔ wake 옮기기(운영 서버만)
   force?: boolean; // 시험: 역할마다의 간격을 보지 않는다
+  noDaily?: boolean; // 시험: 하루 한 번 점검 턴을 보지 않는다(시각에 따라 결과가 바뀌지 않게)
 }
 export interface WakeSummary {
   writer: WriterMode | null;
-  woke: { role: WakeRole; id: string }[];
+  woke: { role: WakeRole; id: string; daily?: true }[];
   failed: string[];
   refused: string[];
   missed: number;
@@ -211,6 +220,7 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
   lastPassAt = now;
   confirmPass(readRecords(now - 2 * DAY) as unknown as AnyLine[], now);
   const sw = loadWakeSwitch();
+  const daily = loadWakeDaily();
   const clearanceSw = loadServerClearanceSwitch();
   const rows = await (deps.rows ?? (() => cachedAgentRows.get()))().catch(() => [] as AgentRow[]);
   const launches = readRecords(now - 30 * DAY) as unknown as AnyLine[];
@@ -229,7 +239,7 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
     const prev = st.roles[role] ?? emptyRoleState();
     const inputs = await gatherInputs(role, deps.get).catch(() => ({}));
     const seen = new Set(readSeen()[role] ?? []);
-    const answers = role === "mcc" ? [] : unackedAnswers(allDecisions(), role).map(answerLineOf);
+    const answers = isDecisionRole(role) && role !== "mcc" ? unackedAnswers(allDecisions(), role).map(answerLineOf) : []; // MCC·REVIEW의 guard는 atcctl decision을 막는다
     let serverResent: Set<string> | undefined;
     if (role === "occ") {
       serverResent = new Set();
@@ -255,7 +265,7 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
     }
     const breaker: Breaker = breakerOf(launches, now, wakeScope(role));
     const canSend = Boolean(row && rec) && (breaker.state === "armed" || breaker.state === "probe");
-    const plan = planWake(prev, events, { now, busy, canSend });
+    const plan = planWake(prev, events, { now, busy, canSend, cap: WAKE_CAP[role] });
     for (const m of plan.missed) record({ t: iso(now), kind: "control-wake", op: "missed", role, key: m.key, event: m.kind, first: m.first, menu: m.menu });
     out.missed += plan.missed.length;
     let next = plan.next;
@@ -301,6 +311,34 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
           });
           out.woke.push({ role, id });
           next = delivered(next, plan.wake, id, now);
+        }
+      }
+    }
+    // 하루 한 번 점검 턴(ATC-557 d): 이 패스에 깨울 일이 없고, 스위치 wake이며 그 역할의 깨움 BREAKER가 켜져(armed) 있을 때만. /loop인 역할(스위치 loop, BREAKER가 멈춰 loop로 돌림)은 받지 않는다
+    const gapOk = !next.lastWakeAt || now - Date.parse(next.lastWakeAt) >= MIN_GAP_MS;
+    const retryOk = !next.lastFailAt || now - Date.parse(next.lastFailAt) >= RETRY_MS;
+    const day = deps.noDaily || daily !== "on" ? null : dailyDueOf(role, now, dailyDaysOf(lines, role));
+    if (day && !plan.wake && sw[role] === "wake" && breaker.state === "armed" && row && rec && !busy && gapOk && retryOk) {
+      st.seq += 1;
+      const id = wakeIdOf(st.seq);
+      const text = dailyPromptOf({ role, wakeId: id, day, digest: dailyDigestOf(lines, role, now, next.open) });
+      const c = checkControlWake({ wakeId: id, role: ROLE_NAME[role], session: { id: row.sessionId, name: rec.name ?? "" }, expectedName: recipientNameOf(role, mode) ?? "", text, mode: sw[role], launchedWake: launched === "wake", now });
+      if (!c.ok) {
+        const last = wakeLines(lines).filter((l) => l.role === role && l.op === "refused").at(-1);
+        if (last?.check !== c.reason) record({ t: iso(now), kind: "control-wake", op: "refused", id, role, sessionId: row.sessionId, check: c.reason });
+        out.refused.push(id);
+        next = { ...next, lastFailAt: iso(now) };
+      } else {
+        const r = await (deps.deliver ?? deliverChecked)(c.send, { configDirs: configDirs() });
+        if (!r.ok) {
+          record({ t: iso(now), kind: "control-wake", op: "failed", id, role, sessionId: row.sessionId, stage: r.stage, why: r.why });
+          out.failed.push(id);
+          next = { ...next, lastFailAt: iso(now) };
+        } else {
+          record({ t: iso(now), kind: "control-wake", op: "deliver", id, role, sessionId: c.send.sessionId, session: c.send.to, pid: r.pid, msgId: r.msgId, transcript: r.cwd ? transcriptOf(r.configDir, r.cwd, c.send.sessionId) : null, textHash: c.send.textHash, text: c.send.text, check: "pass", menu: false, events: [{ key: `daily:${day}`, kind: "daily-review", menu: false }], fresh: [], still: [], resolved: [], flights: [], daily: true });
+          out.woke.push({ role, id, daily: true });
+          // 점검 턴은 사건을 싣지 않는다: 열린 일·풀린 목록·지난 깨움(delta의 기준)은 그대로. 다음 깨움은 이 턴의 결과 줄까지 기다린다(pendingWakeOf)
+          next = { ...next, lastFailAt: undefined };
         }
       }
     }
@@ -376,5 +414,9 @@ export function controlWakeData(now = Date.now()) {
       return [role, { ...counts.roles[role], mode: sw[role], effective: sw[role] === "wake" && b.state === "armed" ? "wake" : "loop", launched: lastJob ? (lastJob.wake === true ? "wake" : "loop") : null, breaker: b.state, breakerWhy: b.why, waiting: waiting[role] ?? null, fallbackStuck: fallbackStuck[role]?.why ?? null }];
     }),
   );
-  return { days: counts.days, total: counts.total, roles, live: serverLiveOf(lastPassAt, now), writer: writerModeOf(writerPlaceNow()) };
+  // 하루 한 번 점검 턴: 스위치, 역할마다 시각과 오늘 닿았는지
+  const dailyMode = loadWakeDaily();
+  const today = iso(now).slice(0, 10);
+  const daily = { mode: dailyMode, roles: Object.fromEntries(WAKE_ROLES.map((role) => [role, { at: dailyAtLabel(role), today: dailyDaysOf(lines, role).has(today) }])) };
+  return { days: counts.days, total: counts.total, roles, daily, live: serverLiveOf(lastPassAt, now), writer: writerModeOf(writerPlaceNow()) };
 }

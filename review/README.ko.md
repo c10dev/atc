@@ -20,6 +20,7 @@ claude --bg -n REVIEW --permission-mode auto --strict-mcp-config "/loop 10m /tic
 ```
 
 - `-n REVIEW`가 세션 이름을 정하고 마지막 인자가 첫 메시지다. 모델은 `.claude/settings.json`이 정한다.
+- 위는 `/loop` 모드다. 깨움 모드(CONTROL WAKE REVIEW `wake`, ATC-557 d부터 기본)에서는 LAUNCH가 대신 `[ATC WAKE BOOT] REVIEW`를 보내고, 리뷰를 기다리는 PR head가 생기면 서버가 세션을 깨운다([docs/control-recycle.ko.md](../docs/control-recycle.ko.md) "REVIEW 깨움과 하루 한 번 점검 턴").
 - `--strict-mcp-config`는 MCP 서버를 싣지 않는다. 자료는 `atcctl landing review`로 받으니 MCP가 필요 없다.
 - 기록할 때마다 guard가 세션 기록에서 실제 모델을 확인한다. `claude-sonnet-…` 이름만 통과한다. 서버도 다른 모델의 리뷰를 받지 않는다. main 병합 뒤 리뷰를 이어받을 때(ATC-31)는 옛 DeepSeek 기록도 인정한다.
 - tmux와 `ocx claude`로 띄우던 길(ATC-66)은 2026-09-29에 없앴다.

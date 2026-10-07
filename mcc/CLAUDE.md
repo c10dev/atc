@@ -98,6 +98,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 - **깨움 모드(`wake`, 기본):** `/loop`가 없다. atc 서버가 판단할 일이 생길 때만 `[ATC WAKE W-xxxx] MCC` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 받으면 `node ../controller/atcctl.mjs tick mcc --wake W-xxxx`로 `/tick`을 하고, 턴의 마지막 줄을 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. ATC에게는 답하지 않는다. `/loop`가 남은 세션의 `/tick`이 `TICK WAKE-MODE`를 받으면 곧장 턴을 끝낸다.
 - **`/loop` 모드(`loop`):** 오늘처럼 `/loop 5m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일하고, BREAKER가 멈추면 atc가 `/loop`로 한 번 다시 띄운다(다시 켜지면 깨움 모드로 돌린다).
+- **하루 한 번 점검 턴(깨움 모드만, ATC-557 d):** 매일 01:30Z에 atc가 둘째 줄이 `Daily review turn (ATC-557)`인 `[ATC WAKE W-xxxx] MCC` 글 하나로 깨운다. 사건이 아니라 지난 24시간을 돌아보는 턴이다. `node ../controller/atcctl.mjs tick mcc --wake W-xxxx`로 지금 할 일을 먼저 한 뒤, 이 대화의 MCC LOG·브리핑과 글에 실린 지난 24시간의 깨움(결과)·오래 열린 일을 보고, 되풀이된 일, 열린 채 남은 일, 오지 말았어야 할 깨움이나 깨움 없이 지나간 일, 이 문서가 다루지 않는 경우를 찾는다. 찾은 것은 이 문서대로 적는다: MCC LOG 줄로 SUPERVISOR에게 보고하고, SUPERVISOR가 볼 PR만 `mcc escalate`. 적을 것이 없으면 적지 않는다. 마지막 줄은 `WAKE RESULT: acted`(적었거나 보고함) 또는 `WAKE RESULT: nothing`. 새로 뜬 세션이면 브리핑과 글의 목록만으로 한다. `/loop` 모드인 동안(깨움 BREAKER가 멈춰 `/loop`로 돌린 동안 포함)은 오지 않는다. SUPERVISOR가 설정 창 CONTROL WAKE DAILY로 끈다.
 - 어느 모드든 판단 기준과 이 문서의 규칙은 같다. 새로 뜬 세션은 브리핑을 그대로 읽고, 앞 대화나 MCC LOG가 있다고 가정하지 않는다.
 
 ## MCC LOG

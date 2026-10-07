@@ -44,7 +44,7 @@ TOWER·OCC·MCC는 `/loop` 없이 쉬는 백그라운드 세션이 되고, 판�
 - **컨텍스트 한도.** CONTROL RECYCLE의 CAP 그대로(지금 운영 TOWER 500k·OCC 500k·MCC 150k). 새 CAP 설정은 없다: 깨움 하나가 시간당 `/loop` 턴 20번(TOWER)~6번(OCC)을 대신해 컨텍스트가 시계가 아니라 한 일만큼 자란다. 한 주 뒤 숫자로 CAP을 낮출지 본다.
 - **오작동 수**(설정 블록, 7일, 역할마다): 깨우지 못함(판단할 일이 15분 열렸는데 어느 깨움에도 실리지 않음), 서버가 할 수 있던 일로 깨움(실린 일이 모두 메뉴: LAND·INFO·GO AROUND·FIX 보내기, RELAY, 첫 RESEND, FLIGHT PLAN·RECALL·CREW CHANGE 보내기, SCHEDULE 발부, MCC LAND·RTS), 할 일 없이 깨움(`WAKE RESULT: nothing`). 깨움·일함·결과 모름·실패·막음·안 보임·BREAKER 멈춤·다시 띄움도.
 - **FLIGHT RECORDER.** 깨움마다 `control-wake deliver` 줄에 입력 전체(사건 key·종류·메뉴, 새·열림·풀림, FLIGHT, 글과 해시, 세션·pid·msg_id). 이어서 `confirm`·`result`·`pickup`·`failed`·`refused`·`missed`·`breaker`·`transition`·`ack`.
-- **이 PR에 없는 것.** `fresh` 모드, 하루 한 번 검토 턴, REVIEW·CROSSCHECK 깨움, 서버가 짓는 CLEARANCE, 빠진 역할 다시 띄우기, 판단 로직(ATC-558).
+- **이 PR에 없는 것.** `fresh` 모드, 하루 한 번 검토 턴, REVIEW·CROSSCHECK 깨움, 서버가 짓는 CLEARANCE, 빠진 역할 다시 띄우기, 판단 로직(ATC-558). REVIEW 깨움과 하루 한 번 점검 턴은 (d) 부분(아래 "REVIEW 깨움과 하루 한 번 점검 턴"), CROSSCHECK는 은퇴 그대로.
 
 # 없는 관제 세션 다시 띄우기와 알림 (ATC-532)
 
@@ -79,3 +79,17 @@ TOWER·OCC·MCC는 `/loop` 없이 쉬는 백그라운드 세션이 되고, 판�
 - **CONTROL WAKE "메뉴".** LAND·INFO/GO AROUND/FIX `send`·RELAY·첫 RESEND의 TOWER 깨움 사건은 그 종류의 서버 스위치가 on일 때만 메뉴로 센다: 서버가 보낼 수 있었으니 그런 일만 실은 깨움은 오작동이다. 스위치가 off면 TOWER의 일이라 메뉴가 아니다.
 - **매뉴얼.** `controller/CLAUDE.md`(와 `.en.md`)에 "서버가 보내는 CLEARANCE" 절과 해당 줄마다 한 문장, `/tick` skill은 서버 몫을 건너뛴다. 종류마다 짓는 방법은 스위치 off와 넘긴 항목을 위해 그대로 둔다.
 - **여기서 만들지 않은 것.** HOLD·CONTINUE(LOSS OF SEPARATION, GROUND STOP), TRAFFIC, REPORT는 TOWER의 판단으로 남는다. TOWER가 없을 때 만든 relay는 여전히 바로 undeliverable이 된다.
+
+# REVIEW 깨움과 하루 한 번 점검 턴 (ATC-557 d)
+
+REVIEW도 TOWER·OCC·MCC처럼 깨움 모드로 돌고, 깨움 모드인 역할은 하루 한 번 점검 턴을 받는다. ATC-557의 (d) 부분이다. CROSSCHECK는 은퇴해서(ATC-371) 빠진다: `launchControl`이 거절하고, 스위치가 없고, `checkControlWake`도 그 역할을 거절한다.
+
+- **(a)와 같은 길.** `WAKE_ROLES`에 `review`(`REVIEW`, `node ../controller/atcctl.mjs`). 스위치는 `control-wake.json` `roles.review`, `loop`·`wake`, 기본 `wake`(없으면 `wake`, 모르는 값은 `loop`). 설정 창 OPERATIONS → CONTROL WAKE의 CONTROL WAKE REVIEW 줄, SUPERVISOR만. LAUNCH는 `[ATC WAKE BOOT] REVIEW` 또는 `/loop 10m /tick`. 다른 모드로 뜬 세션은 `recycleOnce`로 한 번 다시 띄운다(REVIEW의 CONTROL RECYCLE `auto`는 기본 켜짐, 안전 조건은 공통 둘). 역할마다 BREAKER, `/loop` fail safe와 CAUTION 카드, 남은 `/loop`의 `TICK WAKE-MODE`, pickup 줄, 수는 같은 코드다. `checkControlWake`가 REVIEW 머리를 받고, 소켓에 쓰는 것은 여전히 `deliverChecked`뿐이다(`server/session-socket.test.ts`의 훑기 시험 그대로). guard는 그대로다: `tick review --wake <id>`는 이미 `controller/guard.mjs --review`를 통과하고(앞 두 단어 `tick review`), `controller/guard.test.mjs`가 이를 고정한다.
+- **사건과 출처.** REVIEW의 `/tick`이 하는 일은 `GET /api/landing/reviews`의 `pending`뿐이다(`server/tick.ts`의 `actionable("review")`: Codex를 못 쓰고 외부 리뷰에서 빠지지 않은 PR). PR head 하나가 사건 하나: key `review:<owner/name>#<n>@<head7>`, 종류 `review-pending`, 늘 판단(메뉴 아님). head가 바뀌면 새 사건이고, `excluded`·`recent`는 깨우지 않는다. 큐를 읽지 못하면 "메뉴 밖" 하나. 60초마다 읽는다(스냅숏만 읽는다). REVIEW는 DECISION 역할이 아니라 DECISION 답은 사건이 아니다.
+- **깨움 하나에 PR 2건까지.** REVIEW는 한 바퀴에 2건까지 리뷰하므로 `WAKE_CAP.review = 2`: 새 PR 2건까지(남은 자리에 "아직 열림"). 나머지는 앞 깨움에 결과 줄이 생긴 뒤(또는 20분) 다음 깨움에 실린다. 그 역할이 바쁘거나 15분 안에 깨웠으면 기다리는 일은 "깨우지 못함"으로 세지 않는다. 깨우는 글의 1단계가 글에 실린 PR부터 리뷰하라고 한다.
+- **하루 한 번 점검 턴.** 역할마다 UTC 하루에 한 번: TOWER 01:00Z, OCC 01:15Z, MCC 01:30Z, REVIEW 01:45Z. 시각의 이유: 00:00Z DUTY REVIEW heartbeat와 00:30Z OCC TARGET/ROUTE 점검(`DAILY_GRACE_MS`) 뒤라 같은 턴에 겹치지 않고, 15분씩 떼어 두 역할을 같은 분에 깨우지 않으며 한 패스에 한 역할인 옮기기도 부딪치지 않고, 01:00Z는 KST 10:00이라 적은 것을 SUPERVISOR가 낮에 본다. 그 역할의 시각 뒤 첫 패스에 보낸다. 조건: CONTROL WAKE DAILY가 `on`, 그 역할 스위치 `wake`이고 깨움 BREAKER가 켜짐(`/loop`인 역할은 BREAKER의 `/loop` fail safe 동안도 받지 않는다), 살아 있는 세션, 그 패스에 그 역할로 가는 사건 깨움이 없음, 앞 깨움에 결과가 있음(또는 20분), 그 UTC 날에 아직 닿지 않음. "오늘 보냄"은 FLIGHT RECORDER로 정해 서버를 다시 띄워도 두 번 보내지 않는다. 시각을 놓치면(서버 꺼짐) 그날 안에, 지난 날은 건너뛴다.
+- **점검 턴의 글.** `[ATC WAKE W-xxxx] <역할>`, 다음 줄 `Daily review turn (ATC-557): …`, FLIGHT RECORDER에서 그 역할의 지난 24시간(사건 깨움과 acted·nothing·결과 줄 없음·열림, 깨우지 못한 사건, 메뉴만 실은 깨움, 마지막 12개 깨움의 시각·결과·사건 종류·FLIGHT)과 2시간 넘게 열린 일. 할 일: `tick <역할> --wake W-xxxx`로 지금 할 일을 하고, 자기 대화의 LOG 줄과 브리핑(TOWER: clearances·events·landingQueue, OCC: dispatch·schedule·FLIGHT FOLLOWING, MCC: `mcc queue`, REVIEW: `landing queue`의 recent·excluded)에서 되풀이된 일·열린 채 남은 일·틀렸거나 없던 깨움·매뉴얼이 다루지 않는 경우를 찾고(새로 뜬 세션은 브리핑과 목록으로), 매뉴얼대로 적는다(TOWER·OCC: LOG 줄, K1–K3만 DECISION 카드; MCC: LOG 줄, PR이면 `mcc escalate`; REVIEW: guard가 쓰기를 막아 REVIEW LOG 줄만). 마지막 줄 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`. 같은 검사, 같은 writer.
+- **기록과 수.** `control-wake deliver` 줄에 `daily: true`와 사건 하나(`daily:<날짜>`, 종류 `daily-review`, 메뉴 아님). `confirm`·`result` 줄에도 `daily: true`. 열린 일이나 다음 사건 깨움의 delta 기준은 건드리지 않는다. CONTROL WAKE 블록은 역할마다 점검 턴·적음·찾은 것 없음을 따로 센다. 점검 턴의 `nothing`은 오작동 "할 일 없이 깨움"이 아니고, 결과 줄이 없으면 다른 깨움처럼 결과 모름이다. 블록에 역할마다 시각과 오늘 닿았는지도 보인다.
+- **스위치.** CONTROL WAKE DAILY: `control-wake.json` `daily`, `on`(기본)·`off`, 있는데 모르는 값은 `off`. SUPERVISOR만, `atcctl` 명령 없음. 바꾸면 `policy control-wake-daily` 한 줄(깨움 BREAKER는 그대로).
+- **매뉴얼.** `controller/`·`occ/`·`mcc/`의 CLAUDE.md(와 `.en.md`) "깨우는 방식"에 점검 턴 한 줄, `/tick`에 한 줄. `review/CLAUDE.md`·`CLAUDE.en.md`와 REVIEW `/tick`(한국어·영어)이 두 모드와 점검 턴을 적고 `/loop 10m /tick` 글은 남긴다.
+- **이 PR에 없는 것.** `fresh` 모드, 판단(ATC-558).

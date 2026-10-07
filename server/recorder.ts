@@ -121,6 +121,7 @@ export type RecordLine =
   // CONTROL WAKE(ATC-557): 관제 세션 깨움과 그 입력·확인·결과·오작동·/loop ↔ wake 옮기기
   | ControlWakeLine
   | { t: string; kind: "policy"; op: "control-wake-mode"; by: string; role: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "control-wake-daily"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "server-send-mode"; by: string; key: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "judges-exceptions-mode"; by: string; from: string; to: string } // 예외 판정(ATC-558) 스위치
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }

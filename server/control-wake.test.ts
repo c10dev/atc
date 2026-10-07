@@ -21,6 +21,14 @@ import {
   wakePromptOf,
   wakeResultOf,
   type WakeEvent,
+  DAILY_AT_MIN,
+  dailyDaysOf,
+  dailyDigestOf,
+  dailyDueOf,
+  dailyPromptOf,
+  parseWakeDaily,
+  WAKE_CAP,
+  WAKE_ROLES,
 } from "./control-wake.ts";
 import { checkControlWake, controlWakeWhy, isChecked } from "./send-checks.ts";
 import { actionable } from "./tick.ts";
@@ -42,8 +50,10 @@ const tower = (over: Record<string, unknown> = {}) => ({
 });
 
 test("스위치: 없는 값은 wake(기본), loop는 loop, 모르는 값은 loop(틀린 값이 깨움을 켜지 않게)", () => {
-  assert.deepEqual(parseWakeSwitch(null), { tower: "wake", occ: "wake", mcc: "wake" });
-  assert.deepEqual(parseWakeSwitch({ roles: { tower: "loop", occ: "fresh" } }), { tower: "loop", occ: "loop", mcc: "wake" });
+  assert.deepEqual(parseWakeSwitch(null), { tower: "wake", occ: "wake", mcc: "wake", review: "wake" });
+  assert.deepEqual(parseWakeSwitch({ roles: { tower: "loop", occ: "fresh", review: "loop" } }), { tower: "loop", occ: "loop", mcc: "wake", review: "loop" });
+  // 하루 한 번 점검 턴(ATC-557 d): 없는 값은 on, 모르는 값은 off(오늘처럼 점검 턴 없음)
+  assert.deepEqual([parseWakeDaily(null), parseWakeDaily({ daily: "off" }), parseWakeDaily({ daily: "yes" })], ["on", "off", "off"]);
 });
 
 test("TOWER 사건: actionable과 같은 기준 — 할 일이 없으면 사건도 없고, info 사건만이면 서버가 ack할 cursor", () => {
@@ -206,7 +216,8 @@ test("글: 머리·delta·관련 FLIGHT·할 일·결과 줄, 검사를 통과�
   assert.match(controlWakeWhy({ ...base, wakeId: "W-0043" })!, /다름/);
   assert.match(controlWakeWhy({ ...base, text: text.replace(/WAKE RESULT/g, "RESULT") })!, /결과 줄/);
   assert.match(controlWakeWhy({ ...base, text: `${text}\n[DISPATCH D-0001] FLIGHT PLAN` })!, /팀에 가는 머리/);
-  assert.match(controlWakeWhy({ ...base, role: "REVIEW" })!, /역할이 아님/);
+  assert.match(controlWakeWhy({ ...base, role: "CROSSCHECK" })!, /역할이 아님/); // 은퇴(ATC-371)
+  assert.match(controlWakeWhy({ ...base, role: "REVIEW" })!, /머리\(W-0042 TOWER\)가 이 깨움\(W-0042 REVIEW\)과 다름/);
 });
 
 test("LAUNCH 프롬프트(wake)에는 /loop가 없고 한 번 둘러보라고 한다", () => {
@@ -269,4 +280,126 @@ test("/loop ↔ wake 옮기기: LAUNCH 줄의 wake로 지금 모드를 알고(�
   assert.equal(transitionWhy({ ...fb, lastTryAt: T0 - 5 * 60_000 }).go, false);
   assert.equal(transitionWhy({ ...fb, idle: false }).go, false);
   assert.equal(transitionWhy({ ...fb, blocks: ["RTS: 진행 중"] }).go, false);
+});
+
+// ── ATC-557 d: REVIEW와 하루 한 번 점검 턴 ──
+const reviews = (pending: unknown[]) => ({ reviews: { pending, excluded: [], recent: [] } });
+const rpr = (n: number) => ({ pr: `c10dev/vocado#${n}`, head: `beef${n}00`, title: `PR ${n}`, flight: `VOC-${n}` });
+
+test("REVIEW 사건: actionable과 같은 기준(pending) — PR head 하나가 판단 사건 하나, 읽지 못하면 메뉴 밖 하나, CROSSCHECK는 깨움 역할이 아니다", () => {
+  assert.deepEqual(wakeEventsOf("review", reviews([]), NO), []);
+  assert.equal(actionable("review", reviews([]) as never).act, false);
+  const es = wakeEventsOf("review", reviews([rpr(1), rpr(2)]), NO);
+  assert.equal(actionable("review", reviews([rpr(1)]) as never).act, true);
+  assert.deepEqual(es.map((e) => [e.key, e.kind, e.menu, e.flights]), [
+    ["review:c10dev/vocado#1@beef100", "review-pending", false, ["VOC-1"]],
+    ["review:c10dev/vocado#2@beef200", "review-pending", false, ["VOC-2"]],
+  ]);
+  // head가 바뀌면 새 사건(새 head는 다시 리뷰한다)
+  assert.equal(wakeEventsOf("review", reviews([{ ...rpr(1), head: "cafe000" }]), NO)[0]!.key, "review:c10dev/vocado#1@cafe000");
+  assert.deepEqual(wakeEventsOf("review", { reviews: { error: "x" } }, NO).map((e) => e.kind), ["outside-menu"]);
+  assert.deepEqual([...WAKE_ROLES], ["tower", "occ", "mcc", "review"]);
+  assert.deepEqual(openFlightsOf("review", reviews([rpr(1)]), ["VOC-1"]), [{ flight: "VOC-1", facts: ["PR c10dev/vocado#1@beef100 waits for a landing review"] }]);
+});
+
+test("REVIEW 깨움: 한 번에 2건까지(새 일 먼저), 나머지는 앞 깨움이 끝난 뒤 — 그동안 '깨우지 못함'으로 세지 않는다", () => {
+  const cap = WAKE_CAP.review;
+  assert.equal(cap, 2);
+  const es = [ev("r1"), ev("r2"), ev("r3")];
+  let p = planWake(emptyRoleState(), es, { now: at(0), busy: false, canSend: true, cap });
+  p = planWake(p.next, es, { now: at(0.5), busy: false, canSend: true, cap });
+  assert.deepEqual(p.wake!.fresh.map((e) => e.key), ["r1", "r2"]);
+  let st = delivered(p.next, p.wake!, "W-0001", at(0.5));
+  // 리뷰 중(busy) 16분: r3은 기다리고 오작동이 아니다
+  p = planWake(st, es, { now: at(16.5), busy: true, canSend: true, cap });
+  assert.deepEqual([p.wake, p.missed], [null, []]);
+  // 끝남: r1·r2가 풀리고 r3을 싣는다. 이번 깨움에 실리는 일은 '깨우지 못함'이 아니다
+  p = planWake(p.next, [ev("r3")], { now: at(17), busy: false, canSend: true, cap });
+  assert.deepEqual([p.wake!.fresh.map((e) => e.key), p.wake!.resolved, p.missed], [["r3"], ["r1", "r2"], []]);
+  st = delivered(p.next, p.wake!, "W-0002", at(17));
+  // 제한이 없는 역할은 그대로(모두 한 번에)
+  const q = planWake(planWake(emptyRoleState(), es, { now: at(0), busy: false, canSend: true }).next, es, { now: at(0.5), busy: false, canSend: true });
+  assert.equal(q.wake!.fresh.length, 3);
+  // 보낼 수 없는(세션 없음) 채 15분이면 cap이 있어도 센다
+  const m = planWake(planWake(emptyRoleState(), [ev("z")], { now: at(0), busy: false, canSend: false, cap }).next, [ev("z")], { now: at(15), busy: false, canSend: false, cap });
+  assert.deepEqual(m.missed.map((x) => x.key), ["z"]);
+});
+
+test("REVIEW 깨우는 글: 머리 REVIEW, `tick review --wake`, 2건 안내 — 같은 검사를 통과한다", () => {
+  const plan = { fresh: wakeEventsOf("review", reviews([rpr(1)]), NO), still: [], resolved: [] };
+  const text = wakePromptOf({ role: "review", wakeId: "W-0070", plan, lastWakeId: null, lastWakeAt: null, flights: [], now: T0 });
+  assert.match(text, /^\[ATC WAKE W-0070\] REVIEW\n/);
+  assert.match(text, /`node \.\.\/controller\/atcctl\.mjs tick review --wake W-0070`/);
+  assert.match(text, /at most 2 per pass/);
+  assert.doesNotMatch(text, /Team replies/); // REVIEW는 팀의 답을 받지 않는다
+  const c = checkControlWake({ wakeId: "W-0070", role: "REVIEW", session: { id: "s", name: "REVIEW" }, expectedName: "REVIEW", text, mode: "wake", launchedWake: false, now: T0 });
+  assert.equal(c.ok && c.send.role, "REVIEW");
+  const boot = wakeLaunchPromptOf("review");
+  assert.match(boot, /^\[ATC WAKE BOOT\] REVIEW\n/);
+  assert.match(boot, /tick review --wake boot/);
+});
+
+test("하루 한 번 점검 턴의 시각: 역할마다 15분씩, 00:00Z(DUTY REVIEW)·00:30Z(OCC TARGET/ROUTE) 뒤, 그날 한 번, 놓치면 그날 안에", () => {
+  assert.deepEqual(DAILY_AT_MIN, { tower: 60, occ: 75, mcc: 90, review: 105 });
+  const mins = Object.values(DAILY_AT_MIN).sort((a, b) => a - b);
+  assert.equal(mins.every((m, i) => m > 30 && (i === 0 || m - mins[i - 1]! >= 15)), true);
+  const d = (iso: string) => Date.parse(iso);
+  assert.equal(dailyDueOf("tower", d("2026-10-07T00:59:59Z"), new Set()), null);
+  assert.equal(dailyDueOf("tower", d("2026-10-07T01:00:00Z"), new Set()), "2026-10-07");
+  assert.equal(dailyDueOf("review", d("2026-10-07T01:30:00Z"), new Set()), null);
+  assert.equal(dailyDueOf("review", d("2026-10-07T23:50:00Z"), new Set()), "2026-10-07"); // 서버가 꺼져 시각을 놓쳤다: 그날 안에 한 번
+  assert.equal(dailyDueOf("tower", d("2026-10-07T05:00:00Z"), new Set(["2026-10-07"])), null);
+  assert.equal(dailyDueOf("tower", d("2026-10-08T00:30:00Z"), new Set(["2026-10-07"])), null); // 날이 바뀌면 다음 날 시각까지
+  const lines = [
+    { t: "2026-10-07T01:00:30Z", kind: "control-wake", op: "deliver", role: "tower", daily: true },
+    { t: "2026-10-07T01:15:30Z", kind: "control-wake", op: "deliver", role: "occ" },
+  ];
+  assert.deepEqual([...dailyDaysOf(lines, "tower")], ["2026-10-07"]);
+  assert.deepEqual([...dailyDaysOf(lines, "occ")], []); // 점검 턴이 아닌 깨움은 세지 않는다
+});
+
+test("점검 턴의 글: 지난 24시간의 깨움과 오래 열린 일, 역할마다 적는 방법(MCC·REVIEW는 DECISION 카드 없음), 같은 검사를 통과한다", () => {
+  const now = Date.parse("2026-10-07T01:00:30Z");
+  const t = (h: number) => new Date(now - h * 3_600_000).toISOString();
+  const lines = [
+    { t: t(30), kind: "control-wake", op: "deliver", id: "W-0001", role: "tower", msgId: "old", menu: false, events: [{ kind: "overdue" }] },
+    { t: t(5), kind: "control-wake", op: "deliver", id: "W-0010", role: "tower", msgId: "a", menu: true, events: [{ kind: "overdue" }, { kind: "overdue" }], flights: ["ATC-9"] },
+    { t: t(4.9), kind: "control-wake", op: "result", role: "tower", msgId: "a", result: "acted" },
+    { t: t(2), kind: "control-wake", op: "deliver", id: "W-0011", role: "tower", msgId: "b", menu: false, events: [{ kind: "event:unable" }] },
+    { t: t(1.9), kind: "control-wake", op: "result", role: "tower", msgId: "b", result: "nothing" },
+    { t: t(1), kind: "control-wake", op: "missed", role: "tower" },
+    { t: t(3), kind: "control-wake", op: "deliver", id: "W-0012", role: "occ", msgId: "c", menu: false, events: [] },
+  ];
+  const open = { k: { first: t(3), kind: "second-silence", text: "no answer to C-7", flights: [], menu: false, woke: t(2.5), wakeId: "W-0011" }, j: { first: t(0.5), kind: "x", text: "young", flights: [], menu: false } };
+  const dg = dailyDigestOf(lines, "tower", now, open);
+  assert.equal(dg.summary, "2 event wakes · acted 1 · nothing 1 · no result line 0 · missed events 1 · menu-only wakes 1");
+  assert.deepEqual(dg.wakes, ["W-0011 23:00Z nothing: event:unable", "W-0010 20:00Z acted: overdue ×2 (ATC-9)"]);
+  assert.deepEqual(dg.open, ["second-silence: no answer to C-7 (since 22:00Z, woken W-0011)"]);
+  for (const role of WAKE_ROLES) {
+    const text = dailyPromptOf({ role, wakeId: "W-0099", day: "2026-10-07", digest: dg });
+    const name = role.toUpperCase();
+    assert.match(text, new RegExp(`^\\[ATC WAKE W-0099\\] ${name}\\nDaily review turn \\(ATC-557\\)`));
+    assert.match(text, new RegExp(`tick ${role} --wake W-0099`));
+    assert.equal(/DECISION card/.test(text), role === "tower" || role === "occ", role);
+    const c = checkControlWake({ wakeId: "W-0099", role: name, session: { id: "s", name }, expectedName: name, text, mode: "wake", launchedWake: false, now });
+    assert.equal(c.ok, true, role);
+  }
+  assert.match(dailyPromptOf({ role: "mcc", wakeId: "W-0099", day: "2026-10-07", digest: dg }), /`mcc escalate` only for a PR/);
+});
+
+test("수: 점검 턴은 깨움과 따로 — 그 결과 nothing은 오작동 '할 일 없이 깨움'이 아니다", () => {
+  const t = (min: number) => new Date(at(min)).toISOString();
+  const c = wakeCountsOf(
+    [
+      { t: t(1), kind: "control-wake", op: "deliver", role: "review", menu: false, daily: true },
+      { t: t(2), kind: "control-wake", op: "result", role: "review", result: "nothing", daily: true },
+      { t: t(3), kind: "control-wake", op: "deliver", role: "review", menu: false },
+      { t: t(4), kind: "control-wake", op: "result", role: "review", result: "nothing" },
+      { t: t(5), kind: "control-wake", op: "deliver", role: "tower", daily: true },
+      { t: t(6), kind: "control-wake", op: "result", role: "tower", result: "acted", daily: true },
+    ],
+    at(10),
+  );
+  assert.deepEqual([c.roles.review.daily, c.roles.review.dailyNothing, c.roles.review.wakes, c.roles.review.nothing], [1, 1, 1, 1]);
+  assert.deepEqual([c.total.daily, c.total.dailyActed, c.total.dailyNothing, c.total.wakes, c.total.nothing, c.total.acted], [2, 1, 1, 1, 1, 0]);
 });

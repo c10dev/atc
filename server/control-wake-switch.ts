@@ -1,11 +1,11 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.ts";
-import { parseWakeSwitch, ROLE_NAME, WAKE_ROLES, type WakeMode, type WakeRole, type WakeSwitch } from "./control-wake.ts";
+import { type DailyMode, parseWakeDaily, parseWakeSwitch, ROLE_NAME, WAKE_ROLES, type WakeMode, type WakeRole, type WakeSwitch } from "./control-wake.ts";
 import { readRecords, record } from "./recorder.ts";
 import { type Breaker, type BreakerScope, breakerOf } from "./server-send.ts";
 
-// CONTROL WAKE 스위치(ATC-557)의 파일: ~/.local/state/atc/control-wake.json { roles: { tower, occ, mcc } } (원자적으로 바꿔 쓴다).
+// CONTROL WAKE 스위치(ATC-557)의 파일: ~/.local/state/atc/control-wake.json { roles: { tower, occ, mcc, review }, daily: "on"|"off" } (원자적으로 바꿔 쓴다).
 // SUPERVISOR만 설정 창에서 바꾼다(server/switches/control-wake-*.ts). 바꾸면 FLIGHT RECORDER에 policy control-wake-mode 한 줄(BREAKER가 그 역할을 처음부터 센다).
 // session-control.ts(LAUNCH의 첫 프롬프트)도 읽으므로 이 파일은 control-wake-run.ts를 가져오지 않는다(순환 없음)
 
@@ -32,6 +32,28 @@ export function saveWakeMode(role: WakeRole, v: WakeMode, by = "SUPERVISOR", fil
   writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
   renameSync(tmp, file);
   if (file === FILE()) record({ t: new Date().toISOString(), kind: "policy", op: "control-wake-mode", by, role, from: cur[role], to: v });
+}
+
+// 하루 한 번 점검 턴(ATC-557 d)의 스위치. 바꾸면 policy control-wake-daily 한 줄(깨움 BREAKER는 그대로 — 그 줄은 control-wake-mode만 본다)
+export function loadWakeDaily(file = FILE()): DailyMode {
+  try {
+    return parseWakeDaily(JSON.parse(readFileSync(file, "utf8")));
+  } catch {
+    return parseWakeDaily(null);
+  }
+}
+export function saveWakeDaily(v: DailyMode, by = "SUPERVISOR", file = FILE()) {
+  const cur = loadWakeDaily(file);
+  if (cur === v) return;
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch {}
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...raw, daily: v }, null, 2) + "\n");
+  renameSync(tmp, file);
+  if (file === FILE()) record({ t: new Date().toISOString(), kind: "policy", op: "control-wake-daily", by, from: cur, to: v });
 }
 
 // 역할마다 깨움 BREAKER(ATC-562 BREAKER와 같은 규칙, 범위만 다르다): 그 역할의 깨움이 대화 기록에 보이지 않으면 그 역할만 멈춘다. 팀 FLIGHT PLAN은 상관없다

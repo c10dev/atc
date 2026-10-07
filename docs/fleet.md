@@ -656,7 +656,7 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
 | REVIEW | `review/` | `claude --bg` | `/loop 10m /tick` | `--strict-mcp-config` |
 | ENGINEERING | repository root | badge only | | |
 
-- **First message under CONTROL WAKE** (ATC-557). TOWER, OCC and MCC take the first message from their CONTROL WAKE switch: `wake` (the default) launches with `[ATC WAKE BOOT] <ROLE>` (one pass, then idle until the server wakes the session; no `/loop`), `loop` launches with the `/loop` line in the table. The `control launch` line records `wake: true|false`, and a session launched in the other mode is relaunched once at a safe moment ([control-recycle.md](control-recycle.md) 7). REVIEW is unchanged.
+- **First message under CONTROL WAKE** (ATC-557). TOWER, OCC and MCC take the first message from their CONTROL WAKE switch: `wake` (the default) launches with `[ATC WAKE BOOT] <ROLE>` (one pass, then idle until the server wakes the session; no `/loop`), `loop` launches with the `/loop` line in the table. The `control launch` line records `wake: true|false`, and a session launched in the other mode is relaunched once at a safe moment ([control-recycle.md](control-recycle.md) 7). REVIEW does the same since part (d) (`[ATC WAKE BOOT] REVIEW` or `/loop 10m /tick`, [control-recycle.md](control-recycle.md) 10); CROSSCHECK is retired and not launched.
 
 - **Badge.** `BG <id>` (a background session), `tmux <session>` (a session in a tmux pane), `interactive` (open elsewhere, e.g. Claude Desktop) or `not running`. Added after 2026-09-28, when CROSSCHECK was down and nothing on the screen showed it.
 
