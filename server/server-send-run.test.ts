@@ -1,6 +1,6 @@
 import { hermeticRoot } from "./test-hermetic.ts";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { config } from "./config.ts";
@@ -8,7 +8,7 @@ import { contentHashOf, sealWorkOrder } from "./input-binding.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals, append, type Op } from "./proposals.ts";
 import { readRecords } from "./recorder.ts";
-import type { CheckedSend } from "./send-checks.ts";
+import { type CheckedSend, checkSend } from "./send-checks.ts";
 import { type PassDeps, saveServerSendSwitch, serverOwnsWhy, serverSendPass } from "./server-send-run.ts";
 import { type DeliverResult, transcriptOf } from "./session-socket.ts";
 
@@ -138,6 +138,11 @@ test("닿지 않음(c): 쓰기 실패면 undelivered로 approved, 1분 뒤 세�
   await serverSendPass(snap(c), d);
   assert.equal(calls.length, 2); // 더 하지 않는다
   assert.equal(serverOwnsWhy(prop(c.id), snap(c), clock), null);
+  // OCC가 넘겨받아 보낸다: send에 via가 없으면 앞 발송의 server 길을 물려받지 않고, OCC의 send-guard 검사가 통과한다
+  assert.equal(prop(c.id).sentVia, undefined);
+  append([{ op: "send", id: c.id, at: new Date(clock).toISOString(), message: textOf(c.id) }]);
+  assert.deepEqual([prop(c.id).status, prop(c.id).sentVia], ["sent", undefined]);
+  assert.equal(await checkSend({ to: "TEAM_U", message: `[DISPATCH ${c.id}]` }, async () => ({ proposal: prop(c.id), mode: "approval" }), "occ"), null);
 });
 
 test("release 409: 서버 job이 살아 있고 서버가 보낼 카드면 OCC는 보내지 않는다. 스위치 off면 OCC", async () => {
@@ -176,4 +181,26 @@ test("send를 적고 쓰기 전에 서버가 멈춘 카드는 1분 뒤 undeliver
   await serverSendPass(snap(), deps().d);
   assert.deepEqual([prop(c.id).status, prop(c.id).undelivered?.n], ["approved", 1]);
   assert.deepEqual(lines(c.id).map((l) => [l.op, l.stage]), [["failed", "crash"]]);
+});
+
+test("확인: 바쁜 세션은 60분까지 기다리고, 끝난 세션(gone)은 멈춤에 세지 않는다", async () => {
+  clock = T0 + 400 * 60_000;
+  // 앞 시험이 남긴 멈춤을 SUPERVISOR처럼 스위치를 껐다 켜서 푼다
+  saveServerSendSwitch("first", "off");
+  saveServerSendSwitch("first", "on");
+  const busy = card("TEAM_Q");
+  const file = join(claude, "sessions", `${50_000 + n}.json`);
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), status: "busy" }));
+  const { d } = deps([{ ok: true, msgId: "m-busy", pid: 1, configDir: claude, cwd: "/nowhere" }]);
+  await serverSendPass(snap(busy), d);
+  append([{ op: "accept", id: busy.id, at: new Date(clock + 60_000).toISOString() }]); // 답이 와서 재송신은 없다
+  clock += 20 * 60_000;
+  await serverSendPass(snap(busy), d);
+  assert.deepEqual(lines(busy.id).map((l) => l.op), ["deliver"]); // 아직 기다린다
+  rmSync(file); // 세션이 끝났다
+  await serverSendPass(snap(), d);
+  assert.deepEqual(lines(busy.id).map((l) => [l.op, l.seen, l.why]), [["deliver", undefined, undefined], ["confirm", false, "gone"]]);
+  const next = card("TEAM_P");
+  await serverSendPass(snap(next), deps().d);
+  assert.equal(prop(next.id).sentVia, "server"); // 멈추지 않았다
 });

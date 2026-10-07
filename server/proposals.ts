@@ -418,6 +418,7 @@ export function fold(ops: Op[]): Proposal[] {
       delete p.standbyAt;
       delete p.standbys;
       delete p.awaitSupervisor;
+      delete p.sentVia; // 보낸 길은 그 발송의 것이다(ATC-562): 다음 send가 제 길을 적는다. 남기면 OCC가 다시 보낸 카드가 server로 읽혀 막힌다
       p.undelivered = { at: o.at, reason: o.reason, n: (p.undelivered?.n ?? 0) + 1, cause: causeOf(o.reason, o.cause) };
       continue;
     }
@@ -449,6 +450,7 @@ export function fold(ops: Op[]): Proposal[] {
     if (o.op === "send") {
       p.message = o.message;
       if (o.via) p.sentVia = o.via;
+      else delete p.sentVia; // OCC의 send: 앞 발송의 길(server·fresh-start)을 물려받지 않는다
     }
     if (o.op === "recall") {
       p.recallReason = o.reason;

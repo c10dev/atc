@@ -565,7 +565,7 @@ PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다.
 
 - **`sentVia: "server"`.** 서버는 `send`를 `via: "server"`로 적고, 접은 제안에는 `sentVia: "server"`가 붙는다. 이 카드의 `dispatch release`는 `fresh-start`처럼 409다. 문구가 OCC에게 알려 주는 것: 서버가 overdue 뒤 한 번 다시 보낼지 이미 다시 보냈는지, `resend`가 off면 overdue 카드는 SUPERVISOR에게 간다는 것. guard도 이 카드의 OCC `SendMessage`를 막는다.
 - **승인된 카드.** 서버 job이 3분 안에 돌았고 `first` 스위치(닿지 않은 시도가 한 번 있는 카드는 `retry`)가 켜져 있으면, 서버가 보낼 수 있는 카드의 `release`는 409 `atc 서버가 이 FLIGHT PLAN을 보낸다 …`다. 서버가 보낼 수 있는 카드란, 막음(GROUND STOP, RESTARTING, LAUNCH 기다림, 살아 있는 세션 없음, ACCOUNT 불일치)이 없는 승인된 launch 아닌 ASSIGN이고 그 AIRCRAFT에 쓸 수 있는 background 세션이 있는 것이다. 그 밖의 승인된 카드는 전처럼 OCC가 release한다.
-- **닿지 않음.** 지금의 `undelivered` op(ATC-183)를 적는 경우는 넷이다: 서버의 쓰기 실패, `send`를 적은 뒤 검사가 막은 것, 재송신 때 살아 있는 세션이 없는 것, 1분이 지나도 발송 줄이 없는 `send`. 카드는 `approved`로 돌아가고 FOLLOWING이 `undelivered`를 올린다. 서버는 한 번 다시 시도한다(`undelivered.n` 1, 1분 뒤부터, 살아 있는 background 세션이 있을 때). 두 번째 실패는 OCC에게 넘기고(`release`가 다시 된다) `server-send handback`으로 기록한다.
+- **닿지 않음.** 지금의 `undelivered` op(ATC-183)를 적는 경우는 넷이다: 서버의 쓰기 실패, `send`를 적은 뒤 검사가 막은 것, 재송신 때 살아 있는 세션이 없는 것, 1분이 지나도 발송 줄이 없는 `send`. 카드는 `approved`로 돌아가고 FOLLOWING이 `undelivered`를 올린다. `undelivered`는 `sentVia`도 지우고, `via` 없는 `send`(OCC의 것)도 지운다. 그래서 OCC가 넘겨받은 카드가 서버가 보낸 카드로 읽히지 않는다. 서버는 한 번 다시 시도한다(`undelivered.n` 1, 1분 뒤부터, 살아 있는 background 세션이 있을 때). 두 번째 실패는 OCC에게 넘기고(`release`가 다시 된다) `server-send handback`으로 기록한다.
 - **READBACK.** 그대로다. CAPTAIN은 이름 "OCC"로 답하고(FLIGHT PLAN의 주소 줄), OCC가 `dispatch readback`으로 기록한다.
 
 ## SUPERVISOR RELAY와 이슈 댓글 구현 내용(ATC-271)

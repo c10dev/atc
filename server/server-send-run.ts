@@ -16,7 +16,7 @@ import { regKey } from "./registration.ts";
 import { type CheckedSend, checkServerSend, READBACK_OVERDUE_MS, type SendPurpose, serverRepeatWhy } from "./send-checks.ts";
 import {
   approvedPurposeOf,
-  CONFIRM_WITHIN_MS,
+  confirmOf,
   crashedOf,
   freshRefusal,
   parseServerSendSwitch,
@@ -62,7 +62,11 @@ export function saveServerSendSwitch(key: ServerSendKey, v: "on" | "off", by = "
 let lastPassAt: number | null = null;
 export const serverSendLive = (now = Date.now()) => serverLiveOf(lastPassAt, now);
 const configDirs = () => accountFolders().map((f) => f.dir);
-const recentLines = (now: number) => readRecords(now - 2 * DAY) as unknown as ({ t: string; kind: string; op?: string } & Record<string, unknown>)[];
+type AnyLine = { t: string; kind: string; op?: string } & Record<string, unknown>;
+const recentLines = (now: number) => readRecords(now - 2 * DAY) as unknown as AnyLine[];
+// 멈춤(프로토콜 확인)은 스위치를 바꿀 때까지 간다: FLIGHT RECORDER 보관 기간(30일) 전체를 본다. 패스와 화면이 같은 창을 쓴다
+const SUSPEND_DAYS = 30;
+const suspensionNow = (now: number) => suspendedOf(readRecords(now - SUSPEND_DAYS * DAY) as unknown as AnyLine[]);
 
 // release와 같은 막음(GROUND STOP, RESTARTING, LAUNCH 카드, 세션 없음, ACCOUNT 불일치). 막히면 사유 — 서버도 OCC도 보내지 않는다
 function blockOf(p: Proposal, s: Snapshot, tp: string): string | null {
@@ -100,9 +104,10 @@ export function serverOwnsWhy(p: Proposal, s: Snapshot, now = Date.now()): strin
   if (cfg.mode !== "approval") return null;
   const pur = approvedPurposeOf(p, loadServerSendSwitch(), now, false);
   if ("skip" in pur) return null;
-  if (suspendedOf(recentLines(now)).suspended) return null;
+  if (suspensionNow(now).suspended) return null;
   if (blockOf(p, s, cfg.teamPattern)) return null; // release가 제 사유로 409를 준다
-  if (!recipientOf(p, s, cfg.teamPattern).ok) return null;
+  const rcpt = recipientOf(p, s, cfg.teamPattern);
+  if (!rcpt.ok || rcpt.session.name !== p.aircraftName) return null;
   return `atc 서버가 이 FLIGHT PLAN을 보낸다(ATC-562 SERVER SEND ${pur.purpose}, sentVia server) — OCC는 release하지 않는다. 서버가 보내지 못하면 카드가 approved로 남아 OCC에게 돌아온다`;
 }
 
@@ -180,10 +185,12 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
   let lines = recentLines(now);
 
   // ① 확인: 쓴 발송이 받는 세션의 대화 기록에 보이나(쓰기 성공은 닿았다는 증거가 아니다 — 받는 쪽은 틀린 키도 조용히 받거나 버린다)
+  // 바쁜 세션은 턴이 끝날 때 받으므로 idle일 때만 10분으로 판정하고, 바쁘면 60분까지 기다린다. 세션이 끝났으면 gone(멈춤에 세지 않는다)
   for (const d of unconfirmedOf(lines)) {
-    const age = now - Date.parse(d.t);
     const seen = d.transcript ? transcriptHas(d.transcript, d.msgId) : false;
-    if (seen || age > CONFIRM_WITHIN_MS) record({ t: iso(now), kind: "server-send", op: "confirm", id: d.id, msgId: d.msgId, sessionId: d.sessionId, seen });
+    const rec = seen ? null : findSessionRecord(d.sessionId, configDirs());
+    const c = confirmOf({ seen, ageMs: now - Date.parse(d.t), session: seen ? "idle" : !rec ? "gone" : rec.status === "busy" ? "busy" : "idle" });
+    if (c) record({ t: iso(now), kind: "server-send", op: "confirm", id: d.id, msgId: d.msgId, sessionId: d.sessionId, ...c });
   }
   // ② send를 적고 쓰기 전에 멈춘 카드: 10분 기다리지 않고 undelivered로 돌린다
   for (const p of allProposals()) {
@@ -193,7 +200,7 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
   }
   if (cfg.mode !== "approval") return out;
   lines = recentLines(now);
-  if (suspendedOf(lines).suspended) return out; // 프로토콜 확인 실패: OCC에게 넘김(release가 409를 주지 않는다)
+  if (suspensionNow(now).suspended) return out; // 프로토콜 확인 실패: OCC에게 넘김(release가 409를 주지 않는다)
   const sw = loadServerSendSwitch();
   const refuse = (id: string, purpose: SendPurpose, sessionId: string | null, textHash: string | null, check: string) => {
     if (freshRefusal(lines, id, check)) record({ t: iso(now), kind: "server-send", op: "refused", id, purpose, sessionId, textHash, check });
@@ -244,6 +251,11 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
       continue;
     }
     const session = { id: rcpt.session.id, name: rcpt.session.name };
+    // 세션 이름이 제안의 CAPTAIN과 다르면 검사가 막는다: 30초마다 문구(Linear 읽기)를 만들지 않고 OCC에게 둔다(release도 409를 주지 않는다)
+    if (session.name !== p.aircraftName) {
+      out.skipped++;
+      continue;
+    }
     const prior = priorDeliveriesOf(lines, p.id);
     const message = await (deps.message ?? flightPlanMessageOf)(p, s);
     const at = iso(deps.now?.() ?? Date.now());
@@ -274,7 +286,7 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
 
 // 설정 창 SERVER SEND 블록의 자료: 날마다의 수, 서버 job이 살아 있나, 멈춤(프로토콜 확인)
 export function serverSendData(now = Date.now()) {
-  const lines = readRecords(now - 8 * DAY) as unknown as ({ t: string; kind: string; op?: string } & Record<string, unknown>)[];
-  const h = suspendedOf(lines);
+  const lines = readRecords(now - 8 * DAY) as unknown as AnyLine[];
+  const h = suspensionNow(now);
   return { ...serverSendCountsOf(lines, now, 7), live: serverSendLive(now), lastPassAt: lastPassAt ? iso(lastPassAt) : null, suspended: h.suspended, suspendedWhy: h.why };
 }

@@ -55,7 +55,7 @@ export type ServerSendLine =
   | { t: string; kind: "server-send"; op: "deliver"; id: string; purpose: SendPurpose; sessionId: string; session: string; pid: number; textHash: string; check: "pass"; msgId: string; transcript: string | null; wrong: string[] }
   | { t: string; kind: "server-send"; op: "refused"; id: string; purpose: SendPurpose; sessionId: string | null; textHash: string | null; check: string }
   | { t: string; kind: "server-send"; op: "failed"; id: string; purpose: SendPurpose; sessionId: string | null; textHash: string | null; check: "pass" | "n/a"; stage: string; why: string }
-  | { t: string; kind: "server-send"; op: "confirm"; id: string; msgId: string; sessionId: string; seen: boolean }
+  | { t: string; kind: "server-send"; op: "confirm"; id: string; msgId: string; sessionId: string; seen: boolean; why?: "idle" | "timeout" | "gone" }
   | { t: string; kind: "server-send"; op: "handback"; id: string; why: string };
 type Line = { t: string; kind: string; op?: string } & Record<string, unknown>;
 const sendLines = (lines: readonly Line[]) => lines.filter((l): l is Line & ServerSendLine => l.kind === "server-send");
@@ -101,6 +101,17 @@ export function unconfirmedOf(lines: readonly Line[]): (ServerSendLine & { op: "
   return sendLines(lines).filter((l): l is ServerSendLine & { op: "deliver" } => l.op === "deliver" && !done.has(l.msgId));
 }
 
+// 쓴 발송을 확인할 때(순수). seen이면 보임. 아니면: 받는 세션이 idle인데 10분이 지났으면 안 보임(idle 세션은 줄 선 글을 이미 받았어야 한다),
+// 바쁜 세션은 턴이 끝날 때 받으므로 60분까지 기다린다, 세션이 끝났으면 gone(프로토콜 탓이 아니라 멈춤에 세지 않는다). null이면 아직 기다린다
+export const CONFIRM_CAP_MS = 60 * 60_000;
+export function confirmOf(x: { seen: boolean; ageMs: number; session: "idle" | "busy" | "gone" }): { seen: boolean; why?: "idle" | "timeout" | "gone" } | null {
+  if (x.seen) return { seen: true };
+  if (x.session === "gone") return x.ageMs > CONFIRM_WITHIN_MS ? { seen: false, why: "gone" } : null;
+  if (x.session === "idle" && x.ageMs > CONFIRM_WITHIN_MS) return { seen: false, why: "idle" };
+  if (x.ageMs > CONFIRM_CAP_MS) return { seen: false, why: "timeout" };
+  return null;
+}
+
 // 프로토콜 확인(ATC-562): 스위치를 마지막으로 바꾼 뒤 마지막 확인이 "안 보임"이면 서버 발송을 멈추고 OCC에게 넘긴다.
 // Claude Code가 소켓 길을 바꿔 쓰기는 되는데 글이 닿지 않는 경우를 잡는다. SUPERVISOR가 스위치를 껐다 켜면 다시 시도한다
 export function suspendedOf(lines: readonly Line[]): { suspended: boolean; why: string | null } {
@@ -108,8 +119,8 @@ export function suspendedOf(lines: readonly Line[]): { suspended: boolean; why: 
   lines.forEach((l, i) => {
     if (l.kind === "policy" && l.op === "server-send-mode") since = i;
   });
-  const last = sendLines(lines.slice(since + 1)).filter((l) => l.op === "confirm").at(-1);
-  if (last?.op === "confirm" && !last.seen) return { suspended: true, why: `${last.id}의 발송(${last.t})이 ${CONFIRM_WITHIN_MS / 60_000}분 안에 받는 세션의 대화 기록에 보이지 않음 — 서버 발송을 멈추고 OCC에게 넘김(스위치를 껐다 켜면 다시 시도)` };
+  const last = sendLines(lines.slice(since + 1)).filter((l) => l.op === "confirm" && l.why !== "gone").at(-1);
+  if (last?.op === "confirm" && !last.seen) return { suspended: true, why: `${last.id}의 발송(확인 ${last.t})이 받는 세션의 대화 기록에 보이지 않음 — 서버 발송을 멈추고 OCC에게 넘김(스위치를 껐다 켜면 다시 시도)` };
   return { suspended: false, why: null };
 }
 
@@ -146,7 +157,7 @@ export function serverSendCountsOf(lines: readonly Line[], now: number, days = 7
       d.refused++;
       reasons.set(l.check, (reasons.get(l.check) ?? 0) + 1);
     } else if (l.op === "failed") d.failed++;
-    else if (l.op === "confirm" && !l.seen) d.unseen++;
+    else if (l.op === "confirm" && !l.seen && l.why !== "gone") d.unseen++;
     else if (l.op === "handback") d.handback++;
   }
   for (const x of twiceOf(all.flatMap((l) => (l.op === "deliver" ? [{ t: l.t, id: l.id, sessionId: l.sessionId, purpose: l.purpose }] : [])))) {

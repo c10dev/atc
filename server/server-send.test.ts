@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { approvedPurposeOf, crashedOf, freshRefusal, parseServerSendSwitch, serverSendCountsOf, suspendedOf, twiceOf, wrongOf } from "./server-send.ts";
+import { approvedPurposeOf, confirmOf, crashedOf, freshRefusal, parseServerSendSwitch, serverSendCountsOf, suspendedOf, twiceOf, wrongOf } from "./server-send.ts";
 
 // ATC-562 SERVER SEND의 순수 판단: 스위치, 첫 발송·재시도, 잘못 보냄·두 번 보냄, 확인 멈춤, 날마다의 수
 const NOW = Date.parse("2026-10-07T12:00:00.000Z");
@@ -81,4 +81,16 @@ test("날마다의 수: 보냄·잘못 보냄·두 번 보냄·거절(사유별)
   assert.deepEqual(c.total, { delivered: 2, wrong: 1, twice: 1, refused: 3, failed: 1, unseen: 1, handback: 1 });
   assert.deepEqual(c.reasons, [{ reason: "a", n: 2 }, { reason: "b", n: 1 }]);
   assert.deepEqual(serverSendCountsOf([], NOW, 7).total, { delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0 });
+});
+
+test("확인 판정: 보이면 seen, idle은 10분, 바쁘면 60분까지 기다림, 끝난 세션은 gone", () => {
+  const M = 60_000;
+  assert.deepEqual(confirmOf({ seen: true, ageMs: 1, session: "busy" }), { seen: true });
+  assert.equal(confirmOf({ seen: false, ageMs: 9 * M, session: "idle" }), null);
+  assert.deepEqual(confirmOf({ seen: false, ageMs: 11 * M, session: "idle" }), { seen: false, why: "idle" });
+  assert.equal(confirmOf({ seen: false, ageMs: 59 * M, session: "busy" }), null);
+  assert.deepEqual(confirmOf({ seen: false, ageMs: 61 * M, session: "busy" }), { seen: false, why: "timeout" });
+  assert.deepEqual(confirmOf({ seen: false, ageMs: 11 * M, session: "gone" }), { seen: false, why: "gone" });
+  const L = (op: string, rest: Record<string, unknown>) => ({ t: iso(1), kind: "server-send", op, id: "D-1", ...rest });
+  assert.equal(suspendedOf([L("confirm", { seen: false, why: "gone" })]).suspended, false);
 });

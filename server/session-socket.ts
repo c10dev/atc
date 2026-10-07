@@ -24,6 +24,7 @@ export interface SessionRecord {
   cwd?: string;
   messagingSocketPath?: string;
   peerProtocol?: number;
+  status?: string; // busy | idle (확인할 때 받는 세션이 턴 중인지)
   configDir: string; // 읽은 설정 폴더(ACCOUNT). 키 파일은 같은 폴더에 있다
 }
 
@@ -49,6 +50,7 @@ export function findSessionRecord(sessionId: string, configDirs: readonly string
           ...(typeof r.cwd === "string" ? { cwd: r.cwd } : {}),
           ...(typeof r.messagingSocketPath === "string" ? { messagingSocketPath: r.messagingSocketPath } : {}),
           ...(typeof r.peerProtocol === "number" ? { peerProtocol: r.peerProtocol } : {}),
+          ...(typeof r.status === "string" ? { status: r.status } : {}),
           configDir: dir,
         };
       } catch {}
