@@ -1385,6 +1385,8 @@ export function deliveryMapOf(s: Pick<Snapshot, "sessions">, proposals: Pick<Pro
 export interface DispatchLauncher {
   max: number;
   launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string; wait?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
+  // 자동 FRESH START(ATC-560, fresh-start-run.ts autoFreshStartGate): 승인된 카드를 보내기 전에 부른다. 문구를 돌려주면 보내지 않고 409로 그것을 말한다
+  beforeRelease?: (p: Proposal, s: Snapshot) => Promise<string | null>;
 }
 
 // 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
@@ -1628,6 +1630,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         const stop = p.airport ? enforcedStops((await getSnapshot()).atfm?.groundStops ?? []).get(p.airport) : undefined;
         if (stop) return c.json({ error: `${groundStopWhy(stop)} — 풀릴 때까지 보내지 않는다` }, 409);
         const s = await getSnapshot();
+        // 자동 FRESH START(ATC-560): 이 세션이 이미 FLIGHT를 날았고 AIRPORT 스위치가 켜져 있으면 서버가 새 세션의 첫 프롬프트로 보낸다(OCC는 보내지 않는다)
+        const fresh = launcher?.beforeRelease ? await launcher.beforeRelease(p, s).catch((e: Error) => (console.error("[atc] auto FRESH START gate failed:", e), null)) : null;
+        if (fresh) return c.json({ error: fresh }, 409);
         // /clear 뒤 첫 메시지를 기다리는 AIRCRAFT에는 아직 받을 세션이 없다(ATC-91). 승인은 그대로 두고 새 세션이 뜬 뒤에 보낸다
         const waits = restartingWhyOf(p, s, loadDispatchConfig().teamPattern) ?? launchReleaseWhyOf(p, s, loadDispatchConfig().teamPattern) ?? noLiveSessionWhyOf(p, s, loadDispatchConfig().teamPattern) ?? crossAccountWhyOf(p, s, loadDispatchConfig().teamPattern);
         if (waits) return c.json({ error: waits }, 409);

@@ -1018,8 +1018,28 @@ REFRESH는 AIRCRAFT가 쉬는 동안에만 나와서, 배정이 먼저 오면 RE
 
 - **내는 조건**(`freshStartVerdictOf`, 순수, `server/fresh-start.ts`): AIRCRAFT의 살아 있는 세션이 **백그라운드**다(데스크톱·터미널·모름은 멈추지 않는다. 사유를 보인다). 대화가 REFRESH 기준(`refreshTokens` 300k, 창을 알면 `refreshPct`, REFRESH와 같은 `overRefreshThreshold`)을 넘었다. 끝나지 않은 FLIGHT의 STAND가 없다(ARRIVED한 FLIGHT의 STAND는 괜찮다). AIRCRAFT가 idle(턴 중 아님)이고 RETIRED·AOG가 아니다. 아니면 DISPATCH 카드는 버튼 없이 사유만 보인다.
 - **순서**(`runFreshStart`): STOP(8.5, 세션이 `claude agents`에서 빠질 때까지 기다림), 이어서 `launchAircraft`로 LAUNCH — `launchPlanOf`, 상한, ACCOUNT 규칙, LAUNCH MODEL이 다른 LAUNCH와 똑같이 걸리고 permission mode·모델은 마지막 LAUNCH와 같다 — 첫 프롬프트는 CREW BRIEFING, 구분선, FLIGHT PLAN. 제안은 LAUNCH가 성공한 뒤에야 보낸 것으로 센다. STOP이 실패하면 아무 일도 없다. LAUNCH가 거절되면 세션은 멈춘 채고 제안은 `approved` 그대로다(보낸 것이 없다): FLEET 카드에서 LAUNCH하거나 카드를 CANCEL한다.
-- **SUPERVISOR만.** LAUNCH와 같은 Origin 검사(`fromThisApp`). 관제 세션의 CLI에는 없다(403). 자동으로 하지 않는다: FLEET PLAN이 제안하지도 실행하지도 않는다.
+- **SUPERVISOR의 버튼, 그리고 ATC-560부터 자동.** 버튼은 LAUNCH와 같은 Origin 검사(`fromThisApp`)를 지킨다. 관제 세션의 CLI에는 없다(403). FLEET PLAN은 제안하지도 실행하지도 않는다. ATC-560부터는 AIRPORT의 FRESH START 스위치가 그렇게 말하면 서버가 스스로 한다(아래 "자동 FRESH START 만든 것 (ATC-560)").
 - **기록.** STOP과 LAUNCH는 늘 쓰던 FLIGHT RECORDER `fleet` 줄(`op: "stop"`, `op: "launch"`, LAUNCH에는 `proposal`)이다. FRESH START는 `dispatch` 줄 `{op: "fresh-start", id, via: "fresh-start", flight, aircraft, by, stage: "stop" | "launch" | "send", ok, jobId, error}`를 더하고, `send` 줄에 `via`가 붙는다.
+
+### 자동 FRESH START 만든 것 (ATC-560)
+
+이미 FLIGHT를 날은 세션은 그 대화를 다음 FLIGHT로 들고 간다. 2026-10-06까지 7일의 atc 자료(TEAM 세션 58개, FLIGHT 145개): 세션의 첫 FLIGHT는 컨텍스트 중앙값 51k에서 시작해 5.07M 토큰을 쓰고, 두 번째는 159k에서 6.93M, 세 번째 이후는 316k에서 15.5M을 쓴다. 요청 수는 거의 같다(43, 37, 40). 비용의 약 39 %가 물려받은 컨텍스트다. ATC-560은 배정하는 순간 SUPERVISOR의 클릭 없이 FRESH START를 한다. DISPATCH 쪽은 [dispatch.ko.md](dispatch.ko.md) "자동 FRESH START (ATC-560)".
+
+- **스위치, AIRPORT마다**(상태 폴더의 `fresh-start.json`, 원자적으로 바꿔 쓴다): `off`(전처럼 버튼만), `always`(이미 FLIGHT를 날은 세션을 다시 띄움), `over`(컨텍스트가 `base + 50k`를 넘을 때만). `base`는 세션의 첫 CAPTAIN 요청이다(ATC-69, 약 50k: 시스템 프롬프트·규칙·CREW BRIEFING). 모르면 50k로 보므로 기준은 약 100k다: 첫 FLIGHT의 시작(51k)보다 위, 두 번째 FLIGHT의 시작(159k)보다 아래, REFRESH의 300k보다 한참 아래. 파일이 없거나 읽을 수 없거나, 모르는 값이거나, AIRPORT가 없는 카드는 `off`다. 파일에 없는 AIRPORT는 파일의 `default`를 읽는다. **배포 값은 `always`다**: 배포 뒤 첫 서버 시작에 `migrateFreshStartOnce`가 열린 AIRPORT마다 `always`와 `default: "always"`를 쓰고 `migrated: {id: "ATC-560", at, from}`을 남긴다. 그 기록이 있으면 다시 돌지 않고, 읽을 수 없는 파일은 건드리지 않는다. SUPERVISOR는 설정 창 AUTOMATION → OPERATIONS → **FRESH START**에서 AIRPORT마다 한 줄로 바꾼다(`PUT /api/settings {freshStart: {CODE: mode}}`, `fromThisApp`, `atcctl` 명령 없음).
+- **방아쇠.** OCC가 `approved` ASSIGN(launch 카드가 아님, approval 모드, 걸린 출발 중지 없음)을 `dispatch release`할 때 먼저 게이트(`autoFreshStartGate`, `server/fresh-start-run.ts`)에 묻는다. 판정은 순수 함수(`autoFreshStartOf`, `server/fresh-start-auto.ts`)이고 카드마다 한 번이다.
+- **"이미 FLIGHT를 날았다"**(`flownInSessionOf`): AIRCRAFT의 살아 있는 세션(`Snapshot.sessions`의 `startedAt`)이 시작한 뒤에, 이 AIRCRAFT에 보낸 FLIGHT PLAN(다른 카드, `approved`로 돌아가지 않은 것), 세션 시작 10분 안의, FLIGHT를 말하는 성공한 `fleet` `launch` 줄(`flight`, 또는 FRESH START·launch 카드 LAUNCH 줄이 가진 `proposal`의 카드 FLIGHT)(launch 카드, K3 RELAUNCH, FLIGHT를 붙인 FLEET LAUNCH, 앞선 FRESH START), 또는 세션 시작 뒤에 출발한 그 AIRCRAFT의 LOGBOOK 줄(직접 맡긴 FLIGHT)이 있다. 세션의 첫 FLIGHT는 다시 띄우지 않는다.
+- **다시 띄우지 않음**(skip, 사유 코드): K3 RELAUNCH 카드(C9, ATC-509)의 조건 — RETIRED·AOG(`retired`), 백그라운드 세션이 아님(`not-background`), idle이 아님·RESTARTING·NORDO(`not-idle`), 끝나지 않은 FLIGHT의 STAND(`stand`. ARRIVED한 FLIGHT의 STAND는 버튼처럼 괜찮다), 자기 열린 PR(`open-pr`), LIMIT(`limit`), FUEL hold(`fuel-hold`). `over`에서는 크기를 모름(`context-unknown`), 기준 이하(`under-threshold`)도. 건너뛴 카드는 OCC가 전처럼 보낸다.
+- **순서.** 버튼과 같은 `runFreshStart`(STOP, 사라질 때까지 기다림, 마지막 LAUNCH의 옵션과 CREW BRIEFING + FLIGHT PLAN 첫 프롬프트로 LAUNCH, 그 뒤 `via: "fresh-start"`인 `send`)를 `by: "auto"`로 한다. 뒤에서 돌고, 도는 동안 카드는 서버 메모리에 busy로 표시돼 `dispatch release`는 409 `<AIRCRAFT>: RESTARTING — 자동 FRESH START(ATC-560) 중 …`로 답하고(OCC의 기존 RESTARTING 규칙: 보내지 않고 승인은 그대로, 다음 바퀴에 다시), 세션 없는 승인 카드의 ATC-388 재LAUNCH는 그 카드를 건드리지 않으며, 버튼도 409로 답한다. 끝나면 카드는 `sent`이고 OCC는 보내지 않는다(`sentVia: "fresh-start"`, ATC-73). STOP이 실패하면 세션은 그대로고 다음 `release`가 전처럼 보낸다. LAUNCH가 실패하면 세션은 멈췄고 보낸 것이 없으며, 세션 없는 승인 카드로 ATC-388 길을 간다. 한 카드는 두 번 시도하지 않는다.
+- **기록.** 판정(restart·skip)마다 입력을 담은 FLIGHT RECORDER `dispatch` 줄 하나: `{op: "fresh-start-auto", id, flight, aircraft, by: "auto", airport, mode, decision, code?, why, contextTokens, base, threshold, flown, sessionStartedAt}`. 이 줄 형식은 `server/recorder.ts`를 고치지 않고 `RecordLine`의 `dispatch` 줄에 칸을 더한 것이다. 단계 줄은 버튼의 것(`op: "fresh-start"`, `by: "auto"`), STOP과 LAUNCH는 늘 쓰던 `fleet` 줄(`by: "auto"`)이다.
+- **오작동 수**(설정 창의 스위치 줄 밑, `freshStartMisfiresOf`, 순수), AIRPORT마다 최근 7일: 자동 재시작 수, 사유별 건너뜀, (d) 단계별 실패(stop·launch·send). 기간 안에 한 번 이상 다시 띄운 AIRCRAFT에 대해, 다시 띄운 뒤 보낸 FLIGHT와 다시 띄우지 않고 보낸 FLIGHT를 견준다: (a) BLOCKED·질문(최종 보고의 `BLOCKED`가 `none`이 아니거나 `await-supervisor`), 다시 띄운 FLIGHT가 더 자주 막힌 AIRCRAFT 목록, (b) FLIGHT당 토큰 중앙값(LOGBOOK FUEL, CAPTAIN + CREW, 도착한 FLIGHT만), (c) 재작업(보낸 뒤 그 FLIGHT에 나간 FIX·GO AROUND). 기간 안에 아무 일 없던 AIRPORT는 줄이 없다. 수는 SUPERVISOR가 읽으라고 있고, 어느 것도 스위치를 스스로 바꾸지 않는다.
+- **시험.** `server/fresh-start-auto.test.ts`(스위치 파일, 한 번 올리기, "이미 날았다", 판정: 스위치 값·열린 PR·출발 중지·기준, 오작동 수).
+
+PILOT'S DISCRETION.
+
+- 방아쇠를 타이머 일이 아니라 OCC의 `release` 앞에 두었다. 판정하는 곳이 하나라 OCC가 옛 세션에 FLIGHT PLAN을 먼저 보내는 경합이 없고, 409 문구가 OCC의 RESTARTING 규칙을 다시 쓰므로 관제 매뉴얼은 바뀌지 않는다.
+- ARRIVED한 FLIGHT의 STAND는 막지 않는다(버튼의 규칙). K3 RELAUNCH 카드는 어떤 STAND도 거절하지만, 팀은 머지된 FLIGHT의 STAND를 자주 남겨 두어 그대로 따르면 대부분 건너뛴다. 열린 PR은 여전히 막는다.
+- 판정은 `claude agents`가 아니라 스냅샷의 살아 있는 세션(출처·시작)을 읽는다. `release`가 CLI를 기다리지 않는다.
+- 턴 중인 AIRCRAFT는 기다리지 않고 한 번 건너뛴다: FLIGHT는 지금처럼 배정된다.
 
 ### FOB as built (ATC-81)
 

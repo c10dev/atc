@@ -4,6 +4,7 @@ import { actsOf, type AutoLine, assignWhyNot, countsOf, launchWhyNot, recentLaun
 import { config } from "./config.ts";
 import { approveLaunch, cutHoldWhy, LAUNCH_FAILED_WHY, launchCapOf } from "./dispatch-launch.ts";
 import { type DispatchConfig, loadDispatchConfig } from "./dispatch.ts";
+import { freshStartBusy } from "./fresh-start-busy.ts";
 import { fuelHolds } from "./fuel-remaining.ts";
 import type { Snapshot } from "./model.ts";
 import { isNetworkKind } from "./network-drafts.ts";
@@ -228,6 +229,7 @@ export async function runApprovedRelaunch(s: Snapshot, deps: AutoDeps, now = Dat
       const reg = regOfProposal(p, tp) ?? "";
       if (!reg || s.sessions.some((x) => x.status !== "dead" && regKey(x.name, tp) === reg)) continue; // 세션이 있다: 평소대로 OCC가 보낸다
       if (s.restarting?.some((r) => r.registration === reg)) continue; // /clear 뒤 첫 메시지를 기다리는 중: 기존 유예가 기다린다(ATC-91)
+      if (freshStartBusy(p.id)) continue; // FRESH START가 STOP과 LAUNCH 사이(ATC-73·560): 그 길이 새 세션을 띄운다
       const a = s.absent?.find((x) => x.registration === reg);
       const f = s.fuel?.[reg];
       const jobGone = Boolean(a?.jobGone); // job의 프로세스가 사라져 absent가 된 AIRCRAFT(ATC-534)
