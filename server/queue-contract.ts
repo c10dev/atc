@@ -48,6 +48,7 @@ export const ALERT_CONTRACT: AlertContractRow[] = [
   { family: "following", ends: "the FLIGHT FOLLOWING issue is resolved", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
   { family: "follow|failed", ends: "the GO AROUND is answered, RTS succeeds, or the revert is undone", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
   { family: "control", ends: "the control session is back, the stop check is cleared, or the duplicate job is stopped", endsBy: "controlDownOf", action: "open", screenOnly: false },
+  { family: "control|absent", ends: "the control session is seen again, the SUPERVISOR acknowledges it or marks it false, or the escalation switch is turned off; each repeat replaces the previous key", endsBy: "absentEscalationsNow", action: "open", screenOnly: false },
   { family: "control|wake", ends: "the role is relaunched with /loop, or its wake breaker re-arms", endsBy: "wakeFallbackStuckNow", action: "open", screenOnly: false },
   { family: "host", ends: "memory is back above the limit", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
   { family: "revert", ends: "the SUPERVISOR picks the lane and the AUTO REVERT switch again", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },

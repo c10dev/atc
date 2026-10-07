@@ -103,6 +103,7 @@ import { mountLandingGap } from "./landing-gap-run.ts";
 import { mountStuckUnserved } from "./stuck-unserved-run.ts";
 import { mountLinearCalls } from "./linear-call-run.ts";
 import { mountStopCheck } from "./control-stop-check-run.ts";
+import { mountControlAbsent } from "./control-absent-run.ts";
 import { mountSupervisorQueue, supervisorQueueNow } from "./supervisor-queue-run.ts";
 import { mountNotices } from "./notices-run.ts";
 import { parseTopics, type SupervisorSummary } from "./supervisor-summary.ts";
@@ -375,6 +376,7 @@ provideService("flowDeps", { updateStatus: () => update.status(), alerts: curren
 mountJobLiveness(app); // JOB LIVENESS(ATC-534): 스위치·수·최근 줄(읽기)
 mountLinearCalls(app); // LINEAR CALL(ATC-561): 구간·원인별 실패·복구·포기 수(읽기)와 atcctl의 시도 기록 받기
 mountStopCheck(app); // CONTROL STOP CHECK(ATC-521): 스위치·수·열린 중복·최근 결정(읽기)과 오탐 표시(SUPERVISOR 화면만)
+mountControlAbsent(app); // CONTROL ABSENT(ATC-532): 설정·수·열린 없음·날마다 없던 분(읽기)과 알림 확인·오탐 표시(SUPERVISOR 화면만)
 mountLandingGap(app); // 착륙 간격 규칙(ATC-501): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountStuckUnserved(app); // 막힘 알림 새 문구(ATC-522): 스위치와 쓴 알림 수(읽기만)
 mountJobTiming(app); // JOB TIMING(ATC-525): 스위치와 일별 시간(읽기만)

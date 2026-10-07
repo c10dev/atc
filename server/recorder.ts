@@ -128,6 +128,10 @@ export type RecordLine =
   | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string; unverified?: boolean; wake?: boolean }
   // CONTROL STOP CHECK(ATC-521): stop의 unverified는 claude stop이 종료 코드 0이었지만 job state.json이 stopped가 되지 않아 ok를 막은 것. stop-check는 그 막음·같은 이름 job 중복 경고·그것이 틀렸다는 표시(contradicted 검사가 뒤늦게 틀렸다, dismissed SUPERVISOR가 오탐 표시)
   | { t: string; kind: "control"; op: "stop-check"; event: "blocked" | "duplicate" | "contradicted" | "dismissed"; session: string; by: string; jobIds: string[]; account?: string | null; state?: string | null; of?: string; detail?: string }
+  // CONTROL ABSENT(ATC-532): 관제 세션이 없는 동안의 결정. start·end는 없음의 짝(end의 minutes가 없던 분), relaunch는 증거(proof)로 atc가 다시 띄운 것,
+  // escalate는 SUPERVISOR에게 올린 WARNING(n번째, why는 다시 띄우지 않은 이유), ack는 SUPERVISOR 확인, false는 틀린 알림 표시(of = escalate 줄의 t)
+  | { t: string; kind: "control"; op: "absent"; event: "start" | "end" | "relaunch" | "escalate" | "ack" | "false"; session: string; by: string; minutes?: number; lastJobId?: string; jobId?: string; ok?: boolean; proof?: string; why?: string; n?: number; of?: string; startup?: true }
+  | { t: string; kind: "policy"; op: "control-absent-mode"; by: string; key: string; from: string; to: string }
   // CONTROL RECYCLE(ATC-166): atc가 관제 세션을 안전한 순간에 STOP·LAUNCH한 결과(shadow면 result would). 스위치 바꿈은 recycle-mode
   | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string; launch?: { ok: boolean; jobId?: string; error?: string }; blocks?: string[]; carried?: string[] }
   | { t: string; kind: "control"; op: "recycle-mode"; by: string; from: string; to: string }
