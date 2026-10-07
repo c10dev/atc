@@ -8,7 +8,7 @@ export default defineSwitch({
   key: "controlWakeMcc",
   label: "CONTROL WAKE MCC",
   group: "operations",
-  block: { code: "CONTROL WAKE", label: "관제 세션을 /loop 대신 일이 생길 때 깨움", windowLabel: "관제 세션 깨움(SUPERVISOR 전용)", words: "control wake 깨움 event wake /loop loop tick 관제 TOWER OCC MCC WAKE RESULT 오작동 misfire 깨우지 못함 메뉴 할 일 없음 control-wake.json controlWakeTower controlWakeOcc controlWakeMcc", searchOrder: 81 },
+  block: { code: "CONTROL WAKE", label: "관제 세션을 /loop 대신 일이 생길 때 깨움", windowLabel: "관제 세션 깨움(SUPERVISOR 전용)", words: "", searchOrder: 81 },
   values: WAKE_MODES,
   default: "wake",
   risky: ["wake"], // 서버가 관제 세션에 직접 쓰고, 바꾸면 그 세션을 한 번 다시 띄운다. 기본 wake라 ⚠로 보이고, 껐다 다시 켤 때 확인한다

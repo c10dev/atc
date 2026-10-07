@@ -35,7 +35,7 @@ import { type Breaker, type BreakerScope, breakerEventOf, breakerOf, confirmOf, 
 import { type AgentRow, cachedAgentRows, configDirOfRow, controlDirOf, controlRowsOf, controlSpecOf } from "./session-control.ts";
 import { deliverChecked, findSessionRecord, transcriptOf, type WriterMode, writerModeOf, writerPlaceNow } from "./session-socket.ts";
 import { type Fetcher, gatherInputs } from "./squelch-run.ts";
-import { readSeen } from "./tick-run.ts";
+import { readSeen } from "./tick-seen.ts";
 
 // CONTROL WAKE(ATC-557 a)의 입출력. 판단은 control-wake.ts(순수), 검사는 send-checks.ts checkControlWake, 세션에 쓰기는 session-socket.ts deliverChecked뿐이다.
 // 30초마다(jobs/control-wake.ts): ① 닿은 깨움이 대화 기록에 보이는지·끝에 WAKE RESULT가 있는지 ② 역할마다(TOWER 30초, OCC 1분, MCC 2분) 판단할 일을 모아
