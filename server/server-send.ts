@@ -56,7 +56,8 @@ export type ServerSendLine =
   | { t: string; kind: "server-send"; op: "refused"; id: string; purpose: SendPurpose; sessionId: string | null; textHash: string | null; check: string }
   | { t: string; kind: "server-send"; op: "failed"; id: string; purpose: SendPurpose; sessionId: string | null; textHash: string | null; check: "pass" | "n/a"; stage: string; why: string }
   | { t: string; kind: "server-send"; op: "confirm"; id: string; msgId: string; sessionId: string; seen: boolean; why?: "idle" | "timeout" | "gone" }
-  | { t: string; kind: "server-send"; op: "handback"; id: string; why: string };
+  | { t: string; kind: "server-send"; op: "handback"; id: string; why: string }
+  | { t: string; kind: "server-send"; op: "breaker"; event: "trip" | "rearm"; id: string; why: string | null };
 type Line = { t: string; kind: string; op?: string } & Record<string, unknown>;
 const sendLines = (lines: readonly Line[]) => lines.filter((l): l is Line & ServerSendLine => l.kind === "server-send");
 
@@ -112,16 +113,53 @@ export function confirmOf(x: { seen: boolean; ageMs: number; session: "idle" | "
   return null;
 }
 
-// 프로토콜 확인(ATC-562): 스위치를 마지막으로 바꾼 뒤 마지막 확인이 "안 보임"이면 서버 발송을 멈추고 OCC에게 넘긴다.
-// Claude Code가 소켓 길을 바꿔 쓰기는 되는데 글이 닿지 않는 경우를 잡는다. SUPERVISOR가 스위치를 껐다 켜면 다시 시도한다
-export function suspendedOf(lines: readonly Line[]): { suspended: boolean; why: string | null } {
+// BREAKER(ATC-562): 쓴 발송이 받는 세션에 보이지 않으면(confirm seen false, gone 제외) 서버 발송을 멈추고 OCC에게 넘긴다(release가 409를 주지 않는다).
+// 스스로 다시 켠다: 멈춘 지 30분이 지나면 서버가 다음 카드 하나를 시험으로 보낸다(probe). 그 발송이 보이면 다시 켜지고(rearm), 또 안 보이면 다시 멈춘다(trip).
+// 시험 발송의 확인을 기다리는 동안은 보내지 않는다. 멈추지 않은 동안에는 확인을 기다리는 발송이 다른 카드의 발송을 막지 않는다.
+// SUPERVISOR가 스위치를 바꾸면(policy server-send-mode) 처음부터 다시 센다(켜진 상태)
+export const BREAKER_COOL_MS = 30 * 60_000;
+export type BreakerState = "armed" | "tripped" | "probe" | "probe-pending";
+export interface Breaker {
+  state: BreakerState;
+  trippedAt: string | null;
+  why: string | null;
+}
+// lines는 시각 순서(FLIGHT RECORDER). 순수
+export function breakerOf(lines: readonly Line[], now: number): Breaker {
   let since = -1;
   lines.forEach((l, i) => {
     if (l.kind === "policy" && l.op === "server-send-mode") since = i;
   });
-  const last = sendLines(lines.slice(since + 1)).filter((l) => l.op === "confirm" && l.why !== "gone").at(-1);
-  if (last?.op === "confirm" && !last.seen) return { suspended: true, why: `${last.id}의 발송(확인 ${last.t})이 받는 세션의 대화 기록에 보이지 않음 — 서버 발송을 멈추고 OCC에게 넘김(스위치를 껐다 켜면 다시 시도)` };
-  return { suspended: false, why: null };
+  const after = sendLines(lines.slice(since + 1));
+  const deliverAt = new Map(after.flatMap((l) => (l.op === "deliver" ? [[l.msgId, l.t] as const] : [])));
+  let trippedAt: string | null = null;
+  let why: string | null = null;
+  for (const l of after) {
+    if (l.op !== "confirm" || l.why === "gone") continue;
+    const sent = deliverAt.get(l.msgId) ?? "";
+    if (!l.seen) {
+      // 멈춘 동안에는 멈춘 뒤에 나간 시험 발송의 실패만 다시 멈춘다(그 전 발송의 늦은 실패는 시각을 미루지 않는다)
+      if (trippedAt === null || sent > trippedAt) {
+        trippedAt = l.t;
+        why = `${l.id}의 발송이 받는 세션의 대화 기록에 보이지 않음(${l.why ?? "확인"}) — 서버 발송을 멈추고 OCC에게 넘김. ${BREAKER_COOL_MS / 60_000}분 뒤 카드 하나로 다시 시험한다`;
+      }
+    } else if (trippedAt !== null && sent > trippedAt) {
+      trippedAt = null; // 멈춘 뒤에 나간 발송이 보였다: 다시 켜짐
+      why = null;
+    }
+  }
+  if (trippedAt === null) return { state: "armed", trippedAt: null, why: null };
+  const confirmed = new Set(after.flatMap((l) => (l.op === "confirm" ? [l.msgId] : [])));
+  const pending = after.some((l) => l.op === "deliver" && l.t > trippedAt! && !confirmed.has(l.msgId));
+  if (pending) return { state: "probe-pending", trippedAt, why };
+  return { state: now - Date.parse(trippedAt) >= BREAKER_COOL_MS ? "probe" : "tripped", trippedAt, why };
+}
+
+// 확인 줄 하나를 더하기 전·뒤의 BREAKER → 적을 줄(trip·rearm). 없으면 null
+export function breakerEventOf(before: Breaker, afterB: Breaker): "trip" | "rearm" | null {
+  if (afterB.trippedAt && afterB.trippedAt !== before.trippedAt) return "trip";
+  if (before.state !== "armed" && afterB.state === "armed") return "rearm";
+  return null;
 }
 
 // SUPERVISOR 화면의 숫자: 날마다(UTC) 보냄·잘못 보냄·두 번 보냄·거절·실패·안 보임·넘김. 0도 보인다
@@ -134,6 +172,8 @@ export interface ServerSendDay {
   failed: number;
   unseen: number;
   handback: number;
+  trips: number; // BREAKER가 멈춘 수
+  rearms: number; // 스스로 다시 켜진 수
 }
 export interface ServerSendCounts {
   days: ServerSendDay[];
@@ -143,7 +183,7 @@ export interface ServerSendCounts {
 export function serverSendCountsOf(lines: readonly Line[], now: number, days = 7): ServerSendCounts {
   const dayKeys = Array.from({ length: days }, (_, i) => new Date(now - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10));
   const since = dayKeys[0]!;
-  const blank = (day: string): ServerSendDay => ({ day, delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0 });
+  const blank = (day: string): ServerSendDay => ({ day, delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0, trips: 0, rearms: 0 });
   const byDay = new Map(dayKeys.map((d) => [d, blank(d)]));
   const reasons = new Map<string, number>();
   const all = sendLines(lines);
@@ -159,6 +199,10 @@ export function serverSendCountsOf(lines: readonly Line[], now: number, days = 7
     } else if (l.op === "failed") d.failed++;
     else if (l.op === "confirm" && !l.seen && l.why !== "gone") d.unseen++;
     else if (l.op === "handback") d.handback++;
+    else if (l.op === "breaker") {
+      if (l.event === "trip") d.trips++;
+      else d.rearms++;
+    }
   }
   for (const x of twiceOf(all.flatMap((l) => (l.op === "deliver" ? [{ t: l.t, id: l.id, sessionId: l.sessionId, purpose: l.purpose }] : [])))) {
     if (x.t.slice(0, 10) >= since) {
@@ -167,6 +211,9 @@ export function serverSendCountsOf(lines: readonly Line[], now: number, days = 7
     }
   }
   const list = [...byDay.values()];
-  const total = list.reduce((a, d) => ({ delivered: a.delivered + d.delivered, wrong: a.wrong + d.wrong, twice: a.twice + d.twice, refused: a.refused + d.refused, failed: a.failed + d.failed, unseen: a.unseen + d.unseen, handback: a.handback + d.handback }), { delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0 });
+  const total = list.reduce(
+    (a, d) => ({ delivered: a.delivered + d.delivered, wrong: a.wrong + d.wrong, twice: a.twice + d.twice, refused: a.refused + d.refused, failed: a.failed + d.failed, unseen: a.unseen + d.unseen, handback: a.handback + d.handback, trips: a.trips + d.trips, rearms: a.rearms + d.rearms }),
+    { delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0, trips: 0, rearms: 0 },
+  );
   return { days: list, total, reasons: [...reasons].map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n) };
 }

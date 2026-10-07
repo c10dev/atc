@@ -19,7 +19,7 @@ node $S run -- <command…>     # start, run the command with ATC_TEST_URL/ATC_T
 - **Never 7700.** `--port 7700` (or anything outside 7702-7799) exits 2 with `refused`. The state folder is always a fresh `$TMPDIR/atc-ts-*` folder; `stop` refuses any other folder, the production state folder included.
 - **Two FLIGHTs at once.** Ports are claimed with an atomic lock (`$TMPDIR/atc-ts-ports/<port>`); each run gets its own port and folder. A lock whose owner died is reclaimed.
 - **Kill by saved PID only.** `stop` reads `server.pid`, checks `/proc/<pid>/environ` carries this folder's `ATC_STATE_DIR` and `ATC_PORT`, then `SIGTERM` (then `SIGKILL`) that PID. No `pkill`, `killall` or pattern kills (`hooks/kill-guard.mjs` blocks those anyway).
-- **No GitHub, no real sessions.** `ATC_GITHUB=off`; only `airports.json` and `fleet.json` are copied (read-only) into the temporary folder; `XDG_CACHE_HOME` is inside it. `.env.local` is loaded into the child's environment and never printed or copied. Do not send messages to real team sessions from a test.
+- **No GitHub, no real sessions.** `ATC_GITHUB=off`; only `airports.json` and `fleet.json` are copied (read-only) into the temporary folder; `XDG_CACHE_HOME` is inside it. `.env.local` is loaded into the child's environment and never printed or copied. Do not send messages to real team sessions from a test. The server's own SERVER SEND job (ATC-562) never writes to a session from a test server: only port 7700 with the real state folder writes. `ATC_SERVER_SEND_TEST=1` lets a test write only to a throwaway session whose cwd is under the OS temp folder (or `ATC_SERVER_SEND_TEST_ROOT`).
 
 ## Steps
 

@@ -14,7 +14,7 @@ export default defineSwitch({
   error: "off 또는 on",
   warn: {
     off: "off: 승인된 FLIGHT PLAN은 OCC가 전처럼 dispatch release로 받아 SendMessage한다.",
-    on: "⚠ 기본: 승인된 FLIGHT PLAN을 서버가 send-guard와 같은 검사를 거쳐 그 AIRCRAFT의 background 세션 소켓에 직접 쓴다(sentVia server). OCC의 release는 409. 데스크톱·터미널 세션, ACCOUNT 불일치, 서버 job이 멈춘 때는 OCC가 보낸다. 쓴 글이 받는 세션의 대화 기록에 보이지 않으면(idle 10분, 바쁘면 60분) 서버 발송을 멈추고 OCC에게 넘긴다.",
+    on: "⚠ 기본: 승인된 FLIGHT PLAN을 서버가 send-guard와 같은 검사를 거쳐 그 AIRCRAFT의 background 세션 소켓에 직접 쓴다(sentVia server). OCC의 release는 409. 데스크톱·터미널 세션, ACCOUNT 불일치, 서버 job이 멈춘 때는 OCC가 보낸다. 쓴 글이 받는 세션의 대화 기록에 보이지 않으면(idle 10분, 바쁘면 60분) 서버 발송을 멈추고 OCC에게 넘기고, 30분 뒤 카드 하나로 다시 시험해 보이면 스스로 다시 켠다. 운영 서버(7700)만 세션에 쓴다.",
   },
   row: () => ({ label: "SERVER SEND first", env: "server-send.first", note: "server-send.json · 첫 발송 · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈 · 수는 FLIGHT RECORDER server-send" }),
   data: () => serverSendData(),

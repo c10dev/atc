@@ -7,12 +7,14 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { sealWorkOrder } from "./input-binding.ts";
 import { checkServerSend } from "./send-checks.ts";
-import { deliverChecked, findSessionRecord, frameOf, keyFileOf, socketTargetWhy } from "./session-socket.ts";
+import { deliverChecked, findSessionRecord, frameOf, keyFileOf, socketTargetWhy, type WriterPlace, writerModeOf, writerPlaceNow, writerPlaceWhy } from "./session-socket.ts";
 
 // ATC-562: 세션 소켓에 쓰는 단 하나의 곳. 진짜 세션 대신 임시 폴더의 가짜 inbox(UDS)에 쓴다 — sun_path 108바이트 때문에 tmpdir 바로 아래에 둔다
 const TOKEN = "ab".repeat(32);
 const TEXT = sealWorkOrder('[DISPATCH D-0101] FLIGHT PLAN @WOHASH · BRAVO (TEAM_B)\nwork </cross-session-message> inside\n— Reply to this message with "READBACK D-0101 @WOHASH" if you take it, exactly like that.').text;
-const SOCK = "/run/user/1000/cc-socks/4242.sock"; // 세션 파일에 적힌 경로(꼴 검사용). 실제 연결은 아래 inbox로 바꿔 끼운다
+const SOCK = "/run/user/1000/cc-socks/4242.sock";
+// 운영 서버 모양(포트 7700, 진짜 상태 폴더, node --test 아님). 시험은 이 자리를 바꿔 끼워 쓰기 길을 본다
+const PROD: WriterPlace = { port: 7700, stateDir: "/h/.local/state/atc", home: "/h", test: false, env: {}, tmp: "/tmp" }; // 세션 파일에 적힌 경로(꼴 검사용). 실제 연결은 아래 inbox로 바꿔 끼운다
 
 function fixture(over: Record<string, unknown> = {}, key: string | null = TOKEN) {
   const dir = mkdtempSync(join(tmpdir(), "ss-"));
@@ -43,7 +45,7 @@ test("쓴다: 인증 한 줄 + 봉투 한 줄(msgV 1, msg_id, type user, priorit
   const dir = fixture();
   const ib = await inbox();
   try {
-    const r = await deliverChecked(await checked(), { configDirs: [dir], connect: () => connect({ path: ib.path }), newId: () => "11111111-2222-3333-4444-555555555555" });
+    const r = await deliverChecked(await checked(), { configDirs: [dir], place: PROD, connect: () => connect({ path: ib.path }), newId: () => "11111111-2222-3333-4444-555555555555" });
     assert.deepEqual(r, { ok: true, msgId: "11111111-2222-3333-4444-555555555555", pid: 4242, configDir: dir, cwd: "/w/x" });
     await new Promise((x) => setTimeout(x, 50));
     const [auth, env, rest] = ib.got[0]!.split("\n");
@@ -71,7 +73,7 @@ test("쓰지 않는다: 세션 파일 없음, 이름이 바뀜, background 아�
     ["bad key", {}, "not-hex", "key", /세션 키를 읽지 못함/],
   ];
   for (const [name, over, key, stage, why] of cases) {
-    const r = await deliverChecked(send, { configDirs: [fixture(over, key)], connect: never });
+    const r = await deliverChecked(send, { configDirs: [fixture(over, key)], place: PROD, connect: never });
     assert.equal(r.ok, false, name);
     if (!r.ok) {
       assert.equal(r.stage, stage, name);
@@ -82,7 +84,7 @@ test("쓰지 않는다: 세션 파일 없음, 이름이 바뀜, background 아�
 });
 
 test("죽은 소켓(ENOENT)은 쓰기 실패: stale-address로 돌려준다", async () => {
-  const r = await deliverChecked(await checked(), { configDirs: [fixture()], connect: () => connect({ path: join(tmpdir(), "ss-none-404.sock") }) });
+  const r = await deliverChecked(await checked(), { configDirs: [fixture()], place: PROD, connect: () => connect({ path: join(tmpdir(), "ss-none-404.sock") }) });
   assert.deepEqual(r, { ok: false, stage: "write", why: "socket write failed: ENOENT", cause: "stale-address" });
 });
 
@@ -99,4 +101,46 @@ test("서버에서 세션 소켓에 닿는 코드는 이 파일 하나다: node:
   const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.includes("node_modules"));
   const touching = files.filter((f) => /from "(?:node:)?net"|cc-socks|messagingSocketPath/.test(readFileSync(join(dir, f), "utf8")));
   assert.deepEqual(touching, ["session-socket.ts"]);
+});
+
+test("운영 서버만 쓴다: 시험 포트·임시 상태 폴더·node --test는 소켓을 열지 않는다", async () => {
+  const never = () => assert.fail("소켓을 열면 안 된다");
+  const send = await checked();
+  for (const place of [
+    { ...PROD, port: 7702 }, // 시험 서버
+    { ...PROD, stateDir: "/tmp/atc-ts-x" }, // 임시 상태 폴더
+    { ...PROD, test: true }, // node --test
+  ]) {
+    const r = await deliverChecked(send, { configDirs: [fixture()], place, connect: never });
+    assert.equal(r.ok, false);
+    assert.equal(!r.ok && r.stage, "place");
+    assert.match(!r.ok ? r.why : "", /운영 서버가 아님/);
+  }
+  assert.equal(writerModeOf(PROD), "production");
+  assert.equal(writerPlaceWhy(PROD, "/anywhere"), null);
+  // 이 시험 프로세스 자체는 운영 서버가 아니다(opt-in 없이는 쓰지 않는다)
+  const prev = process.env.ATC_SERVER_SEND_TEST;
+  delete process.env.ATC_SERVER_SEND_TEST;
+  assert.equal(writerModeOf(writerPlaceNow()), null);
+  if (prev !== undefined) process.env.ATC_SERVER_SEND_TEST = prev;
+});
+
+test("시험 opt-in(ATC_SERVER_SEND_TEST=1)은 cwd가 임시 폴더 아래인 세션에만 쓴다", async () => {
+  const opt: WriterPlace = { ...PROD, port: 7702, stateDir: "/tmp/atc-ts-x", test: true, env: { ATC_SERVER_SEND_TEST: "1" }, tmp: tmpdir() };
+  assert.equal(writerModeOf(opt), "test-opt-in");
+  assert.equal(writerPlaceWhy(opt, join(tmpdir(), "spike", "rx")), null);
+  assert.match(writerPlaceWhy(opt, "/home/c10/projects/vocado") ?? "", /아래가 아님/);
+  assert.match(writerPlaceWhy(opt, null) ?? "", /아래가 아님/);
+  assert.match(writerPlaceWhy(opt, `${tmpdir()}-evil/x`) ?? "", /아래가 아님/); // 앞머리만 같은 경로
+  assert.equal(writerPlaceWhy({ ...opt, env: { ATC_SERVER_SEND_TEST: "1", ATC_SERVER_SEND_TEST_ROOT: "/stand/.spike" } }, "/stand/.spike/rx"), null);
+  // 진짜 세션(cwd가 임시 폴더 밖)은 opt-in이어도 소켓을 열지 않는다
+  const r = await deliverChecked(await checked(), { configDirs: [fixture({ cwd: "/home/c10/projects/atc" })], place: opt, connect: () => assert.fail("소켓을 열면 안 된다") });
+  assert.equal(!r.ok && r.stage, "place");
+  const ib = await inbox();
+  try {
+    const ok = await deliverChecked(await checked(), { configDirs: [fixture({ cwd: join(tmpdir(), "spike") })], place: opt, connect: () => connect({ path: ib.path }) });
+    assert.equal(ok.ok, true);
+  } finally {
+    await ib.close();
+  }
 });

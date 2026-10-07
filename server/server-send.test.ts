@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { approvedPurposeOf, confirmOf, crashedOf, freshRefusal, parseServerSendSwitch, serverSendCountsOf, suspendedOf, twiceOf, wrongOf } from "./server-send.ts";
+import { approvedPurposeOf, confirmOf, crashedOf, freshRefusal, parseServerSendSwitch, breakerEventOf, breakerOf, serverSendCountsOf, twiceOf, wrongOf } from "./server-send.ts";
 
 // ATC-562 SERVER SEND의 순수 판단: 스위치, 첫 발송·재시도, 잘못 보냄·두 번 보냄, 확인 멈춤, 날마다의 수
 const NOW = Date.parse("2026-10-07T12:00:00.000Z");
@@ -54,10 +54,6 @@ test("같은 거절은 다시 적지 않는다, 크래시 흔적, 확인 멈춤�
   assert.equal(crashedOf(sent, [L(1.9, "deliver")], NOW), false);
   assert.equal(crashedOf({ ...sent, timeline: { sent: iso(0.5) } }, [], NOW), false);
   assert.equal(crashedOf({ ...sent, sentVia: undefined }, [], NOW), false);
-  const unseen = L(1, "confirm", { msgId: "m", seen: false });
-  assert.equal(suspendedOf([L(20, "confirm", { seen: true }), unseen]).suspended, true);
-  assert.equal(suspendedOf([unseen, { t: iso(0), kind: "policy", op: "server-send-mode" }]).suspended, false);
-  assert.equal(suspendedOf([unseen, L(0, "confirm", { seen: true })]).suspended, false);
 });
 
 test("날마다의 수: 보냄·잘못 보냄·두 번 보냄·거절(사유별)·실패·안 보임·넘김. 0도 보인다", () => {
@@ -72,15 +68,16 @@ test("날마다의 수: 보냄·잘못 보냄·두 번 보냄·거절(사유별)
       L(40, "failed"),
       L(30, "confirm", { seen: false }),
       L(20, "handback"),
+      L(19, "breaker", { event: "trip" }),
       { t: iso(10), kind: "dispatch", op: "send" },
     ],
     NOW,
     7,
   );
   assert.equal(c.days.length, 7);
-  assert.deepEqual(c.total, { delivered: 2, wrong: 1, twice: 1, refused: 3, failed: 1, unseen: 1, handback: 1 });
+  assert.deepEqual(c.total, { delivered: 2, wrong: 1, twice: 1, refused: 3, failed: 1, unseen: 1, handback: 1, trips: 1, rearms: 0 });
   assert.deepEqual(c.reasons, [{ reason: "a", n: 2 }, { reason: "b", n: 1 }]);
-  assert.deepEqual(serverSendCountsOf([], NOW, 7).total, { delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0 });
+  assert.deepEqual(serverSendCountsOf([], NOW, 7).total, { delivered: 0, wrong: 0, twice: 0, refused: 0, failed: 0, unseen: 0, handback: 0, trips: 0, rearms: 0 });
 });
 
 test("확인 판정: 보이면 seen, idle은 10분, 바쁘면 60분까지 기다림, 끝난 세션은 gone", () => {
@@ -92,5 +89,28 @@ test("확인 판정: 보이면 seen, idle은 10분, 바쁘면 60분까지 기다
   assert.deepEqual(confirmOf({ seen: false, ageMs: 61 * M, session: "busy" }), { seen: false, why: "timeout" });
   assert.deepEqual(confirmOf({ seen: false, ageMs: 11 * M, session: "gone" }), { seen: false, why: "gone" });
   const L = (op: string, rest: Record<string, unknown>) => ({ t: iso(1), kind: "server-send", op, id: "D-1", ...rest });
-  assert.equal(suspendedOf([L("confirm", { seen: false, why: "gone" })]).suspended, false);
+  assert.equal(breakerOf([L("confirm", { seen: false, why: "gone" })], NOW).state, "armed");
+});
+
+test("BREAKER(순수): 안 보이면 멈춤, 30분 뒤 시험 하나, 시험 발송이 보이면 다시 켜짐, 스위치를 바꾸면 처음부터", () => {
+  const M = 60_000;
+  const at = (min: number) => new Date(NOW - min * M).toISOString();
+  const D = (min: number, msgId: string) => ({ t: at(min), kind: "server-send", op: "deliver", id: msgId, msgId });
+  const C = (min: number, msgId: string, seen: boolean) => ({ t: at(min), kind: "server-send", op: "confirm", id: msgId, msgId, seen });
+  const base = [D(60, "a"), D(55, "b"), C(45, "a", false)];
+  assert.deepEqual(breakerOf([D(60, "a"), C(45, "a", true)], NOW).state, "armed");
+  assert.equal(breakerOf(base, NOW - 20 * M).state, "tripped"); // 멈춘 지 25분
+  assert.equal(breakerOf(base, NOW).state, "probe"); // 45분
+  assert.equal(breakerOf([...base, C(40, "b", true)], NOW).state, "probe"); // 멈추기 전 발송이 보여도 다시 켜지지 않는다
+  assert.equal(breakerOf([...base, C(40, "b", false)], NOW).trippedAt, at(45)); // 멈추기 전 발송의 늦은 실패는 시각을 미루지 않는다
+  assert.equal(breakerOf([...base, D(10, "p")], NOW).state, "probe-pending");
+  assert.equal(breakerOf([...base, D(10, "p"), C(5, "p", true)], NOW).state, "armed");
+  const again = breakerOf([...base, D(10, "p"), C(5, "p", false)], NOW);
+  assert.deepEqual([again.state, again.trippedAt], ["tripped", at(5)]);
+  assert.equal(breakerOf([...base, { t: at(1), kind: "policy", op: "server-send-mode" }], NOW).state, "armed");
+  const armed = breakerOf([], NOW);
+  const tripped = breakerOf(base, NOW);
+  assert.equal(breakerEventOf(armed, tripped), "trip");
+  assert.equal(breakerEventOf(tripped, armed), "rearm");
+  assert.equal(breakerEventOf(tripped, tripped), null);
 });

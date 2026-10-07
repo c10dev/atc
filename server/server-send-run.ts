@@ -16,6 +16,9 @@ import { regKey } from "./registration.ts";
 import { type CheckedSend, checkServerSend, READBACK_OVERDUE_MS, type SendPurpose, serverRepeatWhy } from "./send-checks.ts";
 import {
   approvedPurposeOf,
+  type Breaker,
+  breakerEventOf,
+  breakerOf,
   confirmOf,
   crashedOf,
   freshRefusal,
@@ -25,11 +28,10 @@ import {
   type ServerSendSwitch,
   serverLiveOf,
   serverSendCountsOf,
-  suspendedOf,
   unconfirmedOf,
   wrongOf,
 } from "./server-send.ts";
-import { deliverChecked, findSessionRecord, socketTargetWhy, transcriptOf } from "./session-socket.ts";
+import { deliverChecked, findSessionRecord, socketTargetWhy, transcriptOf, writerModeOf, writerPlaceNow, writerPlaceWhy } from "./session-socket.ts";
 
 // SERVER SEND(ATC-562)의 입출력. 판단은 server-send.ts(순수), 검사는 send-checks.ts(OCC send-guard와 같은 함수), 세션에 쓰기는 session-socket.ts뿐이다.
 // 30초마다(jobs/server-send.ts): ① 쓴 발송이 받는 세션의 대화 기록에 보이는지 확인 ② send를 적고 멈춘 카드를 undelivered로 ③ 서버가 보낸 FLIGHT PLAN의 overdue 재송신(한 번)
@@ -64,9 +66,9 @@ export const serverSendLive = (now = Date.now()) => serverLiveOf(lastPassAt, now
 const configDirs = () => accountFolders().map((f) => f.dir);
 type AnyLine = { t: string; kind: string; op?: string } & Record<string, unknown>;
 const recentLines = (now: number) => readRecords(now - 2 * DAY) as unknown as AnyLine[];
-// 멈춤(프로토콜 확인)은 스위치를 바꿀 때까지 간다: FLIGHT RECORDER 보관 기간(30일) 전체를 본다. 패스와 화면이 같은 창을 쓴다
-const SUSPEND_DAYS = 30;
-const suspensionNow = (now: number) => suspendedOf(readRecords(now - SUSPEND_DAYS * DAY) as unknown as AnyLine[]);
+// BREAKER는 FLIGHT RECORDER 보관 기간(30일)을 본다. 패스와 화면이 같은 창을 쓴다
+const BREAKER_DAYS = 30;
+const breakerNow = (now: number): Breaker => breakerOf(readRecords(now - BREAKER_DAYS * DAY) as unknown as AnyLine[], now);
 
 // release와 같은 막음(GROUND STOP, RESTARTING, LAUNCH 카드, 세션 없음, ACCOUNT 불일치). 막히면 사유 — 서버도 OCC도 보내지 않는다
 function blockOf(p: Proposal, s: Snapshot, tp: string): string | null {
@@ -84,7 +86,7 @@ function recipientOf(p: Proposal, s: Snapshot, tp: string): { ok: true; session:
   if (session.kind !== "background") return { ok: false, why: `${session.name}는 background 세션이 아님 — OCC가 보낸다` };
   const rec = findSessionRecord(session.id, configDirs());
   if (!rec) return { ok: false, why: `${session.name}의 세션 파일이 없음` };
-  const why = socketTargetWhy(rec);
+  const why = socketTargetWhy(rec) ?? writerPlaceWhy(writerPlaceNow(), rec.cwd);
   return why ? { ok: false, why } : { ok: true, session };
 }
 
@@ -104,7 +106,7 @@ export function serverOwnsWhy(p: Proposal, s: Snapshot, now = Date.now()): strin
   if (cfg.mode !== "approval") return null;
   const pur = approvedPurposeOf(p, loadServerSendSwitch(), now, false);
   if ("skip" in pur) return null;
-  if (suspensionNow(now).suspended) return null;
+  if (breakerNow(now).state !== "armed") return null; // BREAKER가 멈춤: OCC가 보낸다(시험 발송 하나는 서버가 할 수 있지만 409로 막지 않는다)
   if (blockOf(p, s, cfg.teamPattern)) return null; // release가 제 사유로 409를 준다
   const rcpt = recipientOf(p, s, cfg.teamPattern);
   if (!rcpt.ok || rcpt.session.name !== p.aircraftName) return null;
@@ -190,7 +192,15 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
     const seen = d.transcript ? transcriptHas(d.transcript, d.msgId) : false;
     const rec = seen ? null : findSessionRecord(d.sessionId, configDirs());
     const c = confirmOf({ seen, ageMs: now - Date.parse(d.t), session: seen ? "idle" : !rec ? "gone" : rec.status === "busy" ? "busy" : "idle" });
-    if (c) record({ t: iso(now), kind: "server-send", op: "confirm", id: d.id, msgId: d.msgId, sessionId: d.sessionId, ...c });
+    if (!c) continue;
+    const before = breakerNow(now);
+    record({ t: iso(now), kind: "server-send", op: "confirm", id: d.id, msgId: d.msgId, sessionId: d.sessionId, ...c });
+    const after = breakerNow(now);
+    const event = breakerEventOf(before, after);
+    if (event) {
+      record({ t: iso(now), kind: "server-send", op: "breaker", event, id: d.id, why: event === "trip" ? after.why : null });
+      if (event === "trip") console.error(`[atc] SERVER SEND breaker trip: ${after.why}`);
+    }
   }
   // ② send를 적고 쓰기 전에 멈춘 카드: 10분 기다리지 않고 undelivered로 돌린다
   for (const p of allProposals()) {
@@ -199,8 +209,13 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
     record({ t: iso(now), kind: "server-send", op: "failed", id: p.id, purpose: "first", sessionId: null, textHash: p.message ? contentHashOf(p.message) : null, check: "n/a", stage: "crash", why: "send를 적고 발송 줄이 없음" });
   }
   if (cfg.mode !== "approval") return out;
+  // 운영 서버(또는 명시한 시험 opt-in)만 세션에 쓴다. 시험 서버는 여기서 끝난다
+  if (!writerModeOf(writerPlaceNow())) return out;
   lines = recentLines(now);
-  if (suspensionNow(now).suspended) return out; // 프로토콜 확인 실패: OCC에게 넘김(release가 409를 주지 않는다)
+  // BREAKER: 멈췄으면 OCC 몫. 30분이 지나면(probe) 첫 발송·재시도 카드 하나만 시험으로 보낸다. 시험 발송의 확인을 기다리는 동안은 보내지 않는다
+  const breaker = breakerNow(now);
+  if (breaker.state === "tripped" || breaker.state === "probe-pending") return out;
+  const probe = breaker.state === "probe";
   const sw = loadServerSendSwitch();
   const refuse = (id: string, purpose: SendPurpose, sessionId: string | null, textHash: string | null, check: string) => {
     if (freshRefusal(lines, id, check)) record({ t: iso(now), kind: "server-send", op: "refused", id, purpose, sessionId, textHash, check });
@@ -208,7 +223,7 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
   };
 
   // ③ 재송신(b): 서버가 보낸 sent 카드가 READBACK 없이 overdue를 지나면 한 번
-  if (sw.resend === "on") {
+  if (sw.resend === "on" && !probe) {
     for (const p of allProposals()) {
       if (p.kind !== "ASSIGN" || p.status !== "sent" || p.sentVia !== "server") continue;
       const prior = priorDeliveriesOf(lines, p.id);
@@ -280,6 +295,7 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
       continue;
     }
     await deliverAndRecord(c.send, s, tp, deps, out);
+    if (probe) break; // 시험 발송은 하나
   }
   return out;
 }
@@ -287,6 +303,6 @@ export async function serverSendPass(s: Snapshot, deps: PassDeps = {}): Promise<
 // 설정 창 SERVER SEND 블록의 자료: 날마다의 수, 서버 job이 살아 있나, 멈춤(프로토콜 확인)
 export function serverSendData(now = Date.now()) {
   const lines = readRecords(now - 8 * DAY) as unknown as AnyLine[];
-  const h = suspensionNow(now);
-  return { ...serverSendCountsOf(lines, now, 7), live: serverSendLive(now), lastPassAt: lastPassAt ? iso(lastPassAt) : null, suspended: h.suspended, suspendedWhy: h.why };
+  const b = breakerNow(now);
+  return { ...serverSendCountsOf(lines, now, 7), live: serverSendLive(now), lastPassAt: lastPassAt ? iso(lastPassAt) : null, breaker: b.state, breakerWhy: b.why, trippedAt: b.trippedAt, writer: writerModeOf(writerPlaceNow()) };
 }

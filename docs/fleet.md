@@ -1010,6 +1010,7 @@ A FLEET PLAN kind that stops an idle AIRCRAFT and launches it again for one K3 F
 
 The server can now write a FLIGHT PLAN into a running AIRCRAFT session. It writes one line pair to the session's messaging socket and does not restart or stop the session. Rules and evidence: [occ.md](occ.md) "8.5 Server send as built".
 
+- **Which process.** Only the production server (port 7700, the real state folder) writes. Test servers and tests never open a session socket. `ATC_SERVER_SEND_TEST=1` allows writing only to throwaway sessions whose cwd is under the OS temp folder.
 - **Which sessions.** Only background sessions (`claude --bg`, session file `kind: "bg"`) whose session file has `peerProtocol: 1` and a socket path `…/cc-socks/<pid>.sock`, in any registered ACCOUNT folder (the key file is read from the same folder). Desktop and terminal sessions are left to OCC. They expose the same fields, but delivery to them was not tested.
 - **Resolved at send time.** The recipient is the AIRCRAFT's live session by REGISTRATION (ATC-353). The writer rereads that session's file by session id just before writing, and does not write if the session's name changed or the file is gone.
 - **FRESH START first.** The automatic FRESH START gate (ATC-560) runs before a server first send, as before OCC's `release`. If it restarts the session, the FLIGHT PLAN is the new session's first prompt and the server does not also send it. A card whose FRESH START is running is skipped.

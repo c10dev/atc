@@ -1,6 +1,7 @@
 import { hermeticRoot } from "./test-hermetic.ts";
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { config } from "./config.ts";
@@ -9,7 +10,7 @@ import type { Snapshot } from "./model.ts";
 import { allProposals, append, type Op } from "./proposals.ts";
 import { readRecords } from "./recorder.ts";
 import { type CheckedSend, checkSend } from "./send-checks.ts";
-import { type PassDeps, saveServerSendSwitch, serverOwnsWhy, serverSendPass } from "./server-send-run.ts";
+import { type PassDeps, saveServerSendSwitch, serverOwnsWhy, serverSendData, serverSendPass } from "./server-send-run.ts";
 import { type DeliverResult, transcriptOf } from "./session-socket.ts";
 
 // ATC-562 SERVER SEND 한 바퀴(입출력). 임시 상태 폴더(test-hermetic)와 임시 ~/.claude/sessions의 가짜 세션 파일. 소켓 쓰기는 바꿔 끼운다(실제 세션에 쓰지 않는다)
@@ -18,7 +19,10 @@ let clock = T0;
 const at = (min: number) => new Date(T0 + min * 60_000).toISOString();
 const claude = join(hermeticRoot, "home", ".claude");
 mkdirSync(join(claude, "sessions"), { recursive: true });
-mkdirSync(join(claude, "projects", "-w"), { recursive: true });
+// 받는 세션의 cwd는 OS 임시 폴더 아래(시험 opt-in은 그 아래 세션에만 쓴다, ATC_SERVER_SEND_TEST)
+const W = join(tmpdir(), "atc562-run-w");
+process.env.ATC_SERVER_SEND_TEST = "1";
+mkdirSync(join(claude, "projects", W.replace(/[^a-zA-Z0-9]/g, "-")), { recursive: true });
 mkdirSync(config.stateDir, { recursive: true });
 writeFileSync(join(config.stateDir, "dispatch.json"), JSON.stringify({ mode: "approval" }));
 
@@ -29,9 +33,9 @@ function card(reg: string, opts: { session?: "bg" | "interactive" | "none" } = {
   const id = `D-${String(9000 + n)}`;
   const sessionId = `sess-${n}`;
   const pid = 50_000 + n;
-  if (opts.session !== "none") writeFileSync(join(claude, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId, name: reg, kind: opts.session === "interactive" ? "interactive" : "bg", cwd: "/w", messagingSocketPath: `/run/user/1000/cc-socks/${pid}.sock`, peerProtocol: 1 }));
+  if (opts.session !== "none") writeFileSync(join(claude, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId, name: reg, kind: opts.session === "interactive" ? "interactive" : "bg", cwd: W, messagingSocketPath: `/run/user/1000/cc-socks/${pid}.sock`, peerProtocol: 1 }));
   append([{ op: "create", id, at: at(-30), kind: "ASSIGN", flight: `ATC-${9000 + n}`, aircraft: null, aircraftName: reg, registration: reg, airport: "ATCC", score: 1, factors: [] } as unknown as Op, { op: "approve", id, at: at(-20) }]);
-  const session = { id: sessionId, name: reg, status: "idle", kind: opts.session === "interactive" ? "interactive" : "background", lastActiveAt: at(-1), cwd: "/w" };
+  const session = { id: sessionId, name: reg, status: "idle", kind: opts.session === "interactive" ? "interactive" : "background", lastActiveAt: at(-1), cwd: W };
   return { id, reg, sessionId, session: opts.session === "none" ? null : session };
 }
 const snap = (...cards: { session: unknown }[]) => ({ sessions: cards.flatMap((c) => (c.session ? [c.session] : [])), restarting: [], tickets: [], workspaces: [], pulls: [], claims: [], clearances: [], fuel: {}, stranded: [], github: { enabled: false, fetchedAt: null }, linear: { fetchedAt: null } }) as unknown as Snapshot;
@@ -44,8 +48,8 @@ function deps(results: DeliverResult[] = [], over: Partial<PassDeps> = {}) {
     // 받는 세션처럼 대화 기록에 msg_id를 남긴다(확인이 "보임"이 되게). 실패 결과를 주면 그것을 돌려준다
     deliver: async (send) => {
       calls.push(send);
-      const r = results.shift() ?? { ok: true as const, msgId: `m-${calls.length}-${send.id}`, pid: 1, configDir: claude, cwd: "/w" };
-      if (r.ok && r.cwd === "/w") appendFileSync(transcriptOf(claude, "/w", send.sessionId), JSON.stringify({ origin: { kind: "peer", msg_id: r.msgId } }) + "\n");
+      const r = results.shift() ?? { ok: true as const, msgId: `m-${calls.length}-${send.id}`, pid: 1, configDir: claude, cwd: W };
+      if (r.ok && r.cwd === W) appendFileSync(transcriptOf(claude, W, send.sessionId), JSON.stringify({ origin: { kind: "peer", msg_id: r.msgId } }) + "\n");
       return r;
     },
     ...over,
@@ -158,7 +162,7 @@ test("release 409: 서버 job이 살아 있고 서버가 보낼 카드면 OCC는
   saveServerSendSwitch("first", "on", "SUPERVISOR", file);
 });
 
-test("확인: 쓴 발송이 10분 안에 받는 세션의 대화 기록에 보이지 않으면 서버 발송을 멈추고 OCC에게 넘긴다", async () => {
+test("BREAKER: 쓴 발송이 보이지 않으면 멈추고 OCC에게 넘긴다. 30분 뒤 카드 하나로 시험하고, 보이면 스스로 다시 켜진다", async () => {
   clock = T0 + 60 * 60_000;
   const c = card("TEAM_V");
   const { d, calls } = deps([{ ok: true, msgId: "m-unseen", pid: 1, configDir: claude, cwd: "/nowhere" }]);
@@ -166,11 +170,49 @@ test("확인: 쓴 발송이 10분 안에 받는 세션의 대화 기록에 보�
   assert.equal(calls.length, 1);
   clock += 11 * 60_000;
   await serverSendPass(snap(c), d);
-  assert.deepEqual(lines(c.id).map((l) => [l.op, l.seen]), [["deliver", undefined], ["confirm", false]]);
+  assert.deepEqual(lines(c.id).map((l) => [l.op, l.seen ?? l.event]), [["deliver", undefined], ["confirm", false], ["breaker", "trip"]]);
+  // 멈춘 동안: 서버는 보내지 않고 release는 409를 주지 않는다(OCC가 보낸다)
   const next = card("TEAM_X");
-  await serverSendPass(snap(next), d);
-  assert.equal(calls.length, 1); // 멈춤
+  const after = card("TEAM_Y");
+  await serverSendPass(snap(next, after), d);
+  assert.equal(calls.length, 1);
   assert.equal(serverOwnsWhy(prop(next.id), snap(next), clock), null);
+  // 30분 뒤: 카드 하나만 시험으로 보낸다
+  clock += 31 * 60_000;
+  await serverSendPass(snap(next, after), d);
+  assert.deepEqual(calls.map((x) => x.id), [c.id, next.id]);
+  assert.equal(prop(after.id).status, "approved");
+  // 시험 발송이 보이면 다시 켜지고 같은 바퀴에 다음 카드를 보낸다
+  await serverSendPass(snap(next, after), d);
+  assert.deepEqual(lines(next.id).map((l) => [l.op, l.seen ?? l.event]), [["deliver", undefined], ["confirm", true], ["breaker", "rearm"]]);
+  assert.deepEqual(calls.map((x) => x.id), [c.id, next.id, after.id]);
+  // 수: 멈춤 1, 다시 켜짐 1
+  const data = serverSendData(clock);
+  assert.deepEqual([data.total.trips, data.total.rearms, data.breaker], [1, 1, "armed"]);
+});
+
+test("BREAKER: 시험 발송도 보이지 않으면 다시 멈춘다", async () => {
+  clock = T0 + 500 * 60_000;
+  saveServerSendSwitch("first", "off");
+  saveServerSendSwitch("first", "on");
+  const a = card("TEAM_K");
+  const b = card("TEAM_L");
+  const { d, calls } = deps([
+    { ok: true, msgId: "m-k", pid: 1, configDir: claude, cwd: "/nowhere" },
+    { ok: true, msgId: "m-l", pid: 1, configDir: claude, cwd: "/nowhere" },
+  ]);
+  await serverSendPass(snap(a), d);
+  clock += 11 * 60_000;
+  await serverSendPass(snap(a), d); // trip
+  clock += 31 * 60_000;
+  await serverSendPass(snap(a, b), d); // 시험 발송 b
+  assert.deepEqual(calls.map((x) => x.id), [a.id, b.id]);
+  await serverSendPass(snap(a, b), d);
+  assert.deepEqual(lines(b.id).map((l) => l.op), ["deliver"]); // 확인을 기다리는 동안 더 보내지 않는다
+  clock += 11 * 60_000;
+  await serverSendPass(snap(a, b), d);
+  assert.deepEqual(lines(b.id).map((l) => [l.op, l.seen ?? l.event]), [["deliver", undefined], ["confirm", false], ["breaker", "trip"]]);
+  assert.equal(serverSendData(clock).breaker, "tripped");
 });
 
 test("send를 적고 쓰기 전에 서버가 멈춘 카드는 1분 뒤 undelivered로 돌린다(10분 기다리지 않는다)", async () => {
