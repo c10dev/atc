@@ -1,5 +1,6 @@
 import { findingSeverityOf, isCodexBot } from "./codex-bot.ts";
 import type { GhThread, LandingReview } from "./landing.ts";
+import { type CrewPlan, crewLineOf } from "./solo-default.ts";
 
 // DIRECT·VECTORS 지시서(ATC-32). 설계: docs/dispatch.md "DIRECT briefs".
 // VECTORS: 지금까지의 지시서(번호 붙은 단계, 긴 템플릿, 모호하면 먼저 묻기).
@@ -186,7 +187,8 @@ export function directLines(s: DirectSections): string[] {
 }
 
 // 사용자나 다른 세션이 팀에 붙여 넣을 DIRECT 배정 문구(GET /api/dispatch/flight/:key/brief). FLIGHT PLAN과 같은 모양
-export function formatAssignment(t: { key: string; title: string | null; url: string | null }, description: string | null, to: string | null, notes: readonly string[] = []): string {
+// crew(ATC-559): SOLO·CREW 줄(solo-default.ts). null이면 줄이 없다
+export function formatAssignment(t: { key: string; title: string | null; url: string | null }, description: string | null, to: string | null, notes: readonly string[] = [], crew: CrewPlan | null = null): string {
   return [
     to ? `[→ ${to}] ${t.key}` : t.key,
     DIRECT_LINE,
@@ -194,6 +196,7 @@ export function formatAssignment(t: { key: string; title: string | null; url: st
     t.url,
     ...directLines(directSectionsOf(description)),
     ...notes,
+    crewLineOf(crew),
     DISCRETION_LINE,
     `— If you take it, answer "READBACK ${t.key}". If you cannot, answer with the reason. Tell me the PR number when you open it.`,
     FINISH_LINE,

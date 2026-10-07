@@ -75,6 +75,12 @@ Suggested sequence: W8 and W9, W1, then W2 and W6, then W5, then W3 and W4, W7 l
 - **Pilot's discretion.** Tokens per working turn is the role's tokens for the day divided by its working turns, so the quiet turns' cost is charged to the work (that is the cost of one useful turn). A day with no working turn shows a dash. Days are UTC; a turn is counted on the day it starts.
 - **Measure names.** `control:share`, `control:tokens-per-turn`, and per role `control:share-<role>` and `control:tokens-per-turn-<role>` (role: tower, mcc, occ, crosscheck, review). `share` is in percent, `tokens-per-turn` in thousands of tokens. They are judged like the flow medians: at least 3 samples (days for `share`, working turns for `tokens-per-turn`) on both sides and a transcript record that covers the whole before window, otherwise `too little data`. Transcripts are read lazily, only when a Measure uses `control:`, for twice the window.
 
+### W7 as built (ATC-559)
+
+- **Brief.** The FLIGHT PLAN and the DIRECT assignment text carry one line: `SOLO (WAKE L|M): …` for WAKE L and M, `CREW (WAKE H): …` for H and J, and `CREW (multi-area: …): …` when the labels name two or more `Area` group labels or two or more TYPE RATINGs other than DOCS. Details in [dispatch.md](dispatch.md) "Solo by default as built".
+- **Switch.** Per AIRPORT, SUPERVISOR only, settings AUTOMATION → OPERATIONS → SOLO (`solo-default.json`). Shipped on for every AIRPORT (SUPERVISOR decision, 2026-10-06: no measure-first gate); off leaves the FLIGHT PLAN as before.
+- **Misfire counters.** Per AIRPORT, last 7 days, against the 7 days before the first start after deploy: SOLO FLIGHTs that took CREW or were blocked for lack of one, SOLO FLIGHTs whose block time is above the same-WAKE baseline median, and tokens per landed FLIGHT by WAKE (LOGBOOK `fuel`). Shown only.
+
 ## 5. Risks
 
 | Risk | Guard |

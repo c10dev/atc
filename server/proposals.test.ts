@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { workOrderHashIn, workOrderHashOf } from "./input-binding.ts";
 import { DEFAULT_DISPATCH_CONFIG, loadDispatchConfig, type Plan } from "./dispatch.ts";
 import type { Ticket, Workspace } from "./model.ts";
 import { parentKeysOf } from "./model.ts";
@@ -260,10 +261,14 @@ test("SUPERSEDED 사유: 계획의 제외 목록에 없어도 planner 규칙을 
 test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORITY·제목·URL·메모·READBACK 요청, 끝은 끝까지 진행", () => {
   const [p] = fold([create("D-0007", "VOC-193", "b", 10), { op: "note", id: "D-0007", at: iso(5), text: "DB 권한 작업", caution: true }]);
   const msg = formatFlightPlan({ ...p, airport: "VCDO" }, { title: "권한 정리", url: "https://linear.app/x/VOC-193", priority: 2 }, "TEAM_B");
+  // work-order 해시(ATC-555): 머리와 끝줄에 같은 해시, 저장된 글에서 다시 계산해도 같다
+  const h = workOrderHashIn(msg)!;
+  assert.match(h, /^[0-9a-f]{6}$/);
+  assert.equal(workOrderHashOf(msg), h);
   assert.equal(
     msg,
     [
-      "[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)",
+      `[DISPATCH D-0007] FLIGHT PLAN @${h} · BRAVO (TEAM_B)`,
       "BRIEF: DIRECT",
       "FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High",
       "권한 정리",
@@ -272,7 +277,7 @@ test("FLIGHT PLAN 문구(DIRECT): BRIEF 줄·콜사인·FLIGHT·AIRPORT·PRIORIT
       "DISPATCH note: CAUTION · DB 권한 작업",
       "If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.",
       '— Send your reply to the session name "OCC" (SendMessage to: "OCC"). Do not send it to the from address. The address changes when OCC restarts.',
-      '— Reply to this message with "READBACK D-0007" if you take it. Reply with "UNABLE D-0007 — reason" if you cannot. Reply with "STANDBY D-0007" if you need time.',
+      `— Reply to this message with "READBACK D-0007 @${h}" if you take it, exactly like that (@${h} is this work order's hash; a reply without it is refused). Reply with "UNABLE D-0007 — reason" if you cannot. Reply with "STANDBY D-0007" if you need time.`,
       "Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.",
     ].join("\n"),
   );

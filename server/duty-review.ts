@@ -3,6 +3,7 @@ import type { ReleaseLine } from "./release.ts";
 import { NOT_RELEASED_WHY, STALE_RELEASE_WHY } from "./release.ts";
 import { similarTickets } from "./schedule.ts";
 import type { Ticket } from "./model.ts";
+import { createHash } from "node:crypto";
 
 // DUTY REVIEW(ATC-396, docs/duty.md): 서버가 SUPERVISOR의 글 없이 DUTY 턴을 시작해 운영을 점검하게 한다.
 // 이 파일은 순수 조각이다: 언제 돌지(트리거), DUTY에게 줄 글, 하루 단위 세기. 턴을 시작하고 파일을 쓰는 것은 duty-review-run.ts.
@@ -23,8 +24,12 @@ const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 // 점검 트리거의 leak 신호에서 뺄 큐 종류(ATC-401). BACKLOG는 DUTY의 제안이 SUPERVISOR의 발권을 기다리는 것이다: 그 기다림이 점검을 부르면
 // 점검이 제안을 더 올리고 제안이 기다림을 더 만드는 고리가 된다. 제안을 쏘는 것은 SUPERVISOR의 화살(원칙 10)이다
 export const REVIEW_LEAK_SKIP_KINDS: ReadonlySet<string> = new Set(["BACKLOG"]);
-export const reviewLeaksOf = (open: readonly { kind: string; title: string; since: string }[]): { title: string; sinceMs: number }[] =>
-  open.filter((o) => !REVIEW_LEAK_SKIP_KINDS.has(o.kind)).map((o) => ({ title: o.title, sinceMs: Date.parse(o.since) })).filter((x) => Number.isFinite(x.sinceMs));
+// id(`kind|key`)는 사실 지문(ATC-566)이 쓴다: 제목·시각이 아니라 어느 leak인가
+export const reviewLeaksOf = (open: readonly { kind: string; title: string; since: string; id?: string }[]): { title: string; sinceMs: number; id: string }[] =>
+  open
+    .filter((o) => !REVIEW_LEAK_SKIP_KINDS.has(o.kind))
+    .map((o) => ({ title: o.title, sinceMs: Date.parse(o.since), id: o.id ?? `${o.kind}|${o.title}` }))
+    .filter((x) => Number.isFinite(x.sinceMs));
 const STUCK_WHY = [NOT_RELEASED_WHY, STALE_RELEASE_WHY, "우선순위"]; // 배정을 못 받는 이유 가운데 "일감은 있다"는 뜻인 것
 
 interface DispatchLike {
@@ -70,11 +75,13 @@ const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 export const REVIEW_DAILY_MAX = 12; // 하루 점검 상한(FUEL을 쓰는 서버 시작 턴의 마지막 안전판)
 
-// 지난 점검의 기억(duty-reviews.jsonl의 review 줄). key는 그때 트리거가 본 것의 서명
+// 지난 점검의 기억(duty-reviews.jsonl의 review 줄과 skip 줄). key는 그때 트리거가 본 것의 서명.
+// skipped(ATC-566): 사실이 같아 건너뛴 점검. 트리거·간격 규칙에는 점검처럼 들어가고(오늘 규칙이 점검했을 때를 그대로 센다), 하루 상한에는 들지 않는다
 export interface ReviewMemo {
   at: number;
   trigger: ReviewTrigger;
   key: string;
+  skipped?: boolean;
 }
 
 // 트리거가 본 것의 서명: idle은 놀고 있는 AIRCRAFT와 기다리는 FLIGHT 집합, leak은 그 leak의 제목. 바뀌지 않는 상황이 간격마다 되풀이 점검을 만들지 않게 한다
@@ -97,7 +104,7 @@ export function decideReview(x: { now: number; lastAt: number; busy: boolean; cf
   if (x.busy) return out({ run: false, why: "busy" });
   if (x.fuelHold) return out({ run: false, why: "fuel" });
   if (now - x.lastAt < cfg.reviewGapMin * MIN) return out({ run: false, why: "gap" });
-  if (history.filter((h) => now - h.at < DAY).length >= REVIEW_DAILY_MAX) return out({ run: false, why: "cap" });
+  if (history.filter((h) => !h.skipped && now - h.at < DAY).length >= REVIEW_DAILY_MAX) return out({ run: false, why: "cap" });
   const repeated = (trigger: ReviewTrigger, key: string) => history.some((h) => h.trigger === trigger && h.key === key && now - h.at < cfg.reviewEveryMin * MIN);
   if (idleSince !== null && now - idleSince >= cfg.reviewIdleMin * MIN) {
     const key = reviewKeyOf("idle", signals);
@@ -206,8 +213,13 @@ export function openSimilarKey(title: string, tickets: readonly Ticket[], now: n
 
 // ── 기록(duty-reviews.jsonl, 추가만)과 하루 세기 ──
 export type ReviewLine =
-  | { v: 1; ev: "review"; id: string; at: string; trigger: ReviewTrigger; detail: string; key?: string }
+  // fp·facts(ATC-566): 이 점검이 실은 사실의 지문과 목록. 옛 줄에는 없다(없으면 건너뛰지 않는다)
+  | { v: 1; ev: "review"; id: string; at: string; trigger: ReviewTrigger; detail: string; key?: string; fp?: string; facts?: string[] }
   | { v: 1; ev: "proposal"; at: string; review: string; key: string; title: string }
+  // REVIEW 턴이 이미 있는 이슈에 쓴 것(ATC-566): 댓글이나 고침. 제안과 같이 "그 점검이 무언가 냈다"로 센다
+  | { v: 1; ev: "write"; at: string; review: string; key: string; action: "comment" | "update" }
+  // 건너뛴 점검(ATC-566): 트리거가 섰는데 사실이 지난 점검(same)과 같고 그 점검이 아무것도 내지 않았다
+  | { v: 1; ev: "skip"; at: string; trigger: ReviewTrigger; detail: string; key?: string; same: string; fp: string; facts: string[]; why: string }
   // empty 점검의 턴이 끝났을 때 한 줄(ATC-470): named = DUTY의 답이 이름 붙인 READY Backlog 수
   | { v: 1; ev: "outcome"; at: string; review: string; named: number };
 
@@ -273,3 +285,116 @@ export function emptyMisfiresOf(lines: readonly ReviewLine[], tickets: readonly 
 
 // DUTY의 답이 이름 붙인 READY 키의 수(대소문자 무시, 단어 경계)
 export const namedReadyOf = (text: string, ready: readonly { key: string }[]): number => ready.filter((r) => new RegExp(`\\b${r.key}\\b`, "i").test(text)).length;
+
+// ── 같은 사실이면 건너뛰기(ATC-566) ──
+// 점검 턴이 실을 사실의 지문. 시간만으로 자라는 값(기다린 분, leak이 열린 분, 컨텍스트 크기, EFFECT CHECK의 전후 수)은 넣지 않는다(docs/squelch.md 원칙 4).
+// 들어가는 것: 놀고 있는 AIRCRAFT·기다리는 FLIGHT(집합), 열린 leak의 id(kind|key), 착륙 대기열 줄(PR·key·상태·landBy·막힘 — 분이 없다),
+// WARNING·CAUTION 알림의 key(첫 마디가 종류), 열린 EFFECT CHECK 평결(FLIGHT와 평결만)
+export interface ReviewFactsInput {
+  signals: Pick<ReviewSignals, "idleAircraft" | "waitingFlights">;
+  leakIds: readonly string[];
+  landing: readonly string[];
+  alerts: readonly { level: string; key: string }[];
+  effects: readonly string[]; // effectLine: `ATC-1 not improved: metric down 7d, 10 → 9`. 콜론 앞만 쓴다
+}
+export interface ReviewFacts {
+  fp: string;
+  facts: string[];
+}
+export const FACTS_KEEP_MAX = 200; // 줄에 남기는 사실 수의 위(지문은 전부로 만든다)
+
+export function reviewFactsOf(x: ReviewFactsInput): ReviewFacts {
+  const facts = [
+    ...x.signals.idleAircraft.map((r) => `idle:${r}`),
+    ...x.signals.waitingFlights.map((k) => `wait:${k}`),
+    ...x.leakIds.map((id) => `leak:${id}`),
+    ...x.landing.map((l) => `land:${l}`),
+    ...x.alerts.filter((a) => a.level === "warning" || a.level === "caution").map((a) => `alert:${a.key}`),
+    ...x.effects.map((e) => `effect:${e.split(":")[0]!.trim()}`),
+  ];
+  const sorted = [...new Set(facts)].sort();
+  return { fp: createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 16), facts: sorted };
+}
+
+// 하루 한 번(HEARTBEAT): 이 시각(UTC) 뒤 처음 서는 점검은 사실이 같아도 건너뛰지 않는다. 00:00Z = 09:00 KST(SUPERVISOR의 하루 시작에 새 요약이 기다린다)이고
+// 설정 창의 하루 세기(reviewDaysOf)가 쓰는 UTC 날짜 경계와 같다
+export const HEARTBEAT_HOUR_UTC = 0;
+export const heartbeatBoundary = (now: number, hour = HEARTBEAT_HOUR_UTC): number => {
+  const d = new Date(now);
+  const b = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour);
+  return b <= now ? b : b - DAY;
+};
+export const heartbeatDue = (lastRunAt: number, now: number, hour = HEARTBEAT_HOUR_UTC): boolean => lastRunAt < heartbeatBoundary(now, hour);
+
+// 마지막으로 실제로 돈 점검과 그 점검이 낸 것(제안·댓글·고침)
+export interface LastRun {
+  id: string;
+  at: number;
+  fp: string | null;
+  filed: number;
+}
+export function lastRunOf(lines: readonly ReviewLine[]): LastRun | null {
+  const last = [...lines].reverse().find((l) => l.ev === "review");
+  if (!last || last.ev !== "review") return null;
+  const filed = lines.filter((l) => (l.ev === "proposal" || l.ev === "write") && l.review === last.id).length;
+  return { id: last.id, at: Date.parse(last.at), fp: last.fp ?? null, filed };
+}
+
+export type SkipVerdict = { skip: true; why: string } | { skip: false; why: "off" | "first" | "no-fp" | "filed" | "changed" | "heartbeat" };
+// 건너뛸까: 스위치가 켜졌고, 지난 점검의 지문이 같고, 그 점검이 아무것도 내지 않았고, 하루 한 번(HEARTBEAT)이 아직 오지 않았으면
+export function skipVerdictOf(x: { on: boolean; fp: string; last: LastRun | null; now: number }): SkipVerdict {
+  if (!x.on) return { skip: false, why: "off" };
+  if (!x.last) return { skip: false, why: "first" };
+  if (!x.last.fp) return { skip: false, why: "no-fp" };
+  if (x.last.filed > 0) return { skip: false, why: "filed" };
+  if (x.last.fp !== x.fp) return { skip: false, why: "changed" };
+  if (heartbeatDue(x.last.at, x.now)) return { skip: false, why: "heartbeat" };
+  return { skip: true, why: `same facts as ${x.last.id}, which filed no issue and no comment` };
+}
+
+// 마지막으로 실제 돈 점검 뒤의 가장 최근 skip 줄(밀린 점검). 사실이 바뀌면 이 점검을 곧바로 돌린다
+export function pendingSkipOf(lines: readonly ReviewLine[]): Extract<ReviewLine, { ev: "skip" }> | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i]!;
+    if (l.ev === "review") return null;
+    if (l.ev === "skip") return l;
+  }
+  return null;
+}
+
+// 트리거·간격 규칙에 넣을 기억: 돈 점검과 건너뛴 점검
+export const reviewMemosOf = (lines: readonly ReviewLine[]): ReviewMemo[] =>
+  lines.flatMap((l) => (l.ev === "review" ? [{ at: Date.parse(l.at), trigger: l.trigger, key: l.key ?? "" }] : l.ev === "skip" ? [{ at: Date.parse(l.at), trigger: l.trigger, key: l.key ?? "", skipped: true }] : [])).filter((m) => Number.isFinite(m.at));
+
+// 오발: 건너뛴 점검 S 뒤 2시간 안의 다음 점검 R이 이슈를 제안했고, 그 제안을 S의 사실도 받쳤다.
+// "S의 사실도 받쳤다" = R의 사실에 S에 없던 것이 하나도 없다(새로 나타난 것 없이 제안이 나왔다), 또는 R의 제안 제목이 S의 사실에 있던 키(ATC-1·VOC-2·PR #3·TEAM_X)를 부른다.
+// 넉넉히 센다: 오발을 놓치는 것보다 더 세는 쪽이 안전하다
+export const MISFIRE_WINDOW_MS = 2 * 60 * MIN;
+const FACT_KEY = /[A-Z][A-Z0-9]*-\d+|#\d+|TEAM_[A-Z0-9]+/g;
+export const factKeysOf = (facts: readonly string[]): Set<string> => new Set(facts.flatMap((f) => f.match(FACT_KEY) ?? []));
+
+export interface SkipCounts {
+  skipped: number;
+  misfires: number;
+  misfireOf: string[]; // 오발로 센 다음 점검의 id
+}
+export function skipCountsOf(lines: readonly ReviewLine[]): SkipCounts {
+  const out: SkipCounts = { skipped: 0, misfires: 0, misfireOf: [] };
+  lines.forEach((s, i) => {
+    if (s.ev !== "skip") return;
+    out.skipped++;
+    const next = lines.slice(i + 1).find((l) => l.ev === "review");
+    if (!next || next.ev !== "review" || Date.parse(next.at) - Date.parse(s.at) > MISFIRE_WINDOW_MS) return;
+    const filed = lines.filter((l) => l.ev === "proposal" && l.review === next.id);
+    if (!filed.length) return;
+    const had = new Set(s.facts);
+    const nothingNew = next.fp === s.fp || (next.facts !== undefined && next.facts.every((f) => had.has(f)));
+    const keys = factKeysOf(s.facts);
+    const named = filed.some((p) => p.ev === "proposal" && (p.title.match(FACT_KEY) ?? []).some((k) => keys.has(k)));
+    if (nothingNew || named) {
+      out.misfires++;
+      if (!out.misfireOf.includes(next.id)) out.misfireOf.push(next.id);
+    }
+  });
+  return out;
+}

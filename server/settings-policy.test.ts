@@ -9,7 +9,7 @@ const INDEX = settingsIndexOf(switchViews());
 test("modeLine: 선언된 스위치를 한 줄로, 기본은 꺼짐(자동 운항·SCHEDULE·FLEET PLAN·CODEX LANE은 기본 on)", () => {
   assert.equal(
     modeLine(modeSegments(switchViews())),
-    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · MCC SERVER AUTO on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY REVIEW EMPTY on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
+    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · MCC SERVER AUTO on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY REVIEW EMPTY on · DUTY REVIEW SKIP on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
   );
 });
 
@@ -107,6 +107,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "K3 RELAUNCH", "K3 FLIGHT에 쉬는 AIRCRAFT를 멈추고 새로 띄우는 카드", "k3 relaunch stop launch fresh 새로 띄움 쉬는 AIRCRAFT fleet plan 카드 오작동 k3Relaunch"],
     ["operations", "ACCOUNT RELEASE", "ACCOUNT가 달라 닿지 않는 AIRCRAFT의 카드를 닫음", "account 불일치 mismatch cross 닿지 않는 occ release 풀기 카드 supersede wrong-aircraft crossAccountRelease"],
     ["operations", "FRESH START", "새 FLIGHT마다 세션을 새로 띄우기", "fresh start 자동 새 세션 restart stop launch 대화 context always over off 오작동 freshStart fresh-start.json"],
+    ["operations", "SOLO", "WAKE L·M FLIGHT는 CAPTAIN 혼자(CREW 없이)", "solo crew captain 혼자 팀원 subagent wake l m h multi-area 여러 영역 flight plan 오작동 soloDefault solo-default.json"],
     ["operations", "EFFECT CHECK", "배포 효과 확인(## Measure 평결)", "effect check measure 평결 improved not improved worse too little data 효과 측정 effect-check.json 틀림 misfire"],
     ["operations", "PARKED", "RELEASE 화면의 PARKED 절과 그 발권", "parked backlog 손으로 올린 hand-filed release 발권 접힌 releaseParked"],
     ["operations", "SCOPE MEMORY", "백그라운드 세션 scope의 메모리 상한(OOM이 scope 안에서 끝나게)", "scope memory 메모리 oom kill cgroup memoryhigh memorymax launch bgMemoryCap"],
@@ -117,7 +118,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "SCHEDULE·FLEET PLAN AUTO", "SCHEDULE·FLEET PLAN 자동 적용", "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog"],
     ["operations", "REPOSITION", "소속 AIRPORT 옮기기", "base fleet plan approval auto fleet-plan.reposition"],
     ["operations", "CONTROL RECYCLE", "관제 세션 자동 재시작", "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode carry over 넘겨 줌 overdue CLEARANCE RESEND 답 없음 controlRecycleCarry"],
-    ["operations", "DUTY", "DUTY 채팅(atc 안의 대화 상대)", "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC empty duty.reviewEmpty DUTY REVIEW EMPTY l1 duty.l1 DUTY L1 stand linear"],
+    ["operations", "DUTY", "DUTY 채팅(atc 안의 대화 상대)", "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC empty duty.reviewEmpty DUTY REVIEW EMPTY skip duty.reviewSkip DUTY REVIEW SKIP 건너뛰기 l1 duty.l1 DUTY L1 stand linear"],
     ["operations", "JUDGES", "판정 계열", "jev typesafe replay shadow judges.jev"],
     ["operations", "LANDING GAP", "착륙 없음 막힘 규칙(HOME)", "landing gap 착륙 없음 막힘 p90 기준 landingGap"],
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],
@@ -131,6 +132,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "CLEARANCE MOOT", "이유를 잃은 CLEARANCE 정리", "clearance moot 이유 잃은 취소 cancel 머지된 PR 브리핑 clearanceMoot"],
     ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
     ["operations", "STALE REPLY", "닫혔거나 밀린 부름에 온 답 거절", "stale reply 옛 id 거절 refused superseded 다시 보낸 READBACK UNABLE STANDBY latest call staleReply"],
+    ["operations", "READBACK HASH", "FLIGHT PLAN READBACK의 work-order 해시 확인", "readback hash 해시 work order 작업 지시서 FLIGHT PLAN 인용 quote @sha 바뀐 지시서 tamper 거절 refused input binding WO-23 readbackHash"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);

@@ -71,6 +71,8 @@ import { readLinearProjects } from "./sources/linear-projects.ts";
 import { flightPlanNotesOf, type IssueComment } from "./issue-notes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
+import { type CrewPlan, crewLineOf, crewPlanOf, detailLabelsOf } from "./solo-default.ts";
+import { soloOnAt } from "./solo-default-switch.ts";
 import { type Delivery, deliveryOf } from "./session-origin.ts";
 import { fromThisApp } from "./origin.ts";
 import { causeOf, resolveRecipient } from "./address.ts";
@@ -83,6 +85,8 @@ import { ticketKeyFromBranch } from "./sources/git.ts";
 import { k3LaunchWaits, k3WaitOf } from "./k3-launch-wait.ts";
 import { flightPlanCalls } from "./stale-reply.ts";
 import { refuseStaleReply } from "./stale-reply-run.ts";
+import { bound, contentHashOf, quotedHashOf, sealWorkOrder, WO_SLOT, workOrderHashIn } from "./input-binding.ts";
+import { refuseReadbackHash, releaseOfFlightNow } from "./input-binding-run.ts";
 import {
   approveLaunch,
   LAUNCH_FAILED_WHY,
@@ -257,7 +261,8 @@ export interface Proposal {
 type Create = Omit<Proposal, "status" | "decidedAt" | "statusAt" | "timeline" | "reason" | "note" | "caution" | "hold" | "holdAt" | "message" | "departedStand" | "crosscheck">;
 export type Op =
   // ageFrom(ATC-547): 밀려난 카드의 FLIGHT를 다시 제안하는 카드가 원래 카드의 나이(at)를 이어받는다. SETTLED·자동 승인·TTL이 이 시각부터 센다
-  | ({ op: "create"; ageFrom?: string } & Create)
+  // hash·release(ATC-555, WO-23): append가 새 줄에 더한다(판정한 입력의 해시, 발권 id). 옛 줄에는 없다. 접은 제안에는 넣지 않는다
+  | ({ op: "create"; ageFrom?: string; hash?: string; release?: string } & Create)
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
   | { op: "note"; id: string; at: string; text: string; caution: boolean }
   | ({ op: "brief"; id: string } & Briefing)
@@ -339,7 +344,7 @@ export function fold(ops: Op[]): Proposal[] {
   const byId = new Map<string, Proposal>();
   for (const o of ops) {
     if (o.op === "create") {
-      const { op: _op, ageFrom, ...rest } = o;
+      const { op: _op, ageFrom, hash: _hash, release: _release, ...rest } = o;
       byId.set(o.id, {
         ...rest, ...(ageFrom ? { at: ageFrom } : {}), status: "proposed", decidedAt: null, statusAt: o.at, timeline: { proposed: o.at },
         reason: null, note: null, caution: false, hold: [], holdAt: null, message: null, departedStand: null, crosscheck: null,
@@ -979,7 +984,8 @@ export const descriptionOf = (d: Record<string, unknown>): string | null => (typ
 // CAPTAIN에게 보낼 FLIGHT PLAN. send-guard는 DISPATCH가 이 문구를 그대로 보내는지 확인한다.
 // DIRECT 지시서(ATC-32): 이슈 본문(description)에서 목표·완료 기준·이 작업만의 제약만 옮기고, 끝까지 한 번에 날게 한다.
 // 본문을 못 읽었으면(null) 완료 기준은 링크의 이슈 본문을 따르라고 적는다.
-export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now(), notes: readonly string[] = []): string {
+// crew(ATC-559): SOLO·CREW 줄. null이면(AIRPORT 스위치 off) 줄이 없다 — 오늘과 같은 문구
+export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now(), notes: readonly string[] = [], crew: CrewPlan | null = null): string {
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
@@ -988,8 +994,9 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
   const waiting = p.waitingFlights?.length
     ? `STAND: ${p.waitingFlights.map(flightNumber).join(", ")} only waits to land in its own STAND. Start this FLIGHT in a NEW STAND (a new worktree) and keep the earlier one. A FIX or GO AROUND for the earlier PR still reaches you: handle it in the earlier STAND, then return to this FLIGHT`
     : null;
-  return [
-    `[DISPATCH ${p.id}] FLIGHT PLAN · ${who}`,
+  // 머리와 끝줄의 해시 자리(@WOHASH)는 다 만든 뒤 글의 해시로 바뀐다(ATC-555, input-binding.ts sealWorkOrder). CAPTAIN의 READBACK이 그 해시를 인용한다
+  const draft = [
+    `[DISPATCH ${p.id}] FLIGHT PLAN ${WO_SLOT} · ${who}`,
     DIRECT_LINE,
     `FLIGHT ${flightNumber(p.flight)} · AIRPORT ${p.airport ?? "—"} · PRIORITY ${ticket?.priority ? (PRIORITY_NAME[ticket.priority] ?? "None") : "None"}`,
     ticket?.title ?? p.flight,
@@ -1002,12 +1009,14 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     note,
     hold,
     waiting,
+    crewLineOf(crew),
     DISCRETION_LINE,
-    closingLine("flight-plan", responseOf("flight-plan"), p.id),
+    closingLine("flight-plan", responseOf("flight-plan"), p.id, WO_SLOT),
     FINISH_LINE,
   ]
     .filter(Boolean)
     .join("\n");
+  return sealWorkOrder(draft).text;
 }
 
 // CAPTAIN에게 보낼 RECALL. send-guard는 OCC가 이 문구를 그대로 보내는지 확인한다(docs/dispatch.md "RECALL").
@@ -1246,10 +1255,32 @@ export function readOps(file = FILE()): Op[] {
   return opsCache.read(file).lines as Op[];
 }
 
+// 판정한 입력(WO-23, ATC-555): 제안 카드가 보이는 배정 내용. create 줄과 접은 제안에서 같은 칸을 고른다
+const JUDGED_KEYS = ["kind", "flight", "aircraft", "aircraftName", "registration", "airport", "score", "factors", "launch", "resume", "prHolder", "supervisorConfirm", "waitingFlights"] as const;
+export const proposalInputHashOf = (x: Partial<Record<(typeof JUDGED_KEYS)[number], unknown>>): string => contentHashOf(Object.fromEntries(JUDGED_KEYS.map((k) => [k, x[k]])));
+
+// 새 줄에 입력 묶기 칸을 더한다(WO-23, ATC-555, 추가만 — 옛 줄은 그대로 읽힌다):
+// create는 판정한 입력의 해시, verdict·approve·reject는 그 판정이 본 카드의 해시, send는 보낸 FLIGHT PLAN의 work-order 해시. 모두 그 FLIGHT의 발권 id(release)
+export function bindProposalOps(ops: readonly Op[], known: (id: string) => Proposal | undefined, releaseOf: (flight: string | null | undefined) => string | null): Op[] {
+  const created = new Map(ops.flatMap((o) => (o.op === "create" ? [[o.id, o] as const] : [])));
+  return ops.map((o) => {
+    if (o.op === "create") return bound(o, proposalInputHashOf(o), releaseOf(o.flight));
+    if (o.op === "send" || o.op === "verdict" || o.op === "approve" || o.op === "reject") {
+      const p = known(o.id) ?? created.get(o.id);
+      const hash = o.op === "send" ? workOrderHashIn(o.message) : p ? proposalInputHashOf(p) : null;
+      return bound(o, hash, releaseOf(p?.flight));
+    }
+    return o;
+  });
+}
+
 export function append(ops: Op[]) {
   if (!ops.length) return;
+  let cache: Proposal[] | null = null;
+  const known = (id: string) => (cache ??= allProposals()).find((p) => p.id === id);
+  const lines = bindProposalOps(ops, known, releaseOfFlightNow);
   mkdirSync(dirname(FILE()), { recursive: true });
-  appendFileSync(FILE(), ops.map((o) => JSON.stringify(o)).join("\n") + "\n");
+  appendFileSync(FILE(), lines.map((o) => JSON.stringify(o)).join("\n") + "\n");
   for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id, ...(o.op === "send" && o.via ? { via: o.via } : {}), ...(o.op === "approve" && o.via === "auto" ? { by: "auto" } : {}) });
 }
 
@@ -1260,15 +1291,23 @@ export async function flightPlanMessageOf(p: Proposal, s: Pick<Snapshot, "ticket
   const detail = (await fetchIssueDetail(p.flight).catch(() => null)) as Record<string, unknown> & { comments: unknown[] } | null;
   const description = detail ? descriptionOf(detail) : null;
   const notes = detail ? flightPlanNotesOf(detail.comments as IssueComment[], loadDispatchConfig().issueNotes, typeof detail.url === "string" ? detail.url : null) : [];
-  return formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now(), notes);
+  const ticket = s.tickets.find((t) => t.key === p.flight);
+  // SOLO 기본(ATC-559): 스냅샷의 라벨, 없으면 이슈 상세의 라벨로 WAKE·영역을 읽는다. AIRPORT 스위치가 off면 줄이 없다
+  const crew = crewPlanOf(ticket?.labels ?? (detail ? detailLabelsOf(detail) : []), soloOnAt(p.airport));
+  return formatFlightPlan(p, ticket, p.aircraftName ?? "", description, Date.now(), notes, crew);
 }
 
 // DIRECT 지시서(GET /api/dispatch/flight/:key/brief?to=). FLEET 카드의 LAUNCH with a FLIGHT(ATC-73)도 첫 프롬프트에 이것을 쓴다
 export async function directBriefOf(key: string, to: string | null): Promise<string> {
   const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
   const url = typeof d.url === "string" ? d.url : null;
-  const notes = flightPlanNotesOf(d.comments as IssueComment[], loadDispatchConfig().issueNotes, url);
-  return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
+  const cfg = loadDispatchConfig();
+  const notes = flightPlanNotesOf(d.comments as IssueComment[], cfg.issueNotes, url);
+  // SOLO 기본(ATC-559): FLEET LAUNCH with a FLIGHT·K3 RELAUNCH의 첫 프롬프트도 같은 줄을 싣는다. AIRPORT는 이슈의 팀·프로젝트로
+  const project = (d.project as { name?: unknown } | null | undefined)?.name;
+  const airport = airportOfTicket({ key, project: typeof project === "string" ? project : null }, cfg);
+  const crew = crewPlanOf(detailLabelsOf(d), soloOnAt(airport));
+  return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes, crew);
 }
 
 // 한 FLIGHT의 제안 기록: 최근 것이 먼저, limit건까지(ATC-377)
@@ -1680,6 +1719,10 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
       } else if (name === "accept") {
         const bad = closed("accept");
         if (bad) return bad;
+        // READBACK이 FLIGHT PLAN의 work-order 해시를 인용해야 한다(ATC-555). OCC가 CAPTAIN이 쓴 해시를 hash로 넘긴다(atcctl dispatch readback D-xxxx @xxxxxx).
+        // 해시 전의 옛 FLIGHT PLAN과 스위치 off는 거르지 않는다
+        const wrongHash = refuseReadbackHash(p, quotedHashOf(body.hash));
+        if (wrongHash) return c.json({ error: wrongHash }, 409);
         // STAND 없는 FLIGHT(SURVEY·CHECK)는 READBACK과 함께 DEPARTED
         append(readbackOps(p, (await getSnapshot()).tickets.find((t) => t.key === p.flight), at));
       } else if (name === "standby") {
