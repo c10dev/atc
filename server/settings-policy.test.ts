@@ -129,6 +129,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "JOB TIMING", "서버 일별 시간 측정", "job timing 잡 시간 측정 cpu 서버 부하 steady jobTiming"],
     ["operations", "EVENT LOOP LAG", "서버 느림 알림(이벤트 루프 지연)", "event loop lag 이벤트 루프 지연 서버 느림 p99 job timing misfire eventLoopLag"],
     ["operations", "LINEAR RETRY", "Linear 호출 다시 시도 횟수", "linear retry 다시 시도 재시도 fetch failed 네트워크 실패 백오프 atcctl linearRetries"],
+    ["operations", "CLEARANCE ENDED", "받는 세션이 끝난 CLEARANCE 닫기", "clearance ended addressee ended 받는 세션 끝남 dead undeliverable overdue RESEND 닫기 clearanceEnded"],
     ["operations", "CLEARANCE MOOT", "이유를 잃은 CLEARANCE 정리", "clearance moot 이유 잃은 취소 cancel 머지된 PR 브리핑 clearanceMoot"],
     ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
     ["operations", "STALE REPLY", "닫혔거나 밀린 부름에 온 답 거절", "stale reply 옛 id 거절 refused superseded 다시 보낸 READBACK UNABLE STANDBY latest call staleReply"],
