@@ -15,7 +15,7 @@ import { fetchIssueDetail } from "./sources/linear.ts";
 // Codex 한도 때 착륙 리뷰(ATC-7, ATC-27, docs/occ.md 9.2). REVIEW 세션(Claude Sonnet, 2026-09-29)이 자료를 읽고(GET) 리뷰를 남긴다(POST).
 // 기록은 추가만 하는 landing-reviews.jsonl. CLEARED TO LAND 판단은 landing.ts(extReviewStateOf)가 한다.
 
-const FILE = join(config.stateDir, "landing-reviews.jsonl");
+const FILE = () => join(config.stateDir, "landing-reviews.jsonl"); // 쓸 때마다 읽는다(ATC-564)
 export const REVIEW_TEXT_MAX = 4000;
 export const DIFF_MAX = 80_000; // 자료에 넣는 diff 글자 수(넘으면 자르고 알린다)
 const BODY_MAX = 8_000;
@@ -43,12 +43,12 @@ function readReviewsFile(file: string): LandingReview[] {
   caches.set(file, { key, reviews });
   return reviews;
 }
-export const readLandingReviews = (file = FILE): LandingReview[] => readReviewsFile(file);
+export const readLandingReviews = (file = FILE()): LandingReview[] => readReviewsFile(file);
 // AUTOLAND AIRPORT의 머지 리뷰(ATC-328). 추가만 하는 JSONL. 파일은 호출 때 정한다(config.stateDir가 시험에서 바뀐다)
 export const mergeReviewsFile = () => join(config.stateDir, "autoland-reviews.jsonl");
 export const readMergeReviews = (file = mergeReviewsFile()): MergeReview[] => readReviewsFile(file);
 
-function appendReview(r: LandingReview, file = FILE, op = "landing-review") {
+function appendReview(r: LandingReview, file = FILE(), op = "landing-review") {
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, `${JSON.stringify(r)}\n`);
   record({ t: r.at, kind: "landing", op: `${op}:${r.verdict}`, id: `${r.repo}#${r.number}` });
