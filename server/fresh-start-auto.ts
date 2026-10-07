@@ -72,7 +72,7 @@ export interface FlownInputs {
   startedAt: string;
   currentId: string;
   proposals: readonly { id: string; flight: string; status: string; sentAt: string | null }[]; // 이 AIRCRAFT의 ASSIGN
-  launches: readonly { t: string; flight?: string }[]; // 이 AIRCRAFT의 성공한 fleet launch 줄
+  launches: readonly { t: string; flight?: string; proposal?: string }[]; // 이 AIRCRAFT의 성공한 fleet launch 줄. launch 카드·FRESH START 줄은 flight 없이 proposal만 있다
   departures: readonly { flight: string | null; departedAt: string }[]; // 이 AIRCRAFT의 LOGBOOK
 }
 export function flownInSessionOf(i: FlownInputs): string[] {
@@ -80,7 +80,11 @@ export function flownInSessionOf(i: FlownInputs): string[] {
   if (!Number.isFinite(start)) return [];
   const out = new Set<string>();
   for (const p of i.proposals) if (p.id !== i.currentId && p.sentAt && p.status !== "approved" && Date.parse(p.sentAt) >= start) out.add(p.flight);
-  for (const l of i.launches) if (l.flight && Math.abs(Date.parse(l.t) - start) <= LAUNCH_SKEW_MS) out.add(l.flight);
+  const flightOf = new Map(i.proposals.map((p) => [p.id, p.flight]));
+  for (const l of i.launches) {
+    const flight = l.flight ?? (l.proposal ? flightOf.get(l.proposal) : undefined);
+    if (flight && Math.abs(Date.parse(l.t) - start) <= LAUNCH_SKEW_MS) out.add(flight);
+  }
   for (const d of i.departures) if (d.flight && Date.parse(d.departedAt) >= start) out.add(d.flight);
   return [...out].sort();
 }

@@ -25,7 +25,7 @@ import { aircraftContexts } from "./fuel-run.ts";
 import { loadLogbook } from "./logbook.ts";
 import type { Snapshot } from "./model.ts";
 import { fromThisApp } from "./origin.ts";
-import { allProposals, append, flightPlanMessageOf, type Proposal, readOps, regOfProposal } from "./proposals.ts";
+import { allProposals, append, flightPlanMessageOf, type Proposal, regOfProposal } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { regKey } from "./registration.ts";
 import { agentRows, launchAircraft, liveRowsOf, rowOriginOf, stopAircraft } from "./session-control.ts";
@@ -89,14 +89,17 @@ export function autoFactsOf(p: Proposal, s: Snapshot, now = Date.now()) {
   const ctx = aircraftContexts(s.sessions, tp, now).get(reg) ?? null;
   const startedAt = live?.startedAt ?? null;
   const start = startedAt ? Date.parse(startedAt) : NaN;
+  const proposals = allProposals();
   const flown = Number.isFinite(start)
     ? flownInSessionOf({
         startedAt: startedAt!,
         currentId: p.id,
-        proposals: allProposals()
+        proposals: proposals
           .filter((x) => x.kind === "ASSIGN" && regOfProposal(x, tp) === reg)
           .map((x) => ({ id: x.id, flight: x.flight, status: x.status, sentAt: x.timeline.sent ?? null })),
-        launches: readRecords(start - DAY).flatMap((r) => (r.kind === "fleet" && r.op === "launch" && r.ok && regKey(r.aircraft, tp) === reg ? [{ t: r.t, flight: r.flight }] : [])),
+        launches: readRecords(start - DAY).flatMap((r) =>
+          r.kind === "fleet" && r.op === "launch" && r.ok && regKey(r.aircraft, tp) === reg ? [{ t: r.t, flight: r.flight, proposal: r.proposal }] : [],
+        ),
         departures: logbook.filter((e) => e.aircraft === reg).map((e) => ({ flight: e.flight ?? null, departedAt: e.departedAt })),
       })
     : [];
@@ -152,7 +155,9 @@ export function autoFreshStartGate(getSnapshot: () => Promise<Snapshot>) {
     if (p.kind !== "ASSIGN" || p.launch) return null;
     const name = p.aircraftName ?? regOfProposal(p, loadDispatchConfig().teamPattern) ?? "AIRCRAFT";
     if (freshStartBusy(p.id)) return autoFreshWaitText(name);
-    if (p.status !== "approved" || decidedBefore(p)) return null;
+    if (p.status !== "approved") return null;
+    if (freshStartModeAt(loadFreshStartSwitch(), p.airport) === "off") return null; // 스위치 off: 세션 사실을 읽지 않는다
+    if (decidedBefore(p)) return null;
     const { reg, startedAt, facts } = autoFactsOf(p, s);
     const d = autoFreshStartOf(facts);
     if (d.act === "none") return null;
@@ -188,7 +193,8 @@ export function freshStartMisfiresNow(now = Date.now()): MisfireRow[] {
   const failures = records.flatMap((r) => (r.kind === "dispatch" && r.op === "fresh-start" && r.by === "auto" && r.ok === false && r.stage ? [{ t: r.t, id: r.id, stage: r.stage }] : []));
   const sent = allProposals().filter((p) => p.kind === "ASSIGN" && p.timeline.sent && Date.parse(p.timeline.sent) >= since);
   const reports = foldReports(readReports());
-  const asked = new Set(readOps().filter((o) => o.op === "await-supervisor").map((o) => o.id));
+  // SUPERVISOR 질문: 제안 op마다 append가 남기는 dispatch 줄에서(fold는 awaitSupervisor를 지운다)
+  const asked = new Set(records.flatMap((r) => (r.kind === "dispatch" && r.op === "await-supervisor" ? [r.id] : [])));
   const logbook = loadLogbook();
   const clearances = allClearances().filter((c) => (c.type === "FIX" || c.type === "GO AROUND") && !c.cancelledAt && c.flight);
   const blocked = new Set<string>();

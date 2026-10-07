@@ -90,6 +90,11 @@ test("이미 날았나: 세션 시작 뒤 보낸 FLIGHT PLAN, FLIGHT로 띄운 L
   assert.deepEqual(flownInSessionOf({ ...base, proposals: [{ id: "D-2", flight: "ATC-2", status: "departed", sentAt: "2026-10-07T10:05:00.000Z" }] }), ["ATC-2"]);
   // launch 카드·K3 RELAUNCH·FLEET LAUNCH with a FLIGHT: 세션 시작 무렵의 LAUNCH 줄
   assert.deepEqual(flownInSessionOf({ ...base, launches: [{ t: "2026-10-07T10:00:20.000Z", flight: "ATC-5" }, { t: "2026-10-06T10:00:00.000Z", flight: "ATC-4" }, { t: "2026-10-07T10:00:00.000Z" }] }), ["ATC-5"]);
+  // FRESH START·launch 카드로 띄운 세션: LAUNCH 줄에 flight가 없고 proposal만 있다 — 그 카드의 FLIGHT로 읽는다
+  assert.deepEqual(
+    flownInSessionOf({ ...base, proposals: [{ id: "D-8", flight: "ATC-8", status: "sent", sentAt: "2026-10-07T09:59:58.000Z" }], launches: [{ t: "2026-10-07T10:00:05.000Z", proposal: "D-8" }] }),
+    ["ATC-8"],
+  );
   // 직접 맡긴 FLIGHT: 세션 시작 뒤에 DEPARTED한 LOGBOOK 줄
   assert.deepEqual(flownInSessionOf({ ...base, departures: [{ flight: "ATC-6", departedAt: "2026-10-07T11:00:00.000Z" }, { flight: "ATC-7", departedAt: "2026-10-06T11:00:00.000Z" }] }), ["ATC-6"]);
   assert.deepEqual(flownInSessionOf({ ...base, startedAt: "?" , departures: [{ flight: "ATC-6", departedAt: "2026-10-07T11:00:00.000Z" }] }), []);
