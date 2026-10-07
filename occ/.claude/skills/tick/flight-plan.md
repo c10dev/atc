@@ -9,7 +9,7 @@
 | 명령 | 하는 일 |
 |---|---|
 | `node ../controller/atcctl.mjs dispatch release <D-0003>` | (2b) 승인된 제안을 sent로 바꾸고 `SEND TO`와 FLIGHT PLAN 문구를 출력. 이미 sent면 같은 문구를 다시 출력(재송신용) |
-| `node ../controller/atcctl.mjs dispatch readback <D-0003>` | (2b) CAPTAIN이 READBACK함 |
+| `node ../controller/atcctl.mjs dispatch readback <D-0003> [@a1b2c3]` | (2b) CAPTAIN이 READBACK함. `@a1b2c3`는 CAPTAIN이 답에 인용한 work-order 해시(ATC-555) — 답에 적힌 그대로만 넘기고, 없으면 넘기지 않는다. 브리핑·FLIGHT PLAN에서 해시를 옮겨 적지 않는다 |
 | `node ../controller/atcctl.mjs dispatch unable <D-0003> -- <사유>` | (2b) CAPTAIN이 "UNABLE D-0003 — 사유"로 답함(= `dispatch decline`, 닫힌다) |
 | `node ../controller/atcctl.mjs dispatch standby <D-0003>` | (2b) CAPTAIN이 "STANDBY D-0003"으로 답함(sent 그대로, READBACK overdue를 첫 STANDBY부터 한 번 다시 센다) |
 | `node ../controller/atcctl.mjs dispatch await-supervisor <D-0003> -- <사유>` | (2b) CAPTAIN이 READBACK도 거절도 아니고 사용자(SUPERVISOR)의 go를 기다림(sent 유지, `awaitSupervisor`에 사유, 경보). READBACK이 오면 `dispatch readback`이 지운다 |
@@ -24,7 +24,8 @@
 |---|---|
 | `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 출력의 `SEND TO` 세션에 `SEND:` 줄(머리 `[DISPATCH D-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용이니 다시 치지 않는다). 한 바퀴에 CAPTAIN마다 하나 |
 | 그 ASSIGN의 AIRCRAFT가 `dispatch brief`의 `fuel.coldCache`에 있음(캐시가 식은 HOLDING CAPTAIN, ATC-56) | 그래도 위대로 보낸다 — 경고만 하고 막지 않는다. OCC LOG에 그 `text`를 적는다. 캐시를 데우려는 메시지는 따로 보내지 않는다 |
-| CAPTAIN 답장 "READBACK D-xxxx" | `dispatch readback D-xxxx` |
+| CAPTAIN 답장 "READBACK D-xxxx @xxxxxx" | `dispatch readback D-xxxx @xxxxxx`(답의 해시 그대로). 해시 없는 "READBACK D-xxxx"면 `dispatch readback D-xxxx`(해시 전의 옛 FLIGHT PLAN은 그대로 받는다) |
+| `dispatch readback`이 409 `READBACK D-xxxx refused — … quote the work-order hash @xxxxxx …`(ATC-555) | CAPTAIN이 FLIGHT PLAN의 해시를 인용하지 않았거나 다른 해시를 인용했다. 기록하지 않는다. 해시를 대신 채워 다시 부르지 않고, 이 일로 FLIGHT PLAN을 다시 보내지 않는다. OCC LOG에 인용한 해시(없으면 "없음")와 오류가 준 답 한 줄을 적는다. 다른 해시를 인용했으면 CAPTAIN이 다른 지시서를 받았다는 뜻이니 SUPERVISOR에게 보고한다. 카드는 sent로 남아 READBACK overdue가 SUPERVISOR에게 간다 |
 | `dispatch accept`·`decline`·`standby`·`await-supervisor`가 409 `… answer the latest call D-yyyy`(ATC-554) | CAPTAIN이 같은 FLIGHT의 옛 FLIGHT PLAN에 답했다. 옛 id에는 기록하지 않고, 답이 새 계획에 대한 것이면 D-yyyy에 같은 명령을 내고 아니면 OCC LOG에 적는다. 이 일로 다시 보내지 않는다 |
 | CAPTAIN의 최종 보고 `[TEAM_X → OCC] ARRIVED ATC-n · PR #n`(ATC-124) | 명령은 `/tick` 0단계(읽는 즉시, 다른 어떤 단계보다 먼저). 자유 요약은 기록하지 않는다. `blocked-report`가 뜨면 SUPERVISOR에게 보고한다. PR 없는 FLIGHT를 `dispatch report`로 기록했는데 그 카드가 아직 `accepted`(STAND를 본 적 없음)면 이어서 `dispatch arrived <D-xxxx> -- <링크나 한 줄>`(ATC-266. 서버는 STAND 없는 FLIGHT나 보고가 기록된 FLIGHT만 받는다). 머리가 없는 옛 꼴의 완료 보고("D-xxxx (ATC-n) done: <PR>")는 PR 번호·tier·tests·discretion·blocked를 메시지가 모두 말할 때만 그 값 그대로 기록하고, 하나라도 빠졌으면 짐작해 채우지 말고 기록하지 않은 채 OCC LOG에 "고정 보고 없음"으로 남긴다(팀에 묻지 않는다, ATC-152) |
 | CAPTAIN 답장 "STANDBY D-xxxx" | `dispatch standby D-xxxx`. 다시 보내지 않고 기다린다. 두 번째 STANDBY도 기록하지만 overdue는 첫 STANDBY부터 센다 |

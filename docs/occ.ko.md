@@ -314,6 +314,15 @@ OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣�
 - **만들기 전에 확인:** OCC나 팀이 아닌 임시 폴더의 보내는 세션과 받는 세션으로 확인했다. Claude Code 2.1.284는 `SendMessage` PreToolUse hook의 `updatedInput`을 적용한다. 받는 쪽은 바뀐 문구를 받았다. 보내는 세션의 대화 기록에는 원래 도구 입력이 남고 도구 결과도 원래 문구를 되풀이하므로, guard가 `additionalContext`에 실제로 나간 문구를 붙인다.
 - 바뀐 것: `occ/send-guard.mjs`(`resolveSend`, `hookOutputOf`. `checkSend`는 뜻이 그대로), `controller/atcctl.mjs`(`SEND:` 줄), OCC 매뉴얼과 `/tick` 파일. 안 바뀐 것: 저장된 문구, atc가 만드는 방식, DISPATCH·CREW CHANGE 상태, `controller/guard.mjs`, `occ/mcp-guard.mjs`.
 
+### 8.4 FLIGHT PLAN과 READBACK의 work-order 해시, 만든 대로 (ATC-555)
+
+저장된 FLIGHT PLAN은 제 글의 짧은 해시를 싣고, CAPTAIN의 READBACK은 그 해시를 인용해야 한다. 규칙 전체와 기록 칸은 [autonomy.ko.md](autonomy.ko.md) "WO-23, 만든 대로".
+
+- **머리:** `[DISPATCH D-0123] FLIGHT PLAN @a1b2c3 · GOLF (TEAM_G)`. guard가 읽는 `[DISPATCH D-xxxx]` 괄호는 그대로라 머리만 보내기(8.3)도 그대로다: OCC는 여전히 `[DISPATCH D-0123]`만 보내고 send-guard가 저장된 문구로 바꿔 넣는다. 끝줄이 정확한 답을 준다: `"READBACK D-0123 @a1b2c3" if you take it, exactly like that`.
+- **READBACK 기록:** `atcctl dispatch readback D-0123 @a1b2c3`, 해시는 CAPTAIN이 쓴 그대로(안 썼으면 없이). 해시가 없거나 다르면 서버가 409와 정확한 답 한 줄로 거절한다. OCC는 기록하지 않고, 해시를 대신 채우지 않고, 다시 보내지 않고, OCC LOG에 적는다(다른 해시는 SUPERVISOR에게). ATC-555 전에 저장된 FLIGHT PLAN은 해시가 없어 전처럼 READBACK한다.
+- **send-guard:** 해시가 있는 저장된 FLIGHT PLAN이면 guard가 해시를 다시 계산하고(`server/input-binding.ts`, 서버와 같은 함수) 해시와 더는 맞지 않는 글을 막는다. 막기만 더하고 `|| exit 2`는 그대로다.
+- **스위치:** `READBACK HASH`(설정 창, SUPERVISOR 전용, 기본 on). 끄면 READBACK 확인만 건너뛰고 해시는 그대로 적힌다.
+
 ## 9. ATC가 맡는 것
 
 - **CLEARED TO LAND**(구현): LANDING SEQUENCE 항목은 아래를 모두 만족할 때만 준비됨으로 표시된다.
