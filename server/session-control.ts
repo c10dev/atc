@@ -21,6 +21,8 @@ import { record } from "./recorder.ts";
 import { regKey, sameReg } from "./registration.ts";
 import { ofControlSession } from "./control-match.ts";
 import { realDir } from "./control-realdir.ts";
+import { roleOfName, type WakeSwitch, wakeLaunchPromptOf } from "./control-wake.ts";
+import { loadWakeSwitch } from "./control-wake-switch.ts";
 import { type K3Declaration, type K3Launch, k3LaunchOf, k3LaunchWaitOf } from "./k3-allow.ts";
 import { k3WaitClear, k3WaitMark } from "./k3-launch-wait.ts";
 import { attachDirOf, isBackground, manualStepsOf, permissionModeOf, type SessionOrigin } from "./session-origin.ts";
@@ -231,11 +233,19 @@ function refuseLive(spec: ControlSpec, rows: AgentRow[], dir: string | null) {
   if (live) throw new ControlError(`${spec.name} 세션이 이미 떠 있음(${live.kind === "background" ? `bg ${live.id}` : `interactive ${live.name ?? ""}`.trim()})`, 409);
 }
 
-// LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수)
-export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string, account: AccountFolder | null = null): { cwd: string; args: string[]; account?: string; configDir?: string } {
+// LAUNCH할 수 있는지 보고 claude 인자를 만든다(순수). prompt: 첫 메시지(없으면 spec.prompt). CONTROL WAKE(ATC-557)가 wake면 `/loop` 없는 프롬프트
+export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: string, account: AccountFolder | null = null, prompt: string | null = spec.prompt): { cwd: string; args: string[]; account?: string; configDir?: string } {
   refuseLive(spec, rows, dir);
   // ACCOUNT를 안 주면(등록부 없음) 전과 같은 모양 그대로
-  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, spec.prompt ?? ""], ...(account ? { account: account.label, ...(configDirOf(account) ? { configDir: configDirOf(account)! } : {}) } : {}) };
+  return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, prompt ?? ""], ...(account ? { account: account.label, ...(configDirOf(account) ? { configDir: configDirOf(account)! } : {}) } : {}) };
+}
+
+// CONTROL WAKE(ATC-557): TOWER·OCC·MCC의 첫 프롬프트는 그 역할의 스위치가 정한다. wake면 `/loop` 없이 한 번 둘러보는 글, loop면 오늘의 `/loop <n>m /tick`.
+// wake: null이면 깨움 스위치가 없는 관제 세션(REVIEW)
+export function controlPromptOf(spec: ControlSpec, sw: WakeSwitch = loadWakeSwitch()): { prompt: string | null; wake: boolean | null } {
+  const role = roleOfName(spec.name);
+  if (!role || spec.launch !== "bg") return { prompt: spec.prompt, wake: null };
+  return sw[role] === "wake" ? { prompt: wakeLaunchPromptOf(role), wake: true } : { prompt: spec.prompt, wake: false };
 }
 
 // LAUNCH를 막는 이유(순수). ENGINEERING은 배지만
@@ -461,7 +471,7 @@ export function jobStateOf(id: string, dirs: readonly string[] = accountFolders(
 }
 
 // GET /api/control/sessions만 쓴다(헤더 CONTROL 띠와 FLEET가 함께, ATC-127). LAUNCH·STOP의 판단은 늘 agentRows()로 새로 읽는다
-const cachedAgentRows = ttlCache(agentRows);
+export const cachedAgentRows = ttlCache(agentRows); // CONTROL WAKE(ATC-557)도 같은 캐시를 읽는다
 
 // 등록된 ACCOUNT마다 로그인 여부와 FUEL hold 글(ATC-147). FUEL은 스냅샷의 ACCOUNT별 값, 로그인은 claude auth status(loggedIn만, 60초 캐시)
 export async function accountStatusesOf(fuelAccounts: Snapshot["fuelAccounts"], folders: readonly AccountFolder[] = accountFolders(), now = Date.now()): Promise<Map<string, AccountStatus>> {
@@ -574,12 +584,14 @@ export async function launchControl(name: string, by: string, requestedAccount?:
     const statuses = await accountStatusesOf(fuelAccounts, folders);
     const account = launchAccountOf({ requested: requestedAccount, preferred: loadFleet().launchAccount?.control ?? null, home: loadFleet().control?.[spec.name as keyof NonNullable<FleetFile["control"]>]?.account ?? null, folders, status: (l) => statuses.get(l) ?? null });
     if (account && read.failed.includes(account.label)) throw new ControlError(`ACCOUNT ${account.label}의 세션 목록을 읽지 못함 — 이미 떠 있는지 몰라 띄우지 않는다`, 502);
-    const plan = controlLaunchPlanOf(spec, read.rows, dir, account);
+    const first = controlPromptOf(spec);
+    const plan = controlLaunchPlanOf(spec, read.rows, dir, account, first.prompt);
     const r = await claude(plan.args, plan.cwd, { scope: true, configDir: plan.configDir ?? null });
     const jobId = jobIdOf(r.out);
     const ok = r.ok && !!jobId;
     const error = ok ? undefined : /not trusted/i.test(r.out) ? `${plan.cwd}를 신뢰하지 않음 — 그 폴더에서 claude를 한 번 열어 trust를 수락한다` : r.out.slice(0, 300) || "claude --bg 실패";
-    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: permissionModeOf(plan.args) ?? undefined, ...(plan.account ? { account: plan.account } : {}), error });
+    // wake(ATC-557): 이 job이 /loop 없이 떴는가. CONTROL WAKE가 /loop ↔ wake를 옮길 때 이 줄을 읽는다
+    record({ t, kind: "control", op: "launch", session: spec.name, by, ok, jobId: jobId ?? undefined, cwd: plan.cwd, permissionMode: permissionModeOf(plan.args) ?? undefined, ...(plan.account ? { account: plan.account } : {}), ...(first.wake !== null ? { wake: first.wake } : {}), error });
     return ok ? { ok, status: 200, jobId: jobId!, cwd: plan.cwd, permissionMode: "auto", account: plan.account ?? null } : { ok, status: 502, error };
   } catch (e) {
     if (e instanceof ControlError) return { ok: false, status: e.status, error: e.message };
@@ -673,7 +685,7 @@ export function mountSessionControl(app: Hono, getSnapshot: () => Promise<Snapsh
         sessions: CONTROL_SESSIONS.filter((spec) => !spec.retired || controlRowsOf(spec, rows, controlDirOf(spec)).length > 0).map((spec) => ({
           name: spec.name,
           dir: spec.dir,
-          prompt: spec.prompt,
+          prompt: controlPromptOf(spec).prompt, // 지금 LAUNCH하면 쓸 첫 메시지(CONTROL WAKE가 wake면 /loop 없음, ATC-557)
           // bg: claude --bg, null: 배지만. blocked는 LAUNCH를 끈 이유
           launch: spec.launch,
           squelch: squelchOfName(squelch, spec.name),

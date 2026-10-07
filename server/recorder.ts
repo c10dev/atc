@@ -10,6 +10,7 @@ import type { QrhNamedLine } from "./qrh.ts";
 import type { LinearCallLine } from "./linear-call.ts";
 import type { LivenessLine } from "./job-liveness.ts";
 import type { ServerSendLine } from "./server-send.ts";
+import type { ControlWakeLine } from "./control-wake.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
 // - event: 스냅샷 차이 이벤트(events.ts)
@@ -112,6 +113,9 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "mcc-server-auto-mode"; by: string; from: string; to: string }
   // SERVER SEND(ATC-562): 서버가 AIRCRAFT 세션 소켓에 쓴 FLIGHT PLAN. 발송마다 입력(제안 id, 저장된 글의 해시, 세션 id, 검사 결과)을 싣는다. 글과 세션 키는 싣지 않는다
   | ServerSendLine
+  // CONTROL WAKE(ATC-557): 관제 세션 깨움과 그 입력·확인·결과·오작동·/loop ↔ wake 옮기기
+  | ControlWakeLine
+  | { t: string; kind: "policy"; op: "control-wake-mode"; by: string; role: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "server-send-mode"; by: string; key: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
@@ -120,7 +124,7 @@ export type RecordLine =
   // FLEET PLAN 모드 전환(8.7). 4단계가 승인 운용 기간을 잰다
   | { t: string; kind: "fleet-plan"; op: "mode:shadow" | "mode:approval" | "auto:on" | "auto:off"; by: string }
   // 관제 세션 LAUNCH·STOP(docs/fleet.md 8.5.1)
-  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string; unverified?: boolean }
+  | { t: string; kind: "control"; op: "launch" | "stop"; session: string; by: string; ok: boolean; jobId?: string; tmux?: string; cwd?: string; permissionMode?: string; account?: string; error?: string; unverified?: boolean; wake?: boolean }
   // CONTROL STOP CHECK(ATC-521): stop의 unverified는 claude stop이 종료 코드 0이었지만 job state.json이 stopped가 되지 않아 ok를 막은 것. stop-check는 그 막음·같은 이름 job 중복 경고·그것이 틀렸다는 표시(contradicted 검사가 뒤늦게 틀렸다, dismissed SUPERVISOR가 오탐 표시)
   | { t: string; kind: "control"; op: "stop-check"; event: "blocked" | "duplicate" | "contradicted" | "dismissed"; session: string; by: string; jobIds: string[]; account?: string | null; state?: string | null; of?: string; detail?: string }
   // CONTROL RECYCLE(ATC-166): atc가 관제 세션을 안전한 순간에 STOP·LAUNCH한 결과(shadow면 result would). 스위치 바꿈은 recycle-mode

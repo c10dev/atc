@@ -7,6 +7,8 @@ import { answerLineOf, isDecisionRole, unackedAnswers } from "./decision-card.ts
 import { isRole, ROLES } from "./squelch.ts";
 import { type Fetcher, gatherInputs } from "./squelch-run.ts";
 import { actionable, occKeysOf, persistentKeysOf } from "./tick.ts";
+import { isWakeRole, type WakeRole } from "./control-wake.ts";
+import { notePickup, wakeModeLive } from "./control-wake-run.ts";
 
 // GET /api/tick/:role (ATC-297): 그 역할의 /tick이 읽는 브리핑과, 거기에 할 일이 있는지(`actionable`).
 // `atcctl tick <역할>`이 manual check 뒤에 부른다. 어떤 오류든 act: true로 답한다(조용하다고 잘못 말하지 않는다).
@@ -38,7 +40,7 @@ export function nextSeen(seen: readonly string[], keys: readonly string[], act: 
   return act ? [...now].sort() : seen.filter((k) => now.has(k)).sort();
 }
 
-export function mountTick(app: Hono, deps: { get?: Fetcher; seenFile?: () => string } = {}) {
+export function mountTick(app: Hono, deps: { get?: Fetcher; seenFile?: () => string; wakeLive?: (role: WakeRole) => { live: boolean } } = {}) {
   const get: Fetcher =
     deps.get ??
     (async (path) => {
@@ -50,6 +52,16 @@ export function mountTick(app: Hono, deps: { get?: Fetcher; seenFile?: () => str
   app.get("/api/tick/:role", async (c) => {
     const role = c.req.param("role") ?? "";
     if (!isRole(role)) return c.json({ error: `알 수 없는 역할 ${role} — ${ROLES.join("|")}` }, 404);
+    // CONTROL WAKE(ATC-557): `--wake <id>`(깨움을 받은 세션)는 평소대로 브리핑을 준다. 그 밖(/loop가 부른 /tick)은 깨움이 살아 있으면 일하지 않게 한다:
+    // 브리핑도 seen 기록도 없이 wakeMode만(atcctl이 "TICK WAKE-MODE"로 찍고 세션은 턴을 끝낸다). 깨움이 죽었으면(job·BREAKER) 오늘처럼 일한다
+    const wake = c.req.query("wake");
+    if (isWakeRole(role)) {
+      if (wake) notePickup(role, wake);
+      else {
+        const w = deps.wakeLive ? deps.wakeLive(role) : wakeModeLive(role);
+        if (w.live) return c.json({ role, act: false, reasons: [], info: 0, wakeMode: true, brief: null });
+      }
+    }
     try {
       const inputs = await gatherInputs(role, get);
       const all = readSeen(file());

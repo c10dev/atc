@@ -763,6 +763,55 @@ function ServerSendStats({ d }: { d: ServerSendData }) {
     </ul>
   );
 }
+// CONTROL WAKE(ATC-557)의 숫자: 최근 7일 역할마다 깨움과 오작동 셋(깨우지 못함·서버가 할 수 있던 일로 깨움·할 일 없이 깨움). 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface WakeCounts {
+  wakes: number;
+  menu: number;
+  nothing: number;
+  missed: number;
+  acted: number;
+  unknown: number;
+  failed: number;
+  refused: number;
+  unseen: number;
+  trips: number;
+  transitions: number;
+}
+type WakeRoleKey = "tower" | "occ" | "mcc";
+interface WakeData {
+  days: number;
+  total: WakeCounts;
+  roles: Record<WakeRoleKey, WakeCounts & { mode: "loop" | "wake"; launched: "loop" | "wake" | null; breaker: "armed" | "tripped" | "probe" | "probe-pending"; breakerWhy: string | null; waiting: string | null }>;
+  live: boolean;
+  writer: string | null;
+}
+const WAKE_ROLE_NAMES: [WakeRoleKey, string][] = [
+  ["tower", "TOWER"],
+  ["occ", "OCC"],
+  ["mcc", "MCC"],
+];
+function ControlWakeStats({ d }: { d: WakeData }) {
+  return (
+    <ul className="dp-misfire" data-code="CONTROL-WAKE">
+      <li>
+        최근 {d.days}일 깨움 <b>{d.total.wakes}</b> · 오작동: 깨우지 못함 <b className={d.total.missed ? "is-warn" : undefined}>{d.total.missed}</b> · 서버가 할 수 있던 일로 깨움 <b>{d.total.menu}</b> · 할 일 없이 깨움 <b>{d.total.nothing}</b>
+      </li>
+      {WAKE_ROLE_NAMES.map(([k, name]) => {
+        const r = d.roles[k];
+        if (!r) return null;
+        const off = r.breaker !== "armed";
+        return (
+          <li key={k} className={off ? "is-warn" : undefined}>
+            <span className="mono">{name}</span> {r.mode}
+            {r.launched && r.launched !== r.mode ? <span className="faint"> (지금 세션은 {r.launched}로 뜸{r.waiting ? ` — 다시 띄우기 기다림: ${r.waiting}` : ""})</span> : null} · 깨움 <b>{r.wakes}</b> · 일함 <b>{r.acted}</b> · 할 일 없음 <b>{r.nothing}</b> · 메뉴 <b>{r.menu}</b> · 못 깨움 <b>{r.missed}</b> · 결과 모름 <b>{r.unknown}</b> · 실패 <b>{r.failed}</b> · 막음 <b>{r.refused}</b> · 안 보임 <b>{r.unseen}</b> · 다시 띄움 <b>{r.transitions}</b>
+            {off ? <span className="faint"> — 깨움 멈춤({r.breaker}){r.breakerWhy ? `: ${r.breakerWhy}` : ""}</span> : null}
+          </li>
+        );
+      })}
+      {!d.live && d.writer ? <li className="is-warn">깨움 job이 3분 넘게 돌지 않음 — /loop가 남은 세션의 tick이 다시 일한다</li> : null}
+    </ul>
+  );
+}
 // VERIFY GATE 세기(ATC-517): 줄 선 실행·가장 긴 기다림·한도 실패·바로 실행·죽은 명령이 놓은 슬롯. 0도 보여 "한 번도 안 울렸다"와 구분한다
 interface GateCounts {
   runs: number;
@@ -1039,6 +1088,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   mccServerAuto: (s) => {
     const d = switchOf(s, "mccServerAuto")?.data as AutoData | undefined;
     return d ? <ServerAutoStats d={d} /> : null;
+  },
+  controlWakeMcc: (s) => {
+    const d = switchOf(s, "controlWakeTower")?.data as WakeData | undefined;
+    return d ? <ControlWakeStats d={d} /> : null;
   },
   serverSendRetry: (s) => {
     const d = switchOf(s, "serverSendFirst")?.data as ServerSendData | undefined;
