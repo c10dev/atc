@@ -28,6 +28,7 @@ import { mountFleetPlan } from "./fleet-plan-run.ts";
 import { autoFreshStartGate, mountFreshStart } from "./fresh-start-run.ts";
 import { serverOwnsWhy, serverSendPass } from "./server-send-run.ts";
 import { controlWakePass } from "./control-wake-run.ts";
+import { SERVER_HEADER, serverClearancePass } from "./server-clearance-run.ts";
 import { migrateFreshStartOnce } from "./fresh-start-switch.ts";
 import { migrateSoloOnce } from "./solo-default-switch.ts";
 import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
@@ -322,6 +323,12 @@ const wakeGet = async (path: string) => {
   return r.json();
 };
 const wakeAck = async (cursor: string) => app.request("/api/controller/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ consumer: "controller", cursor }) });
+// SERVER CLEARANCE(ATC-557 b): 브리핑은 같은 핸들러로 읽고(ack하지 않는다), CLEARANCE·relay 기록은 TOWER의 atcctl과 같은 라우트로(서버 표시 머리를 붙여)
+const clearancePost = async (path: string, body: unknown) => {
+  const r = await app.request(path, { method: "POST", headers: { "content-type": "application/json", [SERVER_HEADER]: "server" }, body: JSON.stringify(body) });
+  return { status: r.status, json: ((await r.json().catch(() => ({}))) ?? {}) as Record<string, unknown> };
+};
+provideService("serverClearance", { pass: (s: Snapshot) => serverClearancePass(s, { get: wakeGet, post: clearancePost }) });
 provideService("controlWake", { pass: (s: Snapshot) => controlWakePass(s, { get: wakeGet, ack: wakeAck, recycle: { facts: recycleFacts, act: defaultActDeps(() => current?.fuelAccounts, "WAKE") } }) });
 mountControlRecycle(app);
 mountSettings(app);

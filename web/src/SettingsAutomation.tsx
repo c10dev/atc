@@ -763,6 +763,72 @@ function ServerSendStats({ d }: { d: ServerSendData }) {
     </ul>
   );
 }
+// SERVER CLEARANCE(ATC-557 b)의 숫자: 최근 7일 종류마다 보냄과 오작동(잘못 보냄·두 번 보냄은 기대 0, 검사가 막음·실패·안 보임·TOWER에게 넘김). 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface ClearanceCounts {
+  delivered: number;
+  wrong: number;
+  twice: number;
+  refused: number;
+  failed: number;
+  unseen: number;
+  handback: number;
+}
+type ClearanceKindKey = "info" | "goAround" | "fix" | "land" | "resend" | "relay";
+interface ServerClearanceData {
+  days: number;
+  total: ClearanceCounts;
+  kinds: Record<ClearanceKindKey, ClearanceCounts>;
+  switches: Record<ClearanceKindKey, "on" | "off">;
+  labels: Record<ClearanceKindKey, string>;
+  trips: number;
+  rearms: number;
+  reasons: { reason: string; n: number }[];
+  live: boolean;
+  lastPassAt: string | null;
+  breaker: "armed" | "tripped" | "probe" | "probe-pending";
+  breakerWhy: string | null;
+  trippedAt: string | null;
+  writer: string | null;
+}
+const CLEARANCE_KINDS: ClearanceKindKey[] = ["info", "goAround", "fix", "land", "resend", "relay"];
+function ServerClearanceStats({ d }: { d: ServerClearanceData }) {
+  const c = d.total;
+  const breakerLine = d.breaker === "tripped" ? "멈춤 — TOWER가 보낸다" : d.breaker === "probe" ? "멈춤 — 다음 CLEARANCE 하나로 다시 시험" : d.breaker === "probe-pending" ? "멈춤 — 시험 발송의 확인을 기다림" : null;
+  return (
+    <ul className="dp-misfire" data-code="SERVER-CLEARANCE">
+      <li>
+        최근 {d.days}일 보냄 <b>{c.delivered}</b> · 잘못 보냄 <b className={c.wrong ? "is-warn" : undefined}>{c.wrong}</b>
+        <span className="faint"> (기대 0)</span> · 두 번 보냄 <b className={c.twice ? "is-warn" : undefined}>{c.twice}</b>
+        <span className="faint"> (기대 0)</span> · 검사가 막음 <b>{c.refused}</b> · 실패 <b>{c.failed}</b> · 받는 세션에 안 보임 <b className={c.unseen ? "is-warn" : undefined}>{c.unseen}</b> · TOWER에게 넘김 <b>{c.handback}</b> · 멈춤 <b className={d.trips ? "is-warn" : undefined}>{d.trips}</b> · 다시 켜짐 <b>{d.rearms}</b>
+      </li>
+      {/* 평소(도는 중)에는 줄이 없다(원칙 1). 멈췄거나 job이 돌지 않을 때만 */}
+      {breakerLine ? (
+        <li className="is-warn">
+          {breakerLine}
+          {d.trippedAt ? ` (${d.trippedAt.slice(11, 16)}Z)` : ""}
+          {d.breakerWhy ? <span className="faint"> — {d.breakerWhy}</span> : null}
+        </li>
+      ) : !d.live && d.lastPassAt ? (
+        <li className="is-warn">서버 job이 {d.lastPassAt.slice(11, 16)}Z 뒤로 돌지 않음 — TOWER가 보낸다</li>
+      ) : null}
+      {CLEARANCE_KINDS.map((k) => {
+        const x = d.kinds[k];
+        if (!x) return null;
+        return (
+          <li key={k}>
+            <span className="mono">{d.labels[k] ?? k}</span> {d.switches[k] ?? "on"} · 보냄 <b>{x.delivered}</b> · 잘못 <b className={x.wrong ? "is-warn" : undefined}>{x.wrong}</b> · 두 번 <b className={x.twice ? "is-warn" : undefined}>{x.twice}</b> · 막음 <b>{x.refused}</b> · 실패 <b>{x.failed}</b>
+            {x.unseen + x.handback > 0 ? <span className="faint"> — 안 보임 {x.unseen} · 넘김 {x.handback}</span> : null}
+          </li>
+        );
+      })}
+      {d.reasons.slice(0, 3).map((r) => (
+        <li key={r.reason} className="faint">
+          막은 사유 <b>{r.n}</b> — {r.reason}
+        </li>
+      ))}
+    </ul>
+  );
+}
 // CONTROL WAKE(ATC-557)의 숫자: 최근 7일 역할마다 깨움과 오작동 셋(깨우지 못함·서버가 할 수 있던 일로 깨움·할 일 없이 깨움). 0도 보여 "한 번도 안 울렸다"와 구분한다
 interface WakeCounts {
   wakes: number;
@@ -1104,6 +1170,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   controlWakeMcc: (s) => {
     const d = switchOf(s, "controlWakeTower")?.data as WakeData | undefined;
     return d ? <ControlWakeStats d={d} /> : null;
+  },
+  serverClearanceRelay: (s) => {
+    const d = switchOf(s, "serverClearanceInfo")?.data as ServerClearanceData | undefined;
+    return d ? <ServerClearanceStats d={d} /> : null;
   },
   serverSendRetry: (s) => {
     const d = switchOf(s, "serverSendFirst")?.data as ServerSendData | undefined;

@@ -55,6 +55,26 @@ test("TOWER 사건: actionable과 같은 기준 — 할 일이 없으면 사건�
   assert.equal(infoOnlyAckOf(tower()), null); // 사건이 없으면 ack할 것도 없다
 });
 
+test("SERVER CLEARANCE(ATC-557 b): 서버 몫(landVia·action server, serverSends)은 사건이 아니다. 스위치 on인 종류만 메뉴, off인 종류는 TOWER의 일", () => {
+  const b = tower({
+    clearances: { pending: [{ id: "C-1", to: { name: "TEAM_A" }, type: "HOLD" }], overdue: ["C-1"] },
+    landingQueue: [
+      { airport: "ATCC", pr: { number: 7, head: "abcdef1234" }, landing: "CLEARED", landBy: "holder", landVia: "server", holders: [{ name: "TEAM_A" }] },
+      { airport: "ATCC", pr: { number: 8, head: "1234567aaa" }, landing: "APPROACH", fix: { action: "server" }, info: { action: "send" }, holders: [{ name: "TEAM_B" }] },
+    ],
+    relays: [{ id: "R-1", to: "TEAM_C", type: "INFO" }],
+    serverSends: { relays: [{ id: "R-2" }], resend: ["C-9"] },
+  });
+  const keys = (kinds?: Set<string>) => wakeEventsOf("tower", { brief: b }, { ...NO, ...(kinds ? { serverKinds: kinds as never } : {}) }).map((e) => [e.key, e.menu]);
+  // 서버가 보내는 LAND(landVia)·FIX(action server)·R-2·C-9는 사건이 없다. TOWER에게 온 INFO(send)·relay R-1·RESEND C-1만
+  assert.deepEqual(keys(new Set(["info", "goAround", "fix", "land", "resend", "relay"])), [["approach-info:ATCC #8@1234567:send", true], ["relay:R-1", true], ["overdue:C-1", true]]);
+  // INFO·RELAY가 off: TOWER의 일이라 메뉴가 아니다(그것만으로 깨워도 오작동이 아니다)
+  assert.deepEqual(keys(new Set(["goAround", "fix", "land", "resend"])), [["approach-info:ATCC #8@1234567:send", false], ["relay:R-1", false], ["overdue:C-1", true]]);
+  // 옛 셈(serverKinds 없음)은 그대로
+  assert.deepEqual(keys().map((x) => x[1]), [true, true, true]);
+  assert.deepEqual(actionable("tower", { brief: tower({ landingQueue: [b.landingQueue[0]] }) }).reasons, []); // landVia server는 tick의 할 일도 아니다
+});
+
 test("TOWER 사건: 첫 침묵은 RESEND(메뉴), RESEND 뒤 두 번째 침묵은 보고(판단), LAND·FIX send는 메뉴, supervisor는 판단", () => {
   const b = tower({
     clearances: {

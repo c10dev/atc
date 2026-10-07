@@ -45,7 +45,7 @@ function towerActionable(b: J, seen: ReadonlySet<string>): Actionable {
   }
   for (const q of arr(b.landingQueue)) {
     const holder = q?.landBy === undefined || q?.landBy === null || q?.landBy === "holder";
-    if (q?.landing === "CLEARED" && holder && !q?.groundStop && !q?.slotHold && !q?.landClearance) reasons.push("land");
+    if (q?.landing === "CLEARED" && holder && !q?.groundStop && !q?.slotHold && !q?.landClearance && q?.landVia !== "server") reasons.push("land"); // landVia server: 서버가 보낸다(ATC-557 b)
     // 상태에서 만든 지시(ATC-128, ATC-270): action이 send(보낸다)·supervisor(보고한다)일 때만 할 일이다.
     // sent는 이미 나갔고, info의 log는 ATC LOG에만 남기는 것이라(매 바퀴 같다) 할 일로 세지 않는다
     for (const [key, why] of [["goAround", "go-around"], ["info", "approach-info"], ["fix", "fix"]] as const) {

@@ -5,7 +5,9 @@
 // 본문이 저장된 글과 정확히 같음(머리만이면 저장된 글로 바꿔 넣음), 받는 이가 그 제안의 CAPTAIN(CREW CHANGE는 그 AIRCRAFT), 두 번 보내지 않음.
 // 서버가 세션에 쓰는 함수(session-socket.ts deliverChecked)는 이 파일이 만든 CheckedSend만 받는다: 검사를 건너뛴 길은 타입 검사를 통과하지 못하고,
 // 형 변환으로 속여도 이 파일이 만든 객체(WeakSet)가 아니면 쓰지 않는다.
+// response.ts(CLEARANCE 끝줄)도 순수하다(타입만 가져온다): 서버가 지은 CLEARANCE의 끝줄을 TOWER의 것과 같은 함수로 다시 만들어 본다(ATC-557 b)
 import { contentHashOf, workOrderSealOk } from "./input-binding.ts";
+import { addressLine, closingLine, responseOf } from "./response.ts";
 
 export interface SendInput {
   to?: unknown;
@@ -171,7 +173,7 @@ export function serverRepeatWhy(x: Pick<ServerSendInput, "proposal" | "purpose" 
 }
 
 declare const checkedBrand: unique symbol;
-// 검사를 통과한 발송 하나. 이 파일의 checkServerSend·checkControlWake만 만든다(brand와 WeakSet)
+// 검사를 통과한 발송 하나. 이 파일의 checkServerSend·checkControlWake·checkServerClearance만 만든다(brand와 WeakSet)
 export type FlightPlanSend = Readonly<{
   kind: "flight-plan";
   id: string; // D-xxxx
@@ -193,7 +195,20 @@ export type ControlWakeSend = Readonly<{
   textHash: string;
   checkedAt: string;
 }> & { readonly [checkedBrand]: true };
-export type CheckedSend = FlightPlanSend | ControlWakeSend;
+// 서버가 지어 보내는 CLEARANCE 하나(ATC-557 b). TOWER가 `atcctl issue`로 적고 SendMessage하던 글과 같은 글을 같은 writer가 쓴다
+export type ClearanceSend = Readonly<{
+  kind: "clearance";
+  id: string; // C-xxxx
+  purpose: ServerClearancePurpose;
+  attempt: "first" | "retry";
+  sessionId: string;
+  to: string; // 그 세션 이름(검사가 CLEARANCE의 toName과 비교한 것)
+  text: string; // formatClearance가 지은 글(그대로 쓴다)
+  textHash: string;
+  bodyHash: string; // CLEARANCE 본문(text 칸)의 해시: 두 번 보냄을 셀 때 쓴다
+  checkedAt: string;
+}> & { readonly [checkedBrand]: true };
+export type CheckedSend = FlightPlanSend | ControlWakeSend | ClearanceSend;
 
 const minted = new WeakSet<object>();
 export const isChecked = (x: unknown): x is CheckedSend => typeof x === "object" && x !== null && minted.has(x);
@@ -264,6 +279,85 @@ export function checkControlWake(x: ControlWakeInput): WakeCheck {
     textHash: contentHashOf(x.text),
     checkedAt: new Date(x.now).toISOString(),
   }) as ControlWakeSend;
+  minted.add(send);
+  return { ok: true, send };
+}
+
+// ── 서버가 지은 CLEARANCE(ATC-557 b) ──
+// TOWER가 브리핑의 글을 그대로 옮기던 CLEARANCE(LAND·APPROACH INFO·GO AROUND·FIX, 첫 RESEND, SUPERVISOR RELAY)를 서버가 같은 기록(POST /api/clearances)으로 적고 보낸다.
+// 검사: 목적과 종류가 맞음, CLEARANCE가 열려 있음, 받는 세션 id·이름이 CLEARANCE의 to·toName, 본문이 출처 글 그대로(RESEND는 "RESEND " + 원래 글),
+// 머리 [ATC C-xxxx] … · <종류>, 끝줄이 그 종류가 청하는 답과 TOWER 이름으로 답하라는 줄, 다른 머리가 없음, 길이, 이 CLEARANCE를 서버가 이미 보내지 않았음
+export const SERVER_CLEARANCE_PURPOSES = ["land", "info", "goAround", "fix", "resend", "relay"] as const;
+export type ServerClearancePurpose = (typeof SERVER_CLEARANCE_PURPOSES)[number];
+const ALL_TYPES = ["TRAFFIC", "HOLD", "CONTINUE", "LAND", "GO AROUND", "FIX", "REPORT", "INFO"]; // clearances.ts CLEARANCE_TYPES(그 파일은 config.ts를 읽어 가져오지 않는다)
+const TYPES_OF: Record<ServerClearancePurpose, readonly string[]> = {
+  land: ["LAND"],
+  info: ["INFO"],
+  goAround: ["GO AROUND"],
+  fix: ["FIX"],
+  resend: ALL_TYPES, // 첫 RESEND는 원래 CLEARANCE의 종류 그대로
+  relay: ["INFO", "FIX", "CONTINUE", "GO AROUND"], // relay.ts clearanceTypeOf
+};
+export const SERVER_CLEARANCE_MAX = 12_000;
+export interface ClearanceForSend {
+  id: string;
+  to: string; // 세션 id
+  toName: string;
+  type: string;
+  text: string;
+  open: boolean; // READBACK·ROGER·UNABLE·취소 전
+}
+export interface ClearanceSendInput {
+  purpose: string;
+  attempt: "first" | "retry";
+  clearance: ClearanceForSend;
+  source: string; // 브리핑·relay의 글(RESEND면 원래 CLEARANCE의 글)
+  message: string; // 보낼 글(formatClearance)
+  session: LiveRecipient; // 보낼 때 세션 파일에서 읽은 id·이름
+  prior: readonly { at: string; sessionId: string }[]; // 이 CLEARANCE를 서버가 이미 보낸 기록(deliver 줄)
+  now: number;
+}
+export const resendBodyOf = (original: string) => `RESEND ${original.trim()}`;
+export function clearanceSendWhy(x: ClearanceSendInput): string | null {
+  if (!(SERVER_CLEARANCE_PURPOSES as readonly string[]).includes(x.purpose)) return `서버가 짓는 CLEARANCE가 아님(${x.purpose})`;
+  const c = x.clearance;
+  if (!/^C-\d{4,}$/.test(c.id)) return `CLEARANCE id 꼴이 아님(${c.id})`;
+  if (!TYPES_OF[x.purpose as ServerClearancePurpose].includes(c.type)) return `${x.purpose}에 맞지 않는 종류(${c.type})`;
+  if (!c.open) return `${c.id}는 이미 닫힘 — 보내지 않는다`;
+  if (x.session.id !== c.to) return `받는 세션(${x.session.id.slice(0, 8)})이 ${c.id}의 받는 이가 아님`;
+  if (!x.session.name || x.session.name !== c.toName) return `받는 세션 이름(${x.session.name || "없음"})이 ${c.id}의 toName(${c.toName})이 아님`;
+  const source = x.source.trim();
+  if (!source) return "출처 글이 비어 있음";
+  const body = x.purpose === "resend" ? resendBodyOf(source) : source;
+  if (c.text !== body) return x.purpose === "resend" ? `${c.id}의 본문이 "RESEND " + 원래 글이 아님` : `${c.id}의 본문이 브리핑·relay의 글과 다름 — 그대로 보내야 함`;
+  if (x.message.length > SERVER_CLEARANCE_MAX) return `글이 너무 김(${x.message.length} > ${SERVER_CLEARANCE_MAX})`;
+  const lines = x.message.split("\n");
+  const head = new RegExp(`^\\[ATC ${c.id}\\] .+ · ${c.type}$`);
+  if (!head.test(lines[0] ?? "")) return `머리가 [ATC ${c.id}] … · ${c.type}가 아님`;
+  if (!x.message.includes(`\n${body}\n`)) return "본문이 글 안에 그대로 없음";
+  const closing = closingLine("clearance", responseOf("clearance", c.type as never), c.id);
+  if (!x.message.endsWith(`\n${closing}`)) return "끝줄이 이 종류가 청하는 답이 아님";
+  if (!x.message.includes(addressLine("clearance")) || !x.message.includes('session name "TOWER"')) return "답을 TOWER 이름으로 보내라는 줄이 없음";
+  if (/^\[(?:DISPATCH D-|OCC CC-|ATC WAKE )/m.test(x.message) || lines.slice(1).some((l) => /^\[ATC C-\d+\]/.test(l))) return "다른 머리가 글 안에 있음";
+  if (x.prior.length) return `${c.id}는 서버가 이미 보냄(${x.prior.at(-1)!.at}) — 다시 보내지 않는다`;
+  return null;
+}
+export type ClearanceCheck = { ok: true; send: ClearanceSend } | { ok: false; reason: string };
+export function checkServerClearance(x: ClearanceSendInput): ClearanceCheck {
+  const why = clearanceSendWhy(x);
+  if (why) return { ok: false, reason: why };
+  const send = Object.freeze({
+    kind: "clearance" as const,
+    id: x.clearance.id,
+    purpose: x.purpose as ServerClearancePurpose,
+    attempt: x.attempt,
+    sessionId: x.session.id,
+    to: x.session.name,
+    text: x.message,
+    textHash: contentHashOf(x.message),
+    bodyHash: contentHashOf(x.clearance.text),
+    checkedAt: new Date(x.now).toISOString(),
+  }) as ClearanceSend;
   minted.add(send);
   return { ok: true, send };
 }
