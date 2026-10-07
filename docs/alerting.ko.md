@@ -32,6 +32,15 @@ Status (2026-10-03): [layout.md](layout.md)로 **대체됨(superseded)**. 만든
 - **스위치.** SUPERVISOR 전용 `CLEARANCE MOOT`(설정 창, `clearance-moot.json`, 기본 on). off면 브리핑에 아무것도 없고 셈도 움직이지 않는다. 매뉴얼 문구는 스위치와 상관없다.
 - **MISFIRE.** 1분 일 `clearance-moot`이 올린 CLEARANCE를 id로 기록한다(`clearance-moot-events.jsonl`, 브리핑 경로는 읽기만 한다). 취소된 것은 같은 FLIGHT에 취소 뒤 24시간 안에 새 CLEARANCE가 나가거나, 올릴 때 그 FLIGHT에 있던 PR이 다시 열리면 MISFIRE 하나로 센다. `GET /api/clearance-moot`이 스위치와 수(올림·취소·MISFIRE)를 보여 준다.
 
+### 받는 세션이 끝난 CLEARANCE (ATC-567)
+
+- **규칙.** `server/clearance-ended.ts`(순수)가 열려 있고(READBACK·ROGER·UNABLE·취소 없음) **FLIGHT가 없고** 받는 세션이 살아 있지 않은 CLEARANCE를 2시간이 지나면 닫는다. FLIGHT가 있는 것은 위의 CLEARANCE MOOT대로다. 살아 있음은 FLEET의 규칙이다: 스냅샷에 그 id의 세션이 있고 `dead`가 아니다. job이 사라진 백그라운드 세션(ATC-534)은 이미 `dead`이고, 스냅샷에 없는 세션은 끝난 것이다. 2시간은 보낸 시각, 첫 STANDBY, dead 세션의 마지막 대화 기록 가운데 가장 늦은 것부터 센다. RESTARTING(`/clear`, ATC-91)인 받는 이는 닫지 않고, 스냅샷에 살아 있는 세션이 하나도 없으면(세션 폴더를 못 읽음) 아무것도 닫지 않는다.
+- **2시간인 까닭.** NO READBACK(10분)과 RESTARTING(30분)보다 길어 CLEARANCE가 먼저 overdue가 되고 TOWER의 RESEND와 "답 없음" 보고가 한 번 돈다. 서버 재시작이나 호스트 재부팅 뒤 세션이 돌아올 시간이 넉넉하고, 같은 날 안에 TOWER 브리핑에서 빠질 만큼 짧다.
+- **닫기.** 1분 일 `clearance-ended`가 `clearances.jsonl`에 `undeliverable` 줄을 덧붙인다(사유 `addressee ended`, 원인 `absent`. 고쳐 쓰지 않는다). CLEARANCE는 `clearances.pending[]`, `clearances.overdue`, TOWER 재시작을 막는 것(ATC-565)에서 빠진다. 다른 undeliverable CLEARANCE처럼 SUPERVISOR QUEUE에 사유와 함께 UNDELIVERED 손 전달 카드로 보일 수 있고, ATC-540 `isMoot`가 빼면(예: PR이 머지됨) 보이지 않는다.
+- **RESEND 고리**(ATC-565). 원래 것과 RESEND는 같은 세션에 가므로 함께 닫는다: 고리의 하나가 조건을 채우면 고리의 열린 것을 같은 tick에 모두 닫는다(몇 분 전에 나간 RESEND도). 고리의 하나라도 READBACK·ROGER·UNABLE을 받았으면 받는 이가 답한 것이라 고리를 닫지 않는다.
+- **스위치.** SUPERVISOR 전용 `CLEARANCE ENDED`(설정 창, `clearance-ended.json`, 기본 on, `atcctl` 명령 없음). off면 전처럼 아무것도 닫지 않는다.
+- **셈.** `clearance-ended-events.jsonl`(추가만)에 닫은 것(`closed`, 고리의 뿌리 포함)과 MISFIRE를 적는다: 닫힌 CLEARANCE에 뒤에 READBACK·ROGER·UNABLE·STANDBY가 오면 `answered`(답은 전처럼 닫힌 것으로 거절된다), 닫은 뒤 24시간 안에 같은 세션 id가 다시 살아 있으면 `came-back`. MISFIRE는 스위치와 상관없이 센다. 설정 창 블록과 `GET /api/clearance-ended`가 최근 7일 닫은 수와 종류별 MISFIRE를 보여 준다.
+
 ### 닫혔거나 밀린 부름에 온 답은 거절한다 (ATC-554)
 
 - **검사가 있는 곳.** 서버, 팀의 답을 기록하는 길이다. 답이 "답한 것"으로 세어지는 곳이 거기라서다. 답하는 쪽에는 검사가 없다: 팀 CAPTAIN은 `SendMessage`로 답하고 TOWER·OCC가 `atcctl`(`readback`·`unable`·`standby`·`dispatch …`·`crew-change …`)로 기록한다. guard 파일과 hook은 건드리지 않아 guard의 fail-closed는 그대로다. 파일: `server/stale-reply.ts`(순수 규칙), `server/stale-reply-run.ts`(스위치·기록·`GET /api/stale-reply`), `server/switches/stale-reply.ts`(선언), 그리고 `POST /api/clearances/:id/{readback,roger,unable,standby}`(`server/controller.ts`), `POST /api/dispatch/proposals/:id/{accept,decline,standby,await-supervisor}`(`server/proposals.ts`), `POST /api/fleet/crew-changes/:id/{readback,unable,standby}`(`server/crew-change.ts`) 맨 앞의 호출 한 줄.
