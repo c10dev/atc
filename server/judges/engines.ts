@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { cleanEnv } from "../clean-env.ts";
+import { config } from "../config.ts";
 import { type ClassifyInput, classifyQuestions } from "./classify.ts";
 
 // 판정 엔진(ATC-36). stub: 녹화한 응답을 돌려준다(네트워크 없음, 테스트·시험 서버용). jev: TypeSafe System One.
@@ -123,3 +127,45 @@ export function jevEngine(apiKey: string, fetchImpl: Fetch = fetch): JudgeEngine
     },
   };
 }
+
+// ---- claude -p 한 번(예외 판정 ATC-558이 Jev 다음에 묻는 판정). 묻기만 한다: 도구 없음, hook 끔, 세션 저장 없음 ----
+export const CLAUDE_MODEL = "claude-sonnet-5-5"; // claude -p 한 번. Claude 모델만(출력의 modelUsage가 claude-로 시작하지 않으면 버린다)
+const CLAUDE_TIMEOUT_MS = 90_000;
+const CLAUDE_ARGS = ["-p", "--model", CLAUDE_MODEL, "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--settings", JSON.stringify({ disableAllHooks: true })];
+
+// 프롬프트는 stdin으로 준다(명령줄에 남지 않게). 실패·시간 초과는 빈 글("답하지 않음")
+export type ClaudeRunner = (prompt: string) => Promise<string>;
+export const claudeRunner: ClaudeRunner = (prompt) =>
+  new Promise((resolve) => {
+    let out = "";
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(out);
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(config.claudeBin, CLAUDE_ARGS, { env: cleanEnv(null), cwd: tmpdir(), stdio: ["pipe", "pipe", "ignore"] });
+    } catch {
+      resolve("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      out = "";
+      finish();
+    }, CLAUDE_TIMEOUT_MS);
+    child.stdout?.on("data", (b: Buffer) => {
+      if (out.length < 1 << 20) out += b.toString("utf8");
+    });
+    child.on("error", () => {
+      out = "";
+      finish();
+    });
+    child.on("close", finish);
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(prompt);
+  });
+

@@ -1,9 +1,6 @@
-import { spawn } from "node:child_process";
-import { tmpdir } from "node:os";
 import type { Hono } from "hono";
 import { resendLinksOf } from "../clearance-resend.ts";
 import { allClearances } from "../clearances.ts";
-import { cleanEnv } from "../clean-env.ts";
 import { config } from "../config.ts";
 import { createDecision } from "../decision-card-run.ts";
 import { contentHashOf } from "../input-binding.ts";
@@ -14,7 +11,7 @@ import { allProposals } from "../proposals.ts";
 import { readRecords, record } from "../recorder.ts";
 import { priorDeliveriesOf } from "../server-send.ts";
 import { lastMessageOfSession } from "../sources/claude.ts";
-import { type JudgeEngine, jevEngine, stubEngine } from "./engines.ts";
+import { CLAUDE_MODEL, type ClaudeRunner, claudeRunner, type JudgeEngine, jevEngine, stubEngine } from "./engines.ts";
 import { EXCEPTION_POLICY_VERSION, POLICY_HASH } from "./exception-policy.ts";
 import {
   claudePromptOf,
@@ -47,47 +44,9 @@ import { appendJudgeLines, type ExceptionJudgeLine, exceptionLinesOf, exceptionM
 // 반출(K2, SUPERVISOR 승인 2026-10-07): TypeSafe Jev와 claude -p에 가는 것은 가린 CAPTAIN 글(최대 1,500자)·메뉴·정책·정해진 말의 상황뿐이다.
 // 기록: judges.jsonl의 target "exception" 줄(입력 해시·정책 해시·판정·출처·확신). CAPTAIN 글은 남기지 않는다.
 
-export const CLAUDE_MODEL = "claude-sonnet-5-5"; // claude -p 한 번. Claude 모델만(출력의 modelUsage가 claude-로 시작하지 않으면 버린다)
-const CLAUDE_TIMEOUT_MS = 90_000;
+export { CLAUDE_MODEL, type ClaudeRunner };
 const TEXT_MAX = 8000; // 받는 CAPTAIN 글의 상한(가리기 전)
 const DAY = 86_400_000;
-const CLAUDE_ARGS = ["-p", "--model", CLAUDE_MODEL, "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--settings", JSON.stringify({ disableAllHooks: true })];
-
-// 프롬프트는 stdin으로 준다(명령줄에 남지 않게). 실패·시간 초과는 빈 글("답하지 않음")
-export type ClaudeRunner = (prompt: string) => Promise<string>;
-export const claudeRunner: ClaudeRunner = (prompt) =>
-  new Promise((resolve) => {
-    let out = "";
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(out);
-    };
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(config.claudeBin, CLAUDE_ARGS, { env: cleanEnv(null), cwd: tmpdir(), stdio: ["pipe", "pipe", "ignore"] });
-    } catch {
-      resolve("");
-      return;
-    }
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      out = "";
-      finish();
-    }, CLAUDE_TIMEOUT_MS);
-    child.stdout?.on("data", (b: Buffer) => {
-      if (out.length < 1 << 20) out += b.toString("utf8");
-    });
-    child.on("error", () => {
-      out = "";
-      finish();
-    });
-    child.on("close", finish);
-    child.stdin?.on("error", () => {});
-    child.stdin?.end(prompt);
-  });
 
 // 엔진: ATC_JUDGE_ENGINE=stub이면 녹화 응답(네트워크 없음, 조심스러운 ESCALATE). 아니면 jev — 키가 없으면 ask가 던지고 claude로 간다
 export const exceptionEngine = (): JudgeEngine => (config.judgeEngine === "stub" ? stubEngine() : jevEngine(config.typesafeApiKey));
