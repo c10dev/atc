@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { autoCountsOf, autoLandOf, autoRecentOf, RECHECK_AFTER_MS, recheckDueOf, recheckOf, rtsViaAutoOf, serverLandedOf } from "./mcc-auto.ts";
+import { autoCountsOf, autoLandOf, autoRecentOf, RECHECK_AFTER_MS, recheckDueOf, recheckOf, rtsViaAutoOf, serverLandedOf, TEST_WRITE_2026_10_06, testWriteOf } from "./mcc-auto.ts";
 import { autoRtsOf, DEFAULT_MCC, loadMcc, parseMcc } from "./mcc.ts";
 import type { MccRecord } from "./mcc.ts";
 import type { RecordLine } from "./recorder.ts";
@@ -74,6 +74,29 @@ test("autoCountsOf·autoRecentOf: 최근 7일 줄만 세고 0도 0으로 센다"
   assert.deepEqual(autoCountsOf(lines, now), { lands: 2, rechecks: 2, misfires: 1, refused: 1, rts: 1, rtsFailed: 1 });
   assert.deepEqual(autoCountsOf([], now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 });
   assert.equal(autoRecentOf(lines, 2).length, 2);
+});
+
+test("ATC-564: 2026-10-06 06:59–07:00Z의 가짜 rts 20줄(from c0ca22e000…)만 숫자·최근 줄에서 빠진다", () => {
+  const now = Date.parse("2026-10-06T12:00:00.000Z");
+  const fake = "c0ca22e" + "0".repeat(33);
+  const rts = (t: string, from: string, result: "started" | "failed"): RecordLine => ({ t, kind: "mcc-auto", op: "rts", from, to: "4678e03".padEnd(40, "0"), result, mode: "rts" });
+  // 테스트가 쓴 것과 같은 모양: started 16, failed 4. 마지막 줄은 07:00:15Z
+  const fakes: RecordLine[] = Array.from({ length: 20 }, (_, i) => rts(new Date(Date.parse("2026-10-06T06:59:50Z") + i * 1300).toISOString(), fake, i % 5 === 0 ? "failed" : "started"));
+  assert.equal(fakes.filter((l) => l.kind === "mcc-auto" && l.op === "rts" && l.result === "failed").length, 4);
+  assert.ok(fakes.every(testWriteOf));
+  const real: RecordLine[] = [
+    rts("2026-10-06T07:00:10Z", "500a167be2197a4f7f328f72769da5bb511dc060", "started"), // 창 안, 다른 from: 센다
+    rts("2026-10-06T06:58:59Z", fake, "failed"), // 창 앞: 센다
+    rts("2026-10-06T07:01:00Z", fake, "failed"), // 창 끝(미만): 센다
+    { t: "2026-10-06T07:00:20Z", kind: "mcc-auto", op: "refused", pr: 596, head: "e23d0b0".padEnd(40, "0"), why: "failed" }, // from 없는 줄: 센다
+  ];
+  assert.deepEqual(real.map(testWriteOf), [false, false, false, false]);
+  const lines = [...fakes, ...real].sort((a, b) => a.t.localeCompare(b.t));
+  assert.deepEqual(autoCountsOf(lines, now), { lands: 0, rechecks: 0, misfires: 0, refused: 1, rts: 1, rtsFailed: 2 });
+  assert.deepEqual(autoCountsOf(fakes, now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 });
+  assert.ok(autoRecentOf(lines, 50).every((l) => !testWriteOf(l)));
+  assert.equal(autoRecentOf(lines, 50).length, real.length);
+  assert.equal(TEST_WRITE_2026_10_06.fromPrefix, "c0ca22e000");
 });
 
 test("설정: serverAuto 기본 on, 꺼지는 것은 정확히 off, 알 수 없는 값은 기본", () => {

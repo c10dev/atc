@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseTeamKeys } from "./linear-keys.ts";
+import { stateDirBlock } from "./state-guard.ts";
 
 try {
   process.loadEnvFile(new URL("../.env.local", import.meta.url));
@@ -8,6 +9,18 @@ try {
 
 const HOME = homedir();
 const env = process.env;
+
+// 상태 폴더와 등록부 파일은 읽을 때마다 막음을 지난다(ATC-564, state-guard.ts): node --test 안에서 운영 상태 폴더를 가리키면 던지고 종료 코드를 1로 둔다.
+// 시험은 import 뒤에 config.stateDir를 바꾸므로, 모듈은 이 값을 import 때 고정하지 않고 쓸 때마다 읽는다
+let stateDir = env.ATC_STATE_DIR || join(HOME, ".local/state/atc");
+let airportsFile: string | null = env.ATC_AIRPORTS_FILE || null;
+function guarded(path: string): string {
+  const block = stateDirBlock(path);
+  if (!block) return path;
+  process.exitCode = 1; // 누가 오류를 삼켜도 시험 파일은 실패한다
+  console.error(`[state-guard] ${block}`);
+  throw new Error(block);
+}
 
 export const config = {
   port: Number(env.ATC_PORT || 7700),
@@ -20,8 +33,19 @@ export const config = {
   codexDir: join(HOME, ".codex"),
   // 버려도 되는 캐시(FUEL 읽기 캐시 등, ATC-83). 상태 폴더가 아니다. 지워도 한 번 다시 읽을 뿐
   cacheDir: join(env.XDG_CACHE_HOME || join(HOME, ".cache"), "atc"),
-  stateDir: env.ATC_STATE_DIR || join(HOME, ".local/state/atc"),
-  airportsFile: env.ATC_AIRPORTS_FILE || join(env.ATC_STATE_DIR || join(HOME, ".local/state/atc"), "airports.json"),
+  get stateDir(): string {
+    return guarded(stateDir);
+  },
+  set stateDir(v: string) {
+    stateDir = v;
+  },
+  // ATC_AIRPORTS_FILE이나 대입이 없으면 지금의 stateDir 아래 airports.json
+  get airportsFile(): string {
+    return guarded(airportsFile ?? join(stateDir, "airports.json"));
+  },
+  set airportsFile(v: string) {
+    airportsFile = v;
+  },
   // 마지막으로 건드린 뒤 이 시간이 지나면 점유가 끝난 것으로 본다.
   claimTtlMs: Number(env.ATC_CLAIM_TTL_MIN || 180) * 60_000,
   // 앞 세션이 이만큼 안에서 손을 떼면 HANDOFF, 둘이 이보다 오래 겹치면 충돌.

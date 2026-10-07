@@ -167,10 +167,10 @@ export const DEFAULT_DISPATCH_CONFIG: DispatchConfig = {
   bgMemoryMax: "24G",
 };
 
-const CONFIG_FILE = join(config.stateDir, "dispatch.json");
+const CONFIG_FILE = () => join(config.stateDir, "dispatch.json"); // 쓸 때마다 읽는다(ATC-564)
 
 // externalReview.security만 바꿔 저장한다(설정 창, ATC-30). 다른 설정은 그대로 둔다
-export function saveExternalReviewSecurity(security: ExternalReviewSecurity, file = CONFIG_FILE) {
+export function saveExternalReviewSecurity(security: ExternalReviewSecurity, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -183,7 +183,7 @@ export function saveExternalReviewSecurity(security: ExternalReviewSecurity, fil
 }
 
 // fuel.hold만 바꿔 저장한다(설정 창, ATC-55). 임계값과 다른 설정은 그대로 둔다
-export function saveFuelHold(hold: boolean, file = CONFIG_FILE) {
+export function saveFuelHold(hold: boolean, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -196,7 +196,7 @@ export function saveFuelHold(hold: boolean, file = CONFIG_FILE) {
 }
 
 // autoApprove·autoApproveLaunch만 바꿔 저장한다(설정 창, ATC-334). 다른 설정은 그대로 둔다
-export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: AutoMode, file = CONFIG_FILE) {
+export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: AutoMode, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -208,7 +208,7 @@ export function saveAutoApprove(key: "autoApprove" | "autoApproveLaunch", mode: 
 }
 
 // k3Hold만 바꿔 저장한다(설정 창, ATC-398). 다른 설정은 그대로 둔다
-export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
+export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -220,7 +220,7 @@ export function saveK3Hold(mode: K3HoldMode, file = CONFIG_FILE) {
 }
 
 // chatRelease만 바꿔 저장한다(설정 창, ATC-471). 다른 설정은 그대로 둔다
-export function saveChatRelease(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveChatRelease(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -232,7 +232,7 @@ export function saveChatRelease(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // duplicateTitle만 바꿔 저장한다(설정 창, ATC-488). 다른 설정은 그대로 둔다
-export function saveDuplicateTitle(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveDuplicateTitle(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -244,7 +244,7 @@ export function saveDuplicateTitle(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // stuckUnserved만 바꿔 저장한다(설정 창, ATC-522). 다른 설정은 그대로 둔다
-export function saveStuckUnserved(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveStuckUnserved(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -256,7 +256,7 @@ export function saveStuckUnserved(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // contestGuard만 바꿔 저장한다(설정 창, ATC-547). 다른 설정은 그대로 둔다
-export function saveContestGuard(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveContestGuard(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -268,7 +268,7 @@ export function saveContestGuard(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // k3Relaunch만 바꿔 저장한다(설정 창, ATC-509). 다른 설정은 그대로 둔다
-export function saveK3Relaunch(mode: K3HoldMode, file = CONFIG_FILE) {
+export function saveK3Relaunch(mode: K3HoldMode, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -280,7 +280,7 @@ export function saveK3Relaunch(mode: K3HoldMode, file = CONFIG_FILE) {
 }
 
 // releaseParked만 바꿔 저장한다(설정 창, ATC-487). 다른 설정은 그대로 둔다
-export function saveReleaseParked(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveReleaseParked(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -300,7 +300,7 @@ function scopeMemoryOf(high: unknown, max: unknown, d: { bgMemoryHigh: string; b
 }
 
 // bgMemoryCap만 바꿔 저장한다(설정 창, ATC-505). 다른 설정은 그대로 둔다
-export function saveBgMemoryCap(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveBgMemoryCap(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -312,7 +312,7 @@ export function saveBgMemoryCap(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // crossAccountRelease만 바꿔 저장한다(설정 창, ATC-458). 다른 설정은 그대로 둔다
-export function saveCrossAccountRelease(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveCrossAccountRelease(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -324,7 +324,7 @@ export function saveCrossAccountRelease(mode: "on" | "off", file = CONFIG_FILE) 
 }
 
 // autoDispatch만 바꿔 저장한다(설정 창, ATC-367). 다른 설정은 그대로 둔다
-export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
+export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -336,7 +336,7 @@ export function saveAutoDispatch(mode: AutoDispatch, file = CONFIG_FILE) {
 }
 
 // staleStop만 바꿔 저장한다(설정 창, ATC-369). 다른 설정은 그대로 둔다
-export function saveStaleStop(mode: "on" | "off", file = CONFIG_FILE) {
+export function saveStaleStop(mode: "on" | "off", file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -348,7 +348,7 @@ export function saveStaleStop(mode: "on" | "off", file = CONFIG_FILE) {
 }
 
 // mode만 바꿔 저장한다. 사용자가 적어 둔 다른 설정은 그대로 둔다.
-export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE) {
+export function saveDispatchMode(mode: DispatchConfig["mode"], file = CONFIG_FILE()) {
   let user: Record<string, unknown> = {};
   try {
     user = JSON.parse(readFileSync(file, "utf8"));
@@ -372,7 +372,7 @@ export function notesConfigOf(raw: unknown): NotesConfig {
 
 const nonNegInt = (v: unknown, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : d);
 
-export function loadDispatchConfig(file = CONFIG_FILE): DispatchConfig {
+export function loadDispatchConfig(file = CONFIG_FILE()): DispatchConfig {
   try {
     const user = JSON.parse(readFileSync(file, "utf8"));
     const d = DEFAULT_DISPATCH_CONFIG;
