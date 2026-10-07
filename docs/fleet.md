@@ -640,6 +640,8 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
 | REVIEW | `review/` | `claude --bg` | `/loop 10m /tick` | `--strict-mcp-config` |
 | ENGINEERING | repository root | badge only | | |
 
+- **First message under CONTROL WAKE** (ATC-557). TOWER, OCC and MCC take the first message from their CONTROL WAKE switch: `wake` (the default) launches with `[ATC WAKE BOOT] <ROLE>` (one pass, then idle until the server wakes the session; no `/loop`), `loop` launches with the `/loop` line in the table. The `control launch` line records `wake: true|false`, and a session launched in the other mode is relaunched once at a safe moment ([control-recycle.md](control-recycle.md) 7). REVIEW is unchanged.
+
 - **Badge.** `BG <id>` (a background session), `tmux <session>` (a session in a tmux pane), `interactive` (open elsewhere, e.g. Claude Desktop) or `not running`. Added after 2026-09-28, when CROSSCHECK was down and nothing on the screen showed it.
 
 - **Mechanism.** `claude --bg -n <NAME> --permission-mode auto [flags] "<first message>"` in the atc repository's folder, with the same clean environment as 8.5. The folder's `.claude/settings.json` applies: model, allow list and the fail-closed guards. `auto` is fixed because a background session can't answer a permission prompt; the guards do the blocking. Checked on 2026-09-28 with a background MCC: `/loop` scheduled `/tick`, the guard hook ran, and `atcctl manual check` and `mcc queue` ran with no prompt.

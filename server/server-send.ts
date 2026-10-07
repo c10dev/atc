@@ -96,10 +96,11 @@ export function crashedOf(p: { id: string; status: string; sentVia?: string; tim
   return !sendLines(lines).some((l) => l.id === p.id && (l.op === "deliver" || l.op === "failed" || l.op === "refused") && Date.parse(l.t) >= sentAt);
 }
 
-// 확인할 발송: confirm 줄이 아직 없는 deliver
-export function unconfirmedOf(lines: readonly Line[]): (ServerSendLine & { op: "deliver" })[] {
-  const done = new Set(sendLines(lines).flatMap((l) => (l.op === "confirm" ? [l.msgId] : [])));
-  return sendLines(lines).filter((l): l is ServerSendLine & { op: "deliver" } => l.op === "deliver" && !done.has(l.msgId));
+// 확인할 발송: confirm 줄이 아직 없는 deliver. kind: 어느 기록 줄인가(server-send = 팀 FLIGHT PLAN, control-wake = 관제 깨움, ATC-557)
+export function unconfirmedOf(lines: readonly Line[], kind = "server-send"): (ServerSendLine & { op: "deliver" })[] {
+  const mine = lines.filter((l) => l.kind === kind) as unknown as ServerSendLine[];
+  const done = new Set(mine.flatMap((l) => (l.op === "confirm" ? [l.msgId] : [])));
+  return mine.filter((l): l is ServerSendLine & { op: "deliver" } => l.op === "deliver" && !done.has(l.msgId));
 }
 
 // 쓴 발송을 확인할 때(순수). seen이면 보임. 아니면: 받는 세션이 idle인데 10분이 지났으면 안 보임(idle 세션은 줄 선 글을 이미 받았어야 한다),
@@ -117,7 +118,17 @@ export function confirmOf(x: { seen: boolean; ageMs: number; session: "idle" | "
 // 스스로 다시 켠다: 멈춘 지 30분이 지나면 서버가 다음 카드 하나를 시험으로 보낸다(probe). 그 발송이 보이면 다시 켜지고(rearm), 또 안 보이면 다시 멈춘다(trip).
 // 시험 발송의 확인을 기다리는 동안은 보내지 않는다. 멈추지 않은 동안에는 확인을 기다리는 발송이 다른 카드의 발송을 막지 않는다.
 // SUPERVISOR가 스위치를 바꾸면(policy server-send-mode) 처음부터 다시 센다(켜진 상태)
+// 범위(ATC-557): BREAKER는 받는 쪽의 종류마다 따로다. 팀 FLIGHT PLAN(server-send 줄)과 관제 깨움(control-wake 줄, 역할마다)이 서로를 멈추지 않는다.
+// 바쁜 관제 세션이 제때 "보임"이 되지 않아도 팀에 가는 FLIGHT PLAN은 멈추지 않는다
 export const BREAKER_COOL_MS = 30 * 60_000;
+export interface BreakerScope {
+  kind: string; // 기록 줄의 kind
+  policyOp: string; // 이 줄이 나오면 처음부터 다시 센다(스위치 바꿈)
+  of?: (l: Line) => boolean; // 그 안에서 더 좁힌다(관제 깨움은 역할마다)
+  handTo?: string; // 멈췄을 때 누가 맡나(사유 글)
+  probe?: string; // 다시 시험할 것(사유 글)
+}
+export const TEAM_SCOPE: BreakerScope = { kind: "server-send", policyOp: "server-send-mode", handTo: "서버 발송을 멈추고 OCC에게 넘김", probe: "카드 하나로" };
 export type BreakerState = "armed" | "tripped" | "probe" | "probe-pending";
 export interface Breaker {
   state: BreakerState;
@@ -125,12 +136,13 @@ export interface Breaker {
   why: string | null;
 }
 // lines는 시각 순서(FLIGHT RECORDER). 순수
-export function breakerOf(lines: readonly Line[], now: number): Breaker {
+export function breakerOf(lines: readonly Line[], now: number, scope: BreakerScope = TEAM_SCOPE): Breaker {
   let since = -1;
+  const ofScope = (l: Line) => !scope.of || scope.of(l);
   lines.forEach((l, i) => {
-    if (l.kind === "policy" && l.op === "server-send-mode") since = i;
+    if (l.kind === "policy" && l.op === scope.policyOp && ofScope(l)) since = i;
   });
-  const after = sendLines(lines.slice(since + 1));
+  const after = lines.slice(since + 1).filter((l) => l.kind === scope.kind && ofScope(l)) as unknown as ServerSendLine[];
   const deliverAt = new Map(after.flatMap((l) => (l.op === "deliver" ? [[l.msgId, l.t] as const] : [])));
   let trippedAt: string | null = null;
   let why: string | null = null;
@@ -141,7 +153,7 @@ export function breakerOf(lines: readonly Line[], now: number): Breaker {
       // 멈춘 동안에는 멈춘 뒤에 나간 시험 발송의 실패만 다시 멈춘다(그 전 발송의 늦은 실패는 시각을 미루지 않는다)
       if (trippedAt === null || sent > trippedAt) {
         trippedAt = l.t;
-        why = `${l.id}의 발송이 받는 세션의 대화 기록에 보이지 않음(${l.why ?? "확인"}) — 서버 발송을 멈추고 OCC에게 넘김. ${BREAKER_COOL_MS / 60_000}분 뒤 카드 하나로 다시 시험한다`;
+        why = `${l.id}의 발송이 받는 세션의 대화 기록에 보이지 않음(${l.why ?? "확인"}) — ${scope.handTo ?? "멈춤"}. ${BREAKER_COOL_MS / 60_000}분 뒤 ${scope.probe ?? "하나로"} 다시 시험한다`;
       }
     } else if (trippedAt !== null && sent > trippedAt) {
       trippedAt = null; // 멈춘 뒤에 나간 발송이 보였다: 다시 켜짐

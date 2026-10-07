@@ -27,6 +27,7 @@ import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan } from "./fleet-plan-run.ts";
 import { autoFreshStartGate, mountFreshStart } from "./fresh-start-run.ts";
 import { serverOwnsWhy, serverSendPass } from "./server-send-run.ts";
+import { controlWakePass } from "./control-wake-run.ts";
 import { migrateFreshStartOnce } from "./fresh-start-switch.ts";
 import { migrateSoloOnce } from "./solo-default-switch.ts";
 import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
@@ -314,6 +315,14 @@ provideService("mcc", mcc);
 provideService("applyNow", applyNow);
 provideService("recycleDeps", { facts: recycleFacts, act: recycleAct });
 provideService("serverSend", { pass: (s: Snapshot) => serverSendPass(s, { beforeRelease: freshGate }) }); // SERVER SEND(ATC-562)
+// CONTROL WAKE(ATC-557 a): 브리핑은 서버 안의 같은 핸들러로 읽고(atcctl과 같은 값), TOWER cursor ack도 같은 라우트로. /loop ↔ wake 옮기기는 CONTROL RECYCLE과 같은 안전 조건·STOP → LAUNCH
+const wakeGet = async (path: string) => {
+  const r = await app.request(path);
+  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  return r.json();
+};
+const wakeAck = async (cursor: string) => app.request("/api/controller/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ consumer: "controller", cursor }) });
+provideService("controlWake", { pass: (s: Snapshot) => controlWakePass(s, { get: wakeGet, ack: wakeAck, recycle: { facts: recycleFacts, act: defaultActDeps(() => current?.fuelAccounts, "WAKE") } }) });
 mountControlRecycle(app);
 mountSettings(app);
 mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)

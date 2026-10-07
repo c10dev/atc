@@ -50,3 +50,16 @@ test("서버 답이 없거나 이상하면 조용하다고 하지 않는다: 오
   assert.equal(tickPlan("tower", same, {}).lines[0], "TICK ACT tower");
   assert.equal(tickPlan("tower", same, { act: false, reasons: [], info: 0, brief: {} }).ack, null); // cursor 없음
 });
+
+// CONTROL WAKE(ATC-557): 깨움이 살아 있으면 /loop의 tick(--wake 없음)은 한 줄로 끝난다. 규정이 바뀌었어도(다음 깨움이 본다) ack하지 않는다
+test("wakeMode면 TICK WAKE-MODE 한 줄, ack 없음, CHANGED도 찍지 않는다", () => {
+  const res = { role: "tower", act: false, reasons: [], info: 0, wakeMode: true, brief: null };
+  for (const role of ["tower", "occ", "mcc"]) {
+    const p = tickPlan(role, changed, { ...res, role });
+    assert.equal(p.ack, null);
+    assert.equal(p.lines.length, 1);
+    assert.match(p.lines[0], new RegExp(`^TICK WAKE-MODE ${role} — event wakes are on \\(ATC-557\\).*End the turn now`));
+  }
+  // wakeMode가 아니면(깨움이 죽음 또는 --wake로 부름) 전과 같다
+  assert.deepEqual(tickPlan("tower", same, quietRes), { lines: ["TICK QUIET tower — nothing to act on"], ack: "42" });
+});

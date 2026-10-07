@@ -1,11 +1,21 @@
 ---
 name: tick
-description: MCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 열린 atc PR을 INSPECTION하고, 조건이 모두 맞는 PR을 착륙시키고, 서비스가 main보다 뒤면 RETURN TO SERVICE한다. 코드는 고치지 않는다. `/loop 5m /tick`으로 돌린다.
+description: MCC 한 바퀴 — 규정이 바뀌었는지 확인하고, 열린 atc PR을 INSPECTION하고, 조건이 모두 맞는 PR을 착륙시키고, 서비스가 main보다 뒤면 RETURN TO SERVICE한다. 코드는 고치지 않는다. 깨움 모드(기본)에서는 서버의 `[ATC WAKE …]` 글이, `/loop` 모드에서는 `/loop 5m /tick`이 부른다.
 ---
 
 # MCC 한 바퀴
 
 **한국어** · [English](SKILL.en.md)
+
+## 두 가지 모드 (CONTROL WAKE, ATC-557)
+
+SUPERVISOR가 설정 창 CONTROL WAKE MCC로 고른다. 어느 모드인지는 첫 프롬프트와 `node ../controller/atcctl.mjs tick mcc`의 출력이 알려 준다.
+
+- **깨움 모드(`wake`, 기본).** `/loop`가 없다. atc 서버가 판단할 일을 보면 `[ATC WAKE W-xxxx] MCC` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 처음 뜰 때는 `[ATC WAKE BOOT] MCC`가 온다.
+  - 그 글을 받으면 0단계를 `node ../controller/atcctl.mjs tick mcc --wake W-xxxx`(BOOT는 `--wake boot`)로 하고 아래 단계를 그대로 한다. 글에 적힌 일만 보지 않고 출력 전체를 본다.
+  - ATC에게 답하지 않는다(세션이 아니라 서버다). 턴의 마지막 줄은 `WAKE RESULT: acted`(무엇이든 내거나 기록하거나 보내거나 보고함) 또는 `WAKE RESULT: nothing`(할 일이 없었음) 하나다. atc가 이 줄로 오작동을 센다.
+  - `/loop`가 남은 세션의 `/tick`에서 0단계가 `TICK WAKE-MODE mcc — …`를 찍으면 아무것도 하지 않고 곧장 턴을 끝낸다(MCC LOG 줄도 없다). atc가 안전한 순간에 이 세션을 `/loop` 없이 한 번 다시 띄운다.
+- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 5m /tick`으로 돈다. 0단계는 `--wake` 없이 `node ../controller/atcctl.mjs tick mcc`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다). BREAKER가 멈추면 atc가 이 세션을 `/loop`로 한 번 다시 띄우고, 다시 켜지면 깨움 모드로 돌린다.
 
 0. `node ../controller/atcctl.mjs tick mcc`(`manual check`를 이미 한다. 따로 부르지 않는다, ATC-553). `TICK QUIET mcc`면 할 일이 없다: 아래 5단계(LOG)로 간다. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `node ../controller/atcctl.mjs manual ack`한 뒤, 다시 읽은 규정대로 진행한다. `TICK ACT mcc`면 1단계로.
 1. `node ../controller/atcctl.mjs mcc queue`. `pulls`, `rts`, `groundStop`을 본다. `rts.due`가 true면 여기서 먼저 `node ../controller/atcctl.mjs mcc rts`(한 번, 착륙보다 앞). ROLLBACK 뒤 멈춤이면 하지 않고 보고한다.

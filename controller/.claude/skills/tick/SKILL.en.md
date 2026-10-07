@@ -4,7 +4,18 @@
 
 > English translation for readers. The skill that runs is the Korean [`SKILL.md`](SKILL.md); this file is not loaded.
 
-**Description:** One ATC pass — read the atc brief, issue CLEARANCEs and reports according to the decision rules in CLAUDE.md, then advance the cursor. Run it with `/loop 3m /tick`.
+## Two modes (CONTROL WAKE, ATC-557)
+
+The SUPERVISOR picks the mode in the settings window, CONTROL WAKE TOWER. The first prompt and the output of `node atcctl.mjs tick tower` tell which one is on.
+
+- **Wake mode (`wake`, the default).** There is no `/loop`. When the atc server sees something that needs a decision it wakes this session with one `[ATC WAKE W-xxxx] TOWER` message (what is new, what is still open, what was resolved since the last wake, the FLIGHTs it bears on). At start the session gets `[ATC WAKE BOOT] TOWER`.
+  - On such a message, step 0 is `node atcctl.mjs tick tower --wake W-xxxx` (`--wake boot` for BOOT), and the steps below follow unchanged. Work from the whole output, not only the items in the message.
+  - Do not reply to ATC (it is the server, not a session). The last line of the turn is one of `WAKE RESULT: acted` (anything was issued, recorded, sent or reported) or `WAKE RESULT: nothing` (there was nothing to do). atc counts misfires from this line.
+  - Team replies (READBACK, UNABLE, questions …) still arrive by session name and wake this session. Record and report them as step 1 says and end the turn; the server wakes the session separately for anything else.
+  - If step 0 of a `/tick` from a leftover `/loop` prints `TICK WAKE-MODE tower — …`, do nothing and end the turn at once (no ATC LOG line). atc relaunches the session once, without `/loop`, at a safe moment.
+- **Loop mode (`loop`).** As before: `/loop 3m /tick`. Step 0 is `node atcctl.mjs tick tower` without `--wake`. If the wake job or the wake BREAKER has stopped, `/tick` also works this way in wake mode (no `TICK WAKE-MODE` is printed). When the BREAKER stops, atc relaunches the session once with `/loop`, and moves it back to wake mode once the BREAKER re-arms.
+
+**Description:** One ATC pass — read the atc brief, issue CLEARANCEs and reports according to the decision rules in CLAUDE.md, then advance the cursor. In wake mode (the default) the server's `[ATC WAKE …]` message calls it; in loop mode `/loop 3m /tick` does.
 
 0. `node atcctl.mjs tick tower`. It does the manual check (`manual check`), the brief, and, when there is nothing to do, the `ack`, in one call. The output decides:
    - `TICK QUIET tower — …`: nothing to act on in the brief, and the ack is already done. Do not call the brief again. Still do step 1 (record the READBACK, ROGER, UNABLE and STANDBY replies from team sessions that arrived before this pass), then go to step 5 (ATC LOG "특이 사항 없음", "nothing to report").

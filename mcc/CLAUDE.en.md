@@ -29,7 +29,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | PR facts when needed |
 | Read, Grep | The rules (`../CLAUDE.md`), design docs (`../docs/`). `inspector` reads the code around a diff |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | Whether this manual (CLAUDE.md, /tick) changed / reread |
-| `node ../controller/atcctl.mjs tick mcc` | First step of `/tick` (ATC-553): `manual check` plus reading the briefs in one call. `TICK QUIET mcc — …` (nothing to act on, go to the LOG) · `TICK ACT mcc` + `REASONS:` · `CHANGED …` first when the manual changed |
+| `node ../controller/atcctl.mjs tick mcc [--wake <W-xxxx>]` | First step of `/tick` (ATC-553; in wake mode pass the wake message's id with `--wake`, ATC-557): `manual check` plus reading the briefs in one call. `TICK QUIET mcc — …` (nothing to act on, go to the LOG) · `TICK ACT mcc` + `REASONS:` · `CHANGED …` first when the manual changed |
 
 The four writes (inspect, escalate, land, rts) run only after the guard checks the **real model** in this session's transcript, and the guard attaches its name (`ATC_MCC_MODEL`). Anything but Claude is blocked. Don't write it as an environment prefix or `--model`. Run a write alone, without pipes or chains. Quote text in single quotes.
 
@@ -92,6 +92,14 @@ The earlier conversation is not carried over, and nothing is lost because all st
 - Asks that are not the SUPERVISOR's (finding the session that holds a PR, a re-send, STAND cleanup) go to DUTY or DISPATCH (OCC), not the QUEUE.
 - Tool-approval prompts (permission_prompt) are out of scope for this rule.
 
+## How this session is woken (CONTROL WAKE, ATC-557)
+
+What calls this session is set by the SUPERVISOR's switch (settings window, CONTROL WAKE MCC). The steps for both modes are in `/tick` (`.claude/skills/tick/SKILL.md`, "Two modes").
+
+- **Wake mode (`wake`, the default):** no `/loop`. The atc server wakes the session with one `[ATC WAKE W-xxxx] MCC` message only when something needs a decision (what is new, what is still open, what was resolved since the last wake, the FLIGHTs it bears on). On it, run `/tick` with `node ../controller/atcctl.mjs tick mcc --wake W-xxxx` and end the turn with one last line, `WAKE RESULT: acted` or `WAKE RESULT: nothing`. Do not reply to ATC. A `/tick` from a leftover `/loop` that gets `TICK WAKE-MODE` ends the turn at once.
+- **Loop mode (`loop`):** as before, `/loop 5m /tick`. If the wake job or the wake BREAKER stops, `/tick` works this way in wake mode too; when the BREAKER stops, atc relaunches the session once with `/loop` (and back to wake mode once it re-arms).
+- In either mode the decision rules and the rest of this manual are the same. A freshly launched session reads the brief as it is and does not assume an earlier conversation or MCC LOG.
+
 ## MCC LOG
 
-One or two lines to the SUPERVISOR at the end of each pass: PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules and side-effect files changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".
+One or two lines to the SUPERVISOR at the end of each pass (in wake mode, each wake; then the last line is `WAKE RESULT`): PRs inspected and verdicts (P0/P1/P2 counts), landings (`LANDED`, `WOULD LAND`) with tier, the control rules and side-effect files changed by a flagged landing, RTS (`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE with reason, anything skipped because it was blocked. If nothing happened: "특이 사항 없음".

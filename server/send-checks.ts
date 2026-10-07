@@ -171,8 +171,8 @@ export function serverRepeatWhy(x: Pick<ServerSendInput, "proposal" | "purpose" 
 }
 
 declare const checkedBrand: unique symbol;
-// 검사를 통과한 발송 하나. 이 파일의 checkServerSend만 만든다(brand와 WeakSet)
-export type CheckedSend = Readonly<{
+// 검사를 통과한 발송 하나. 이 파일의 checkServerSend·checkControlWake만 만든다(brand와 WeakSet)
+export type FlightPlanSend = Readonly<{
   kind: "flight-plan";
   id: string; // D-xxxx
   sessionId: string; // 보낼 때의 살아 있는 세션 id
@@ -182,11 +182,23 @@ export type CheckedSend = Readonly<{
   purpose: SendPurpose;
   checkedAt: string;
 }> & { readonly [checkedBrand]: true };
+// 관제 세션을 깨우는 글 하나(ATC-557). 같은 writer(session-socket.ts deliverChecked)가 쓴다
+export type ControlWakeSend = Readonly<{
+  kind: "control-wake";
+  id: string; // W-xxxx
+  role: "TOWER" | "OCC" | "MCC";
+  sessionId: string;
+  to: string; // 그 세션 이름(검사가 역할 이름과 비교한 것)
+  text: string; // 서버가 지은 깨우는 글(그대로 쓴다)
+  textHash: string;
+  checkedAt: string;
+}> & { readonly [checkedBrand]: true };
+export type CheckedSend = FlightPlanSend | ControlWakeSend;
 
 const minted = new WeakSet<object>();
 export const isChecked = (x: unknown): x is CheckedSend => typeof x === "object" && x !== null && minted.has(x);
 
-export type ServerCheck = { ok: true; send: CheckedSend } | { ok: false; reason: string };
+export type ServerCheck = { ok: true; send: FlightPlanSend } | { ok: false; reason: string };
 
 // 서버가 FLIGHT PLAN 하나를 보내도 되나. send-guard와 같은 resolveSend를 머리만으로 부르고(받는 이 = 보낼 때의 세션 이름), 두 번 보내지 않음을 더 본다
 export async function checkServerSend(x: ServerSendInput): Promise<ServerCheck> {
@@ -204,7 +216,54 @@ export async function checkServerSend(x: ServerSendInput): Promise<ServerCheck> 
     textHash: contentHashOf(r.message),
     purpose: x.purpose,
     checkedAt: new Date(x.now).toISOString(),
-  }) as CheckedSend;
+  }) as FlightPlanSend;
+  minted.add(send);
+  return { ok: true, send };
+}
+
+// ── 관제 세션 깨우기(ATC-557) ──
+// 서버가 TOWER·OCC·MCC 세션에 판단할 일 하나를 알리는 글. FLIGHT PLAN과 다른 검사(받는 이는 AIRCRAFT가 아니라 관제 역할)이지만 같은 brand로 같은 writer가 쓴다.
+// 검사: 역할 이름, 받는 세션의 이름이 그 역할(시험 opt-in은 run이 정한 이름), 스위치가 wake(또는 그 세션이 깨움 모드로 떴다), 머리 꼴과 id, 결과 줄 지시, 길이,
+// 팀에 가는 머리([DISPATCH …]·[OCC CC-…]·[ATC C-…])가 아님
+export const CONTROL_WAKE_ROLES = ["TOWER", "OCC", "MCC"] as const;
+const WAKE_HEADER = /^\[ATC WAKE (W-\d{4,})\] (TOWER|OCC|MCC)\n/;
+export const CONTROL_WAKE_MAX = 8000;
+export interface ControlWakeInput {
+  wakeId: string;
+  role: string;
+  session: LiveRecipient;
+  expectedName: string; // 운영: 역할 이름(TOWER …). 시험 opt-in: run이 정한 버리는 세션 이름
+  text: string;
+  mode: string; // 그 역할의 스위치(loop | wake)
+  launchedWake: boolean; // 지금 세션이 깨움 모드로 떴다(스위치가 loop로 돌아가 옮겨지기 전까지는 깨운다)
+  now: number;
+}
+export function controlWakeWhy(x: ControlWakeInput): string | null {
+  if (!(CONTROL_WAKE_ROLES as readonly string[]).includes(x.role)) return `관제 깨움을 받을 역할이 아님(${x.role})`;
+  if (x.mode !== "wake" && !x.launchedWake) return `${x.role}의 스위치가 ${x.mode} — 깨우지 않는다(/loop)`;
+  if (!x.expectedName || x.session.name !== x.expectedName) return `받는 세션 이름(${x.session.name})이 ${x.expectedName || x.role}이 아님`;
+  const m = WAKE_HEADER.exec(x.text);
+  if (!m) return "깨우는 글의 머리가 [ATC WAKE W-xxxx] <역할>이 아님";
+  if (m[1] !== x.wakeId || m[2] !== x.role) return `머리(${m[1]} ${m[2]})가 이 깨움(${x.wakeId} ${x.role})과 다름`;
+  if (x.text.length > CONTROL_WAKE_MAX) return `깨우는 글이 너무 김(${x.text.length} > ${CONTROL_WAKE_MAX})`;
+  if (!x.text.includes("WAKE RESULT: acted") || !x.text.includes("WAKE RESULT: nothing")) return "결과 줄(WAKE RESULT) 지시가 없음";
+  if (/^\[(?:DISPATCH D-|OCC CC-|ATC C-)/m.test(x.text)) return "팀에 가는 머리가 글 안에 있음 — 관제 깨움에 싣지 않는다";
+  return null;
+}
+export type WakeCheck = { ok: true; send: ControlWakeSend } | { ok: false; reason: string };
+export function checkControlWake(x: ControlWakeInput): WakeCheck {
+  const why = controlWakeWhy(x);
+  if (why) return { ok: false, reason: why };
+  const send = Object.freeze({
+    kind: "control-wake" as const,
+    id: x.wakeId,
+    role: x.role as ControlWakeSend["role"],
+    sessionId: x.session.id,
+    to: x.session.name,
+    text: x.text,
+    textHash: contentHashOf(x.text),
+    checkedAt: new Date(x.now).toISOString(),
+  }) as ControlWakeSend;
   minted.add(send);
   return { ok: true, send };
 }

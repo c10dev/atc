@@ -13,7 +13,7 @@ import type { Session, Snapshot } from "./model.ts";
 import { allProposals, append, crossAccountWhyOf, flightPlanMessageOf, noLiveSessionWhyOf, type Proposal, regOfProposal, restartingWhyOf } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import { regKey } from "./registration.ts";
-import { type CheckedSend, checkServerSend, READBACK_OVERDUE_MS, type SendPurpose, serverRepeatWhy } from "./send-checks.ts";
+import { checkServerSend, type FlightPlanSend, READBACK_OVERDUE_MS, type SendPurpose, serverRepeatWhy } from "./send-checks.ts";
 import {
   approvedPurposeOf,
   type Breaker,
@@ -144,7 +144,7 @@ export interface PassSummary {
 }
 
 // 검사를 통과한 발송을 쓰고 기록한다. 실패면 undelivered(ATC-183: approved로 돌아가 다음에 다시 — 두 번째 실패는 OCC에게)
-async function deliverAndRecord(send: CheckedSend, s: Snapshot, tp: string, deps: PassDeps, out: PassSummary) {
+async function deliverAndRecord(send: FlightPlanSend, s: Snapshot, tp: string, deps: PassDeps, out: PassSummary) {
   const r = await (deps.deliver ?? deliverChecked)(send, { configDirs: configDirs() });
   const t = iso(deps.now?.() ?? Date.now());
   if (!r.ok) {

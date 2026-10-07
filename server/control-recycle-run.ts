@@ -376,6 +376,22 @@ export async function applyNowControl(d: ActDeps, name: string, to: string | nul
   }
 }
 
+// CONTROL WAKE(ATC-557): 관제 세션 하나를 /loop ↔ wake로 옮기려고 한 번 STOP → LAUNCH한다. RECYCLE·APPLY NOW와 같은 잠금, 같은 performRecycle(ACCOUNT는 그대로).
+// LAUNCH의 첫 프롬프트는 launchControl이 그 역할의 깨움 스위치로 정한다. 안전 조건(턴 사이, safeBlocksOf)은 부르는 쪽이 이미 봤다
+export async function recycleOnce(d: ActDeps, row: Pick<AgentRow, "id" | "pid" | "account">, name: string, context: number, reason: string, by: string): Promise<RecycleRecord | { busy: string }> {
+  if (busy || recycling) return { busy: recycling ?? "CONTROL RECYCLE" };
+  busy = true;
+  recycling = name;
+  try {
+    const r = await performRecycle(d, row, name, context, reason);
+    record(toLine(r, by));
+    return r;
+  } finally {
+    recycling = null;
+    busy = false;
+  }
+}
+
 // 실제 stop·launch·읽기를 묶은 기본 ActDeps. stopControl·launchControl은 FLEET의 STOP·LAUNCH 버튼과 같은 함수다
 export const defaultActDeps = (fuelAccounts: () => Snapshot["fuelAccounts"], by = "RECYCLE"): ActDeps => ({
   stop: async (name) => {

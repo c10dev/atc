@@ -9,7 +9,7 @@ import { contentHashOf, sealWorkOrder } from "./input-binding.ts";
 import type { Snapshot } from "./model.ts";
 import { allProposals, append, type Op } from "./proposals.ts";
 import { readRecords } from "./recorder.ts";
-import { type CheckedSend, checkSend } from "./send-checks.ts";
+import { checkSend, type FlightPlanSend } from "./send-checks.ts";
 import { type PassDeps, saveServerSendSwitch, serverOwnsWhy, serverSendData, serverSendPass } from "./server-send-run.ts";
 import { type DeliverResult, transcriptOf } from "./session-socket.ts";
 
@@ -41,13 +41,13 @@ function card(reg: string, opts: { session?: "bg" | "interactive" | "none" } = {
 const snap = (...cards: { session: unknown }[]) => ({ sessions: cards.flatMap((c) => (c.session ? [c.session] : [])), restarting: [], tickets: [], workspaces: [], pulls: [], claims: [], clearances: [], fuel: {}, stranded: [], github: { enabled: false, fetchedAt: null }, linear: { fetchedAt: null } }) as unknown as Snapshot;
 const textOf = (id: string) => sealWorkOrder(`[DISPATCH ${id}] FLIGHT PLAN @WOHASH · X\nwork\n— Send your reply to the session name "OCC" (SendMessage to: "OCC").\n— Reply to this message with "READBACK ${id} @WOHASH" if you take it, exactly like that.`).text;
 function deps(results: DeliverResult[] = [], over: Partial<PassDeps> = {}) {
-  const calls: CheckedSend[] = [];
+  const calls: FlightPlanSend[] = [];
   const d: PassDeps = {
     now: () => clock,
     message: async (p) => textOf(p.id),
     // 받는 세션처럼 대화 기록에 msg_id를 남긴다(확인이 "보임"이 되게). 실패 결과를 주면 그것을 돌려준다
     deliver: async (send) => {
-      calls.push(send);
+      calls.push(send as FlightPlanSend);
       const r = results.shift() ?? { ok: true as const, msgId: `m-${calls.length}-${send.id}`, pid: 1, configDir: claude, cwd: W };
       if (r.ok && r.cwd === W) appendFileSync(transcriptOf(claude, W, send.sessionId), JSON.stringify({ origin: { kind: "peer", msg_id: r.msgId } }) + "\n");
       return r;

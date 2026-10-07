@@ -29,7 +29,7 @@
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | 필요할 때 PR 사실 확인 |
 | Read·Grep | 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`). diff 주변 코드는 `inspector`가 읽는다 |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick)이 바뀌었는지 / 다시 읽었음 |
-| `node ../controller/atcctl.mjs tick mcc` | `/tick`의 첫 단계(ATC-553): `manual check` + 브리핑 읽기를 한 번에. `TICK QUIET mcc — …`(할 일 없음, LOG로) · `TICK ACT mcc` + `REASONS:` · 규정이 바뀌었으면 `CHANGED …`를 먼저 |
+| `node ../controller/atcctl.mjs tick mcc [--wake <W-xxxx>]` | `/tick`의 첫 단계(ATC-553, 깨움 모드에서는 깨운 글의 id를 `--wake`로, ATC-557): `manual check` + 브리핑 읽기를 한 번에. `TICK QUIET mcc — …`(할 일 없음, LOG로) · `TICK ACT mcc` + `REASONS:` · 규정이 바뀌었으면 `CHANGED …`를 먼저 |
 
 쓰기 넷(inspect·escalate·land·rts)은 guard가 이 세션 기록의 **실제 모델**을 확인한 뒤에만 실행되고, 그 이름을 guard가 붙인다(`ATC_MCC_MODEL`). Claude가 아니면 막힌다. 명령 앞 환경 변수나 `--model`로 적지 않는다. 쓰기 명령은 파이프·이어 쓰기 없이 단독으로 쓴다. 글은 작은따옴표로 감싼다.
 
@@ -92,6 +92,14 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 - SUPERVISOR 몫이 아닌 부탁(PR을 쥔 세션 찾기, 다시 보내기, STAND 정리)은 카드가 아니라 DUTY나 DISPATCH(OCC)에 보낸다. QUEUE에 올리지 않는다.
 - 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
 
+## 깨우는 방식 (CONTROL WAKE, ATC-557)
+
+이 세션을 무엇이 부르는지는 SUPERVISOR의 스위치(설정 창 CONTROL WAKE MCC)가 정한다. 두 모드의 단계는 `/tick`(`.claude/skills/tick/SKILL.md` "두 가지 모드")에 있다.
+
+- **깨움 모드(`wake`, 기본):** `/loop`가 없다. atc 서버가 판단할 일이 생길 때만 `[ATC WAKE W-xxxx] MCC` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 받으면 `node ../controller/atcctl.mjs tick mcc --wake W-xxxx`로 `/tick`을 하고, 턴의 마지막 줄을 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. ATC에게는 답하지 않는다. `/loop`가 남은 세션의 `/tick`이 `TICK WAKE-MODE`를 받으면 곧장 턴을 끝낸다.
+- **`/loop` 모드(`loop`):** 오늘처럼 `/loop 5m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일하고, BREAKER가 멈추면 atc가 `/loop`로 한 번 다시 띄운다(다시 켜지면 깨움 모드로 돌린다).
+- 어느 모드든 판단 기준과 이 문서의 규칙은 같다. 새로 뜬 세션은 브리핑을 그대로 읽고, 앞 대화나 MCC LOG가 있다고 가정하지 않는다.
+
 ## MCC LOG
 
-매 바퀴 끝에 SUPERVISOR에게 한두 줄: INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙과 외부 부작용 파일, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".
+매 바퀴(깨움 모드에서는 깨움마다) 끝에 SUPERVISOR에게 한두 줄(깨움이면 그 뒤 마지막 줄이 `WAKE RESULT`): INSPECTION한 PR과 판정(P0·P1·P2 수), 착륙(`LANDED`·`WOULD LAND`)과 등급, flagged면 바뀐 관제 규칙과 외부 부작용 파일, RTS(`from → to`, `WOULD RTS`), ROLLBACK, ESCALATE와 사유, 막혀서 건너뛴 것. 아무 일 없으면 "특이 사항 없음".

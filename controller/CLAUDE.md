@@ -15,7 +15,7 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `node atcctl.mjs tick tower` | `/tick`의 첫 단계(ATC-297): `manual check` + 브리핑 + 할 일이 없을 때의 `ack`을 한 번에. `TICK QUIET tower — …`(끝) · `TICK ACT tower` + `REASONS:` + 브리핑 · 규정이 바뀌었으면 `CHANGED …`를 먼저(ack 없음) |
+| `node atcctl.mjs tick tower [--wake <W-xxxx>]` | `/tick`의 첫 단계(ATC-297, 깨움 모드에서는 깨운 글의 id를 `--wake`로, ATC-557): `manual check` + 브리핑 + 할 일이 없을 때의 `ack`을 한 번에. `TICK QUIET tower — …`(끝) · `TICK ACT tower` + `REASONS:` + 브리핑 · 규정이 바뀌었으면 `CHANGED …`를 먼저(ack 없음) |
 | `node atcctl.mjs brief` | 지난 ack 이후 변화(`events`)와 현재 상태(`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | 브리핑 처리 완료. 다음 brief는 그 뒤 변화만 준다 |
 | `node atcctl.mjs issue <세션> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <내용>` | CLEARANCE를 기록하고 보낼 대상과 문구를 돌려준다 |
@@ -83,6 +83,14 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 - 세션 이름이 겹쳐 SendMessage가 모호하다고 하면 ListAgents의 `[ref]`를 붙인다.
 - **팀과 다른 관제 세션에 보내는 글은 영어다**(ATC-126). CLEARANCE 본문(`--text`)도 영어로 쓴다. `[DISPATCH D-xxxx]`·`[OCC CC-xxxx]`·`[ATC C-xxxx]` 머리와 `READBACK …`·`UNABLE …`·`STANDBY …`·`ROGER …`는 guard가 읽으므로 바꾸지 않는다. ATC LOG처럼 SUPERVISOR에게 남기는 글은 한국어다.
 
+## 깨우는 방식 (CONTROL WAKE, ATC-557)
+
+이 세션을 무엇이 부르는지는 SUPERVISOR의 스위치(설정 창 CONTROL WAKE TOWER)가 정한다. 두 모드의 단계는 `/tick`(`.claude/skills/tick/SKILL.md` "두 가지 모드")에 있다.
+
+- **깨움 모드(`wake`, 기본):** `/loop`가 없다. atc 서버가 판단할 일이 생길 때만 `[ATC WAKE W-xxxx] TOWER` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 받으면 `node atcctl.mjs tick tower --wake W-xxxx`로 `/tick`을 하고, 턴의 마지막 줄을 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. ATC에게는 답하지 않는다. `/loop`가 남은 세션의 `/tick`이 `TICK WAKE-MODE`를 받으면 곧장 턴을 끝낸다.
+- **`/loop` 모드(`loop`):** 오늘처럼 `/loop 3m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일하고, BREAKER가 멈추면 atc가 `/loop`로 한 번 다시 띄운다(다시 켜지면 깨움 모드로 돌린다).
+- 어느 모드든 판단 기준과 이 문서의 규칙은 같다. 새로 뜬 세션은 브리핑을 그대로 읽고, 앞 대화나 ATC LOG가 있다고 가정하지 않는다.
+
 ## ATC LOG
 
-매 바퀴 끝에 SUPERVISOR에게 한두 줄로 남긴다: 보낸 CLEARANCE(ID·대상·종류), 보고할 것, READBACK 받은 것. 아무 일 없으면 "특이 사항 없음" 한 줄.
+매 바퀴(깨움 모드에서는 깨움마다) 끝에 SUPERVISOR에게 한두 줄로 남긴다(깨움이면 그 뒤 마지막 줄이 `WAKE RESULT`): 보낸 CLEARANCE(ID·대상·종류), 보고할 것, READBACK 받은 것. 아무 일 없으면 "특이 사항 없음" 한 줄.
