@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { config } from "./config.ts";
 import { controlWakeData, controlWakePass, pendingWakeOf, transitionPassForTest, wakeFallbackStuckNow, wakeModeLive, wakeScope, type WakeDeps } from "./control-wake-run.ts";
 import { effectiveWakeOf } from "./control-wake-switch.ts";
-import { loadWakeSwitch, saveWakeMode } from "./control-wake-switch.ts";
+import { loadWakeSwitch, saveWakeDaily, saveWakeMode } from "./control-wake-switch.ts";
 import type { ActDeps, FactDeps } from "./control-recycle-run.ts";
 import type { Snapshot } from "./model.ts";
 import { readRecords, record } from "./recorder.ts";
@@ -37,6 +37,8 @@ writeFileSync(join(claude, "sessions", "5151.json"), JSON.stringify({ pid: 5151,
 const row = { id: "job5151", sessionId: sid, name: "WAKETEST_TOWER", kind: "background", cwd: W, pid: 5151 };
 
 let brief: Record<string, unknown> = {};
+let reviews: Record<string, unknown> = { pending: [] };
+let msgSeq = 0;
 const tower = (over: Record<string, unknown> = {}) => ({ cursor: "ep:1", reset: false, events: [], open: {}, landingQueue: [], relays: [], clearances: { pending: [], overdue: [] }, ...over });
 function deps(over: Partial<WakeDeps> = {}) {
   const calls: CheckedSend[] = [];
@@ -44,16 +46,18 @@ function deps(over: Partial<WakeDeps> = {}) {
   const d: WakeDeps = {
     now: () => clock,
     force: true,
+    noDaily: true, // 하루 한 번 점검 턴은 아래 시험이 정한 시각으로만 본다
     rows: async () => [row],
     get: async (path) => {
       if (path.startsWith("/api/controller/brief")) return brief;
       if (path === "/api/mcc/queue") return { pulls: [] };
+      if (path === "/api/landing/reviews") return reviews;
       return {};
     },
     ack: async (c) => void acks.push(c),
     deliver: async (send): Promise<DeliverResult> => {
       calls.push(send);
-      const msgId = `m-${calls.length}`;
+      const msgId = `m-${++msgSeq}`; // 시험마다 새 deps라도 msg_id는 겹치지 않게(확인 줄이 msg_id로 짝짓는다)
       appendFileSync(transcriptOf(claude, W, send.sessionId), JSON.stringify({ type: "user", origin: { kind: "peer", msg_id: msgId }, message: { role: "user", content: send.text } }) + "\n");
       return { ok: true, msgId, pid: 5151, configDir: claude, cwd: W };
     },
@@ -135,13 +139,18 @@ test("스위치 loop이고 세션도 /loop로 떴으면 깨우지 않는다(오�
   saveWakeMode("tower", "wake");
 });
 
-test("LAUNCH의 첫 프롬프트: wake면 /loop 없는 글, loop면 오늘의 /loop. REVIEW는 그대로", () => {
+test("LAUNCH의 첫 프롬프트: wake면 /loop 없는 글, loop면 오늘의 /loop. REVIEW도 같다(ATC-557 d), CROSSCHECK는 은퇴라 그대로", () => {
   const spec = (n: string) => CONTROL_SESSIONS.find((s) => s.name === n)!;
-  assert.deepEqual(controlPromptOf(spec("TOWER"), { tower: "loop", occ: "wake", mcc: "wake" }), { prompt: "/loop 3m /tick", wake: false });
-  const w = controlPromptOf(spec("OCC"), { tower: "loop", occ: "wake", mcc: "wake" });
+  assert.deepEqual(controlPromptOf(spec("TOWER"), { tower: "loop", occ: "wake", mcc: "wake", review: "wake" }), { prompt: "/loop 3m /tick", wake: false });
+  const w = controlPromptOf(spec("OCC"), { tower: "loop", occ: "wake", mcc: "wake", review: "wake" });
   assert.equal(w.wake, true);
   assert.match(w.prompt!, /^\[ATC WAKE BOOT\] OCC/);
-  assert.deepEqual(controlPromptOf(spec("REVIEW"), { tower: "wake", occ: "wake", mcc: "wake" }), { prompt: "/loop 10m /tick", wake: null });
+  const r = controlPromptOf(spec("REVIEW"), { tower: "wake", occ: "wake", mcc: "wake", review: "wake" });
+  assert.equal(r.wake, true);
+  assert.match(r.prompt!, /^\[ATC WAKE BOOT\] REVIEW\n[\s\S]*node \.\.\/controller\/atcctl\.mjs tick review --wake boot/);
+  assert.deepEqual(controlPromptOf(spec("REVIEW"), { tower: "wake", occ: "wake", mcc: "wake", review: "loop" }), { prompt: "/loop 10m /tick", wake: false });
+  const cc = spec("CROSSCHECK");
+  if (cc) assert.equal(controlPromptOf(cc, { tower: "wake", occ: "wake", mcc: "wake", review: "wake" }).wake, null);
 });
 
 test("GET /api/tick: 깨움이 살아 있으면 /loop의 tick은 wakeMode만(브리핑·seen 없음), --wake는 평소대로이고 집어 든 줄을 남긴다", async () => {
@@ -250,4 +259,94 @@ test("운영 서버도 opt-in도 아니면 아무것도 하지 않는다(시험 
   assert.equal(calls.length, 0);
   assert.equal(wakeLines().length, before);
   process.env.ATC_SERVER_SEND_TEST = "1";
+});
+
+test("REVIEW(ATC-557 d): 착륙 리뷰를 기다리는 PR head가 사건, 깨움 하나에 2건까지 — 나머지는 앞 깨움이 끝난 뒤 다음 깨움에", async () => {
+  const sidR = "sess-wake-review";
+  writeFileSync(join(claude, "sessions", "5353.json"), JSON.stringify({ pid: 5353, sessionId: sidR, name: "WAKETEST_REVIEW", kind: "bg", cwd: W, messagingSocketPath: "/run/user/1000/cc-socks/5353.sock", peerProtocol: 1, status: "idle" }));
+  const rowR = { id: "job5353", sessionId: sidR, name: "WAKETEST_REVIEW", kind: "background", cwd: W, pid: 5353 };
+  const pr = (n: number) => ({ pr: `c10dev/vocado#${n}`, head: `abc${n}def`, title: `PR ${n}`, flight: `VOC-${n}` });
+  reviews = { pending: [pr(1), pr(2), pr(3)] };
+  clock = Date.parse("2030-01-02T00:10:00Z"); // 점검 시각(01:45Z) 전
+  const { d, calls } = deps({ rows: async () => [rowR], noDaily: false });
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 0); // 처음 본 패스는 기다린다
+  clock += 60_000;
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  const t1 = calls[0]!.text;
+  assert.match(t1, /^\[ATC WAKE W-\d{4}\] REVIEW\n/);
+  assert.match(t1, /review-pending: PR c10dev\/vocado#1@abc1def/);
+  assert.match(t1, /review-pending: PR c10dev\/vocado#2@abc2def/);
+  assert.doesNotMatch(t1, /vocado#3/); // 2건까지
+  assert.match(t1, /node \.\.\/controller\/atcctl\.mjs tick review --wake W-\d{4}/);
+  assert.match(t1, /at most 2 per pass/);
+  assert.equal(calls[0]!.to, "WAKETEST_REVIEW");
+  // 앞 깨움이 끝나지 않았다(세션이 리뷰 중): 다음 깨움 없음. 15분 넘게 기다린 #3은 "깨우지 못함"이 아니다
+  const sess = (status: string) => writeFileSync(join(claude, "sessions", "5353.json"), JSON.stringify({ pid: 5353, sessionId: sidR, name: "WAKETEST_REVIEW", kind: "bg", cwd: W, messagingSocketPath: "/run/user/1000/cc-socks/5353.sock", peerProtocol: 1, status }));
+  sess("busy");
+  clock += 16 * 60_000;
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  sess("idle");
+  // 세션이 2건을 리뷰하고 턴을 끝냈다 → 다음 패스에 #3
+  appendFileSync(transcriptOf(claude, W, sidR), JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "reviewed 2\nWAKE RESULT: acted" }] } }) + "\n");
+  reviews = { pending: [pr(3)] };
+  clock += 60_000;
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 2);
+  assert.match(calls[1]!.text, /vocado#3@abc3def/);
+  assert.match(calls[1]!.text, /Resolved since then: review:c10dev\/vocado#1@abc1def/);
+  const mine = () => (readRecords(clock - 86_400_000) as unknown as Record<string, unknown>[]).filter((l) => l.kind === "control-wake" && l.role === "review");
+  assert.equal(mine().filter((l) => l.op === "missed").length, 0);
+  assert.deepEqual(mine().find((l) => l.op === "deliver")!.fresh, ["review:c10dev/vocado#1@abc1def", "review:c10dev/vocado#2@abc2def"]);
+});
+
+test("하루 한 번 점검 턴(ATC-557 d): 그 역할의 시각 뒤 한 번, 따로 센다, 다시 시작해도 두 번 보내지 않고, /loop인 역할은 받지 않는다", async () => {
+  const sidR = "sess-wake-review";
+  const rowR = { id: "job5353", sessionId: sidR, name: "WAKETEST_REVIEW", kind: "background", cwd: W, pid: 5353 };
+  const { d, calls } = deps({ rows: async () => [rowR], noDaily: false });
+  // 앞 시험의 #3 깨움이 끝났다. 01:44Z: 아직 REVIEW의 시각(01:45Z) 전
+  appendFileSync(transcriptOf(claude, W, sidR), JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "WAKE RESULT: acted" }] } }) + "\n");
+  reviews = { pending: [] };
+  clock = Date.parse("2030-01-02T01:44:00Z");
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 0);
+  clock = Date.parse("2030-01-02T01:46:00Z");
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  const t = calls[0]!.text;
+  assert.match(t, /^\[ATC WAKE W-\d{4}\] REVIEW\nDaily review turn \(ATC-557\): once a UTC day \(01:45Z, 2030-01-02\)/);
+  assert.match(t, /Your wakes in the last 24 h \(FLIGHT RECORDER\): 2 event wakes · acted 2/);
+  assert.match(t, /REVIEW LOG line only/);
+  assert.doesNotMatch(t, /DECISION card/); // REVIEW의 guard는 atcctl decision을 막는다
+  assert.match(t, /tick review --wake W-\d{4}/);
+  const del = (readRecords(clock - 86_400_000) as unknown as Record<string, unknown>[]).filter((l) => l.kind === "control-wake" && l.op === "deliver" && l.daily === true);
+  assert.equal(del.length, 1);
+  assert.deepEqual(del[0]!.events, [{ key: "daily:2030-01-02", kind: "daily-review", menu: false }]);
+  // 결과 nothing: 점검 턴의 수로(오작동 "할 일 없이 깨움"이 아니다)
+  appendFileSync(transcriptOf(claude, W, sidR), JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "nothing to file\nWAKE RESULT: nothing" }] } }) + "\n");
+  clock += 10 * 60_000;
+  await controlWakePass(snap, d);
+  // 서버를 다시 띄운 것처럼 상태 파일을 지워도 기록으로 오늘 보낸 것을 안다
+  writeFileSync(join(config.stateDir, "control-wake-state.json"), JSON.stringify({ seq: 900, roles: {} }));
+  clock += 3 * 3_600_000;
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  const data = controlWakeData(clock);
+  assert.deepEqual([data.roles.review!.daily, data.roles.review!.dailyNothing, data.roles.review!.nothing, data.roles.review!.wakes], [1, 1, 0, 2]);
+  assert.equal(data.daily.mode, "on");
+  assert.deepEqual(data.daily.roles.review, { at: "01:45Z", today: true });
+  // 다음 날: 스위치 loop인 역할은 점검 턴을 받지 않는다
+  saveWakeMode("review", "loop");
+  clock = Date.parse("2030-01-03T02:00:00Z");
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  saveWakeMode("review", "wake");
+  // 점검 턴 스위치 off
+  saveWakeDaily("off");
+  clock += 60_000;
+  await controlWakePass(snap, d);
+  assert.equal(calls.length, 1);
+  saveWakeDaily("on");
 });

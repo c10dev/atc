@@ -20,6 +20,7 @@ claude --bg -n REVIEW --permission-mode auto --strict-mcp-config "/loop 10m /tic
 ```
 
 - `-n REVIEW` names the session and the last argument is its first message. The model comes from `.claude/settings.json`.
+- This is the `/loop` mode. In wake mode (CONTROL WAKE REVIEW `wake`, the default since ATC-557 part d) LAUNCH sends `[ATC WAKE BOOT] REVIEW` instead and the server wakes the session when a PR head waits for a review ([docs/control-recycle.md](../docs/control-recycle.md) 10).
 - `--strict-mcp-config` loads no MCP servers. The session needs none: the packet comes from `atcctl landing review`.
 - The guard checks the real model in the session's transcript on every record. Only `claude-sonnet-…` names pass. The server also refuses reviews from other models. Older DeepSeek records still count when a review carries over a main merge (ATC-31).
 - The tmux and `ocx claude` launch (ATC-66) was removed on 2026-09-29.

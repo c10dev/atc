@@ -830,7 +830,8 @@ function ServerClearanceStats({ d }: { d: ServerClearanceData }) {
     </ul>
   );
 }
-// CONTROL WAKE(ATC-557)의 숫자: 최근 7일 역할마다 깨움과 오작동 셋(깨우지 못함·서버가 할 수 있던 일로 깨움·할 일 없이 깨움). 0도 보여 "한 번도 안 울렸다"와 구분한다
+// CONTROL WAKE(ATC-557)의 숫자: 최근 7일 역할마다 깨움과 오작동 셋(깨우지 못함·서버가 할 수 있던 일로 깨움·할 일 없이 깨움). 0도 보여 "한 번도 안 울렸다"와 구분한다.
+// 하루 한 번 점검 턴(ATC-557 d)은 깨움과 따로 센다: 역할마다 시각, 오늘 닿았는지, 7일 점검·적음·찾은 것 없음
 interface WakeCounts {
   wakes: number;
   menu: number;
@@ -845,12 +846,16 @@ interface WakeCounts {
   transitions: number;
   fallbacks: number;
   returns: number;
+  daily?: number;
+  dailyActed?: number;
+  dailyNothing?: number;
 }
-type WakeRoleKey = "tower" | "occ" | "mcc";
+type WakeRoleKey = "tower" | "occ" | "mcc" | "review";
 interface WakeData {
   days: number;
   total: WakeCounts;
   roles: Record<WakeRoleKey, WakeCounts & { mode: "loop" | "wake"; effective: "loop" | "wake"; fallbackStuck: string | null; launched: "loop" | "wake" | null; breaker: "armed" | "tripped" | "probe" | "probe-pending"; breakerWhy: string | null; waiting: string | null }>;
+  daily?: { mode: "on" | "off"; roles: Partial<Record<WakeRoleKey, { at: string; today: boolean }>> };
   live: boolean;
   writer: string | null;
 }
@@ -858,6 +863,7 @@ const WAKE_ROLE_NAMES: [WakeRoleKey, string][] = [
   ["tower", "TOWER"],
   ["occ", "OCC"],
   ["mcc", "MCC"],
+  ["review", "REVIEW"],
 ];
 function ControlWakeStats({ d }: { d: WakeData }) {
   return (
@@ -878,6 +884,23 @@ function ControlWakeStats({ d }: { d: WakeData }) {
           </li>
         );
       })}
+      {d.daily ? (
+        <li>
+          하루 점검 턴 <b>{d.daily.mode}</b>
+          {WAKE_ROLE_NAMES.map(([k, name]) => {
+            const t = d.daily?.roles[k];
+            const r = d.roles[k];
+            if (!t || !r) return null;
+            return (
+              <span key={k}>
+                {" "}
+                · <span className="mono">{name}</span> {t.at}
+                {t.today ? " 오늘 닿음" : ""} 점검 <b>{r.daily ?? 0}</b> 적음 <b>{r.dailyActed ?? 0}</b> 찾은 것 없음 <b>{r.dailyNothing ?? 0}</b>
+              </span>
+            );
+          })}
+        </li>
+      ) : null}
       {!d.live && d.writer ? <li className="is-warn">깨움 job이 3분 넘게 돌지 않음 — /loop가 남은 세션의 tick이 다시 일한다</li> : null}
     </ul>
   );
@@ -1236,7 +1259,8 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
     const d = switchOf(s, "mccServerAuto")?.data as AutoData | undefined;
     return d ? <ServerAutoStats d={d} /> : null;
   },
-  controlWakeMcc: (s) => {
+  // 블록의 마지막 줄(CONTROL WAKE DAILY) 아래에 수를 둔다
+  controlWakeDaily: (s) => {
     const d = switchOf(s, "controlWakeTower")?.data as WakeData | undefined;
     return d ? <ControlWakeStats d={d} /> : null;
   },

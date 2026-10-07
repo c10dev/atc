@@ -121,6 +121,7 @@ export type RecordLine =
   // CONTROL WAKE(ATC-557): 관제 세션 깨움과 그 입력·확인·결과·오작동·/loop ↔ wake 옮기기
   | ControlWakeLine
   | { t: string; kind: "policy"; op: "control-wake-mode"; by: string; role: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "control-wake-daily"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "server-send-mode"; by: string; key: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"

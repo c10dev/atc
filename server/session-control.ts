@@ -243,8 +243,8 @@ export function controlLaunchPlanOf(spec: ControlSpec, rows: AgentRow[], dir: st
   return { cwd: dir, args: ["--bg", "-n", spec.name, "--permission-mode", "auto", ...spec.flags, prompt ?? ""], ...(account ? { account: account.label, ...(configDirOf(account) ? { configDir: configDirOf(account)! } : {}) } : {}) };
 }
 
-// CONTROL WAKE(ATC-557): TOWER·OCC·MCC의 첫 프롬프트는 그 역할의 실제 모드가 정한다(스위치, 그리고 깨움 BREAKER가 멈췄으면 loop). wake면 `/loop` 없이
-// 한 번 둘러보는 글, loop면 오늘의 `/loop <n>m /tick`. wake: null이면 깨움 스위치가 없는 관제 세션(REVIEW)
+// CONTROL WAKE(ATC-557): TOWER·OCC·MCC·REVIEW의 첫 프롬프트는 그 역할의 실제 모드가 정한다(스위치, 그리고 깨움 BREAKER가 멈췄으면 loop). wake면 `/loop` 없이
+// 한 번 둘러보는 글, loop면 오늘의 `/loop <n>m /tick`. wake: null이면 깨움 스위치가 없는 관제 세션(은퇴한 CROSSCHECK)
 export function controlPromptOf(spec: ControlSpec, sw: WakeSwitch = effectiveWakeSwitch()): { prompt: string | null; wake: boolean | null } {
   const role = roleOfName(spec.name);
   if (!role || spec.launch !== "bg") return { prompt: spec.prompt, wake: null };

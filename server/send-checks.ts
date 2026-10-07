@@ -188,7 +188,7 @@ export type FlightPlanSend = Readonly<{
 export type ControlWakeSend = Readonly<{
   kind: "control-wake";
   id: string; // W-xxxx
-  role: "TOWER" | "OCC" | "MCC";
+  role: "TOWER" | "OCC" | "MCC" | "REVIEW";
   sessionId: string;
   to: string; // 그 세션 이름(검사가 역할 이름과 비교한 것)
   text: string; // 서버가 지은 깨우는 글(그대로 쓴다)
@@ -237,11 +237,11 @@ export async function checkServerSend(x: ServerSendInput): Promise<ServerCheck> 
 }
 
 // ── 관제 세션 깨우기(ATC-557) ──
-// 서버가 TOWER·OCC·MCC 세션에 판단할 일 하나를 알리는 글. FLIGHT PLAN과 다른 검사(받는 이는 AIRCRAFT가 아니라 관제 역할)이지만 같은 brand로 같은 writer가 쓴다.
+// 서버가 TOWER·OCC·MCC·REVIEW 세션에 판단할 일 하나(또는 하루 한 번 점검 턴, ATC-557 d)를 알리는 글. CROSSCHECK는 은퇴(ATC-371)라 받지 않는다. FLIGHT PLAN과 다른 검사(받는 이는 AIRCRAFT가 아니라 관제 역할)이지만 같은 brand로 같은 writer가 쓴다.
 // 검사: 역할 이름, 받는 세션의 이름이 그 역할(시험 opt-in은 run이 정한 이름), 스위치가 wake(또는 그 세션이 깨움 모드로 떴다), 머리 꼴과 id, 결과 줄 지시, 길이,
 // 팀에 가는 머리([DISPATCH …]·[OCC CC-…]·[ATC C-…])가 아님
-export const CONTROL_WAKE_ROLES = ["TOWER", "OCC", "MCC"] as const;
-const WAKE_HEADER = /^\[ATC WAKE (W-\d{4,})\] (TOWER|OCC|MCC)\n/;
+export const CONTROL_WAKE_ROLES = ["TOWER", "OCC", "MCC", "REVIEW"] as const;
+const WAKE_HEADER = /^\[ATC WAKE (W-\d{4,})\] (TOWER|OCC|MCC|REVIEW)\n/;
 export const CONTROL_WAKE_MAX = 8000;
 export interface ControlWakeInput {
   wakeId: string;
