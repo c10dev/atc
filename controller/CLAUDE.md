@@ -56,7 +56,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 | FUEL LEAK·COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL 경고(docs/fuel.md 8.6, ATC-56). 경고만 하고 아무것도 막지 않는다. `open.fuelLeaks`(24시간 안 LEAK이 큰 팀 AIRCRAFT)에 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다. `open.coldCache`(캐시가 식은 HOLDING CAPTAIN)의 AIRCRAFT에 낼 CLEARANCE가 있으면 그대로 내고 `text`를 ATC LOG에 적는다. 캐시를 데우려고 미리 메시지를 보내거나 CLEARANCE를 미루지 않는다. FUEL 때문에 팀에 메시지를 보내지 않는다. `open.fuelError`가 있으면 대화 기록을 읽지 못한 것이니 ATC LOG에만 적는다 |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. ATC LOG로 SUPERVISOR에게 보고(멈출 이유가 아니다) |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | ATC LOG로 SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
-| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 그래도 답이 없으면 ATC LOG로 SUPERVISOR에게 보고하고 턴을 평소처럼 끝낸다(`blocked`로 두지 않는다). 답은 다음 tick에 온다 |
+| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | `answeredVia`가 있는 CLEARANCE는 답을 받은 것이니 아무것도 하지 않는다. `resentBy`도 `resendOf`도 없으면 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). `resentBy`가 있거나 그 자신이 RESEND(`resendOf`)이면 다시 보내지 않고 "답 없음"을 ATC LOG로 SUPERVISOR에게 보고하고 턴을 평소처럼 끝낸다(`blocked`로 두지 않는다). 새로 뜬 세션도 대화가 아니라 이 기록(`clearances.pending[]`, ATC-565)으로 가린다. 답은 다음 tick에 온다 |
 | 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
 | 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 ATC LOG로 SUPERVISOR에게 보고한다 |
 | 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
