@@ -74,6 +74,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "event-loop-lag-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "orphan-flight-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "clearance-moot-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "clearance-ended-mode"; by: string; from: string; to: string } // 받는 세션이 끝난 CLEARANCE 닫기(ATC-567) 스위치
   | { t: string; kind: "policy"; op: "stale-reply-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "readback-hash-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "job-timing-mode"; by: string; from: string; to: string }

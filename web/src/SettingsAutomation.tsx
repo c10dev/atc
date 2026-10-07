@@ -962,6 +962,15 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
       </p>
     ) : null;
   },
+  // 받는 세션이 끝난 CLEARANCE(ATC-567): 최근 7일 닫은 수와 MISFIRE(닫은 뒤 답이 왔거나 그 세션이 돌아옴)
+  clearanceEnded: (s) => {
+    const d = switchOf(s, "clearanceEnded")?.data as { days: number; closed: number; misfires: number; answered: number; cameBack: number } | undefined;
+    return d ? (
+      <p className="settings-hint">
+        최근 {d.days}일 닫은 CLEARANCE <b>{d.closed}</b> · MISFIRE <b>{d.misfires}</b>(닫은 뒤 답 <b>{d.answered}</b> · 세션이 돌아옴 <b>{d.cameBack}</b>)
+      </p>
+    ) : null;
+  },
   // TOWER CARRY-OVER(ATC-565): 넘긴 재시작과 그 뒤 RESEND가 겹치거나 빠진 수. "답 없음" 보고는 ATC LOG에만 있어 세지 않는다
   controlRecycleCarry: (s) => {
     const d = switchOf(s, "controlRecycleCarry")?.data as { days: number; restarts: number; chains: number; repeated: number; lost: number; misfires: number } | undefined;

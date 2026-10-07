@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { callsign, flightNumber } from "./callsign.ts";
 import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance, markClearanceHand } from "./clearances.ts";
+import { noteEndedAnswer } from "./clearance-ended-run.ts";
 import { mootNow } from "./clearance-moot-run.ts";
 import { clearanceCalls } from "./stale-reply.ts";
 import { resendLinksOf, resendViewOf } from "./clearance-resend.ts";
@@ -389,6 +390,8 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     app.post(`/api/clearances/:id/${op}`, async (c) => {
       const body = op === "unable" || op === "undeliverable" ? await c.req.json().catch(() => ({})) : {};
       const id = c.req.param("id").toUpperCase();
+      // 받는 세션이 끝났다고 서버가 닫은 CLEARANCE에 답이 왔으면 MISFIRE로 센다(ATC-567). 답은 아래에서 전처럼 닫힌 것으로 거절된다
+      if (op !== "cancel" && op !== "undeliverable") noteEndedAnswer(id);
       // 같은 주제로 뒤에 나간 CLEARANCE가 있으면 옛 id에 온 답은 받지 않는다(ATC-554). cancel·undeliverable은 TOWER의 동작이라 거르지 않는다
       if (op !== "cancel" && op !== "undeliverable") {
         const stale = refuseStaleReply("clearance", id, op, clearanceCalls(allClearances()));

@@ -90,6 +90,7 @@ import { mountEffectCheck } from "./effect-check-run.ts";
 import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountClearanceMoot } from "./clearance-moot-run.ts";
+import { mountClearanceEnded } from "./clearance-ended-run.ts";
 import { mountStaleReply } from "./stale-reply-run.ts";
 import { mountInputBinding } from "./input-binding-run.ts";
 import { mountEventLoopLag } from "./event-loop-lag-run.ts";
@@ -366,6 +367,7 @@ mountJobTiming(app); // JOB TIMING(ATC-525): 스위치와 일별 시간(읽기�
 mountRedMain(app); // RED MAIN(ATC-536): 스위치와 올림·스스로 닫힘 수(읽기만)
 mountEventLoopLag(app); // EVENT LOOP LAG(ATC-538): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountClearanceMoot(app); // 이유를 잃은 CLEARANCE(ATC-515): 스위치와 MISFIRE 수(읽기만)
+mountClearanceEnded(app); // 받는 세션이 끝난 CLEARANCE(ATC-567): 스위치와 최근 7일 수(읽기만)
 mountStaleReply(app); // 옛 부름에 온 답 거절(ATC-554): 스위치와 거절 수(읽기만)
 mountInputBinding(app); // READBACK의 work-order 해시(ATC-555): 스위치와 거절 수(읽기만)
 mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)
