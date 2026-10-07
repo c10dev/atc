@@ -706,6 +706,52 @@ function ServerAutoStats({ d }: { d: AutoData }) {
     </ul>
   );
 }
+// SERVER SEND(ATC-562)의 숫자: 최근 7일 합과 날마다. 잘못 보냄은 기대 0이라 하나라도 있으면 경고색. 0도 보여 "한 번도 안 울렸다"와 구분한다
+interface ServerSendDay {
+  day: string;
+  delivered: number;
+  wrong: number;
+  twice: number;
+  refused: number;
+  failed: number;
+  unseen: number;
+  handback: number;
+}
+interface ServerSendData {
+  days: ServerSendDay[];
+  total: Omit<ServerSendDay, "day">;
+  reasons: { reason: string; n: number }[];
+  live: boolean;
+  lastPassAt: string | null;
+  suspended: boolean;
+  suspendedWhy: string | null;
+}
+function ServerSendStats({ d }: { d: ServerSendData }) {
+  const c = d.total;
+  const shown = [...d.days].reverse().filter((x) => x.delivered + x.wrong + x.twice + x.refused + x.failed + x.unseen + x.handback > 0);
+  return (
+    <ul className="dp-misfire" data-code="SERVER-SEND">
+      <li>
+        최근 7일 보냄 <b>{c.delivered}</b> · 잘못 보냄 <b className={c.wrong ? "is-warn" : undefined}>{c.wrong}</b>
+        <span className="faint"> (기대 0)</span> · 두 번 보냄 <b className={c.twice ? "is-warn" : undefined}>{c.twice}</b> · 검사가 막음 <b>{c.refused}</b> · 실패 <b>{c.failed}</b> · 받는 세션에 안 보임 <b className={c.unseen ? "is-warn" : undefined}>{c.unseen}</b> · OCC에게 넘김 <b>{c.handback}</b>
+      </li>
+      <li className={d.suspended ? "is-warn" : "faint"}>
+        {d.suspended ? `멈춤 — ${d.suspendedWhy ?? ""}` : d.live ? `서버 job 도는 중${d.lastPassAt ? ` · 마지막 ${d.lastPassAt.slice(11, 16)}Z` : ""}` : "서버 job이 3분 넘게 돌지 않음 — OCC가 보낸다"}
+      </li>
+      {d.reasons.slice(0, 3).map((r) => (
+        <li key={r.reason} className="faint">
+          막은 사유 <b>{r.n}</b> — {r.reason}
+        </li>
+      ))}
+      {shown.map((x) => (
+        <li key={x.day}>
+          <span className="mono">{x.day}</span> 보냄 <b>{x.delivered}</b> · 잘못 <b>{x.wrong}</b> · 두 번 <b>{x.twice}</b> · 막음 <b>{x.refused}</b> · 실패 <b>{x.failed}</b>
+          {x.unseen + x.handback > 0 ? <span className="faint"> — 안 보임 {x.unseen} · 넘김 {x.handback}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
 // VERIFY GATE 세기(ATC-517): 줄 선 실행·가장 긴 기다림·한도 실패·바로 실행·죽은 명령이 놓은 슬롯. 0도 보여 "한 번도 안 울렸다"와 구분한다
 interface GateCounts {
   runs: number;
@@ -973,6 +1019,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   mccServerAuto: (s) => {
     const d = switchOf(s, "mccServerAuto")?.data as AutoData | undefined;
     return d ? <ServerAutoStats d={d} /> : null;
+  },
+  serverSendRetry: (s) => {
+    const d = switchOf(s, "serverSendFirst")?.data as ServerSendData | undefined;
+    return d ? <ServerSendStats d={d} /> : null;
   },
   verifyGate: (s) => {
     const d = switchOf(s, "verifyGate")?.data as VerifyGateData | undefined;

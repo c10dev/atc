@@ -1,4 +1,5 @@
 import { JsonlCache } from "./jsonl-cache.ts";
+import { READBACK_OVERDUE_MS } from "./send-checks.ts";
 import { accountFolders } from "./accounts.ts";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import type { ArrivalSuggestion } from "./standfree.ts";
@@ -130,7 +131,8 @@ export const DISPATCH_MS = 5 * 60_000;
 export const GATE = { decided: 20, agreement: 0.8 };
 // 2b → 3(ATFM) 제안 기준
 export const GATE3 = { dispatched: 10, readback: 0.9, departed: 0.8 };
-export const READBACK_OVERDUE_MS = 10 * 60_000;
+// READBACK overdue(10분)는 공유 검사 모듈(send-checks.ts, ATC-562)의 값 하나를 쓴다: 서버 재송신과 OCC의 overdue 규칙이 같은 수를 본다
+export { READBACK_OVERDUE_MS };
 export const DEPARTURE_OVERDUE_MS = 30 * 60_000;
 // STAND 없이 DEPARTED한 FLIGHT가 이만큼 ARRIVED 보고가 없으면 overdue에 올린다(만료는 하지 않는다)
 export const ARRIVAL_OVERDUE_MS = DAY;
@@ -228,7 +230,7 @@ export interface Proposal {
   hold: string[]; // DISPATCH가 선행 FLIGHT로 지정한 HOLD (본문에만 있던 blocks 관계)
   holdAt: string | null; // HOLD를 건 시각. hold가 비어 있으면 선행 FLIGHT 없는 HOLD(사람 결정 대기 등, 사유는 note)
   message: string | null; // 보낸 FLIGHT PLAN 문구
-  sentVia?: "fresh-start"; // FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냈다. 없으면 OCC가 메시지로 보냄(옛 기록 포함)
+  sentVia?: "fresh-start" | "server"; // fresh-start: FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냈다. server: atc 서버가 세션 소켓으로 보냈다(ATC-562). 없으면 OCC가 메시지로 보냄(옛 기록 포함)
   departedStand: string | null;
   departedVia?: "stand" | "readback" | "report"; // DEPARTED 근거: STAND가 생김 | STAND 없는 FLIGHT의 READBACK | STAND를 못 본 채 ARRIVED 보고로 끝남(ATC-266, accepted에서 arrived)
   arrivedNote?: string; // STAND 없는 FLIGHT의 ARRIVED 보고(결과 링크나 한 줄)
@@ -273,7 +275,7 @@ export type Op =
   | ({ op: "crosscheck"; id: string } & CrosscheckLine)
   | { op: "approve"; id: string; at: string; via?: Via; blind?: true }
   | { op: "reject"; id: string; at: string; reason: string | null; via?: Via; reasonCodes?: string[]; blind?: true }
-  | { op: "send"; id: string; at: string; message: string; via?: "fresh-start" } // via: FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냄. 없으면 OCC의 메시지
+  | { op: "send"; id: string; at: string; message: string; via?: "fresh-start" | "server" } // via: FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보냄 | atc 서버가 보냄(ATC-562). 없으면 OCC의 메시지
   | { op: "accept"; id: string; at: string }
   | { op: "decline"; id: string; at: string; reason: string } // CAPTAIN의 UNABLE D-xxxx(ATC-122)도 이것
   | { op: "undelivered"; id: string; at: string; reason: string; cause?: string } // OCC의 SendMessage가 실패함(ATC-183). sent를 approved로 돌린다. SUPERVISOR 판정이 아니다
@@ -1426,6 +1428,8 @@ export interface DispatchLauncher {
   launch: (s: Snapshot, registration: string, proposal: string, resume: boolean, flight: string) => Promise<{ ok: boolean; jobId?: string; error?: string; wait?: string }>; // resume: RESUME 카드(끊긴 ACCOUNT에서 다시). flight: 카드의 FLIGHT(K3 발권이면 새 세션에 allow 항목을 준다, ATC-372)
   // 자동 FRESH START(ATC-560, fresh-start-run.ts autoFreshStartGate): 승인된 카드를 보내기 전에 부른다. 문구를 돌려주면 보내지 않고 409로 그것을 말한다
   beforeRelease?: (p: Proposal, s: Snapshot) => Promise<string | null>;
+  // 서버 발송(ATC-562, server-send-run.ts serverOwnsWhy): 이 카드를 서버가 보내거나 다시 보내는 중이면 OCC의 release에 줄 409 문구. null이면 OCC가 전처럼 보낸다
+  serverSends?: (p: Proposal, s: Snapshot) => string | null;
 }
 
 // 카드 사실 줄의 ROUTE·WAYPOINT(routes-load.ts loadRoutes). routes-load.ts가 이 파일을 불러 순환이 되므로 index.ts가 넘긴다(ATC-337)
@@ -1661,6 +1665,8 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
           const snap = await getSnapshot();
           // FRESH START(ATC-73)가 새 세션의 첫 프롬프트로 보낸 것은 다시 보내지 않는다(같은 계획이 두 번 간다)
           if (p.sentVia === "fresh-start") return c.json({ error: "FRESH START가 새 세션의 첫 프롬프트로 이미 보냄 — 다시 보내지 않는다. READBACK을 기다린다" }, 409);
+          // atc 서버가 세션 소켓으로 보낸 카드(ATC-562): OCC가 같은 FLIGHT PLAN을 두 번째로 보내지 않는다. 재송신도 서버가 한 번 한다
+          if (p.sentVia === "server") return c.json({ error: launcher?.serverSends?.(p, snap) ?? "atc 서버가 이미 보냄(sentVia server) — OCC는 다시 보내지 않는다. 재송신은 서버가 한 번 하고, 그래도 READBACK이 없으면 SUPERVISOR 보고" }, 409);
           const gone = noLiveSessionWhyOf(p, snap, loadDispatchConfig().teamPattern) ?? crossAccountWhyOf(p, snap, loadDispatchConfig().teamPattern);
           if (gone) return c.json({ error: gone }, 409);
           return c.json({ proposal: p, ...sendAddressOf(p, snap, loadDispatchConfig().teamPattern), message: p.message });
@@ -1669,6 +1675,9 @@ export function mountDispatch(app: Hono, getSnapshot: () => Promise<Snapshot>, w
         const stop = p.airport ? enforcedStops((await getSnapshot()).atfm?.groundStops ?? []).get(p.airport) : undefined;
         if (stop) return c.json({ error: `${groundStopWhy(stop)} — 풀릴 때까지 보내지 않는다` }, 409);
         const s = await getSnapshot();
+        // 서버 발송(ATC-562): 스위치가 켜져 있고 서버 job이 살아 있고 서버가 보낼 수 있는 카드면 OCC는 보내지 않는다(같은 카드를 둘이 보내지 않게)
+        const owned = launcher?.serverSends?.(p, s) ?? null;
+        if (owned) return c.json({ error: owned }, 409);
         // 자동 FRESH START(ATC-560): 이 세션이 이미 FLIGHT를 날았고 AIRPORT 스위치가 켜져 있으면 서버가 새 세션의 첫 프롬프트로 보낸다(OCC는 보내지 않는다)
         const fresh = launcher?.beforeRelease ? await launcher.beforeRelease(p, s).catch((e: Error) => (console.error("[atc] auto FRESH START gate failed:", e), null)) : null;
         if (fresh) return c.json({ error: fresh }, 409);
