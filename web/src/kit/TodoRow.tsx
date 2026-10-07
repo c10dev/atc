@@ -11,6 +11,7 @@ import "./TodoRow.css";
 export type TodoTone = "warning" | "caution" | null;
 
 export function TodoRow({
+  domId,
   tag,
   tone = null,
   quiet = false,
@@ -24,6 +25,7 @@ export function TodoRow({
   children,
   childrenLabel,
 }: {
+  domId?: string; // 바깥에서 이 줄을 찾아 스크롤·초점을 줄 때 쓰는 id(RELEASE 순서 지도의 칩)
   tag: string;
   tone?: TodoTone;
   quiet?: boolean;
@@ -41,7 +43,7 @@ export function TodoRow({
   const nested = children !== undefined && children !== null && children !== false;
   const Box = nested ? "div" : "li"; // 밑에 줄이 있으면 li는 줄 + 중첩 목록을 담고, 줄 상자는 div다
   const row = (
-    <Box className={`kit-todo${open ? " is-open" : ""}${quiet ? " is-quiet" : ""}`}>
+    <Box id={nested ? undefined : domId} className={`kit-todo${open ? " is-open" : ""}${quiet ? " is-quiet" : ""}`}>
       {tone === "warning" && <span className="kit-todo-bar" aria-hidden="true" />}
       <div className="kit-todo-line">
         <span className="tag kit-todo-tag" data-tone={tone === "warning" ? "alert" : tone === "caution" ? "amber" : undefined}>
@@ -61,7 +63,7 @@ export function TodoRow({
   );
   if (!nested) return row;
   return (
-    <li className="kit-todo-node">
+    <li id={domId} className="kit-todo-node">
       {row}
       <ul className="kit-todo-nest" aria-label={childrenLabel}>
         {children}

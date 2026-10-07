@@ -38,7 +38,7 @@ import { filesInFlight } from "./overlap-run.ts";
 import type { FilesInFlight } from "./dispatch.ts";
 import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
 import { releaseTreeOf, type TreeRow } from "./release-tree.ts";
-import { releaseQueueOf } from "./release-queue.ts";
+import { kLevelOf, releaseQueueOf } from "./release-queue.ts";
 import { parkedFireVerdict, parkedMisfiresOf, parkedOf } from "./release-parked.ts";
 import { possibleDuplicateOf, twinAlreadyFired } from "./title-dup.ts";
 import { duplicateCountsNow, duplicateTitleOn } from "./title-dup-run.ts";
@@ -196,7 +196,7 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
   const parked = parkedOn
     ? {
         on: true,
-        rows: parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys, inTree }).map((r) => ({ ...r, k3: ((t) => (t ? k3Of(t, view) : null))(ticketOf(r.key)), duplicateOf: dupOn ? (possibleDuplicateOf(r, s.tickets, nowMs)?.key ?? null) : null })),
+        rows: parkedOf({ tickets: s.tickets, teams: d.teams(), filed: filedKeys, inTree }).map((r) => ({ ...r, ...((k3) => ({ k3, kLevel: kLevelOf(r.kEffects, k3) }))(((t) => (t ? k3Of(t, view) : null))(ticketOf(r.key))), duplicateOf: dupOn ? (possibleDuplicateOf(r, s.tickets, nowMs)?.key ?? null) : null })),
         ...parkedMisfiresOf(lines, s.tickets, nowMs),
         duplicate: dupOn ? { on: true, ...(d.duplicateCounts ? d.duplicateCounts() : duplicateCountsNow(nowMs)) } : { on: false, refused: 0, overrides: 0, bothFired: 0 },
       }

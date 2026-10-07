@@ -130,45 +130,29 @@ export function aircraftGroups(items: readonly AircraftInput[], airports: readon
 }
 
 // RELEASE의 사이드바는 목록이 아니라 구역 색인이다(ATC-423, docs/layout.md Q7). 고르면 주소가 `#release/<구역>`이 되고 RELEASE가 그 구역으로 스크롤한다.
-// 구역은 발권 순서(상위 이슈마다 나무 + SCHEDULE NEW 제안) · 발권 전 Todo · 최근 발권이고, 수는 화면과 사이드바가 같은 함수로 센다
+// 구역은 발권 대기(쏠 줄 + SCHEDULE NEW 제안) · 순서 지도(상위 이슈·사슬마다 한 줄) · PARKED · 최근 발권이고, 수는 화면과 같은 GET /api/releases의 queue에서 센다
 export const RELEASE_SECTIONS = [
-  { id: "order", label: "발권 순서", hash: "release/order" },
-  { id: "unreleased", label: "Todo 발권 전", hash: "release/unreleased" },
+  { id: "queue", label: "발권 대기", hash: "release/queue" },
+  { id: "map", label: "순서 지도", hash: "release/map" },
+  { id: "parked", label: "PARKED", hash: "release/parked" },
   { id: "recent", label: "최근 발권", hash: "release/recent" },
 ] as const;
 export type ReleaseSection = (typeof RELEASE_SECTIONS)[number]["id"];
+// 옛 구역 주소(ATC-494의 나무): 발권 순서와 Todo 발권 전은 이제 발권 대기에 있다
+const RELEASE_LEGACY: Record<string, ReleaseSection> = { order: "queue", unreleased: "queue" };
 
-// 발권 나무(server/release-tree.ts)의 줄을 가른다: 쏠 수 있는 줄(fire)은 후보, 이미 Todo인 줄(release)은 발권 전(`Todo 발권 전` 구역), 나머지(대기·진행 중)는 따로. 나무 순서를 지킨다. 화면의 나무는 모든 줄을 그리고, 이 가름은 `Todo 발권 전`과 수에 쓴다
-export function partitionRelease<T extends { fire: "fire" | "release" | null; children: T[] }>(groups: readonly { rows: readonly T[] }[]): { candidates: T[]; unreleased: T[]; rest: T[] } {
-  const out: { candidates: T[]; unreleased: T[]; rest: T[] } = { candidates: [], unreleased: [], rest: [] };
-  const walk = (rows: readonly T[]) => {
-    for (const r of rows) {
-      (r.fire === "fire" ? out.candidates : r.fire === "release" ? out.unreleased : out.rest).push(r);
-      walk(r.children);
-    }
-  };
-  for (const g of groups) walk(g.rows);
-  return out;
-}
-
-// 나무가 그리는 줄 수(중첩 포함). 끝난 이슈는 줄이 아니라 그룹의 끝남 수에 든다
-export function treeSize(groups: readonly { rows: readonly { children: readonly unknown[] }[] }[]): number {
-  const count = (rows: readonly { children: readonly unknown[] }[]): number => rows.reduce((n, r) => n + 1 + count(r.children as readonly { children: readonly unknown[] }[]), 0);
-  return groups.reduce((n, g) => n + count(g.rows), 0);
-}
-
-// GET /api/releases 한 덩이에서 구역마다 수를 센다(발권 순서는 나무의 줄에 SCHEDULE NEW 제안을 더한다). 읽지 못하면 빈 수
+// GET /api/releases 한 덩이에서 구역마다 수를 센다. 읽지 못하면 빈 수
 export function releaseSectionCounts(j: unknown): { id: ReleaseSection; label: string; hash: string; count: number }[] {
-  const d = (j ?? {}) as { tree?: { rows: { fire: "fire" | "release" | null; children: never[] }[] }[]; proposals?: unknown[]; recent?: unknown[] };
-  const p = partitionRelease(Array.isArray(d.tree) ? d.tree : []);
-  const count = { order: treeSize(Array.isArray(d.tree) ? d.tree : []) + (Array.isArray(d.proposals) ? d.proposals.length : 0), unreleased: p.unreleased.length, recent: Array.isArray(d.recent) ? d.recent.length : 0 };
-  return RELEASE_SECTIONS.map((s) => ({ ...s, count: count[s.id] }));
+  const d = (j ?? {}) as { queue?: { rows?: unknown[]; map?: unknown[] }; parked?: { on?: boolean; rows?: unknown[] }; recent?: unknown[] };
+  const len = (x: unknown) => (Array.isArray(x) ? x.length : 0);
+  const count: Record<ReleaseSection, number> = { queue: len(d.queue?.rows), map: len(d.queue?.map), parked: d.parked?.on === false ? 0 : len(d.parked?.rows), recent: len(d.recent) };
+  return RELEASE_SECTIONS.filter((s) => s.id !== "parked" || d.parked?.on !== false).map((s) => ({ ...s, count: count[s.id] }));
 }
 
-// 지금 주소의 RELEASE 구역(#release/order …). 없거나 모르면 null
+// 지금 주소의 RELEASE 구역(#release/queue …). 옛 주소는 새 구역으로, 없거나 모르면 null
 export function releaseSectionOf(hash: string): ReleaseSection | null {
   const sub = hash.replace(/^#/, "").split("/")[1] ?? "";
-  return RELEASE_SECTIONS.find((s) => s.id === sub)?.id ?? null;
+  return RELEASE_SECTIONS.find((s) => s.id === sub)?.id ?? RELEASE_LEGACY[sub] ?? null;
 }
 
 // METRICS 하위 화면과 HOME 닻. 주소 조각(hash)과 이름을 한곳에 둔다
