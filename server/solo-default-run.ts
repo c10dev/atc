@@ -14,12 +14,14 @@ export function soloMisfiresNow(now = Date.now()): SoloMisfireRow[] {
   const sw = loadSoloSwitch();
   const since = now - SOLO_MISFIRE_DAYS * DAY;
   const proposals = allProposals().filter((p) => p.kind === "ASSIGN" && p.timeline.sent && Date.parse(p.timeline.sent) >= since);
-  const ops = readOps();
+  // UNABLE 사유·SUPERVISOR 질문: 제안 id → 글(기록을 한 번만 훑는다)
+  const said = new Map<string, string[]>();
+  for (const o of readOps()) if (o.op === "await-supervisor" || o.op === "decline") said.set(o.id, [...(said.get(o.id) ?? []), o.reason]);
   const reports = readReports();
   const sent: SoloSent[] = proposals.map((p) => {
     const at = Date.parse(p.timeline.sent!);
     const asked = [
-      ...ops.flatMap((o) => ((o.op === "await-supervisor" || o.op === "decline") && o.id === p.id ? [o.reason] : [])),
+      ...(said.get(p.id) ?? []),
       ...reports.flatMap((r) => (r.flight === p.flight && r.blocked !== "none" && (r.proposal === p.id || (!r.proposal && Date.parse(r.at) >= at)) ? [r.blocked] : [])),
     ];
     return { id: p.id, flight: p.flight, airport: p.airport, sentAt: p.timeline.sent!, call: crewCallOfMessage(p.message), asked };
