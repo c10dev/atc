@@ -26,6 +26,7 @@ import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan } from "./fleet-plan-run.ts";
 import { autoFreshStartGate, mountFreshStart } from "./fresh-start-run.ts";
+import { serverOwnsWhy, serverSendPass } from "./server-send-run.ts";
 import { migrateFreshStartOnce } from "./fresh-start-switch.ts";
 import { migrateSoloOnce } from "./solo-default-switch.ts";
 import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
@@ -236,6 +237,8 @@ mountLandingReview(app, getSnapshot);
 mountHumanCheck(app, getSnapshot);
 mountAirports(app);
 mountMetrics(app, getSnapshot);
+// 자동 FRESH START 게이트(ATC-560) 하나를 OCC의 release와 서버 발송(ATC-562)이 같이 쓴다: 게이트가 세션을 다시 띄우면 FLIGHT PLAN은 새 세션의 첫 프롬프트로 가고 서버는 보내지 않는다
+const freshGate = autoFreshStartGate(getSnapshot);
 mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   candidates: standFreeCandidates,
   timeliness: () => standFreeTimeliness(),
@@ -245,7 +248,8 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
   launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "SUPERVISOR", flight),
-  beforeRelease: autoFreshStartGate(getSnapshot), // 자동 FRESH START(ATC-560): 이미 FLIGHT를 날은 세션이면 보내기 전에 STOP·LAUNCH
+  beforeRelease: freshGate, // 자동 FRESH START(ATC-560): 이미 FLIGHT를 날은 세션이면 보내기 전에 STOP·LAUNCH
+  serverSends: (p, s) => serverOwnsWhy(p, s), // SERVER SEND(ATC-562): 서버가 보내는 카드면 OCC의 release에 409
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
   const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
@@ -309,6 +313,7 @@ provideService("update", update);
 provideService("mcc", mcc);
 provideService("applyNow", applyNow);
 provideService("recycleDeps", { facts: recycleFacts, act: recycleAct });
+provideService("serverSend", { pass: (s: Snapshot) => serverSendPass(s, { beforeRelease: freshGate }) }); // SERVER SEND(ATC-562)
 mountControlRecycle(app);
 mountSettings(app);
 mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)

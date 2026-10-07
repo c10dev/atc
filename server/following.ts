@@ -500,6 +500,15 @@ export function followingNow(s: Snapshot, now = Date.now(), ended?: EndedKey[], 
   return followingOf({ language, proposals, tickets: s.tickets, workspaces: s.workspaces, pulls: s.pulls, logbook: loadLogbook(), departures: readDepartures(), now, stranded: s.stranded ?? [], health, fuel: s.fuel ?? {}, reports, unables: unablesOf(s.clearances ?? [], proposals, now, { ...(s.github.enabled && s.github.fetchedAt ? { openPrs: new Set((s.pulls ?? []).map((p) => p.number)) } : {}), ...(ended ? { ended } : {}), endRules }), undelivered: undeliveredOf(proposals, now), milestones: milestonesNow(s, now), launchFails: launchFailsOf(proposals, now), arrivalReports: foldReports(readReports()), endRules, ...(ended ? { ended } : {}) });
 }
 
+// 서버가 다시 보내 풀린 문제를 보고한 것으로 적는다(ATC-562 server send). 지금 있는 문제 중 pred에 맞는 key만. 적은 key를 돌려준다
+export function ackFollowingWhere(s: Snapshot, pred: (i: FollowIssue & { key: string }) => boolean, now = Date.now()): string[] {
+  const items = followingNow(s, now);
+  const keys = items.flatMap((f) => f.issues.filter(pred).map((i) => i.key));
+  if (!keys.length) return [];
+  saveReported(ackReported(items, loadReported(), keys, iso(now)));
+  return keys;
+}
+
 export function mountFollowing(app: Hono, getSnapshot: () => Promise<Snapshot>) {
   // 도착 보고를 기록한다(ATC-124). 받은 세션(OCC, 또는 ENGINEERING)이 atcctl dispatch report로 부른다. ref는 D-xxxx 또는 FLIGHT key.
   // 고정 칸만 받는다 — 자유 요약은 받지도 저장하지도 않는다

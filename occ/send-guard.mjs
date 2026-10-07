@@ -11,9 +11,11 @@
 // 그러니 OCC는 문구를 다시 치지 않는다. 전체 문구를 그대로 보내는 길도 그대로 열려 있다(정확히 같을 때만)
 // work-order 해시(ATC-555): 저장된 FLIGHT PLAN의 머리에 해시(@xxxxxx)가 있으면 그 글에서 다시 계산한 해시와 같아야 보낸다(막기만 더한다).
 // 해시가 없는 옛 FLIGHT PLAN은 전처럼 보낸다. 계산은 server/input-binding.ts(순수, 서버와 같은 함수)
+// 검사 규칙은 server/send-checks.ts 한 곳에 있다(ATC-562): 이 hook과 atc 서버가 같은 함수를 부른다. 여기는 atc에 묻는 fetcher와 hook 입출력만 둔다.
+// 이 hook은 OCC의 SendMessage이므로 caller "occ"로 부른다: 서버가 이미 보낸(sentVia server) FLIGHT PLAN은 막는다(막기만 더한다)
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { workOrderSealOk } from "../server/input-binding.ts";
+import { checkSend as sharedCheck, resolveSend as sharedResolve } from "../server/send-checks.ts";
 
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
 
@@ -29,82 +31,11 @@ const fetchRecord = (id) =>
     ? fetchJson(`/api/fleet/crew-changes/${encodeURIComponent(id)}`)
     : fetchJson(`/api/dispatch/proposals/${encodeURIComponent(id)}`);
 
-// SendMessage의 to는 "TEAM_B" 또는 "TEAM_B [e698d1]"
-const bareName = (to) => String(to ?? "").replace(/\s*\[[0-9a-f]+\]\s*$/i, "").trim();
-
-// CREW CHANGE([OCC CC-xxxx] …). DISPATCH와 같은 순서로 확인한다
-// 머리만 있는 본문(뒤에 공백만): 머리 문자열을 돌려준다. 아니면 null
-const HEADER_ONLY = /^(\[DISPATCH D-\d{4,}\](?: RECALL)?|\[OCC CC-\d{4,}\])\s*$/;
-const headerOnlyOf = (message) => HEADER_ONLY.exec(message)?.[1] ?? null;
-
-// 저장된 문구가 머리 다음에 오는지(머리만 보낼 때 그 문구로 바꿔 넣어도 되는지). 아니면 사유
-function storedForHeader(header, stored) {
-  const text = String(stored ?? "").trim();
-  if (!text.startsWith(header)) return "저장된 문구가 이 머리로 시작하지 않아 바꿔 넣지 않음";
-  return text;
-}
-
 // { reason } | { message }. message는 실제로 보낼 문구: 머리만 보냈으면 저장된 문구, 전체 문구면 보낸 그대로
-async function resolveCrewChange(toolInput, message, id, fetcher) {
-  let found;
-  try {
-    found = await fetcher(id);
-  } catch (e) {
-    return { reason: `atc에 연결할 수 없어 보내지 않음(${e.message})` };
-  }
-  if (!found?.change) return { reason: `${id} CREW CHANGE가 atc에 없음` };
-  const { change, mode } = found;
-  if (mode !== "approval") return { reason: "지금은 2a(shadow) — CREW CHANGE를 보내지 않는다(SUPERVISOR가 직접 붙여 넣는다)" };
-  if (change.id !== id) return { reason: `${id} 조회 결과가 다른 CREW CHANGE(${change.id})임` };
-  if (change.status !== "sent") return { reason: `${id}는 보낼 상태가 아님(${change.status}) — 먼저 crew-change send` };
-  if (!change.registration || bareName(toolInput.to) !== change.registration) return { reason: `받는 사람이 ${id}의 AIRCRAFT(${change.registration})가 아님` };
-  if (!change.message) return { reason: "문구가 crew-change send가 돌려준 CREW CHANGE와 다름 — 그대로 보내야 함" };
-  const header = headerOnlyOf(message);
-  if (header) {
-    const stored = storedForHeader(header, change.message);
-    return stored.startsWith(header) ? { message: stored } : { reason: stored };
-  }
-  if (message.trim() !== String(change.message).trim()) return { reason: "문구가 crew-change send가 돌려준 CREW CHANGE와 다름 — 그대로 보내야 함" };
-  return { message };
-}
-
-export async function resolveSend(toolInput, fetcher = fetchRecord) {
-  const message = typeof toolInput?.message === "string" ? toolInput.message : null;
-  if (!message) return { reason: "메시지가 문자열이 아님(구조화된 메시지는 보내지 않는다)" };
-  const cc = message.match(/^\[OCC (CC-\d{4,})\]/);
-  if (cc) return resolveCrewChange(toolInput, message, cc[1], fetcher);
-  const m = message.match(/^\[DISPATCH (D-\d{4,})\]( RECALL\b)?/);
-  if (!m) return { reason: "OCC는 FLIGHT PLAN([DISPATCH D-xxxx]로 시작)·RECALL과 CREW CHANGE([OCC CC-xxxx]로 시작)만 보낼 수 있음" };
-  let found;
-  try {
-    found = await fetcher(m[1]);
-  } catch (e) {
-    return { reason: `atc에 연결할 수 없어 보내지 않음(${e.message})` };
-  }
-  if (!found) return { reason: `${m[1]} 제안이 atc에 없음` };
-  const { proposal, mode } = found;
-  if (mode !== "approval") return { reason: "지금은 2a(shadow) — FLIGHT PLAN·RECALL을 보내지 않는다" };
-  const recall = Boolean(m[2]);
-  if (recall && proposal.status !== "recalling") return { reason: `${proposal.id}는 RECALL 요청된 제안이 아님(${proposal.status})` };
-  if (!recall && proposal.status !== "sent") return { reason: `${proposal.id}는 보낼 상태가 아님(${proposal.status}) — 먼저 dispatch release` };
-  if (bareName(toolInput.to) !== proposal.aircraftName) return { reason: `받는 사람이 ${proposal.id}의 CAPTAIN(${proposal.aircraftName})이 아님` };
-  const expected = recall ? proposal.recallMessage : proposal.message;
-  const wrong = recall ? "문구가 dispatch recall-send가 돌려준 RECALL과 다름 — 그대로 보내야 함" : "문구가 dispatch release가 돌려준 FLIGHT PLAN과 다름 — 그대로 보내야 함";
-  if (!expected) return { reason: wrong };
-  if (!recall && workOrderSealOk(expected) === false) return { reason: "저장된 FLIGHT PLAN이 머리의 work-order 해시와 맞지 않음(문구가 바뀜) — 보내지 않음" };
-  const header = headerOnlyOf(message);
-  if (header) {
-    const stored = storedForHeader(header, expected);
-    return stored.startsWith(header) ? { message: stored } : { reason: stored };
-  }
-  if (message.trim() !== String(expected).trim()) return { reason: wrong };
-  return { message };
-}
+export const resolveSend = (toolInput, fetcher = fetchRecord) => sharedResolve(toolInput, fetcher, "occ");
 
 // 막는 사유(없으면 null). 머리만 보낸 경우도 통과하면 null이다: 바꿔 넣을 문구는 resolveSend가 준다
-export async function checkSend(toolInput, fetcher = fetchRecord) {
-  return (await resolveSend(toolInput, fetcher)).reason ?? null;
-}
+export const checkSend = (toolInput, fetcher = fetchRecord) => sharedCheck(toolInput, fetcher, "occ");
 
 // hook이 stdout에 내는 JSON. 머리만 보냈으면 저장된 문구로 바꿔 넣고(allow + updatedInput), 전체 문구면 아무것도 내지 않는다
 export function hookOutputOf(toolInput, message) {

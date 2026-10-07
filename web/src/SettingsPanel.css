@@ -469,6 +469,7 @@
 }
 .automation-line .is-warn,
 .automation-line .is-warn b,
+.dp-misfire .is-warn,
 .config-note.is-warn,
 .config-row .tone-warn {
   color: var(--amber);

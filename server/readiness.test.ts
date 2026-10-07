@@ -83,21 +83,26 @@ test("vocado READBACK: 지금 vocado CLAUDE.md가 있으면 not-ready로 읽힌�
 
 test("send-guard: 실제 파일은 check(테스트는 서버가 돌리지 않음), 비교가 빠지면 not-ready, 파일이 없으면 not-ready", () => {
   const src = readFileSync(new URL("../occ/send-guard.mjs", import.meta.url), "utf8");
-  const ok = sendGuardOf(src, true);
+  // 검사 규칙은 공유 모듈(ATC-562)에 있다. guard는 그 모듈을 가져오고 exit 2를 지킨다
+  const shared = readFileSync(new URL("./send-checks.ts", import.meta.url), "utf8");
+  const ok = sendGuardOf(src, true, shared);
   assert.equal(ok.status, "check");
   assert.match(ok.detail, /sha [0-9a-f]{8}/);
   assert.match(ok.detail, /node --test occ\/send-guard\.test\.mjs/);
   assert.match(ok.link ?? "", /occ\/send-guard\.test\.mjs$/);
-  assert.match(sendGuardOf(src, false).detail, /테스트 파일 없음/);
-  const noRecall = sendGuardOf(src.replaceAll("proposal.recallMessage", "proposal.x"), true);
+  assert.match(sendGuardOf(src, false, shared).detail, /테스트 파일 없음/);
+  const noRecall = sendGuardOf(src, true, shared.replaceAll("proposal.recallMessage", "proposal.x"));
   assert.equal(noRecall.status, "not-ready");
   assert.match(noRecall.detail, /RECALL 문구 비교/);
-  assert.match(sendGuardOf(src.replaceAll("process.exit(2)", "process.exit(0)"), true).detail, /fail-closed/);
+  assert.match(sendGuardOf(src.replaceAll("process.exit(2)", "process.exit(0)"), true, shared).detail, /fail-closed/);
   assert.match(ok.label, /CREW CHANGE/);
-  const noCc = sendGuardOf(src.replaceAll("change.message", "change.x"), true);
+  const noCc = sendGuardOf(src, true, shared.replaceAll("change.message", "change.x"));
   assert.equal(noCc.status, "not-ready");
   assert.match(noCc.detail, /CREW CHANGE 문구 비교\(change\.message\)/);
-  assert.match(sendGuardOf(src.replaceAll("change.registration", "change.x"), true).detail, /CREW CHANGE 받는 사람/);
+  assert.match(sendGuardOf(src, true, shared.replaceAll("change.registration", "change.x")).detail, /CREW CHANGE 받는 사람/);
+  assert.match(sendGuardOf(src.replace("../server/send-checks.ts", "./elsewhere.ts"), true, shared).detail, /공유 검사 모듈/);
+  // 규칙이 guard에 없으니 guard만 보면 not-ready다(공유 모듈을 함께 읽어야 한다)
+  assert.equal(sendGuardOf(src, true).status, "not-ready");
   assert.equal(sendGuardOf(null, false).status, "not-ready");
 });
 

@@ -9,7 +9,7 @@ const INDEX = settingsIndexOf(switchViews());
 test("modeLine: 선언된 스위치를 한 줄로, 기본은 꺼짐(자동 운항·SCHEDULE·FLEET PLAN·CODEX LANE은 기본 on)", () => {
   assert.equal(
     modeLine(modeSegments(switchViews())),
-    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · MCC SERVER AUTO on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY REVIEW EMPTY on · DUTY REVIEW SKIP on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
+    "AUTOLAND off · AUTOLAND REVIEW off · MCC shadow · K APPROVAL on · MCC SERVER AUTO on · REMOVAL GUARD on · JEV off · FUEL HOLD off · REVIEW exclude · CODEX LANE on · CONTROL RECYCLE off · REPOSITION shadow · SERVER SEND on · DUTY off · DUTY CHARTER off · DUTY REVIEW on · DUTY REVIEW EMPTY on · DUTY REVIEW SKIP on · DUTY L1 off · AUTO REVERT on · EFFECT CHECK on · SCHEDULE AUTO on · FLEET PLAN AUTO on · AUTO APPROVE off · AUTO LAUNCH off · AUTO DISPATCH on · K3 HOLD on · K3 RELAUNCH off",
   );
 });
 
@@ -133,6 +133,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
     ["operations", "STALE REPLY", "닫혔거나 밀린 부름에 온 답 거절", "stale reply 옛 id 거절 refused superseded 다시 보낸 READBACK UNABLE STANDBY latest call staleReply"],
     ["operations", "READBACK HASH", "FLIGHT PLAN READBACK의 work-order 해시 확인", "readback hash 해시 work order 작업 지시서 FLIGHT PLAN 인용 quote @sha 바뀐 지시서 tamper 거절 refused input binding WO-23 readbackHash"],
+    ["operations", "SERVER SEND", "서버가 FLIGHT PLAN을 세션에 직접 보냄", "server send 서버 발송 세션 소켓 socket flight plan 첫 발송 재송신 resend 재시도 retry undelivered 닿지 않음 sentVia server 오작동 misfire 잘못 보냄 두 번 server-send.json serverSendFirst serverSendResend serverSendRetry resend 재송신 overdue retry 재시도 undelivered"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);
