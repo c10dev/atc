@@ -553,7 +553,7 @@ FLEET 탭은 팀을 만들고 내리는 곳이기도 하다. 2026-09-28 전까�
 |---|---|---|
 | 팀 더하기 | **ENTRY INTO SERVICE** | REGISTRATION(다음 빈 `TEAM_X`를 제안), 기지 AIRPORT(기본은 팀 세션이 가장 많은 곳), **CONFIGURATION**. 그 이름의 세션이 나타날 때까지 AIRCRAFT는 NOT IN SERVICE로 보이고, 나타나면 atc가 이름으로 잇는다 |
 | 팀 템플릿 | **CONFIGURATION** | `general`(vocado 기본 CREW. 기본값을 따른다), `security`(Opus backend + Codex 리뷰. SEC, DATA, DOCS), `ui`(Opus backend + `ui-builder` + `ui-qa`. UI, DOCS), `research`(Opus backend + `flash-helper`. DATA, DOCS) |
-| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 언어 줄(SUPERVISOR가 읽는 글은 한국어, 일본어·중국어는 쓰지 않는다. 세션끼리 주고받는 글은 영어, ATC-150), 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. `READBACK D-xxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다. 문구는 영어이고(ATC-126), 돌고 있는 세션은 다시 LAUNCH하기 전까지 처음 받은 CREW BRIEFING을 그대로 갖는다 |
+| 세션 시작 | **CREW BRIEFING** | 복사할 수 있는 시작 문구: 세션 이름과 폴더, 만들 CREW와 그 모델, TYPE RATING(SEC 규칙 포함), ROUTE, 언어 줄(SUPERVISOR가 읽는 글은 한국어, 일본어·중국어는 쓰지 않는다. 세션끼리 주고받는 글은 영어, ATC-150), 교신 규칙(`tail:` 라벨, `READBACK C-xxxx`. FLIGHT PLAN이 주는 한 줄 `READBACK D-xxxx @xxxxxx`는 승인 운용에서만). 사용자가 그 저장소에서 세션을 열고 이름을 붙인 뒤 붙여 넣는다. 문구는 영어이고(ATC-126), 돌고 있는 세션은 다시 LAUNCH하기 전까지 처음 받은 CREW BRIEFING을 그대로 갖는다 |
 | 팀을 잠시 쉬게 하기 | **AOG** | 사유와 선택적 복귀 날짜. planner가 그 팀에 제안을 멈춘다(`AOG — reason (~date)`) |
 | 팀 없애기 | **RETIREMENT** | AIRCRAFT가 FLEET 목록에서 빠진다(날짜·사유와 함께 RETIRED 아래 남음). 제안을 받지 않는다. 살아 있는 세션을 닫지는 않는다. 되살릴 수 있다 |
 

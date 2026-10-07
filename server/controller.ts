@@ -7,6 +7,8 @@ import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueCle
 import { mootNow } from "./clearance-moot-run.ts";
 import { clearanceCalls } from "./stale-reply.ts";
 import { refuseStaleReply } from "./stale-reply-run.ts";
+import { clearanceHeadOf } from "./input-binding.ts";
+import { releaseOfFlightNow } from "./input-binding-run.ts";
 import { fromThisApp } from "./origin.ts";
 import { bustQueue } from "./queue-bust.ts";
 import { type Relay, relayBriefOf } from "./relay.ts";
@@ -305,6 +307,13 @@ function resolveStand(s: Snapshot, stand: string | undefined): string | null | {
   return ws ? ws.path : { error: `"${stand}" STAND(워크트리)를 찾을 수 없음` };
 }
 
+// 입력 묶기(ATC-555, WO-23): 이 CLEARANCE가 가리킨 PR head와 그 FLIGHT의 발권 id. 없는 칸은 넣지 않는다
+function bindingOfClearance(text: string, stand: string | null, flight: string | null, s: Snapshot): { head?: string; release?: string } {
+  const head = clearanceHeadOf(text, stand, s.pulls);
+  const release = releaseOfFlightNow(flight);
+  return { ...(head ? { head } : {}), ...(release ? { release } : {}) };
+}
+
 function normalizeFlight(flight: string | undefined): string | null {
   if (!flight) return null;
   const m = flight.toUpperCase().match(/^([A-Z][A-Z0-9]*?)-?(\d+)$/);
@@ -364,6 +373,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
       flight: normalizeFlight(body.flight),
       text: body.text.trim(),
       ...(body.type === "FIX" || body.type === "GO AROUND" ? { elsewhere: elsewhereOf(target.id, stand, normalizeFlight(body.flight), s) } : {}),
+      ...bindingOfClearance(body.text.trim(), stand, normalizeFlight(body.flight), s),
     });
     if (clearance.type === "LAND") noteLandSent(clearance, s); // AUTOLAND가 넘긴 head의 PR로 LAND가 나갔으면 오작동으로 센다(막지는 않는다)
     return c.json({ clearance, sendTo: target.name, sendToId: target.id, ...(target.jobId ? { sendToJobId: target.jobId } : {}), ...(target.account ? { sendToAccount: target.account } : {}), message: formatClearance(clearance, s) });

@@ -31,7 +31,7 @@ const ATC_TEAM_KEY = "ATC"; // atc 작업은 Linear atc 팀(ATC)에 둔다(루�
 // 저장소 CLAUDE.md에 더할 문장. vocado의 `[ATC C-xxxx]` 줄과 같은 말투. atc 자신의 루트 CLAUDE.md "교신" 절도 이 문장을 쓴다.
 // UNABLE·STANDBY·ROGER는 ATC-122(server/response.ts)
 export const VOCADO_READBACK_SUGGESTION =
-  "- atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다. " +
+  "- atc OCC(운항관제 세션)에서 `[DISPATCH D-xxxx]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx @xxxxxx`(끝줄 그대로)로 답하고, 맡지 못하면 `UNABLE D-xxxx — 사유`, 시간이 필요하면 `STANDBY D-xxxx`로 답한다. " +
   "`[DISPATCH D-xxxx] RECALL`을 받으면 작업을 멈추고 `READBACK D-xxxx RECALL`로 답한다. " +
   "`[OCC CC-xxxx]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고 그대로 팀원을 바꾼다(못 하면 `UNABLE CC-xxxx — 사유`). " +
   "`[ATC C-xxxx]` CLEARANCE는 끝줄이 청하는 답으로 답한다(지시는 `READBACK`·`UNABLE`·`STANDBY`, 알림은 `ROGER C-xxxx`). " +

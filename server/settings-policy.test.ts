@@ -132,6 +132,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "CLEARANCE MOOT", "이유를 잃은 CLEARANCE 정리", "clearance moot 이유 잃은 취소 cancel 머지된 PR 브리핑 clearanceMoot"],
     ["operations", "WARM START", "재시작 직후 마지막 스냅샷 보이기", "warm start 웜 스타트 재시작 스냅샷 복원 restored warm-snapshot warmStart"],
     ["operations", "STALE REPLY", "닫혔거나 밀린 부름에 온 답 거절", "stale reply 옛 id 거절 refused superseded 다시 보낸 READBACK UNABLE STANDBY latest call staleReply"],
+    ["operations", "READBACK HASH", "FLIGHT PLAN READBACK의 work-order 해시 확인", "readback hash 해시 work order 작업 지시서 FLIGHT PLAN 인용 quote @sha 바뀐 지시서 tamper 거절 refused input binding WO-23 readbackHash"],
   ];
   const got = INDEX.filter((e) => (e.tab === "landing" || e.tab === "operations") && e.code !== "CODEX LANE").map((e) => [e.tab, e.code, e.label, e.words]);
   assert.deepEqual(got, old);

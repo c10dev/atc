@@ -205,6 +205,9 @@ export interface Clearance {
   handAt?: string | null; // SUPERVISOR가 손으로 전했다고 표시한 시각(op hand): 카드를 닫는다
   // FIX·GO AROUND를 보낼 때 그 AIRCRAFT가 이 STAND 말고 하고 있던 다른 FLIGHT(ATC-387). null이면 다른 FLIGHT 없음, 없으면(옛 기록·다른 종류) 모른다
   elsewhere?: string | null;
+  // 입력 묶기(ATC-555, WO-23): 보낼 때 이 CLEARANCE가 가리킨 PR head(input-binding.ts clearanceHeadOf)와 그 FLIGHT의 발권 id. 못 정했거나 옛 기록이면 없다
+  head?: string;
+  release?: string;
 }
 
 export type TrafficEventKind =

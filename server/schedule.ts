@@ -28,6 +28,8 @@ import { loadTailLabels } from "./sources/linear-labels.ts";
 import { judgesViewOf, loadJudges, marksOf, readJudgeLines } from "./judges/store.ts";
 import { ackSlips, freshSlipKeys, loadSlipsReported, saveSlipsReported, slipsOf, waypointEtasOf } from "./waypoint-slips.ts";
 import { regKey } from "./registration.ts";
+import { bound, contentHashOf } from "./input-binding.ts";
+import { releaseOfFlightNow } from "./input-binding-run.ts";
 import {
   ackRoutes,
   freshRouteKeys,
@@ -128,7 +130,8 @@ export interface ScheduleOp {
 }
 
 export type LogLine =
-  | { op: "draft"; id: string; at: string; kind: ScheduleKind; flight: string | null; payload: SchedulePayload; reason: string }
+  // hash·release(ATC-555, WO-23): append가 새 줄에 더한다(판정한 초안 내용의 해시, 그 FLIGHT의 발권 id). 옛 줄에는 없다
+  | { op: "draft"; id: string; at: string; kind: ScheduleKind; flight: string | null; payload: SchedulePayload; reason: string; hash?: string; release?: string }
   | { op: "verdict"; id: string; at: string; verdict: "agree" | "disagree"; reason: string | null; via?: Via }
   | { op: "supersede"; id: string; at: string; reason: string }
   | { op: "expire"; id: string; at: string; reason?: string }
@@ -278,8 +281,25 @@ export const readScheduleLines = (file = FILE()) => readLines(file);
 // 접은 SCHEDULE 작업 전부(CHECKRIDE가 받아들인 CLASSIFY의 rating을 읽는다)
 export const loadScheduleOps = (file = FILE()) => fold(readLines(file));
 
-function append(lines: LogLine[], file = FILE()) {
-  if (!lines.length) return;
+// 판정한 입력(WO-23, ATC-555): 초안의 종류·FLIGHT·바꿀 내용·사유. draft 줄과 접은 초안에서 같은 칸을 고른다
+export const scheduleInputHashOf = (x: Pick<ScheduleOp, "kind" | "flight" | "payload" | "reason">): string => contentHashOf({ kind: x.kind, flight: x.flight, payload: x.payload, reason: x.reason });
+// draft는 그 내용의 해시, verdict·approve·reject·release는 그 판정·발부가 본 초안의 해시(새 줄에만 더한다). 모두 그 FLIGHT의 발권 id
+export function bindScheduleLines(lines: readonly LogLine[], known: (id: string) => Pick<ScheduleOp, "kind" | "flight" | "payload" | "reason"> | undefined, releaseOf: (flight: string | null | undefined) => string | null): LogLine[] {
+  const drafted = new Map(lines.flatMap((l) => (l.op === "draft" ? [[l.id, l] as const] : [])));
+  return lines.map((l) => {
+    if (l.op === "draft") return bound(l, scheduleInputHashOf(l), releaseOf(l.flight));
+    if (l.op === "verdict" || l.op === "approve" || l.op === "reject" || l.op === "release") {
+      const d = known(l.id) ?? drafted.get(l.id);
+      return bound(l, d ? scheduleInputHashOf(d) : null, releaseOf(d?.flight));
+    }
+    return l;
+  });
+}
+
+function append(raw: LogLine[], file = FILE()) {
+  if (!raw.length) return;
+  let cache: ScheduleOp[] | null = null;
+  const lines = bindScheduleLines(raw, (id) => (cache ??= fold(readLines(file))).find((s) => s.id === id), releaseOfFlightNow);
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
   for (const l of lines) record({ t: l.at, kind: "schedule", op: l.op, id: l.id, ...(l.op === "approve" && l.via === "auto" ? { by: "auto" } : {}) });

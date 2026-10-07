@@ -201,14 +201,14 @@ SUPERVISOR: DISPATCH 탭에서 "나라면 승인 / 거절(사유)" 표시
 ```
 SUPERVISOR 승인 → atc: APPROVED
 DISPATCH 세션: FLIGHT PLAN을 CAPTAIN에게 SendMessage
-  [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
+  [DISPATCH D-0003] FLIGHT PLAN @a1b2c3 · BRAVO (TEAM_B)   (@a1b2c3: work-order 해시, ATC-555)
   BRIEF: DIRECT
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
   <티켓 제목과 URL, 이슈에서 옮긴 Goal·Done when·Constraints, DISPATCH note>
   <PILOT'S DISCRETION 줄>
-  — Reply to this message with "READBACK D-0003" if you take it. Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.(ATC-122)
+  — Reply to this message with "READBACK D-0003 @a1b2c3" if you take it, exactly like that (@a1b2c3 is this work order's hash; a reply without it is refused). Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.(ATC-122)
   Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision. ("DIRECT briefs" 참고)
-CAPTAIN: READBACK → Linear In Progress, STAND 준비(지금 규칙 그대로)
+CAPTAIN: READBACK D-0003 @a1b2c3(해시가 없으면 atc가 받지 않는다, autonomy.ko.md "WO-23, 만든 대로") → Linear In Progress, STAND 준비(지금 규칙 그대로)
 atc: 해당 FLIGHT에 STAND가 생기면 DEPARTED, 안 생기면 30분 뒤 TOWER처럼 재확인
      STAND 없는 FLIGHT(SURVEY·CHECK): READBACK 자체로 DEPARTED(기다릴 STAND가 없다)
 CAPTAIN(STAND 없는 FLIGHT만): 마쳤다고 보고 → OCC: atcctl dispatch arrived D-0003 -- '<결과 링크나 한 줄>' → atc: ARRIVED

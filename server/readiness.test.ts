@@ -18,7 +18,7 @@ test("vocado READBACK: [ATC C-xxxx] 줄만 있으면 not-ready와 추가할 문�
   assert.match(no.detail, /^\/p\/CLAUDE\.md:3은 \[ATC C-xxxx\] → READBACK C-xxxx만 다룬다\. CAPTAIN이 FLIGHT PLAN·CREW CHANGE에 답할 규칙이 없음/);
   assert.match(no.detail, /추가할 문장: - atc OCC/);
   assert.equal(no.suggestion, VOCADO_READBACK_SUGGESTION);
-  assert.match(VOCADO_READBACK_SUGGESTION, /`\[DISPATCH D-xxxx\]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx`로 답하고, 맡지 못하면/);
+  assert.match(VOCADO_READBACK_SUGGESTION, /`\[DISPATCH D-xxxx\]`로 시작하는 FLIGHT PLAN을 받으면 리더가 그 메시지에 `READBACK D-xxxx @xxxxxx`\(끝줄 그대로\)로 답하고, 맡지 못하면/);
   assert.match(VOCADO_READBACK_SUGGESTION, /`\[OCC CC-xxxx\]`로 시작하는 CREW CHANGE를 받으면 `READBACK CC-xxxx`로 답하고/);
   assert.ok(!VOCADO_READBACK_SUGGESTION.includes("\n")); // 한 줄
   // 제안 문장을 붙이면 ready가 된다

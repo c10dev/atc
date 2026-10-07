@@ -295,6 +295,15 @@ OCC sends only the header; send-guard puts in the text atc stored. Since ATC-126
 - **Checked before building** (a throwaway sender and receiver under a temporary directory, not OCC or a team): Claude Code 2.1.284 applies `updatedInput` from a `SendMessage` PreToolUse hook. The receiver got the replaced text. The sender's own transcript keeps the original tool input, and the tool result echoes the original text, which is why the guard adds `additionalContext` with what was actually sent.
 - Changed: `occ/send-guard.mjs` (`resolveSend`, `hookOutputOf`; `checkSend` keeps its meaning), `controller/atcctl.mjs` (`SEND:` line), the OCC manual and `/tick` files. Not changed: the stored text, how atc builds it, the DISPATCH and CREW CHANGE states, `controller/guard.mjs`, `occ/mcp-guard.mjs`.
 
+### 8.4 Work-order hash in the FLIGHT PLAN and the READBACK, as built (ATC-555)
+
+The stored FLIGHT PLAN carries a short hash of its own text, and the CAPTAIN's READBACK must quote it. The full rules and the record fields are in [autonomy.md](autonomy.md) "WO-23 as built".
+
+- **Header:** `[DISPATCH D-0123] FLIGHT PLAN @a1b2c3 · GOLF (TEAM_G)`. The bracket `[DISPATCH D-xxxx]` the guards read is unchanged, so header-only delivery (8.3) is unchanged: OCC still sends `[DISPATCH D-0123]` and send-guard puts in the stored text. The last line gives the exact reply: `"READBACK D-0123 @a1b2c3" if you take it, exactly like that`.
+- **Recording the READBACK:** `atcctl dispatch readback D-0123 @a1b2c3`, with the hash exactly as the CAPTAIN wrote it (none if it wrote none). The server refuses a missing or different hash with 409 and the correct reply line; OCC does not record it, does not fill the hash in, does not resend, and writes it in the OCC LOG (a different hash goes to the SUPERVISOR). A FLIGHT PLAN stored before ATC-555 has no hash and is read back as before.
+- **send-guard:** for a stored FLIGHT PLAN with a hash, the guard recomputes it (`server/input-binding.ts`, the same function as the server) and refuses a text that no longer matches its hash. This only refuses more; `|| exit 2` is unchanged.
+- **Switch:** `READBACK HASH` (settings window, SUPERVISOR only, default on). Off: the READBACK check is skipped; the hash is still written.
+
 ## 9. What ATC takes
 
 - **CLEARED TO LAND** (built): a LANDING SEQUENCE entry is marked ready only when the PR's exact head has green required checks, a passing review on that head (for Codex, a 👍 after the head: its COMMENTED review means findings), no base drift and no LOS. This is the mechanical half of what President checks by hand today. It catches CI that is green only on an older commit, a review left on an older commit, and drift from main.

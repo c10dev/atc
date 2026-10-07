@@ -116,8 +116,8 @@ DISPATCH (OCC 세션이 맡음. 2a 그림자 운용: 제안 검토만, 판정은
   node atcctl.mjs dispatch briefing <D-0003> --what '<무슨 일>' --why '<왜 이 AIRCRAFT>' --risk '<걸리는 점>'
                                             제안 카드 맨 위의 쉬운 세 줄(BRIEFING). 열린 제안·HELD에만, 다시 쓰면 덮어쓴다
   node atcctl.mjs dispatch release <D-0003> (2b) 승인된 제안을 sent로 바꾸고 SEND TO·SEND(보낼 머리 한 줄)와 FLIGHT PLAN 출력
-  node atcctl.mjs dispatch readback <D-0003>
-                                            (2b) CAPTAIN이 READBACK함
+  node atcctl.mjs dispatch readback <D-0003> [@a1b2c3]
+                                            (2b) CAPTAIN이 READBACK함. @a1b2c3: CAPTAIN이 답에 인용한 work-order 해시(ATC-555) — 쓴 그대로만, 지어내지 않는다
   node atcctl.mjs dispatch report <D-0003|ATC-124> --pr <번호> --tier <auto|flagged|user> --tests <통과/전체|n/a> --discretion <수> --blocked <none|막힌 점>
                                             CAPTAIN의 도착 보고("[TEAM_X → OCC] ARRIVED ATC-n · PR #n")의 고정 칸을 기록(ATC-124). 자유 요약은 저장하지 않는다.
                                             PR이 없는 SURVEY·CHECK는 --pr 대신 --result <링크>. FLIGHT PLAN과 직접 배정 모두 쓴다
@@ -1046,7 +1046,9 @@ if (isMain) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/release`);
       console.log(sendOutput(r.sendTo, r.message));
     } else if (cmd === "dispatch" && args[0] === "readback" && args[1]) {
-      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/accept`);
+      // CAPTAIN이 인용한 work-order 해시(ATC-555): `@a1b2c3`. CAPTAIN이 쓴 그대로만 넘긴다 — 없으면 넘기지 않는다
+      const hash = args.slice(2).find((a) => /^@?[0-9a-f]{6}$/i.test(a));
+      const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/accept`, hash ? { hash: hash.replace(/^@/, "").toLowerCase() } : undefined);
       console.log(`${r.proposal.id} READBACK 확인`);
     } else if (cmd === "dispatch" && args[0] === "recall-send" && args[1]) {
       const r = await call("POST", `/api/dispatch/proposals/${encodeURIComponent(args[1])}/recall-send`);

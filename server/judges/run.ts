@@ -1,3 +1,5 @@
+import { contentHashOf } from "../input-binding.ts";
+import { releaseOfFlightNow } from "../input-binding-run.ts";
 import type { Hono } from "hono";
 import { config } from "../config.ts";
 import { loadDispatchConfig } from "../dispatch.ts";
@@ -82,6 +84,7 @@ export async function judgeDispatchOp(
     withheld,
     recentWithheld,
     sent: sentOf(state),
+    hash: contentHashOf({ title, state }), // 판정한 입력(ATC-555, WO-23): 엔진에 보낸 제목과 상태
   };
 }
 
@@ -134,7 +137,8 @@ export async function judgeReportOp(
   const aircraft = registrationOf(s.name, teamPattern);
   // 규칙 먼저(ATC-141): 한도로 잘린 턴은 Jev를 부르지 않는다. 보내는 것이 없어 sent.chars는 0
   const rule = ruleJudgmentOf(msg.cut);
-  if (rule) return { op: "judge", family, target: "report", id, session: s.id, aircraft, at, turnAt: new Date(msg.at).toISOString(), run, engine: "rule", model: "rule", judgment: rule.judgment, reason: rule.reason, sent: { chars: 0 } };
+  const hash = contentHashOf(masked); // 판정한 입력(ATC-555, WO-23): 마스킹한 메시지의 해시만 남긴다(본문은 남기지 않는다)
+  if (rule) return { op: "judge", family, target: "report", id, session: s.id, aircraft, at, turnAt: new Date(msg.at).toISOString(), run, engine: "rule", model: "rule", judgment: rule.judgment, reason: rule.reason, sent: { chars: 0 }, hash };
   const result = await engine.ask({ target: "report", title: aircraft, state: { message: masked }, questions: reportQuestions() });
   return {
     op: "judge",
@@ -150,6 +154,7 @@ export async function judgeReportOp(
     model: result.model,
     judgment: reportJudgmentOf(result.answers),
     sent: { chars: masked.length },
+    hash,
   };
 }
 
@@ -188,6 +193,7 @@ export async function judgeOp(
     judgment,
     withheld,
     sent: ["title", ...Object.keys(input.sections)],
+    hash: contentHashOf(input), // 판정한 입력(ATC-555, WO-23): 엔진에 보낸 제목과 절
   };
 }
 
@@ -286,7 +292,8 @@ async function cycle(s: Snapshot, modes: ReturnType<typeof loadJudges>) {
               : await judgeReportOp(item.s, teamPattern, lastMessageOfSession, jids, engine, family, mode as JudgeRun, at);
         if (item.k === "report") reportSeen.set(id, item.s.lastActiveAt ?? ""); // 메시지가 없어도 이 턴은 다시 읽지 않는다
         if (line) {
-          appendJudgeLines([line]);
+          const release = "flight" in line ? releaseOfFlightNow(line.flight) : null; // 그 FLIGHT의 발권 id(ATC-555, WO-23). 없으면 칸을 넣지 않는다
+          appendJudgeLines([release ? { ...line, release } : line]);
           st.judged++;
         } else if (item.k !== "report") failedUntil.set(id, Date.now() + SKIP_MS); // 같은 대상이 주기마다 자리를 막지 않게
         st.lastError = null;

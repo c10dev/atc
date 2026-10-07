@@ -9,8 +9,11 @@
 // ID로 보내기(ATC-119): 본문이 머리만이면([DISPATCH D-xxxx], [DISPATCH D-xxxx] RECALL, [OCC CC-xxxx]. 뒤에 공백만 허용)
 // 위의 확인을 모두 그대로 하고, 통과하면 hook이 저장된 문구로 메시지를 바꿔 넣는다(PreToolUse의 updatedInput).
 // 그러니 OCC는 문구를 다시 치지 않는다. 전체 문구를 그대로 보내는 길도 그대로 열려 있다(정확히 같을 때만)
+// work-order 해시(ATC-555): 저장된 FLIGHT PLAN의 머리에 해시(@xxxxxx)가 있으면 그 글에서 다시 계산한 해시와 같아야 보낸다(막기만 더한다).
+// 해시가 없는 옛 FLIGHT PLAN은 전처럼 보낸다. 계산은 server/input-binding.ts(순수, 서버와 같은 함수)
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { workOrderSealOk } from "../server/input-binding.ts";
 
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
 
@@ -88,6 +91,7 @@ export async function resolveSend(toolInput, fetcher = fetchRecord) {
   const expected = recall ? proposal.recallMessage : proposal.message;
   const wrong = recall ? "문구가 dispatch recall-send가 돌려준 RECALL과 다름 — 그대로 보내야 함" : "문구가 dispatch release가 돌려준 FLIGHT PLAN과 다름 — 그대로 보내야 함";
   if (!expected) return { reason: wrong };
+  if (!recall && workOrderSealOk(expected) === false) return { reason: "저장된 FLIGHT PLAN이 머리의 work-order 해시와 맞지 않음(문구가 바뀜) — 보내지 않음" };
   const header = headerOnlyOf(message);
   if (header) {
     const stored = storedForHeader(header, expected);

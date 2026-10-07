@@ -84,7 +84,7 @@ FIX PR #320 (ATC-257): MCC INSPECTION returned FINDINGS on head a090f16 (P0 0 ·
 ## OCC → CAPTAIN: FLIGHT PLAN (2b부터)
 
 ```
-[DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
+[DISPATCH D-0003] FLIGHT PLAN @a1b2c3 · BRAVO (TEAM_B)
 BRIEF: DIRECT
 FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
 <제목>
@@ -94,11 +94,12 @@ Done when: …
 Constraints: …
 DISPATCH note: CAUTION · …
 If something is not clear, use PILOT'S DISCRETION. Pick a reasonable default and record it in the PR.
-— Reply to this message with "READBACK D-0003" if you take it. Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.
+— Reply to this message with "READBACK D-0003 @a1b2c3" if you take it, exactly like that (@a1b2c3 is this work order's hash; a reply without it is refused). Reply with "UNABLE D-0003 — reason" if you cannot. Reply with "STANDBY D-0003" if you need time.
 Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision.
 ```
 
 - FLIGHT PLAN은 DIRECT 지시서다. Goal·Done when·Constraints(이슈 본문의 목표·완료 기준·제약)는 보낼 때 옮긴다. 세션끼리 주고받는 글이라 이 문구들은 영어다(ATC-126). 늘 지키는 규칙(CLAUDE.md, guard, 브랜치 보호)은 적지 않는다.
+- `@a1b2c3`은 work-order 해시다(ATC-555): atc가 저장한 FLIGHT PLAN 글의 짧은 해시. CAPTAIN은 끝줄이 주는 한 줄 `READBACK D-0003 @a1b2c3`로 답한다. 해시가 없거나 다르면 atc가 그 READBACK을 받지 않는다(OCC가 기록하려 할 때 409, 정확한 답 한 줄을 알려 준다). 다른 해시는 CAPTAIN이 다른 지시서를 받았다는 뜻이라 OCC가 SUPERVISOR에게 보고한다. 해시 전에 보낸 옛 FLIGHT PLAN은 `READBACK D-0003`으로 그대로 받는다. 끄기는 설정 창 `READBACK HASH`(SUPERVISOR 전용, 기본 on)이고, 거절한 수가 그 블록에 주 단위로 보인다.
 - 사용자나 다른 세션이 팀에 직접 일을 줄 때도 같은 모양을 쓴다. `GET /api/dispatch/flight/<FLIGHT>/brief?to=TEAM_X`가 붙여 넣을 문구를 준다. 손으로 쓸 때도 `BRIEF: DIRECT` 줄을 넣어야 비교에 DIRECT로 잡힌다.
 
 - 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN과 CREW CHANGE까지 넓힌다.
@@ -164,7 +165,7 @@ BLOCKED none
 | guard | 지키는 것 |
 |---|---|
 | `controller/guard.mjs` | TOWER·OCC·CROSSCHECK의 Bash: atc CLI·jq만(OCC는 읽기 전용 `gh pr view·checks·diff·list`도, CROSSCHECK는 `view·checks·list`). 리다이렉션과 작은따옴표 밖의 `$(…)`·백틱·`$변수`는 막는다. jq는 `… | jq '<필터>'`처럼 앞 명령의 출력만 읽는다: 파일 인자, `-f`·`--rawfile`·`--slurpfile`·`-L`·`--args` 같은 옵션(허용 목록 밖은 모두), 필터의 `env`·`$ENV`·`import`·`include`는 막는다. gh의 `--jq`도 같은 필터 검사를 한다 |
-| `occ/send-guard.mjs` | OCC의 SendMessage: approval 모드에서 승인된 FLIGHT PLAN, RECALL 요청된 제안의 RECALL 문구, 발부된 CREW CHANGE 문구를 그대로 그 CAPTAIN·AIRCRAFT에게만 |
+| `occ/send-guard.mjs` | OCC의 SendMessage: approval 모드에서 승인된 FLIGHT PLAN, RECALL 요청된 제안의 RECALL 문구, 발부된 CREW CHANGE 문구를 그대로 그 CAPTAIN·AIRCRAFT에게만. 저장된 FLIGHT PLAN이 머리의 work-order 해시와 맞지 않으면 막는다(ATC-555) |
 | `occ/mcp-guard.mjs` | OCC의 MCP 도구: 읽기(get·list·search·read·query·fetch)만 — Linear·GitHub에 쓸 수 없음 |
 
 모든 hook은 fail-closed다: 스크립트가 없거나 실패하면 도구가 막힌다. 막히면 관제 세션은 다시 시도하지 않고 사용자에게 보고한다.
