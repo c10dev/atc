@@ -1069,6 +1069,15 @@ ATC-69는 대화 기록에 `[1m]`이 남지 않아 창을 짐작했다. ATC-85�
 - **만료.** FUEL hold 만료는 LAUNCH와 같다. 조건이 사라지면(스위치를 끈 것 포함) 카드가 닫힌다.
 - **LAUNCH 패널.** `flight`를 적은 `POST /api/fleet/:registration/launch`도 K3 entries를 만든다(launch 카드와 같은 `k3OfFlight`). 패널에 친 K3 FLIGHT도 발권이 화면이나 DUTY 채팅에 있으면 allow와 함께 뜬다.
 
+### 서버 발송과 AIRCRAFT 세션, 만든 것 (ATC-562)
+
+서버가 이제 떠 있는 AIRCRAFT 세션에 FLIGHT PLAN을 쓸 수 있다. 세션의 메시징 소켓에 한 쌍의 줄을 쓰고, 세션을 다시 띄우거나 멈추지 않는다. 규칙과 근거는 [occ.ko.md](occ.ko.md) "8.5 서버 발송, 만든 대로".
+
+- **어느 세션.** background 세션(`claude --bg`, 세션 파일 `kind: "bg"`)뿐이다. 세션 파일에 `peerProtocol: 1`과 `…/cc-socks/<pid>.sock` 꼴의 소켓 경로가 있어야 한다. 등록된 ACCOUNT 폴더 어디든 되고, 키 파일은 같은 폴더에서 읽는다. 데스크톱·터미널 세션은 OCC 몫이다. 같은 칸을 갖지만 전달을 시험하지 않았다.
+- **보낼 때 정한다.** 받는 이는 REGISTRATION으로 찾은 AIRCRAFT의 살아 있는 세션이다(ATC-353). writer는 쓰기 직전에 세션 id로 그 세션 파일을 다시 읽고, 세션 이름이 바뀌었거나 파일이 없으면 쓰지 않는다.
+- **FRESH START가 먼저.** 서버의 첫 발송 앞에서 자동 FRESH START 게이트(ATC-560)를 부른다. OCC의 `release` 앞에서 부르던 것과 같다. 게이트가 세션을 다시 띄우면 FLIGHT PLAN은 새 세션의 첫 프롬프트가 되고 서버는 따로 보내지 않는다. FRESH START가 도는 카드는 건너뛴다.
+- **ACCOUNT.** 소켓은 ACCOUNT 폴더를 넘어서도 닿는다. 하지만 CAPTAIN의 답은 이름 "OCC"로 가고, 이름 찾기는 한 폴더 안에서만 된다(ATC-251). 그래서 ACCOUNT 불일치 막음은 그대로이고, 서버는 OCC와 ACCOUNT가 다른 AIRCRAFT에 보내지 않는다.
+
 ### 8.7 FLEET PLAN 3단계: 승인 운용
 
 상태: 만듦(2026-09-28). SUPERVISOR 결정은 아래에 적었다. 8.6에서 그림자를 만들었다. atc가 제안하고 SUPERVISOR는 동의·반대만 하며, 아무것도 움직이지 않는다. 3단계에서는 SUPERVISOR가 승인하면 그 제안이 실행된다. 제안마다 여전히 사람이 하나씩 승인한다. 자동 STOP은 그대로 4단계이고 기본으로 꺼져 있다.

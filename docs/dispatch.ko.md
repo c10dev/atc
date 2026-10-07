@@ -559,6 +559,15 @@ PR이 없는 SURVEY·CHECK FLIGHT는 `PR #n` 대신 `RESULT <링크>`를 쓴다.
 - **RECALL과 CREW CHANGE.** RECALL 전송은 상태를 바꾸지 않아서(`recall-send`는 문구만 출력) 되돌릴 것이 없다. OCC는 LOG에 "undelivered"라고 쓰고, 같은 tick에 다시 보내지 않고, SUPERVISOR에게 보고하며, RECALL `overdue` 규칙이 한 번 다시 보낸다. CREW CHANGE는 `crew-change send`가 sent로 기록해서 자기 `undelivered` op가 있어야 하는데 그것은 만들지 않았다. 매뉴얼은 같은 LOG·재송신 금지 규칙을 주고, 10분 `overdue` 규칙이 한 번 다시 보낸다. "알려진 빈틈"에 남는다.
 - **Guard.** `controller/guard.mjs`에는 TOWER와 OCC의 명령별 목록이 없어서(`atcctl` 명령은 모두 통과) 새 명령에 허용 목록을 고칠 곳이 없다. CROSSCHECK·REVIEW·MCC 목록에는 없고, 테스트가 그것을 확인한다. `occ/send-guard.mjs`는 `SendMessage`만 지키고 그대로다: `undelivered` 뒤 제안은 `approved`이고, guard는 보내려면 여전히 `sent`(새 `release`)를 요구한다.
 
+## 서버 발송 구현 내용(ATC-562)
+
+서버가 승인된 FLIGHT PLAN을 직접 보내고, 답이 없으면 한 번 다시 보내고, 닿지 않은 것은 한 번 더 보낸다. 이때 OCC의 send-guard와 같은 검사를 거친다. 전체 설명(공유 검사, 소켓 writer, 답이 가는 길, 세는 수)은 [occ.ko.md](occ.ko.md) "8.5 서버 발송, 만든 대로". DISPATCH 쪽에서 달라진 것:
+
+- **`sentVia: "server"`.** 서버는 `send`를 `via: "server"`로 적고, 접은 제안에는 `sentVia: "server"`가 붙는다. 이 카드의 `dispatch release`는 `fresh-start`처럼 409다. 문구가 OCC에게 알려 주는 것: 서버가 overdue 뒤 한 번 다시 보낼지 이미 다시 보냈는지, `resend`가 off면 overdue 카드는 SUPERVISOR에게 간다는 것. guard도 이 카드의 OCC `SendMessage`를 막는다.
+- **승인된 카드.** 서버 job이 3분 안에 돌았고 `first` 스위치(닿지 않은 시도가 한 번 있는 카드는 `retry`)가 켜져 있으면, 서버가 보낼 수 있는 카드의 `release`는 409 `atc 서버가 이 FLIGHT PLAN을 보낸다 …`다. 서버가 보낼 수 있는 카드란, 막음(GROUND STOP, RESTARTING, LAUNCH 기다림, 살아 있는 세션 없음, ACCOUNT 불일치)이 없는 승인된 launch 아닌 ASSIGN이고 그 AIRCRAFT에 쓸 수 있는 background 세션이 있는 것이다. 그 밖의 승인된 카드는 전처럼 OCC가 release한다.
+- **닿지 않음.** 지금의 `undelivered` op(ATC-183)를 적는 경우는 넷이다: 서버의 쓰기 실패, `send`를 적은 뒤 검사가 막은 것, 재송신 때 살아 있는 세션이 없는 것, 1분이 지나도 발송 줄이 없는 `send`. 카드는 `approved`로 돌아가고 FOLLOWING이 `undelivered`를 올린다. 서버는 한 번 다시 시도한다(`undelivered.n` 1, 1분 뒤부터, 살아 있는 background 세션이 있을 때). 두 번째 실패는 OCC에게 넘기고(`release`가 다시 된다) `server-send handback`으로 기록한다.
+- **READBACK.** 그대로다. CAPTAIN은 이름 "OCC"로 답하고(FLIGHT PLAN의 주소 줄), OCC가 `dispatch readback`으로 기록한다.
+
 ## SUPERVISOR RELAY와 이슈 댓글 구현 내용(ATC-271)
 
 SUPERVISOR가 atc 화면에서 AIRCRAFT에게 말을 걸 길이 없었다. ENGINEERING은 다른 설정 폴더의 세션에 닿지 못하고(`SendMessage`는 보내는 세션의 폴더 안에서만 이름을 찾는다, ATC-251), TOWER는 닿지만 atc가 시킨 것만 보내고, FLIGHT PLAN에는 이슈 본문만 실려서 Linear 댓글로 남긴 이어받을 점이 팀에 가지 않았다.

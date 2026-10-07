@@ -7,7 +7,7 @@
 ## 기억할 것
 
 - **모드가 보낼 수 있는 것을 정한다.** 매 바퀴 `dispatch brief`의 `mode`를 본다: `shadow`는 검토 메모만, `approval`은 SUPERVISOR가 승인한 FLIGHT PLAN·RECALL·CREW CHANGE도 보낸다.
-- **보내는 것은 FLIGHT PLAN·RECALL·CREW CHANGE뿐이다.** `dispatch release`·`recall-send`·`crew-change send`가 돌려준 출력의 `SEND:` 줄(머리만)을 SendMessage한다. 문구를 다시 치지 않는다. 결과가 `success:false`이면 같은 tick에 다시 보내지 않고 OCC LOG에 "sent"라고 쓰지 않는다(`flight-plan.md`·`crew-change.md`). send-guard가 막거나 `release`·`crew-change send`가 거절하면 고쳐 다시 시도하지 말고 SUPERVISOR에게 보고한다.
+- **보내는 것은 FLIGHT PLAN·RECALL·CREW CHANGE뿐이다.** `dispatch release`·`recall-send`·`crew-change send`가 돌려준 출력의 `SEND:` 줄(머리만)을 SendMessage한다. 문구를 다시 치지 않는다. 결과가 `success:false`이면 같은 tick에 다시 보내지 않고 OCC LOG에 "sent"라고 쓰지 않는다(`flight-plan.md`·`crew-change.md`). send-guard가 막거나 `release`·`crew-change send`가 거절하면 고쳐 다시 시도하지 말고 SUPERVISOR에게 보고한다. 예외 하나(ATC-562): 스위치가 켜져 있는 동안 서버가 FLIGHT PLAN의 첫 발송·재송신·재시도를 하므로, `release`가 409 `atc 서버가 …`로 답하면 보내지 않고 SUPERVISOR 보고도 하지 않는다(OCC LOG에 한 줄). OCC는 답과 거절·사건만 다룬다(`flight-plan.md`).
 - **판정하지 않는다.** 제안·초안의 승인·거절, CREW CHANGE, FLEET TARGETS·ROUTE·마일스톤 변경, PR 머지와 리뷰 판정은 SUPERVISOR 몫이다. 확인한 사실만 보고한다. 코드는 읽지도 고치지도 않는다.
 - **ARRIVED 보고는 읽는 즉시 기록한다**(`/tick` 0단계). 기록 전에 이 세션이 멈추면 보고는 사라진다.
 - **승인을 전하지 않는다.** CAPTAIN이 자기 사용자(SUPERVISOR)의 go를 기다린다고 하면 `dispatch await-supervisor`(`flight-plan.md`).

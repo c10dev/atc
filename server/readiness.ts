@@ -79,28 +79,32 @@ export function airportReadbackOf(text: string | null, path: string | null, code
   return { ...base, ...readbackRuleOf(text, path) };
 }
 
-// send-guard: 서버는 테스트를 돌리지 않는다. 파일이 있고 FLIGHT PLAN·RECALL 비교가 들어 있는지만 보고 "check"로 둔다
-export function sendGuardOf(source: string | null, testExists: boolean): ReadinessItem {
+// send-guard: 서버는 테스트를 돌리지 않는다. 파일이 있고 FLIGHT PLAN·RECALL 비교가 들어 있는지만 보고 "check"로 둔다.
+// 검사 규칙은 공유 모듈(server/send-checks.ts, ATC-562)에 있다: shared를 주면 규칙은 거기서 찾고, guard는 그 모듈을 가져오는지와 fail-closed(exit 2)를 본다
+export function sendGuardOf(source: string | null, testExists: boolean, shared: string | null = null): ReadinessItem {
   const base = { id: "send-guard", label: "send-guard (FLIGHT PLAN·RECALL·CREW CHANGE)", link: SEND_GUARD_TEST_LINK };
   if (source === null) return { ...base, status: "not-ready", detail: "occ/send-guard.mjs가 없음 — OCC의 SendMessage를 지킬 hook이 없다" };
-  const need: [string, RegExp][] = [
-    ["checkSend export", /export\s+async\s+function\s+checkSend\b/],
-    ["approval 모드 확인", /mode\s*!==\s*"approval"/],
-    ["FLIGHT PLAN 문구 비교(proposal.message)", /proposal\.message/],
-    ["RECALL 문구 비교(proposal.recallMessage)", /proposal\.recallMessage/],
-    ["받는 사람 확인(aircraftName)", /aircraftName/],
-    ["CREW CHANGE 문구 비교(change.message)", /change\.message/],
-    ["CREW CHANGE 받는 사람 확인(change.registration)", /change\.registration/],
-    ["fail-closed(exit 2)", /process\.exit\(2\)/],
+  const rules = shared === null ? source : `${source}\n${shared}`;
+  const need: [string, RegExp, string][] = [
+    ["checkSend export", /export\s+(?:async\s+function\s+checkSend\b|const\s+checkSend\s*=)/, source],
+    ...(shared === null ? [] : ([["공유 검사 모듈(server/send-checks.ts) 가져오기", /from\s+"\.\.\/server\/send-checks\.ts"/, source]] as [string, RegExp, string][])),
+    ["approval 모드 확인", /mode\s*!==\s*"approval"/, rules],
+    ["FLIGHT PLAN 문구 비교(proposal.message)", /proposal\.message/, rules],
+    ["RECALL 문구 비교(proposal.recallMessage)", /proposal\.recallMessage/, rules],
+    ["받는 사람 확인(aircraftName)", /aircraftName/, rules],
+    ["CREW CHANGE 문구 비교(change.message)", /change\.message/, rules],
+    ["CREW CHANGE 받는 사람 확인(change.registration)", /change\.registration/, rules],
+    ["fail-closed(exit 2)", /process\.exit\(2\)/, source],
   ];
-  const missing = need.filter(([, re]) => !re.test(source)).map(([name]) => name);
+  const missing = need.filter(([, re, text]) => !re.test(text)).map(([name]) => name);
   const sha = createHash("sha256").update(source).digest("hex").slice(0, 8);
-  if (missing.length) return { ...base, status: "not-ready", detail: `occ/send-guard.mjs(sha ${sha})에 없음: ${missing.join(", ")}` };
+  const where = shared === null ? `occ/send-guard.mjs(sha ${sha})` : `occ/send-guard.mjs(sha ${sha})·server/send-checks.ts(sha ${createHash("sha256").update(shared).digest("hex").slice(0, 8)})`;
+  if (missing.length) return { ...base, status: "not-ready", detail: `${where}에 없음: ${missing.join(", ")}` };
   return {
     ...base,
     status: "check",
     detail:
-      `occ/send-guard.mjs(sha ${sha})에 ${need.map(([n]) => n).join(", ")}가 있음. ` +
+      `${where}에 ${need.map(([n]) => n).join(", ")}가 있음. ` +
       `동작은 서버가 확인하지 않는다 — \`node --test occ/send-guard.test.mjs\`${testExists ? "" : "(테스트 파일 없음!)"}로 확인`,
   };
 }
@@ -190,7 +194,7 @@ function readbackRowsOf(cfg: Pick<DispatchConfig, "candidateTeams" | "teamAirpor
 
 export function readinessFiles(cfg: Pick<DispatchConfig, "candidateTeams" | "teamAirports" | "projectAirports"> = loadDispatchConfig()) {
   return {
-    sendGuard: sendGuardOf(readOrNull(join(ROOT, "occ", "send-guard.mjs")), existsSync(join(ROOT, "occ", "send-guard.test.mjs"))),
+    sendGuard: sendGuardOf(readOrNull(join(ROOT, "occ", "send-guard.mjs")), existsSync(join(ROOT, "occ", "send-guard.test.mjs")), readOrNull(join(ROOT, "server", "send-checks.ts"))),
     readback: readbackRowsOf(cfg),
     atcctl: readOrNull(join(ROOT, "controller", "atcctl.mjs")),
   };

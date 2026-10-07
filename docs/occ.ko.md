@@ -323,6 +323,28 @@ OCC는 머리만 보내고, send-guard가 atc가 저장한 문구를 바꿔 넣�
 - **send-guard:** 해시가 있는 저장된 FLIGHT PLAN이면 guard가 해시를 다시 계산하고(`server/input-binding.ts`, 서버와 같은 함수) 해시와 더는 맞지 않는 글을 막는다. 막기만 더하고 `|| exit 2`는 그대로다.
 - **스위치:** `READBACK HASH`(설정 창, SUPERVISOR 전용, 기본 on). 끄면 READBACK 확인만 건너뛰고 해시는 그대로 적힌다.
 
+### 8.5 서버 발송, 만든 대로 (ATC-562)
+
+서버가 OCC의 턴 없이 FLIGHT PLAN을 AIRCRAFT 세션에 직접 보낸다. 기본 on이다. 맡는 것은 셋이다: 승인된 FLIGHT PLAN의 첫 발송, READBACK이 없을 때의 재송신 한 번(ATC-556의 b), 닿지 않은 FLIGHT PLAN의 재시도 한 번(c). 답과 거절은 모두 여전히 OCC가 다루고, 서버는 OCC의 send-guard가 통과시킬 글만 보낸다.
+
+- **검사 하나, 호출자 둘.** guard의 검사가 `occ/send-guard.mjs`에서 `server/send-checks.ts`(`resolveSend`, `checkSend`)로 옮겨졌다. hook은 caller `occ`로 가져다 부르고, 서버는 같은 `resolveSend`를 caller `server`로 부른다. 서버가 넘기는 것은 머리와, 받는 이로 살아 있는 세션의 이름이다. 검사는 그대로다: 머리 꼴, approval 모드, 보낼 수 있는 상태(`sent`, RECALL은 `recalling`, CREW CHANGE는 `sent`), 받는 이가 그 CAPTAIN, 저장된 글, work-order 해시. 두 번 보내지 않는 규칙 둘이 더해졌고 둘 다 막기만 더한다. `sentVia: "fresh-start"` 제안은 두 호출자 모두 막는다. `sentVia: "server"` 제안은 OCC만 막는다. guard는 `|| exit 2`를 지키고 `occ/send-guard.test.mjs`는 고치지 않고 통과한다. `occ/send-checks-table.test.mjs`가 guard 시험의 막는 경우 60개를 모두 두 호출자에 넣어 같은 사유를 기대한다.
+- **검사를 건너뛰는 길이 없다.** `CheckedSend`를 만드는 것은 `checkServerSend` 하나뿐이다. 이 객체는 brand가 붙고 얼려지며, 모듈이 private `WeakSet`에도 넣어 둔다. 서버에서 세션 소켓에 닿는 코드는 `server/session-socket.ts`의 `deliverChecked(send: CheckedSend, …)` 하나뿐이다(시험이 `server/`에서 `node:net`·`cc-socks`·`messagingSocketPath`를 찾는다). 이 함수는 검사가 만들지 않은 것은 형 변환으로 속여도 거절한다. 맨 글이나 같은 칸을 가진 객체는 컴파일되지 않는다: `server/send-checks.test.ts`에 `// @ts-expect-error` 줄이 있어 brand를 지우면 tsc가 쓰이지 않은 지시로 실패한다.
+- **받는 이.** 서버는 보낼 때 `resolveRecipient`(ATC-353)로 AIRCRAFT의 살아 있는 세션을 정하고, 쓰기 직전에 세션 id로 그 세션 파일을 다시 읽는다. 검사 뒤 이름이 바뀌었거나 파일이 없으면 쓰지 않는다. 쓰는 대상은 background(`claude --bg`) 세션뿐이다. 데스크톱·터미널 세션에도 같은 소켓 칸이 있지만 전달을 시험하지 않아 전처럼 OCC가 보낸다. 살아 있는 세션이 없으면 아무것도 보내지 않고 카드는 `approved`로 남는다. 재송신 때 세션이 없으면 카드를 `undelivered`로 둔다(`approved`로 돌아감, ATC-183). 그 사건은 FOLLOWING과 경보가 싣는다.
+- **첫 발송.** launch 카드가 아닌 승인된 ASSIGN마다 한 바퀴는 `dispatch release`와 같은 막음을 본다: GROUND STOP, RESTARTING, LAUNCH 기다림, 살아 있는 세션 없음, ACCOUNT 불일치. 그다음 자동 FRESH START 게이트(ATC-560)를 부른다. 게이트가 세션을 다시 띄우면 FLIGHT PLAN은 새 세션의 첫 프롬프트로 가고(`sentVia: "fresh-start"`) 서버는 보내지 않는다. 아니면 서버는 적을 기록으로 먼저 검사한다. 그다음 `send`(`via: "server"`)를 적고, 저장된 기록으로 다시 검사한 뒤(다른 쪽이 먼저 적었으면 멈춘다) 쓴다. 적은 뒤 검사가 막거나 쓰기가 실패하면 사유와 함께 `undelivered`를 적는다. 서버가 보낸 `sent` 카드에 1분이 지나도 발송 줄이 없으면(그 사이 서버가 멈춤) 그 카드도 `undelivered`로 둔다.
+- **재송신(b).** 서버가 보낸 카드는 지금의 overdue 규칙으로 한 번 다시 간다: READBACK 없이 10분, 첫 STANDBY가 있으면 그때부터 센다. 답이 왔거나, `awaitSupervisor`가 있거나, 이미 한 번 다시 보냈으면 보내지 않는다. 그 뒤의 overdue는 전처럼 OCC를 거쳐 SUPERVISOR에게 간다.
+- **재시도(c).** 닿지 않은 카드(`undelivered.n` 1)는 그 AIRCRAFT에 살아 있는 background 세션이 있으면 실패 1분 뒤부터 한 번 더 간다. 받는 쪽은 같은 보낸 이의 같은 글을 30초 안에 다시 받으면 버린다. 두 번째 실패는 `handback` 줄을 적고 카드를 OCC에게 넘긴다: `release`가 더는 409를 주지 않는다. 재시도가 닿으면 그 카드의 FLIGHT FOLLOWING `undelivered` 문제를 보고한 것으로 적는다.
+- **OCC는 두 번째로 보내지 않는다.** `dispatch release`는 `sentVia: "server"` 카드에 409를 준다(서버가 다시 보낼지, 이미 다시 보냈는지를 문구가 말한다). 서버가 보낼 승인된 카드에도 409를 준다. 다만 이 409는 서버 job이 3분 안에 돌았고, 그 길의 스위치가 켜져 있고, 발송이 멈추지 않았고, AIRCRAFT에 쓸 수 있는 background 세션이 있을 때만이다. 그 밖에는 OCC가 전처럼 release한다. guard는 `sentVia: "server"` 카드의 OCC `SendMessage`를 막는다.
+- **답이 가는 길.** Claude Code는 서버의 글을 "Message from @ATC"(`from-name="ATC"`)로 보이고 답 주소는 없다. FLIGHT PLAN의 주소 줄(ATC-169)이 이미 `Send your reply to the session name "OCC"`라고 말하므로 CAPTAIN의 READBACK은 이름으로 OCC에 닿고 전처럼 기록된다. 버리는 세션으로 확인했다(아래).
+- **스위치.** 설정 창 `SERVER SEND` 블록, SUPERVISOR 전용, `server-send.json`에 저장된다. 값은 셋, `first`·`resend`·`retry`이다. 각각 기본 `on`이고 정확히 `off`일 때만 꺼지며 `shadow` 값은 없다. 끄면 그 길은 OCC에게 돌아간다. 예외는 하나, 서버가 이미 보낸 카드다: `resend`가 off면 다시 보내지 않고 overdue는 SUPERVISOR에게 간다. 스위치를 바꾸면 `policy server-send-mode` 줄이 적힌다.
+- **세는 수**(설정 창, UTC 날마다, 7일): 보냄, 잘못 보냄, 두 번 보냄, 검사가 막음(사유별), 실패, 받는 세션에 안 보임, OCC에게 넘김. 잘못 보냄은 기대가 0이라 하나라도 있으면 경보다. 이 수는 검사에서가 아니라 쓴 뒤에 셈한다: 세션 파일과 제안을 다시 읽어 세션의 REGISTRATION, 저장된 글의 해시, 상태를 비교한다. 두 번 보냄은 같은 FLIGHT PLAN이 같은 세션에 또 간 수다. overdue가 지난 뒤의 재송신 한 번은 빼고 센다.
+- **FLIGHT RECORDER.** 보낼 때마다 `kind: "server-send"` 줄(`deliver`, `refused`, `failed`, `confirm`, `handback`)에 제안 id, 저장된 글의 해시, 세션 id, 검사 결과(`pass` 또는 사유)를 적는다. 글과 세션 키는 적지 않는다.
+- **메시징 소켓으로 보내기.** Claude Code 세션 파일(`<설정 폴더>/sessions/<pid>.json`)마다 `messagingSocketPath`(`/run/user/<uid>/cc-socks/`의 Unix 소켓)와 `peerProtocol`이 있다. 서버는 연결 하나를 열고 두 줄을 쓴다. 첫 줄은 `{"type":"auth","token":…}`이다. `peerToken`은 같은 폴더의 `<pid>.<sha256(소켓 경로)>.key`에서 읽는다. 키는 보낼 때마다 읽어 메모리에만 두고 로그에 남기지 않는다. 둘째 줄은 봉투 `{msgV: 1, msg_id, type: "user", message: {role: "user", content: <cross-session-message from-name="ATC">…}, priority: "next"}`이다. [accounts.md](accounts.md)는 이 길을 지원되지 않는 길로 적어 두었다. SUPERVISOR가 2026-10-07에 이 세 발송에 쓰기로 정했고, 뒤의 CLEARANCE·RELAY 전달도 같은 writer를 쓴다. **프로토콜이 바뀐 것을 아는 법:** 쓰기 전에, 세션 파일의 `peerProtocol`이 1이 아니거나 소켓 경로가 `…/cc-socks/<pid>.sock` 꼴이 아니면 거절한다. 쓰기가 성공해도 닿았다는 증거는 아니다: 2.1.292의 받는 쪽은 틀린 키나 인증 줄 없는 글도 받았다. 그래서 쓸 때마다 받는 세션의 대화 기록에서 `msg_id`를 찾고, 10분이 지나도 없으면 `confirm seen: false`를 적는다. 마지막으로 스위치를 바꾼 뒤의 마지막 확인이 "안 보임"이면 서버 발송을 멈추고 모든 길을 OCC에게 돌린다. SUPERVISOR가 스위치를 껐다 켜면 다시 시도한다.
+- **만들기 전에 확인한 것**(Claude Code 2.1.292, STAND 아래 임시 폴더의 버리는 background 세션. TEAM·관제 세션에는 쓰지 않았다):
+  - (a) 소켓에 쓴 글이 받는 세션의 대화에 peer 메시지로 들어갔다(`origin.kind: "peer"`, `msg_id`, `verifiedPeerPid`에 서버 pid).
+  - (b) 받는 쪽에는 `from-name="ATC"`가 보였고 `from` 주소는 없었다.
+  - (c) FLIGHT PLAN의 실제 주소 줄과 답 줄을, 버리는 "OCC" 대역 이름으로 바꿔 보냈다. 받는 쪽은 그 세션에 이름으로 `READBACK D-9997 @ab12cd`를 보냈다.
+  - (d) 죽은 소켓은 `ENOENT`로 실패했다. 틀린 키나 인증 줄 없는 글도 전달됐다. 그래서 전달은 대화 기록으로 확인한다.
+
 ## 9. ATC가 맡는 것
 
 - **CLEARED TO LAND**(구현): LANDING SEQUENCE 항목은 아래를 모두 만족할 때만 준비됨으로 표시된다.
