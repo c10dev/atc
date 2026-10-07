@@ -1,12 +1,14 @@
 import type { Inputs } from "./squelch.ts";
 import { INFO_ONLY_EVENTS, project } from "./squelch.ts";
 import { occKeysOf, persistentKeysOf } from "./tick.ts";
+import { KIND_OF_WAKE_EVENT, type ServerClearanceKind } from "./server-clearance.ts";
 
 // CONTROL WAKE(ATC-557 a, docs/control-recycle.md 7): TOWER·OCC·MCC를 `/loop` 대신 판단할 일이 생길 때만 깨운다. 순수 함수만(입출력은 control-wake-run.ts).
 // 할 일의 목록은 `atcctl tick <역할>`이 쓰는 `actionable`(server/tick.ts)과 같은 브리핑·같은 기준이다. 여기서는 그 이유를 항목(key) 하나하나로 나눠
 // 지난 깨움 뒤에 새로 생긴 것(delta)과 풀린 것을 가린다. 깨우는 글 하나에 새 항목·아직 열린 항목·풀린 항목·관련 FLIGHT를 싣는다.
 // 메뉴(menu): 브리핑이 문구와 대상을 이미 정해 세션은 그대로 옮기기만 하는 일(LAND·INFO·GO AROUND·FIX 보내기, RELAY, 첫 RESEND, FLIGHT PLAN·CREW CHANGE 보내기,
-// MCC의 착륙·RTS). 서버가 맡을 수 있는 일이라 그것만으로 깨운 것은 오작동으로 센다(뒤 PR (b)가 서버로 옮긴다).
+// MCC의 착륙·RTS). 서버가 맡을 수 있는 일이라 그것만으로 깨운 것은 오작동으로 센다. TOWER의 CLEARANCE는 SERVER CLEARANCE(ATC-557 b)가 서버로 옮겼다:
+// 서버가 맡은 항목은 브리핑에 서버 몫으로 표시돼 사건이 되지 않고, 스위치가 off인 종류는 TOWER의 일이라 메뉴로 세지 않는다(EventCtx.serverKinds).
 
 export const WAKE_ROLES = ["tower", "occ", "mcc"] as const;
 export type WakeRole = (typeof WAKE_ROLES)[number];
@@ -48,6 +50,9 @@ export interface EventCtx {
   now: number;
   answers?: readonly string[]; // SUPERVISOR가 답한 DECISION 줄(`DECISION DC-xxxx … ANSWERED`)
   serverResent?: ReadonlySet<string>; // OCC: 서버가 READBACK 없이 한 번 다시 보낸 FLIGHT PLAN(ATC-562 resend). 그 뒤 overdue는 두 번째 침묵
+  // TOWER: SERVER CLEARANCE(ATC-557 b) 스위치가 on인 종류. 서버가 맡는 항목은 브리핑에서 서버 몫(action server 등)이라 사건이 되지 않는다.
+  // 그래도 TOWER에게 온 그 종류의 항목(서버가 넘겼거나 쓸 수 없는 세션)은 메뉴(서버가 할 수 있던 일)로 센다. 스위치가 off인 종류는 TOWER의 일이라 메뉴가 아니다. 없으면 옛 셈(모두 메뉴)
+  serverKinds?: ReadonlySet<ServerClearanceKind>;
 }
 
 type J = any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -69,6 +74,7 @@ const answerEvents = (answers: readonly string[] | undefined): WakeEvent[] =>
 function towerEvents(b: J, ctx: EventCtx): WakeEvent[] {
   if (!b || typeof b !== "object" || !Array.isArray(b.events)) return [{ key: "bad-brief", kind: "outside-menu", text: "the TOWER brief could not be read by the server — read `brief` yourself", flights: [], menu: false }];
   const out: WakeEvent[] = [];
+  const menuOf = (kind: string) => (ctx.serverKinds ? ctx.serverKinds.has(KIND_OF_WAKE_EVENT[kind]!) : true);
   const epoch = String(b.cursor ?? "").split(":")[0] ?? "";
   if (b.reset === true) out.push({ key: `reset:${epoch}`, kind: "reset", text: "atc restarted: the event log is new, act on the current state (open, landingQueue, clearances)", flights: [], menu: false });
   for (const e of arr(b.events)) {
@@ -81,15 +87,16 @@ function towerEvents(b: J, ctx: EventCtx): WakeEvent[] {
     const pr = `${q?.airport ?? ""} #${q?.pr?.number ?? "?"}@${String(q?.pr?.head ?? "").slice(0, 7)}`;
     const holders = arr(q?.holders).map((h) => h?.name ?? h).filter(Boolean).join(", ") || "no holder";
     const holder = q?.landBy === undefined || q?.landBy === null || q?.landBy === "holder";
-    if (q?.landing === "CLEARED" && holder && !q?.groundStop && !q?.slotHold && !q?.landClearance) out.push({ key: `land:${pr}`, kind: "land", text: `LAND due for PR ${pr} (holders: ${holders}) — landText is in the brief`, flights: flightsOf(q?.flight), menu: true });
+    // landVia server: 서버가 보낸다(ATC-557 b) — TOWER의 일이 아니다
+    if (q?.landing === "CLEARED" && holder && !q?.groundStop && !q?.slotHold && !q?.landClearance && q?.landVia !== "server") out.push({ key: `land:${pr}`, kind: "land", text: `LAND due for PR ${pr} (holders: ${holders}) — landText is in the brief`, flights: flightsOf(q?.flight), menu: menuOf("land") });
     for (const [field, kind] of [["goAround", "go-around"], ["info", "approach-info"], ["fix", "fix"]] as const) {
       const a = q?.[field]?.action;
       if (a !== "send" && a !== "supervisor") continue;
       // send: 브리핑의 글을 그대로 보낸다(메뉴). supervisor: 받을 세션이 없거나 되풀이 — SUPERVISOR 보고(판단)
-      out.push({ key: `${kind}:${pr}:${a}`, kind: a === "send" ? kind : `${kind}-supervisor`, text: `${kind.toUpperCase()} ${a === "send" ? "to send" : "needs a SUPERVISOR report"} for PR ${pr} (holders: ${holders})`, flights: flightsOf(q?.flight), menu: a === "send" });
+      out.push({ key: `${kind}:${pr}:${a}`, kind: a === "send" ? kind : `${kind}-supervisor`, text: `${kind.toUpperCase()} ${a === "send" ? "to send" : "needs a SUPERVISOR report"} for PR ${pr} (holders: ${holders})`, flights: flightsOf(q?.flight), menu: a === "send" && menuOf(kind) });
     }
   }
-  for (const r of arr(b.relays)) out.push({ key: `relay:${r?.id}`, kind: "relay", text: `SUPERVISOR RELAY ${r?.id} to ${r?.to ?? "?"} (${r?.type ?? "?"})`, flights: flightsOf(r?.flight), menu: true });
+  for (const r of arr(b.relays)) out.push({ key: `relay:${r?.id}`, kind: "relay", text: `SUPERVISOR RELAY ${r?.id} to ${r?.to ?? "?"} (${r?.type ?? "?"})`, flights: flightsOf(r?.flight), menu: menuOf("relay") });
   const pending = new Map(arr(b.clearances?.pending).map((c) => [String(c?.id), c]));
   for (const id of arr(b.clearances?.overdue).map(String)) {
     const c = pending.get(id);
@@ -99,7 +106,7 @@ function towerEvents(b: J, ctx: EventCtx): WakeEvent[] {
     out.push(
       second
         ? { key: `second-silence:${id}`, kind: "second-silence", text: `no answer to ${id} → ${to} after a RESEND — report "no answer" (do not resend)`, flights: flightsOf(c?.flight), menu: false }
-        : { key: `overdue:${id}`, kind: "overdue", text: `no READBACK for ${id} → ${to} (${c?.type ?? "?"}) — RESEND once`, flights: flightsOf(c?.flight), menu: true },
+        : { key: `overdue:${id}`, kind: "overdue", text: `no READBACK for ${id} → ${to} (${c?.type ?? "?"}) — RESEND once`, flights: flightsOf(c?.flight), menu: menuOf("overdue") },
     );
   }
   if (arr(b.open?.conflicts).length && !arr(b.clearances?.pending).length) {

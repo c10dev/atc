@@ -19,7 +19,7 @@ test("내장 일: 이름이 겹치지 않고 때는 하나씩, tick 일의 순�
     [...jobs].filter((j) => j.tick).sort((a, b) => (a.order ?? 1000) - (b.order ?? 1000)).map((j) => j.name),
     ["dispatch", "fleet-plan", "sample", "ticket-state", "departures", "logbook", "milestones", "standfree", "atfm", "auto-revert", "autoland", "judges", "qrh"],
   );
-  assert.deepEqual(jobs.filter((j) => j.every !== undefined).map((j) => [j.name, j.every]).sort(), [["auto-approve", 60_000], ["auto-rts", 30_000], ["auto-schedule", 60_000], ["clearance-ended", 60_000], ["clearance-moot", 60_000], ["control-absent", 60_000], ["control-recycle", 60_000], ["control-stop-check", 60_000], ["control-wake", 30_000], ["job-liveness", 60_000], ["landing-gap", 60_000], ["mcc-auto", 30_000], ["orphan-flight", 60_000], ["scope-oom", 60_000], ["server-send", 30_000], ["stale-stop", 60_000]]);
+  assert.deepEqual(jobs.filter((j) => j.every !== undefined).map((j) => [j.name, j.every]).sort(), [["auto-approve", 60_000], ["auto-rts", 30_000], ["auto-schedule", 60_000], ["clearance-ended", 60_000], ["clearance-moot", 60_000], ["control-absent", 60_000], ["control-recycle", 60_000], ["control-stop-check", 60_000], ["control-wake", 30_000], ["job-liveness", 60_000], ["landing-gap", 60_000], ["mcc-auto", 30_000], ["orphan-flight", 60_000], ["scope-oom", 60_000], ["server-clearance", 30_000], ["server-send", 30_000], ["stale-stop", 60_000]]);
   assert.deepEqual(jobs.filter((j) => j.start).map((j) => j.name).sort(), ["readability", "skill-usage"]);
   assert.ok(BUILTIN_JOBS_DIR.endsWith("/jobs"));
 });

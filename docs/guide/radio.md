@@ -105,6 +105,7 @@ Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR
 - 지금은 2a(그림자 운용)라 보내지 않는다. 2b를 켜기 전에 vocado `CLAUDE.md`의 READBACK 규칙을 FLIGHT PLAN과 CREW CHANGE까지 넓힌다.
 - OCC의 SendMessage는 send-guard가 지킨다: approval 모드, SENT 상태 제안, 그 CAPTAIN, atc가 만든 문구 그대로일 때만 통과.
 - **서버 발송**(ATC-562): 스위치가 켜져 있으면 승인된 FLIGHT PLAN은 OCC가 아니라 atc 서버가 그 AIRCRAFT의 background 세션에 직접 보낸다. send-guard와 같은 검사를 같은 코드로 거친다. 팀 세션에는 "Message from @ATC"로 보이고, 답은 끝줄 위 주소 줄대로 이름 "OCC"로 보낸다(OCC가 전처럼 기록한다). READBACK 없이 10분이 지나면 서버가 한 번 다시 보내고, 닿지 않은 것은 세션이 돌아오면 한 번 더 보낸다. 데스크톱·터미널 세션에는 전처럼 OCC가 보낸다. 끄기는 설정 창 `SERVER SEND`(SUPERVISOR 전용, 기본 on, `first`·`resend`·`retry` 세 칸)이고, 보냄·잘못 보냄·두 번 보냄·막음·실패가 그 블록에 날마다 보인다.
+- **서버 CLEARANCE**(ATC-557 b): LAND·APPROACH INFO·GO AROUND·FIX·첫 RESEND·SUPERVISOR RELAY처럼 브리핑이 글을 정한 CLEARANCE는 TOWER가 아니라 atc 서버가 같은 기록·같은 글로 팀의 background 세션에 직접 보낸다. 팀 세션에는 "Message from @ATC"로 보이고, 답은 끝줄 위 주소 줄대로 이름 "TOWER"로 보낸다(TOWER가 전처럼 기록한다). 데스크톱·터미널 세션과 두 번 닿지 않은 것은 TOWER가 보낸다. 끄기는 설정 창 `SERVER CLEARANCE`(SUPERVISOR 전용, 종류마다, 기본 on)이고, 종류마다 보냄·잘못 보냄·두 번 보냄·막음·실패가 그 블록에 보인다.
 - **관제 세션 깨움**(ATC-557): TOWER·OCC·MCC는 `/loop` 없이 쉬다가, 판단할 일이 생기면 atc 서버가 `[ATC WAKE W-xxxx] <역할>` 글 하나로 깨운다(새 일·아직 열린 일·풀린 일·관련 FLIGHT). 세션은 `/tick`을 한 번 하고 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. 팀의 답은 전처럼 이름 "TOWER"·"OCC"로 보내면 그 세션을 깨운다. 끄기(`/loop`로 되돌리기)는 설정 창 `CONTROL WAKE`(SUPERVISOR 전용, 역할마다, 기본 `wake`)이고, 깨움과 오작동 셋(깨우지 못함·서버가 할 수 있던 일로 깨움·할 일 없이 깨움)이 그 블록에 역할마다 보인다.
 
 ## OCC → CAPTAIN: RECALL (2b부터)

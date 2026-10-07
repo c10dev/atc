@@ -64,6 +64,7 @@ function projectTower(b: J) {
         ext: q.extReview ? { status: q.extReview.status ?? null, family: q.extReview.family ?? null } : null,
         review: q.review ?? null,
         landClearance: q.landClearance ? { id: q.landClearance.id, readBack: Boolean(q.landClearance.readBack) } : null,
+        ...(q.landVia ? { landVia: q.landVia } : {}), // SERVER CLEARANCE(ATC-557 b): 서버가 LAND를 넘기면(사라지면) TOWER의 일이 된다
         holders: arr(q.holders).map((h) => h?.name ?? h).sort(),
       }))
       .sort((x, y) => `${x.airport}#${x.pr}`.localeCompare(`${y.airport}#${y.pr}`)),

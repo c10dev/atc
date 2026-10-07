@@ -36,6 +36,8 @@ import { type AgentRow, cachedAgentRows, configDirOfRow, controlDirOf, controlRo
 import { deliverChecked, findSessionRecord, transcriptOf, type WriterMode, writerModeOf, writerPlaceNow } from "./session-socket.ts";
 import { type Fetcher, gatherInputs } from "./squelch-run.ts";
 import { readSeen } from "./tick-seen.ts";
+import { SERVER_CLEARANCE_KINDS } from "./server-clearance.ts";
+import { loadServerClearanceSwitch } from "./server-clearance-run.ts";
 
 // CONTROL WAKE(ATC-557 a)의 입출력. 판단은 control-wake.ts(순수), 검사는 send-checks.ts checkControlWake, 세션에 쓰기는 session-socket.ts deliverChecked뿐이다.
 // 30초마다(jobs/control-wake.ts): ① 닿은 깨움이 대화 기록에 보이는지·끝에 WAKE RESULT가 있는지 ② 역할마다(TOWER 30초, OCC 1분, MCC 2분) 판단할 일을 모아
@@ -208,6 +210,7 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
   lastPassAt = now;
   confirmPass(readRecords(now - 2 * DAY) as unknown as AnyLine[], now);
   const sw = loadWakeSwitch();
+  const clearanceSw = loadServerClearanceSwitch();
   const rows = await (deps.rows ?? (() => cachedAgentRows.get()))().catch(() => [] as AgentRow[]);
   const launches = readRecords(now - 30 * DAY) as unknown as AnyLine[];
   const lines = readRecords(now - 2 * DAY) as unknown as AnyLine[];
@@ -234,7 +237,9 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
         if (priorDeliveriesOf(lines, x.id).some((d) => d.purpose === "resend" && (!x.timeline?.sent || d.at >= x.timeline.sent))) serverResent.add(x.id);
       }
     }
-    const events = wakeEventsOf(role, inputs, { seen, now, answers, serverResent });
+    // SERVER CLEARANCE(ATC-557 b): on인 종류만 메뉴로 센다
+    const serverKinds = role === "tower" ? new Set(SERVER_CLEARANCE_KINDS.filter((k) => clearanceSw[k] === "on")) : undefined;
+    const events = wakeEventsOf(role, inputs, { seen, now, answers, serverResent, serverKinds });
     const busy = pendingWakeOf(lines, role, now);
     const rec = row ? findSessionRecord(row.sessionId, configDirs()) : null;
     // TOWER: 할 일 없이 ATC LOG에만 적는 사건만 남았으면 서버가 ack한다(QUIET tick이 하던 일). 세션이 쉬고 앞 깨움이 끝났을 때만(세션의 cursor와 엇갈리지 않게)

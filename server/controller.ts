@@ -34,6 +34,8 @@ import { record } from "./recorder.ts";
 import { closingLine, responseOf } from "./response.ts";
 import type { Clearance, ClearanceType, PullRequest, Session, Snapshot, TrafficEvent } from "./model.ts";
 import { liveHolderClaims } from "./occupancy.ts";
+import { itemKeyOf, type Owns, prRefOf } from "./server-clearance.ts";
+import { SERVER_HEADER, serverClearanceOwner, serverDuplicateOf } from "./server-clearance-run.ts";
 
 // CONTROLLER(1단계, 조언 모드)가 쓰는 API. atc는 판단하지 않고, 브리핑을 주고 CLEARANCE·READBACK을 기록만 한다.
 
@@ -67,6 +69,7 @@ export function buildBrief(
   relays: readonly Relay[] = [], // SUPERVISOR RELAY(ATC-271): 보내지 않은(queued) 것만 brief에 실린다
   handoff: (p: PullRequest) => AutolandHandoff | null = () => null, // AUTOLAND가 이 head를 SUPERVISOR에게 넘겼나(ATC-513). 없으면 오늘과 같다
   moot: readonly Clearance[] = [], // 이유를 잃은 CLEARANCE(ATC-515): 열려 있고 FLIGHT의 PR이 모두 끝났다. TOWER가 `atcctl cancel`한다. 없으면 오늘과 같다
+  owns: Owns | null = null, // SERVER CLEARANCE(ATC-557 b): 서버가 보내는 항목. 그 항목은 서버 몫으로 표시하고(action server, landVia server, serverSends) TOWER는 보내지 않는다. 없으면 오늘과 같다
 ) {
   const sessionById = new Map(s.sessions.map((x) => [x.id, x]));
   const label = (id: string) => sessionLabel(sessionById.get(id), id);
@@ -135,6 +138,13 @@ export function buildBrief(
     const decision = landDecisionOf(p, mcc, s.airports.find((a) => a.repo === p.repo)?.teamsMerge !== false, handoff(p));
     const landBy: LandBy = decision.by;
     if (decision.why === "autoland" && lastLand) handedLand.add(lastLand.id);
+    const holders = p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [];
+    // SERVER CLEARANCE(ATC-557 b): 살아 있는 holders 모두에게 서버가 쓸 수 있으면 서버가 보낸다(action server). 아니면 TOWER가 오늘처럼(send)
+    const liveIds = holders.filter((h) => h.status !== "dead").map((h) => h.id);
+    const ref = prRefOf(codeOf(p.repo), p.number, p.head);
+    const viaServer = <T extends { action: string }>(x: T | null, kind: "info" | "goAround" | "fix"): T | null => (x && x.action === "send" && owns?.(kind, itemKeyOf(kind, ref), liveIds) ? { ...x, action: "server" } : x);
+    const landDue = p.landing === "CLEARED" && landBy === "holder" && !lastLand && !(airport && stopped.has(airport)) && !slotHoldOf(slots.get(pullKey(p)), atfm.slots);
+    const landVia = landDue && repoSeq && owns?.("land", itemKeyOf("land", ref), liveIds) ? ("server" as const) : null;
     return {
       seq,
       landing: p.landing,
@@ -143,16 +153,16 @@ export function buildBrief(
       airport: codeOf(p.repo),
       pr: { number: p.number, url: p.url, title: p.title, branch: p.branch, head: p.head.slice(0, 7) },
       stand: stand?.name ?? null,
-      holders: p.standPath ? active.filter((c) => c.workspacePath === p.standPath).map((c) => label(c.sessionId)) : [],
+      holders,
       blocks: p.blocks,
       // APPROACH에서 TOWER가 holders에게 INFO 본문으로 그대로 쓴다(영어, ATC-174). blocks[].text는 화면용 한국어라 팀에 보내지 않는다.
       // 리뷰 지적(review-findings)은 FIX가 맡아서 여기서 뺀다(ATC-270)
       infoText: p.landing === "APPROACH" ? infoText : null,
       // 막힘 INFO를 보낼지(ATC-270): 마지막 INFO 본문과 비교해 상태로 정한다. 서버가 재시작돼 이벤트가 없어도(reset) 같다
       // AUTOLAND가 SUPERVISOR에게 넘긴 CLEARED PR(landWhy "autoland")에는 head마다 한 번 INFO가 간다: 팀이 할 일은 없다(ATC-513)
-      info: infoOf(p, { clearances, holders: holderCount, handoff: decision.why === "autoland" }),
+      info: viaServer(infoOf(p, { clearances, holders: holderCount, handoff: decision.why === "autoland" }), "info"),
       // 리뷰 지적(MCC INSPECTION·REVIEW·Codex·이어받은 리뷰)을 고치라는 지시(ATC-270). action "send"면 TOWER가 holders에게 FIX로 text 그대로 보낸다
-      fix: fixOf(p, { clearances, holders: holderCount, now }),
+      fix: viaServer(fixOf(p, { clearances, holders: holderCount, now }), "fix"),
       readyAt: p.readyAt,
       // CODEX UNAVAILABLE(ATC-7·27): Codex 한도·무응답이면 착륙 리뷰 상태. review는 착륙 리뷰 통과로 CLEARED일 때 리뷰어("SONNET" → "REVIEW: SONNET (Codex 한도)")
       codex: p.codexUnavailable ? { ...p.codexUnavailable, label: codexWhyEn(p.codexUnavailable.why, Math.round(config.codexSilentMs / 3_600_000), p.codexUnavailable.scope ? p.codexUnavailable.since : null) } : null,
@@ -164,7 +174,9 @@ export function buildBrief(
       landBy,
       landWhy: decision.why, // landBy가 supervisor일 때의 이유(land-by.ts). autoland면 TOWER는 LAND 대신 info만 따른다
       // PR이 base와 충돌·뒤처졌거나 LAND 문구의 앞 PR이 머지됨(ATC-128). action "send"면 TOWER가 holders에게 GO AROUND로 text 그대로 보낸다
-      goAround: goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: holderCount, now }),
+      goAround: viaServer(goAroundOf(p, { clearances, events: since.events, pulls: s.pulls, lastLand, holders: holderCount, now }), "goAround"),
+      // SERVER CLEARANCE(ATC-557 b): "server"면 이 LAND는 서버가 landText로 보낸다(TOWER는 보내지 않는다). 없으면 오늘처럼 TOWER
+      ...(landVia ? { landVia } : {}),
       landText: repoSeq && landBy === "holder" ? landTextOf(repoSeq, airport, p.number, fl, repoSeq > 1 ? lane[repoSeq - 2].number : null, p.codexFindings?.ok ? p.codexFindings.p3 : 0) : null,
       // 쌓인 PR(base가 기본 브랜치가 아님, ATC-29): CLEARED가 되지 않고 LAND를 내지 않는다. stack.chain은 아래부터
       stacked: p.blocks.some((b) => b.code === "stacked"),
@@ -203,6 +215,20 @@ export function buildBrief(
     }));
 
   const alertsOf = (kind: string) => s.alerts.filter((a) => a.kind === kind);
+  // 첫 STANDBY가 있으면 그때부터 다시 센다. AUTOLAND가 넘긴 PR의 LAND와, 고리의 다른 CLEARANCE가 답을 받은 것(ATC-565)은 뺀다
+  const overdue = pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS) && !handedLand.has(c.id) && !resends.get(c.id)?.answeredVia).map((c) => c.id);
+  // 첫 RESEND(고리가 없는 overdue)와 relay 가운데 서버가 보내는 것(ATC-557 b)
+  const pendingById = new Map(pending.map((c) => [c.id, c]));
+  const serverResend = owns
+    ? overdue.filter((id) => {
+        const l = resends.get(id);
+        const c = pendingById.get(id)!;
+        return !l?.resentBy.length && !l?.resendOf && owns("resend", itemKeyOf("resend", id), [c.to]);
+      })
+    : [];
+  const relayList = relayBriefOf(relays, now, s.sessions, loadDispatchConfig().teamPattern);
+  const serverRelay = (r: (typeof relayList)[number]) => Boolean(owns && r.sendToId && owns("relay", itemKeyOf("relay", r.id), [r.sendToId]));
+  const serverRelays = relayList.filter(serverRelay);
   return {
     at: new Date(now).toISOString(),
     cursor: since.cursor,
@@ -253,17 +279,19 @@ export function buildBrief(
     },
     landingQueue,
     // SUPERVISOR가 화면에서 AIRCRAFT에게 보낸 글(ATC-271). TOWER는 text를 고치지 않고 type의 CLEARANCE로 그대로 보낸 뒤 `atcctl relay issued`로 표시한다
-    relays: relayBriefOf(relays, now, s.sessions, loadDispatchConfig().teamPattern),
+    relays: relayList.filter((r) => !serverRelay(r)),
     // ATFM 출발 중지. enforced만 실제로 막는다(나머지는 그림자)
     groundStops: (s.atfm?.groundStops ?? []).map((g) => ({ airport: g.airport, trigger: g.trigger, kind: g.kind, enforced: g.enforced, text: g.text, since: g.since })),
     github: s.github,
     clearances: {
       pending: pending.map(clearanceView),
       moot: moot.map(clearanceView),
-      // 첫 STANDBY가 있으면 그때부터 다시 센다. AUTOLAND가 넘긴 PR의 LAND와, 고리의 다른 CLEARANCE가 답을 받은 것(ATC-565)은 뺀다
-      overdue: pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS) && !handedLand.has(c.id) && !resends.get(c.id)?.answeredVia).map((c) => c.id),
+      // 서버가 보내는 첫 RESEND(serverSends.resend)는 뺀다(ATC-557 b)
+      overdue: overdue.filter((id) => !serverResend.includes(id)),
     },
     traffic,
+    // SERVER CLEARANCE(ATC-557 b): 서버가 보내는 SUPERVISOR RELAY와 첫 RESEND. TOWER는 보내지 않는다(서버가 못 보내면 relays·overdue로 돌아온다). 없으면 칸이 없다
+    ...(serverRelays.length || serverResend.length ? { serverSends: { relays: serverRelays, resend: serverResend } } : {}),
   };
 }
 
@@ -351,7 +379,7 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     const since = log.since(c.req.query("cursor") ?? readCursor(consumer));
     const s = await getSnapshot();
     const mcc = await (mccInfo?.(s) ?? Promise.resolve(null)).catch(() => null); // 예상 못 한 오류면 옛 흐름(holder)으로. 등급을 못 읽은 것은 mccInfo가 tiers에서 빼서 supervisor가 된다
-    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc, allRelays(), handoffResolver(s), mootNow(s)));
+    return c.json(buildBrief(s, since, allClearances(), Date.now(), loadAtfm(), watchFuel?.(s) ?? null, mcc, allRelays(), handoffResolver(s), mootNow(s), serverClearanceOwner(s)));
   });
 
   app.post("/api/controller/ack", async (c) => {
@@ -371,6 +399,11 @@ export function mountController(app: Hono, getSnapshot: () => Promise<Snapshot>,
     if (stand && typeof stand === "object") return c.json(stand, 400);
     const target = clearanceTargetOf(s, String(body.to ?? ""), stand, loadDispatchConfig().teamPattern);
     if (typeof target === "string") return c.json({ error: target }, 400);
+    // SERVER CLEARANCE(ATC-557 b): 서버가 이미 적어 보낸 것과 같은 CLEARANCE(받는 이·종류·STAND·본문)가 열려 있으면 TOWER가 다시 적지 않는다
+    if (c.req.header(SERVER_HEADER) !== "server") {
+      const dup = serverDuplicateOf({ to: target.id, type: body.type, stand, text: body.text.trim() });
+      if (dup) return c.json({ error: `atc 서버가 이 CLEARANCE를 이미 보냄(${dup}, ATC-557) — 다시 보내지 않는다. 답은 ${dup}로 기록한다` }, 409);
+    }
     const clearance = issueClearance({
       to: target.id,
       toName: target.name,

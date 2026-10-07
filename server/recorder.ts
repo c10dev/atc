@@ -10,6 +10,7 @@ import type { QrhNamedLine } from "./qrh.ts";
 import type { LinearCallLine } from "./linear-call.ts";
 import type { LivenessLine } from "./job-liveness.ts";
 import type { ServerSendLine } from "./server-send.ts";
+import type { ServerClearanceLine } from "./server-clearance.ts";
 import type { ControlWakeLine } from "./control-wake.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
@@ -114,6 +115,9 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "mcc-server-auto-mode"; by: string; from: string; to: string }
   // SERVER SEND(ATC-562): 서버가 AIRCRAFT 세션 소켓에 쓴 FLIGHT PLAN. 발송마다 입력(제안 id, 저장된 글의 해시, 세션 id, 검사 결과)을 싣는다. 글과 세션 키는 싣지 않는다
   | ServerSendLine
+  // SERVER CLEARANCE(ATC-557 b): 서버가 지어 AIRCRAFT 세션 소켓에 쓴 CLEARANCE. 적음(issue, 보낼 글 포함)·발송·확인·실패·넘김. 세션 키는 싣지 않는다
+  | ServerClearanceLine
+  | { t: string; kind: "policy"; op: "server-clearance-mode"; by: string; key: string; from: string; to: string }
   // CONTROL WAKE(ATC-557): 관제 세션 깨움과 그 입력·확인·결과·오작동·/loop ↔ wake 옮기기
   | ControlWakeLine
   | { t: string; kind: "policy"; op: "control-wake-mode"; by: string; role: string; from: string; to: string }
