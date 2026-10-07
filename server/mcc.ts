@@ -91,7 +91,7 @@ export interface Inspection {
 export type MccRecord =
   | Inspection
   | { op: "escalate"; at: string; pr: number; head: string; reason: string; model?: string }
-  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server"; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391)
+  | { op: "land" | "would-land"; at: string; pr: number; head: string; tier: string; result: "ok" | "rejected" | "failed" | "already-landed"; detail?: string; model?: string; by?: "supervisor" | "server"; k?: { release: string; flight: string; channel: string } } // k: K 승인으로 착륙한 user 등급 PR의 발권 id(ATC-391). already-landed: 다른 쪽이 같은 PR을 같은 때 먼저 머지함(ATC-563)
   | { op: "rts" | "would-rts"; at: string; from: string | null; to: string; result: "started" | "failed"; detail?: string; model?: string; by?: "supervisor" | "server" }
   | { op: "mode"; at: string; mode: MccMode; detail: string; kApproval?: "on" | "off"; removalGuard?: "on" | "off"; serverAuto?: "on" | "off" } // kApproval: K 승인 착륙 스위치를 바꾼 줄(ATC-391). mode는 그때의 MCC 모드 그대로
   | { op: "hold" | "unhold"; at: string; pr: number };

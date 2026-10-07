@@ -24,7 +24,7 @@ This session judges; the atc server acts (merge, RTS start, PR comment). The ser
 | Agent `subagent_type: inspector` | Does the INSPECTION in a fresh context (see "How to inspect"). Give it the PR number and head in the prompt |
 | `node ../controller/atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass\|findings -- '<INSPECTION>'` | INSPECTION on that head. The server also posts findings as a PR comment |
 | `node ../controller/atcctl.mjs mcc escalate <PR> -- '<reason>'` | Raise the PR to the user tier |
-| `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | Land. When blocked: `LAND 안 함 — L… …`; in shadow: `WOULD LAND` |
+| `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | Land. When blocked: `LAND 안 함 — L… …`; for an auto-tier PR the server lands: `LAND 안 함 — MCC SERVER AUTO on …`; when the server merged it at the same moment: `already landed` (not an error); in shadow: `WOULD LAND` |
 | `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. When not due: `RTS 안 함 — …` (with the reason when the server already started it); not in land+rts or rts: `WOULD RTS` |
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | PR facts when needed |
 | Read, Grep | The rules (`../CLAUDE.md`), design docs (`../docs/`). `inspector` reads the code around a diff |
@@ -61,7 +61,7 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 
 ## Landing and RTS
 
-- Server auto (ATC-556): when `serverAuto.switch` in `mcc queue` is `on`, the server lands `auto`-tier PRs on its own (an `mcc land` for a PR it already closed answers `LAND 안 함`) and returns main to service when every PR in the range was landed by it. If `serverAuto.recent` shows a PR the server was refused or failed on, this session takes it over and logs it. INSPECTION, ESCALATE and landing `flagged` / `user` tier PRs stay with this session.
+- Server auto (ATC-556, ATC-563): when `serverAuto.switch` in `mcc queue` is `on`, the server lands `auto`-tier PRs on its own and returns main to service when every PR in the range was landed by it. **While the switch is `on`, this session does not land `auto`-tier PRs** (the server refuses `mcc land` with `LAND 안 함 — MCC SERVER AUTO on …`). It takes over in two cases only: a PR head with a `refused` line in `serverAuto.recent` (the server was refused or failed), and, while `serverAuto.live` is false (the server job has not run a pass for more than 3 minutes), the `auto`-tier PRs of that time; it lands them with `mcc land` and logs it. An `already-landed` line means the other side merged first; there is nothing to take over. INSPECTION, ESCALATE and landing `flagged` / `user` tier PRs stay with this session.
 - Only PRs whose `blocks` is empty in `mcc queue`: `mcc land <PR> --head <head from queue>`. If the server blocks it, log the condition and move on; don't retry in the same pass.
 - When a `user`-tier PR lands because `kApproval.ok`, log `LANDED · user · K approval <release id>` (the queue's `kApproval.release`) and the declared K effects in one line. For a `user` PR that is not `kApproval.ok`, log `kApproval.why` and move on (INSPECTION is still done).
 - When a `flagged` PR lands, log the control rules (files) that changed and the side-effect files that changed (`SIDE_EFFECT` in `deploy/landing-tier.mjs`), one line each (`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
