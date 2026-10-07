@@ -703,6 +703,8 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 | REVIEW | `review/` | `claude --bg` | `/loop 10m /tick` | `--strict-mcp-config` |
 | ENGINEERING | 저장소 뿌리 | 배지만 | | |
 
+- **CONTROL WAKE의 첫 메시지**(ATC-557). TOWER·OCC·MCC는 CONTROL WAKE 스위치로 첫 메시지를 고른다: `wake`(기본)는 `[ATC WAKE BOOT] <역할>`(한 번 둘러보고, 서버가 깨울 때까지 쉰다. `/loop` 없음), `loop`는 표의 `/loop` 줄. `control launch` 줄에 `wake: true|false`가 남고, 다른 모드로 떠 있는 세션은 안전한 순간에 한 번 다시 띄운다([control-recycle.md](control-recycle.md) 7). REVIEW는 그대로다.
+
 - **배지.** `BG <id>`(백그라운드 세션), `tmux <세션>`(tmux pane에서 도는 세션), `interactive`(Claude Desktop 등 다른 곳에서 연 세션), `not running`. 2026-09-28에 CROSSCHECK가 꺼져 있었는데 화면 어디에도 보이지 않아서 더했다.
 
 - **방식.** atc 저장소의 그 폴더에서 `claude --bg -n <이름> --permission-mode auto [옵션] "<첫 메시지>"`, 환경은 8.5와 같이 깨끗하게. 폴더의 `.claude/settings.json`(모델, 허용 목록, fail-closed guard)이 그대로 걸린다. 백그라운드 세션은 권한 창에 답할 수 없으므로 `auto`로 고정하고, 막는 일은 guard가 한다. 2026-09-28에 백그라운드 MCC로 확인했다: `/loop`이 `/tick`을 걸었고, guard hook이 돌았고, `atcctl manual check`와 `mcc queue`가 권한 창 없이 돌았다.
