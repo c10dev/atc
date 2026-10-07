@@ -17,7 +17,7 @@ export function readReviewLines(file = REVIEWS_FILE()): ReviewLine[] {
   return raw.split("\n").flatMap((l) => {
     try {
       const j = JSON.parse(l) as ReviewLine;
-      return j && (j.ev === "review" || j.ev === "proposal" || j.ev === "outcome") ? [j] : [];
+      return j && (j.ev === "review" || j.ev === "proposal" || j.ev === "outcome" || j.ev === "write" || j.ev === "skip") ? [j] : [];
     } catch {
       return [];
     }

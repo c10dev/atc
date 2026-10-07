@@ -477,6 +477,30 @@ interface ReviewView {
   last: { id: string; at: string; trigger: string; detail: string } | null;
   days: { day: string; reviews: number; proposals: number; fired: number; discarded: number }[];
   empty?: { on: boolean; reviews: number; wasted: number; discarded: number };
+  skip?: { on: boolean; heartbeatHourUtc: number; skipped: number; misfires: number; misfireOf: string[] };
+}
+// 같은 사실이면 건너뛴 점검과 오발(ATC-566): 건너뛴 뒤 2시간 안의 다음 점검이 건너뛴 사실로도 설 이슈를 낸 수
+function SkipReviewRecord({ on }: { on: boolean }) {
+  const [v, setV] = useState<ReviewView["skip"] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet("/api/duty/review")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: ReviewView) => alive && setV(d.skip ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [on]);
+  if (!v) return null;
+  return (
+    <div className="config-note" aria-label="DUTY REVIEW SKIP 기록">
+      <p>
+        건너뛴 점검 {v.skipped} · 오발 {v.misfires}
+        {v.misfireOf.length > 0 && ` (${v.misfireOf.slice(-3).join(", ")})`} · 하루 한 번 {String(v.heartbeatHourUtc).padStart(2, "0")}:00Z 뒤 첫 점검은 돈다
+      </p>
+    </div>
+  );
 }
 // empty 트리거의 오발 세기(ATC-470): 헛턴(READY도 안 짚고 이슈도 안 올림)과 올린 이슈가 버려진 점검
 function EmptyReviewRecord({ on }: { on: boolean }) {
@@ -908,6 +932,7 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   },
   dutyReview: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <DutyReviewRecord on={switchOf(s, "dutyReview")?.value === "on"} /> : null),
   dutyReviewEmpty: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <EmptyReviewRecord on={switchOf(s, "dutyReviewEmpty")?.value === "on"} /> : null),
+  dutyReviewSkip: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <SkipReviewRecord on={switchOf(s, "dutyReviewSkip")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
   judgesJev: (s) =>
     s.judges.jev.lastRunAt || s.judges.jev.lastError ? (
