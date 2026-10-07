@@ -43,6 +43,7 @@ export interface L1Deps {
   reviewTurn?: () => boolean;
   openSimilar?: (title: string) => Promise<string | null>; // 비슷한 열린 이슈의 key
   onProposal?: (key: string, title: string) => void;
+  onWrite?: (key: string, action: "comment" | "update") => void; // REVIEW 턴이 이미 있는 이슈에 쓴 것(ATC-566)
   // 비슷한 제목 검사(ATC-488): 모든 DUTY 턴의 create에서 열린 ATC 이슈와 거의 같은 제목을 거절한다(스위치 duplicateTitle이 꺼지면 duplicateOn이 false)
   duplicateOn?: () => boolean;
   duplicateOpen?: (title: string) => Promise<{ key: string; title: string } | null>;
@@ -264,6 +265,7 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
     if (!v.ok) return fail(v.status, v.error);
     if (op.action === "comment") {
       await d.comment(issue.id, op.body);
+      if (reviewing) d.onWrite?.(issue.key, "comment");
       return { status: 200, body: { ok: true, key: issue.key } };
     }
     const input: UpdateInput = {};
@@ -283,6 +285,7 @@ export async function writeLinear(d: L1Deps, op: LinearOp): Promise<Reply> {
       input.labelIds = [...new Set([...issue.labels.map((l) => l.id), ...labels.ids])]; // 더하기만 한다(있는 라벨을 떼지 않는다)
     }
     const r = await d.update(issue.id, input);
+    if (reviewing) d.onWrite?.(r.key, "update");
     return { status: 200, body: { ok: true, key: r.key, state: r.state, ...(shapeWarning ? { warning: shapeWarning } : {}) } };
   } catch (e) {
     const m = msgOf(e);

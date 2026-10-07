@@ -24,6 +24,7 @@ export interface DutyConfig {
   reviewEmpty: boolean; // ATC-470: empty 트리거 스위치(기본 켜짐). SUPERVISOR만(설정 창). 꺼도 다른 트리거는 그대로
   reviewEmptyMin: number; // 받을 수 있는 AIRCRAFT가 있는데 기다리는 Todo FLIGHT가 없는 상태가 이만큼 이어지면 empty 트리거
   reviewEmptyGapMin: number; // empty 점검과 다음 empty 점검 사이 최소 간격
+  reviewSkip: boolean; // ATC-566: 사실이 지난 점검과 같고 그 점검이 아무것도 내지 않았으면 서버가 시작하는 점검을 건너뛴다(기본 켜짐). SUPERVISOR만(설정 창). 끄면 오늘처럼 늘 돈다
 }
 
 export const REVIEW_DEFAULTS = { everyMin: 240, idleMin: 20, leakMin: 60, gapMin: 30, emptyMin: 20, emptyGapMin: 60 } as const;
@@ -59,6 +60,7 @@ export function parseDutyConfig(raw: unknown): DutyConfig {
     reviewEmpty: o.reviewEmpty !== false,
     reviewEmptyMin: reviewNum(o.reviewEmptyMin, REVIEW_DEFAULTS.emptyMin, REVIEW_RANGES.emptyMin),
     reviewEmptyGapMin: reviewNum(o.reviewEmptyGapMin, REVIEW_DEFAULTS.emptyGapMin, REVIEW_RANGES.emptyGapMin),
+    reviewSkip: o.reviewSkip !== false,
   };
 }
 

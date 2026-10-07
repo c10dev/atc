@@ -6,6 +6,10 @@ import type { ReviewLine } from "./duty-review.ts";
 import { fuelHoldOf, landingLinesOf, type ReviewDeps, reviewTick, reviewTurnActive, watchEmptyTurn } from "./duty-review-run.ts";
 import type { DutyRuntime } from "./duty-run.ts";
 import type { Snapshot } from "./model.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appendReviewLine, readReviewLines } from "./duty-review-store.ts";
 
 const T0 = Date.parse("2026-10-02T12:00:00Z");
 const MIN = 60_000;
@@ -174,4 +178,97 @@ test("empty 점검 결과(ATC-470): 점검 턴 뒤에 이어 쓰인 SUPERVISOR �
   const outs = h.appended.filter((l) => l.ev === "outcome");
   assert.equal(outs.length, 1);
   assert.equal(outs[0]!.ev === "outcome" ? outs[0]!.named : -1, 0);
+});
+
+// ── 같은 사실이면 건너뛰기(ATC-566) ──
+// harness의 사실: 놀고 있는 AIRCRAFT 없음, leak "LANDING #9", 착륙 대기열 PR #9, WARNING 알림 하나. 지문은 첫 점검이 남긴 줄에서 읽는다
+async function firstRun(over: Parameters<typeof harness>[0] = {}) {
+  const h = harness({ leak: 200, ...over });
+  assert.equal(await reviewTick(h.d, { idleSince: null }), "R-0001");
+  const r = h.appended[0]!;
+  assert.ok(r.ev === "review" && r.fp && r.facts?.includes("leak:LANDING #9"));
+  return { h, review: r };
+}
+
+test("건너뛰기(ATC-566): 지난 점검이 아무것도 내지 않았고 사실이 같으면 다음 트리거는 턴을 시작하지 않고 skip 한 줄을 남긴다", async () => {
+  const { review } = await firstRun();
+  // 4시간 10분 뒤: 같은 leak의 서명이 reviewEveryMin(240분)을 넘겨 leak 트리거가 다시 선다
+  const h = harness({ leak: 450, lines: [review], now: T0 + 250 * MIN });
+  const state = { idleSince: null as number | null };
+  assert.equal(await reviewTick(h.d, state), null);
+  assert.equal(h.sent.length, 0);
+  const sk = h.appended[0]!;
+  assert.ok(sk.ev === "skip");
+  assert.equal(sk.trigger, "leak");
+  assert.equal(sk.same, "R-0001");
+  assert.equal(sk.fp, review.ev === "review" ? review.fp : "");
+  assert.match(sk.why, /same facts as R-0001/);
+  // 다음 주기(1분 뒤): 건너뛴 점검도 간격에 들어 skip 줄을 또 쓰지 않는다
+  h.d.now = () => T0 + 251 * MIN;
+  assert.equal(await reviewTick(h.d, state), null);
+  assert.equal(h.appended.length, 1);
+  assert.equal(h.sent.length, 0);
+});
+
+test("건너뛰기(ATC-566): 건너뛴 뒤 사실이 바뀌면(새 알림) 트리거를 기다리지 않고 곧바로 돈다", async () => {
+  const { review } = await firstRun();
+  const h = harness({ leak: 450, lines: [review], now: T0 + 250 * MIN });
+  const state = { idleSince: null as number | null };
+  assert.equal(await reviewTick(h.d, state), null);
+  h.d.now = () => T0 + 252 * MIN;
+  h.d.alerts = () => [{ level: "warning", text: "something is stuck" }, { level: "caution", text: "a new one", key: "alert|orphan-flight|ATC-3" }];
+  assert.equal(await reviewTick(h.d, state), "R-0002");
+  assert.match(h.sent[0]!.line, /DUTY REVIEW R-0002 · leak · facts changed since the review skipped at 16:10Z/);
+  const r2 = h.appended.at(-1)!;
+  assert.ok(r2.ev === "review" && r2.facts?.includes("alert:alert|orphan-flight|ATC-3"));
+});
+
+test("건너뛰기(ATC-566): 스위치가 꺼졌거나, 지난 점검이 이슈·댓글을 냈으면 오늘처럼 돈다", async () => {
+  const { review } = await firstRun();
+  const off = harness({ leak: 450, lines: [review], now: T0 + 250 * MIN, cfg: { reviewSkip: false } });
+  assert.equal(await reviewTick(off.d, { idleSince: null }), "R-0002");
+  for (const out of [
+    { v: 1, ev: "proposal", at: new Date(T0 + MIN).toISOString(), review: "R-0001", key: "ATC-9", title: "x" },
+    { v: 1, ev: "write", at: new Date(T0 + MIN).toISOString(), review: "R-0001", key: "ATC-9", action: "comment" },
+  ] as ReviewLine[]) {
+    const h = harness({ leak: 450, lines: [review, out], now: T0 + 250 * MIN });
+    assert.equal(await reviewTick(h.d, { idleSince: null }), "R-0002", out.ev);
+  }
+});
+
+test("건너뛰기(ATC-566): 하루 한 번 — 마지막으로 돈 점검이 00:00Z 전이면 사실이 같아도 돈다", async () => {
+  const { review } = await firstRun();
+  // R-0001은 10-02 12:00Z. 10-03 00:05Z에 정기 트리거가 서면 하루 한 번으로 돈다
+  const h = harness({ leak: 900, lines: [review], now: Date.parse("2026-10-03T00:05:00Z") });
+  assert.equal(await reviewTick(h.d, { idleSince: null }), "R-0002");
+  assert.match(h.sent[0]!.line, /daily heartbeat \(00:00Z\)/);
+  // 같은 날 밀린 점검도: 10-03 02:00Z에 건너뛴 뒤 사실이 그대로면 00:00Z를 넘길 때까지 기다린다
+  const skipLine: ReviewLine = { v: 1, ev: "skip", at: "2026-10-02T23:00:00.000Z", trigger: "schedule", detail: "", same: "R-0001", fp: review.ev === "review" ? review.fp! : "", facts: [], why: "same" };
+  const p = harness({ leak: 900, lines: [review, skipLine], now: Date.parse("2026-10-02T23:40:00Z") });
+  assert.equal(await reviewTick(p.d, { idleSince: null }), null);
+  p.d.now = () => Date.parse("2026-10-03T00:01:00Z");
+  assert.equal(await reviewTick(p.d, { idleSince: null }), "R-0002");
+  assert.match(p.sent[0]!.line, /daily heartbeat \(00:00Z\): facts unchanged since R-0001/);
+});
+
+test("건너뛰기(ATC-566): 지문이 없는 옛 점검 줄 뒤에는 건너뛰지 않는다", async () => {
+  const old: ReviewLine = { v: 1, ev: "review", id: "R-0001", at: new Date(T0 - 250 * MIN).toISOString(), trigger: "schedule", detail: "" };
+  const h = harness({ lines: [old] });
+  assert.equal(await reviewTick(h.d, { idleSince: null }), "R-0002");
+});
+
+test("duty-reviews.jsonl: skip·write 줄도 읽어 들인다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atc-review-store-"));
+  try {
+    const file = join(dir, "duty-reviews.jsonl");
+    const lines: ReviewLine[] = [
+      { v: 1, ev: "review", id: "R-0001", at: "2026-10-02T12:00:00.000Z", trigger: "leak", detail: "", fp: "abc", facts: ["idle:TEAM_A"] },
+      { v: 1, ev: "write", at: "2026-10-02T12:01:00.000Z", review: "R-0001", key: "ATC-9", action: "comment" },
+      { v: 1, ev: "skip", at: "2026-10-02T16:00:00.000Z", trigger: "schedule", detail: "", same: "R-0001", fp: "abc", facts: ["idle:TEAM_A"], why: "same" },
+    ];
+    for (const l of lines) appendReviewLine(l, file);
+    assert.deepEqual(readReviewLines(file), lines);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

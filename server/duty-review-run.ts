@@ -6,7 +6,7 @@ import { loadDutyConfig } from "./duty-config.ts";
 import { appendReviewLine, readReviewLines } from "./duty-review-store.ts";
 import { type DutyRuntime, duty } from "./duty-run.ts";
 import { openEffectLines } from "./effect-check-run.ts";
-import { decideReview, emptyMisfiresOf, namedReadyOf, nextReviewId, openSimilarKey, reviewDaysOf, reviewLeaksOf, reviewPromptOf, type ReviewLine, signalsOf } from "./duty-review.ts";
+import { decideReview, emptyMisfiresOf, FACTS_KEEP_MAX, HEARTBEAT_HOUR_UTC, lastRunOf, namedReadyOf, nextReviewId, openSimilarKey, pendingSkipOf, REVIEW_DAILY_MAX, reviewDaysOf, reviewFactsOf, reviewLeaksOf, reviewMemosOf, reviewPromptOf, type ReviewLine, type ReviewTrigger, signalsOf, skipCountsOf, skipVerdictOf } from "./duty-review.ts";
 import { type OpenLeak, openFromRecords } from "./leaks.ts";
 import { readLeaks } from "./leaks-run.ts";
 import type { Snapshot } from "./model.ts";
@@ -30,8 +30,8 @@ export interface ReviewDeps {
   lines: () => ReviewLine[];
   append: (l: ReviewLine) => void;
   releases: () => ReleaseLine[];
-  openLeaks: (now: number) => { title: string; sinceMs: number }[];
-  alerts: () => { level: string; text: string }[];
+  openLeaks: (now: number) => { title: string; sinceMs: number; id?: string }[];
+  alerts: () => { level: string; text: string; key?: string }[]; // key: 사실 지문(ATC-566)이 쓴다(글에는 분이 들어 있다)
   effects?: () => string[]; // 열린 EFFECT CHECK 평결(not improved·worse, ATC-402). 없으면 빈 목록
   ready?: (snap: Snapshot) => { key: string; title: string; priority: number | null }[]; // empty 점검 지시문에 줄 READY Backlog. 없으면 releaseReadyNow
   ideas?: () => Promise<{ number: number; title: string }[] | null>; // empty 점검 지시문에 줄 열린 idea. null이면 읽지 못함. 없으면 gh
@@ -40,7 +40,7 @@ export interface ReviewDeps {
   startedAt: number;
 }
 
-const openLeaksNow = (now: number): { title: string; sinceMs: number }[] => reviewLeaksOf([...openFromRecords(readLeaks(), now).values()].map((o: OpenLeak) => o.rec));
+const openLeaksNow = (now: number): { title: string; sinceMs: number; id: string }[] => reviewLeaksOf([...openFromRecords(readLeaks(), now).values()].map((o: OpenLeak) => o.rec));
 
 const ideasNow = async (): Promise<{ number: number; title: string }[] | null> => {
   try {
@@ -95,30 +95,64 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
   const [dispatch, snap] = await Promise.all([d.get("/api/dispatch/brief").catch(() => null), d.snapshot()]);
   if (dispatch === null) return null; // 읽지 못한 채 신호를 지어내지 않는다
   const lines = d.lines();
-  // 점검 기록만 본다(서버를 다시 띄워도 정기 점검이 밀리지 않는다: 막 뜬 때는 WARMUP_MS가 막는다)
-  const reviews = lines.flatMap((l) => (l.ev === "review" ? [{ at: Date.parse(l.at), trigger: l.trigger, key: l.key ?? "" }] : []));
-  const lastAt = Math.max(0, ...reviews.map((r) => r.at).filter(Number.isFinite));
-  const signals = signalsOf(dispatch, d.openLeaks(now), now);
+  // 점검 기록만 본다(서버를 다시 띄워도 정기 점검이 밀리지 않는다: 막 뜬 때는 WARMUP_MS가 막는다).
+  // 건너뛴 점검(ATC-566)도 점검처럼 넣는다: 오늘 규칙이 점검했을 때마다 한 번 건너뛰고, 건너뛴 다음 주기에 다시 서지 않는다(하루 상한에는 돈 점검만 센다)
+  const memos = reviewMemosOf(lines).filter((m) => cfg.reviewSkip || !m.skipped); // 스위치가 꺼지면 오늘처럼 돈 점검만 본다
+  const lastAt = Math.max(0, ...memos.map((r) => r.at));
+  const leaks = d.openLeaks(now);
+  const signals = signalsOf(dispatch, leaks, now);
   const rt = d.rt();
   const st = rt.status();
   if (currentReview !== null && !rt.reviewTurn()) currentReview = null;
-  const dec = decideReview({ now, lastAt, busy: st.state !== "idle" || st.queued > 0, cfg, signals, idleSince: state.idleSince, emptySince: state.emptySince ?? null, history: reviews, fuelHold: fuelHoldOf(snap, cfg.account) });
+  const busy = st.state !== "idle" || st.queued > 0;
+  const fuelHold = fuelHoldOf(snap, cfg.account);
+  const dec = decideReview({ now, lastAt, busy, cfg, signals, idleSince: state.idleSince, emptySince: state.emptySince ?? null, history: memos, fuelHold });
   state.idleSince = dec.idleSince;
   state.emptySince = dec.emptySince;
-  if (!dec.run || !dec.trigger) return null;
-  const id = nextReviewId(lines);
+  // 밀린 점검(ATC-566): 마지막으로 돈 점검 뒤에 건너뛴 점검이 있으면, 사실이 바뀌거나 하루 한 번이 오면 트리거를 기다리지 않고 곧바로 돈다.
+  // 돈 점검끼리의 간격·하루 상한·바쁨·FUEL은 그대로 지킨다
+  const last = lastRunOf(lines);
+  const pending = cfg.reviewSkip && !dec.run && !busy && !fuelHold ? pendingSkipOf(lines) : null;
+  const lastRunAt = last?.at ?? 0;
+  const runsToday = memos.filter((m) => !m.skipped && now - m.at < 24 * 60 * 60_000).length;
+  const pendingOk = pending !== null && now - lastRunAt >= cfg.reviewGapMin * 60_000 && runsToday < REVIEW_DAILY_MAX;
+  if (!(dec.run && dec.trigger) && !pendingOk) return null;
   const brief = await d.get("/api/controller/brief").catch(() => null);
-  const alertLines = d
-    .alerts()
+  const landing = landingLinesOf(brief);
+  const alerts = d.alerts();
+  const effects = d.effects?.() ?? [];
+  const facts = reviewFactsOf({ signals, leakIds: leaks.map((l) => l.id ?? l.title), landing, alerts: alerts.map((a) => ({ level: a.level, key: a.key ?? a.text })), effects });
+  const verdict = skipVerdictOf({ on: cfg.reviewSkip, fp: facts.fp, last, now });
+  let trigger: ReviewTrigger;
+  let detail: string;
+  let key: string | undefined;
+  if (dec.run && dec.trigger) {
+    if (verdict.skip) {
+      d.append({ v: 1, ev: "skip", at: new Date(now).toISOString(), trigger: dec.trigger, detail: (dec.detail ?? "").slice(0, 300), ...(dec.key ? { key: dec.key.slice(0, 500) } : {}), same: last?.id ?? "", fp: facts.fp, facts: facts.facts.slice(0, FACTS_KEEP_MAX), why: verdict.why });
+      console.log(`[atc] duty review: skipped ${dec.trigger} — ${verdict.why} (fp ${facts.fp})`);
+      return null;
+    }
+    trigger = dec.trigger;
+    detail = `${dec.detail ?? ""}${verdict.why === "heartbeat" ? ` · daily heartbeat (${String(HEARTBEAT_HOUR_UTC).padStart(2, "0")}:00Z)` : ""}`;
+    key = dec.key;
+  } else {
+    // 밀린 점검: 사실이 그대로면(그리고 하루 한 번이 아직이면) 기다린다. 줄을 더 쓰지 않는다
+    if (verdict.skip || !pending) return null;
+    trigger = pending.trigger;
+    key = pending.key;
+    detail = verdict.why === "heartbeat" ? `daily heartbeat (${String(HEARTBEAT_HOUR_UTC).padStart(2, "0")}:00Z): facts unchanged since ${last?.id ?? "the last review"}` : `facts changed since the review skipped at ${pending.at.slice(11, 16)}Z (${pending.detail.slice(0, 160)})`;
+  }
+  const id = nextReviewId(lines);
+  const alertLines = alerts
     .filter((a) => a.level === "warning" || a.level === "caution")
     .slice(0, 10)
     .map((a) => `${a.level}: ${a.text.slice(0, 160)}`);
   const open = snap.tickets.filter((t) => t.stateType !== "completed" && t.stateType !== "canceled").map((t) => ({ key: t.key, title: t.title }));
-  const isEmpty = dec.trigger === "empty";
+  const isEmpty = trigger === "empty";
   const readyBacklog = isEmpty ? (d.ready ?? releaseReadyNow)(snap).map((r) => ({ key: r.key, title: r.title, priority: r.priority ?? null })) : undefined;
   const ideas = isEmpty ? await (d.ideas ?? ideasNow)() : undefined;
-  const text = reviewPromptOf({ id, trigger: dec.trigger, detail: dec.detail ?? "", signals, linear: cfg.l1, landing: landingLinesOf(brief), alerts: alertLines, effects: d.effects?.() ?? [], openIssues: open, readyBacklog, ideas });
-  const line = `DUTY REVIEW ${id} · ${dec.trigger} · ${dec.detail ?? ""}`.slice(0, 300);
+  const text = reviewPromptOf({ id, trigger, detail, signals, linear: cfg.l1, landing, alerts: alertLines, effects, openIssues: open, readyBacklog, ideas });
+  const line = `DUTY REVIEW ${id} · ${trigger} · ${detail}`.slice(0, 300);
   currentReview = id; // 턴 시작 전에 세운다: 첫 도구 호출이 이 id를 본다
   if (isEmpty) emptyTurn = { id, ready: readyBacklog ?? [], text: "" };
   const r = await rt.sendReview(text, line);
@@ -127,7 +161,7 @@ export async function reviewTick(d: ReviewDeps, state: { idleSince: number | nul
     emptyTurn = null;
     return null;
   }
-  d.append({ v: 1, ev: "review", id, at: new Date(now).toISOString(), trigger: dec.trigger, detail: (dec.detail ?? "").slice(0, 300), ...(dec.key ? { key: dec.key.slice(0, 500) } : {}) });
+  d.append({ v: 1, ev: "review", id, at: new Date(now).toISOString(), trigger, detail: detail.slice(0, 300), ...(key ? { key: key.slice(0, 500) } : {}), fp: facts.fp, facts: facts.facts.slice(0, FACTS_KEEP_MAX) });
   return id;
 }
 
@@ -146,7 +180,7 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
     append: (l) => appendReviewLine(l),
     releases: () => readReleaseLines(),
     openLeaks: openLeaksNow,
-    alerts: () => currentAlerts().map((a) => ({ level: a.level ?? "", text: a.text ?? "" })),
+    alerts: () => currentAlerts().map((a) => ({ level: a.level ?? "", text: a.text ?? "", key: a.key })),
     effects: deps.effects ?? openEffectLines,
     now: Date.now,
     startedAt: Date.now(),
@@ -183,6 +217,7 @@ export function mountDutyReview(app: Hono, snapshot: () => Promise<Snapshot>, de
       linear: cfg.l1,
       config: { everyMin: cfg.reviewEveryMin, idleMin: cfg.reviewIdleMin, leakMin: cfg.reviewLeakMin, gapMin: cfg.reviewGapMin, emptyMin: cfg.reviewEmptyMin, emptyGapMin: cfg.reviewEmptyGapMin },
       empty: { on: cfg.reviewEmpty, ...emptyMisfiresOf(lines, tickets) },
+      skip: { on: cfg.reviewSkip, heartbeatHourUtc: HEARTBEAT_HOUR_UTC, ...skipCountsOf(lines) },
       last: last && last.ev === "review" ? { id: last.id, at: last.at, trigger: last.trigger, detail: last.detail } : null,
       days: reviewDaysOf(lines, d.releases(), tickets, d.now(), 14),
     });
@@ -196,6 +231,10 @@ export function reviewHooks(snapshot: () => Promise<Snapshot>) {
     openSimilar: async (title: string) => openSimilarKey(title, (await snapshot()).tickets, Date.now()),
     onProposal: (key: string, title: string) => {
       if (currentReview) appendReviewLine({ v: 1, ev: "proposal", at: new Date().toISOString(), review: currentReview, key, title: title.slice(0, 200) });
+    },
+    // 이미 있는 이슈에 쓴 댓글·고침(ATC-566): 그 점검이 무언가 냈다는 기록. 다음 점검을 건너뛰지 않게 한다
+    onWrite: (key: string, action: "comment" | "update") => {
+      if (currentReview) appendReviewLine({ v: 1, ev: "write", at: new Date().toISOString(), review: currentReview, key, action });
     },
   };
 }

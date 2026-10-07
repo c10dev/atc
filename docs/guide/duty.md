@@ -116,6 +116,7 @@ DUTY 서랍 위쪽의 **IDEAS**(또는 주소 `#ideas`)는 atc 저장소에서 �
 - **채팅에서.** 점검이 시작되면 대화에 `DUTY REVIEW R-3 · idle · TEAM_A idle for 25 min while ATC-1 wait` 같은 한 줄이 나오고, 이어서 DUTY의 요약이 나옵니다. 긴 지시문은 대화에 남지 않습니다.
 - **스위치.** 설정 → OPERATIONS → **DUTY REVIEW**(기본 `on` ⚠, 이 화면에서만 바꿉니다). 끄면 서버가 DUTY를 스스로 부르지 않습니다. DUTY 자체가 꺼져 있으면 점검도 돌지 않습니다. 간격과 기준은 `duty.json`의 `reviewEveryMin`, `reviewIdleMin`, `reviewLeakMin`, `reviewGapMin`(분)입니다.
 - **일감이 비었을 때(empty).** DUTY는 먼저 지금 쏠 만한 **READY Backlog**를 요약에서 이유와 함께 짚고(쏘는 것은 당신입니다), 다음으로 설계 문서 Implementation order 표에서 아직 이슈가 없는 단계를, 그다음 한 FLIGHT로 끝낼 작은 `idea`를 Backlog 이슈로 제안합니다(둘을 합쳐 최대 3건). 설정 → OPERATIONS → **DUTY REVIEW EMPTY** 스위치(기본 `on` ⚠)로 이 트리거만 끌 수 있고, 아래에 **헛턴**(READY도 안 짚고 이슈도 안 올린 점검)과 **이슈가 버려진 점검** 수가 나옵니다. 기준은 `duty.json`의 `reviewEmptyMin`(20), `reviewEmptyGapMin`(60)입니다.
+- **같은 사실이면 건너뜁니다(ATC-566).** 점검을 시작하기 전에 atc가 이번 점검이 실을 사실(놀고 있는 AIRCRAFT, 기다리는 FLIGHT, 열린 leak, 착륙 대기열과 막힘, WARNING·CAUTION 알림, EFFECT CHECK 평결)을 지난 점검과 견줍니다. 기다린 분이나 컨텍스트 크기처럼 시간만 지나면 자라는 값은 보지 않습니다. 사실이 같고 지난 점검이 이슈도 댓글도 내지 않았으면 이번 점검은 돌지 않고 기록에 한 줄만 남습니다. 사실이 바뀌면 곧바로 돌고, 바뀌지 않아도 하루 한 번(00:00Z = 09:00 KST 뒤 첫 점검)은 돕니다. 당신이 DUTY에게 쓴 글은 건너뛰지 않습니다. 설정 → OPERATIONS → **DUTY REVIEW SKIP**(기본 `on`)으로 끄면 예전처럼 트리거마다 돕니다. 스위치 아래에 **건너뛴 점검** 수와 **오발** 수(건너뛴 뒤 2시간 안의 다음 점검이 건너뛴 사실로도 설 이슈를 낸 수)가 나옵니다.
 - **중복 제안이 없습니다.** 열린 이슈와 제목이 비슷하면 서버가 이슈 만들기를 거절하고, DUTY는 그 이슈에 댓글로 근거를 더합니다.
 - **하루 세기.** 설정 창의 DUTY REVIEW 아래에 날짜(Z)마다 점검 수, 만든 제안, 발권된 제안, 버려진(Canceled) 제안이 나옵니다.
 - DUTY의 Linear 쓰기(`l1`)가 꺼져 있으면 점검은 돌지만 이슈는 만들지 않고 제안을 요약에만 적습니다.
