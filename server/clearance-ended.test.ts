@@ -127,7 +127,7 @@ test("the 1-minute job closes by appending an undeliverable line (never a rewrit
   const later = Date.now() + ENDED_GRACE_MS + 60_000;
   assert.deepEqual(overdueRefsOf(allClearances(), later).map((x) => x.id).sort(), [a.id, b.id, withFlight.id].sort());
   const before = readFileSync(file, "utf8");
-  const snap = { sessions: [{ ...TOWER, agent: "claude" as const, name: "TOWER", pid: 1, cwd: "/", startedAt: ago(H), repo: null, workspacePath: null }], restarting: [] };
+  const snap = { sessions: [{ id: TOWER.id, status: "idle" as const, lastActiveAt: ago(0), agent: "claude" as const, name: "TOWER", pid: 1, cwd: "/", startedAt: ago(H), repo: null, workspacePath: null }], restarting: [] };
 
   // 스위치 off: 아무것도 닫지 않는다
   saveEndedSwitch("off", "test", switchFile);
