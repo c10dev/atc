@@ -324,3 +324,15 @@ test("서버가 본 두 번째 침묵: 판정 중이면 이번 바퀴에서 빼�
   assert.equal(run.exceptionWakeEvents("tower", [ev(c2.id)], s, h2.deps)[0]!.text, `no answer to ${c2.id}`);
   store.saveExceptionsMode("on");
 });
+
+test("침묵은 호출 하나에 판정 하나: 마지막 메시지가 바뀌어도 24시간 안이면 다시 판정하지 않는다", async () => {
+  const h = harness({ answers: jevAnswers("ESCALATE", 0.95) });
+  const x = kase({ ref: "C-0077", kind: "silence", text: "Working on the tests now.", situation: situation({ resent: true }) });
+  const a = await run.judgeException(x, h.deps);
+  const b = await run.judgeException({ ...x, text: "Tests pass, writing the PR body." }, h.deps);
+  assert.equal(a.cached, false);
+  assert.equal(b.cached, true);
+  assert.equal(b.line.id, a.line.id);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.cards.length, 1);
+});

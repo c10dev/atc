@@ -130,12 +130,19 @@ export function jevEngine(apiKey: string, fetchImpl: Fetch = fetch): JudgeEngine
 
 // ---- claude -p 한 번(예외 판정 ATC-558이 Jev 다음에 묻는 판정). 묻기만 한다: 도구 없음, hook 끔, 세션 저장 없음 ----
 export const CLAUDE_MODEL = "claude-sonnet-5-5"; // claude -p 한 번. Claude 모델만(출력의 modelUsage가 claude-로 시작하지 않으면 버린다)
-const CLAUDE_TIMEOUT_MS = 90_000;
+const CLAUDE_TIMEOUT_MS = 60_000; // Jev 20초 + 이것이 관제 세션 Bash 기본 120초 안에 끝나게
 const CLAUDE_ARGS = ["-p", "--model", CLAUDE_MODEL, "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--settings", JSON.stringify({ disableAllHooks: true })];
 
 // 프롬프트는 stdin으로 준다(명령줄에 남지 않게). 실패·시간 초과는 빈 글("답하지 않음")
 export type ClaudeRunner = (prompt: string) => Promise<string>;
-export const claudeRunner: ClaudeRunner = (prompt) =>
+// 한 번에 하나만 띄운다(프로세스 하나가 수백 MB: account-usage-run.ts처럼 줄 세운다)
+let claudeChain: Promise<unknown> = Promise.resolve();
+export const claudeRunner: ClaudeRunner = (prompt) => {
+  const run = claudeChain.then(() => claudeOnce(prompt));
+  claudeChain = run.catch(() => "");
+  return run;
+};
+const claudeOnce = (prompt: string): Promise<string> =>
   new Promise((resolve) => {
     let out = "";
     let done = false;

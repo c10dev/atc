@@ -97,7 +97,7 @@ export const READ_ONLY = [
   ["server/sources/linear-labels.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/sources/linear-projects.ts", "Linear GraphQL query만(mutation 없음)"],
   ["server/browser-gate-cli.ts", "Playwright가 준 Chrome을 줄 세워 그대로 실행(호스트 밖에 쓰지 않음, 스크린샷 안 씀, ATC-520)"],
-  ["server/judges/engines.ts", "판정 엔진에 묻기만 함(POST지만 상태를 바꾸지 않음)"],
+  ["server/judges/engines.ts", "판정 엔진에 묻기만 함(Jev POST와 예외 판정의 `claude -p` 한 번(ATC-558, 도구 없음·hook 끔·세션 저장 없음). 상태를 바꾸지 않음)"],
 ];
 
 const RANK = { auto: 0, flagged: 1, user: 2 };

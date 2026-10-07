@@ -97,15 +97,23 @@ export function exceptionIdOf(x: Pick<ExceptionCase, "ref" | "kind" | "text" | "
 
 const inflight = new Map<string, Promise<ExceptionJudgeLine>>();
 export const cachedException = (id: string, deps: Pick<ExceptionDeps, "readLines"> = defaultExceptionDeps()) => exceptionLinesOf(deps.readLines()).find((l) => l.id === id) ?? null;
+// 침묵은 호출 하나에 판정 하나: 그 세션의 마지막 메시지가 바뀌어도(일을 계속하는 CAPTAIN) 24시간 안이면 다시 판정하지 않는다
+export const SILENCE_REUSE_MS = 24 * 60 * 60_000;
+export function silenceJudged(ref: string, deps: Pick<ExceptionDeps, "readLines" | "now"> = defaultExceptionDeps()): ExceptionJudgeLine | null {
+  const since = deps.now() - SILENCE_REUSE_MS;
+  return exceptionLinesOf(deps.readLines()).filter((l) => l.ref === ref && l.kind === "silence" && Date.parse(l.at) >= since).at(-1) ?? null;
+}
+const keyOf = (x: Pick<ExceptionCase, "ref" | "kind">, id: string) => (x.kind === "silence" ? `silence|${x.ref}` : id);
 
 export async function judgeException(x: ExceptionCase, deps: ExceptionDeps = defaultExceptionDeps()): Promise<{ line: ExceptionJudgeLine; cached: boolean }> {
   const { id, masked, candidates, hash } = exceptionIdOf(x);
-  const known = cachedException(id, deps);
+  const key = keyOf(x, id);
+  const known = x.kind === "silence" ? silenceJudged(x.ref, deps) : cachedException(id, deps);
   if (known) return { line: known, cached: true };
-  const running = inflight.get(id);
+  const running = inflight.get(key);
   if (running) return { line: await running, cached: true };
-  const p = judgeFresh(x, id, masked, candidates, hash, deps).finally(() => inflight.delete(id));
-  inflight.set(id, p);
+  const p = judgeFresh(x, id, masked, candidates, hash, deps).finally(() => inflight.delete(key));
+  inflight.set(key, p);
   return { line: await p, cached: false };
 }
 
@@ -249,10 +257,9 @@ export function exceptionWakeEvents<E extends WakeEventLike>(role: string, event
         continue;
       }
       const x = { ...got.case, text: lastMessage(got.session) };
-      const { id } = exceptionIdOf(x);
-      const done = cachedException(id, deps);
+      const done = silenceJudged(ref, deps);
       if (!done) {
-        if (!inflight.has(id)) void judgeException(x, deps).catch((err) => console.error(`[atc] exception judge failed ${ref}:`, errText(err)));
+        if (!inflight.has(`silence|${ref}`)) void judgeException(x, deps).catch((err) => console.error(`[atc] exception judge failed ${ref}:`, errText(err)));
         continue; // 판정 중: 다음 바퀴에
       }
       if (done.action === "ESCALATE" && done.card) continue; // 카드가 보고를 대신한다

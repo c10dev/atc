@@ -70,6 +70,7 @@ While the SUPERVISOR's switch (Settings → JUDGES → EXCEPTIONS, on by default
 | `ESCALATE` | `dispatch unable D-xxxx -- '<the reason as given>'`. With `CARD: DC-xxxx` the SUPERVISOR card is already filed: put only the card id in the OCC LOG, no separate report. With `CARD: not filed`, report to the SUPERVISOR | Record nothing; the card id in the OCC LOG (no card: report to the SUPERVISOR) | Same |
 
 - The card's answer comes on a later tick as `decision-answered`. Act on it (what OCC cannot do, such as an answer to a team, the SUPERVISOR does with RELAY), then `decision ack occ <DC-xxxx>`.
+- If the FLIGHT PLAN closes while its judge card is still open (a late READBACK, a RECALL, a CANCEL), withdraw it with `decision withdraw occ <DC-xxxx>` (the card has no PR, so it does not close by itself).
 - Don't change a judgment or ask again about the same thing. The SUPERVISOR marks wrong judgments in Settings.
 ## Arrival candidates and missing arrival reports (`dispatch brief`)
 

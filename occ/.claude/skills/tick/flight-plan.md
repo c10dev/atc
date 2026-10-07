@@ -68,6 +68,7 @@ SUPERVISOR의 스위치(설정 창 JUDGES → EXCEPTIONS, 기본 on)가 켜져 �
 | `ESCALATE` | `dispatch unable D-xxxx -- '<사유 그대로>'`. `CARD: DC-xxxx`면 SUPERVISOR 카드가 이미 올라갔다: OCC LOG에 카드 id만 적고 따로 보고하지 않는다. `CARD: not filed`면 SUPERVISOR 보고 | 기록 없이 OCC LOG에 카드 id(없으면 SUPERVISOR 보고) | 같다 |
 
 - 카드의 답은 다음 tick에 `decision-answered`로 온다. 답을 따라 일하고(OCC가 못 하는 것, 예를 들어 팀에 보내는 답은 SUPERVISOR가 RELAY로 한다) `decision ack occ <DC-xxxx>`.
+- 판정 카드가 열린 채 그 FLIGHT PLAN이 닫히면(뒤늦은 READBACK, RECALL, CANCEL) `decision withdraw occ <DC-xxxx>`로 거둔다(카드에 PR이 없어 저절로 닫히지 않는다).
 - 판정을 고치거나 같은 일로 다시 묻지 않는다. 틀린 판정은 SUPERVISOR가 설정 창에서 표시한다.
 ## 도착 후보와 도착 보고 누락 (`dispatch brief`)
 

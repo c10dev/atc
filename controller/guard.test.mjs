@@ -402,3 +402,19 @@ test("atcctl tick(ATC-553): MCC·CROSSCHECK·REVIEW는 자기 역할의 tick 하
     assert.notEqual(check(`${CTL} tick ${role} > out.txt`, cwd, opts), null, role);
   }
 });
+
+test("atcctl exception(ATC-558): TOWER·OCC만 쓴다. 작은따옴표 안의 CAPTAIN 글(<, >, $, 백틱, URL)은 그대로 통과하고, MCC·CROSSCHECK·REVIEW는 막힌다", () => {
+  const OCC = HERE.replace(/controller$/, "occ");
+  const text = "'UNABLE C-0012 — needs <PR #12> first -> see https://github.com/x/y/pull/12, $HOME, `x` and a → b'";
+  assert.equal(check(`node atcctl.mjs exception C-0012 --kind unable -- ${text}`, HERE, {}), null, "tower");
+  assert.equal(check("node atcctl.mjs exception C-0012 --kind silence", HERE, {}), null, "tower silence");
+  const CTL = "node ../controller/atcctl.mjs";
+  assert.equal(check(`${CTL} exception D-0003 --kind question -- ${text}`, OCC, { occ: true, ghRead: true }), null, "occ");
+  for (const [role, cwd, opts] of [
+    ["mcc", HERE.replace(/controller$/, "mcc"), { mcc: true, ghRead: true }],
+    ["crosscheck", HERE.replace(/controller$/, "crosscheck"), { crosscheck: true, ghRead: true }],
+    ["review", HERE.replace(/controller$/, "review"), { review: true }],
+  ])
+    assert.notEqual(check(`${CTL} exception D-0003 --kind unable -- 'x'`, cwd, opts), null, role);
+  assert.notEqual(check(`node atcctl.mjs exception C-0012 --kind unable -- $(cat /etc/passwd)`, HERE, {}), null, "따옴표 밖 $(…)는 막힌다");
+});

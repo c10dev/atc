@@ -94,6 +94,7 @@ While the SUPERVISOR's switch (Settings → JUDGES → EXCEPTIONS, on by default
 | `ESCALATE` | `unable C-xxxx -- '<the reason as given>'`. With `CARD: DC-xxxx` the SUPERVISOR card is already filed: put only the card id in the ATC LOG, no separate report. With `CARD: not filed`, report to the SUPERVISOR the old way | Record nothing; the card id in the ATC LOG (no card: report to the SUPERVISOR) | Same. The card replaces the "no answer" report |
 
 - The card's answer comes on a later tick as `decision-answered`. Act on it (for "answer yes", send that answer as an English INFO), then `decision ack tower <DC-xxxx>`.
+- If the CLEARANCE closes while its judge card is still open (a late READBACK, a cancel), withdraw it with `decision withdraw tower <DC-xxxx>` (the card has no PR, so it does not close by itself).
 - Don't change a judgment or ask again about the same thing. The SUPERVISOR marks wrong judgments in Settings.
 
 ## SUPERVISOR decisions go on a card (ATC-352)

@@ -92,6 +92,7 @@ SUPERVISOR의 스위치(설정 창 JUDGES → EXCEPTIONS, 기본 on)가 켜져 �
 | `ESCALATE` | `unable C-xxxx -- '<사유 그대로>'`. `CARD: DC-xxxx`면 SUPERVISOR 카드가 이미 올라갔다: ATC LOG에 카드 id만 적고 따로 보고하지 않는다. `CARD: not filed`면 옛 방법대로 SUPERVISOR 보고 | 기록 없이 ATC LOG에 카드 id(없으면 SUPERVISOR 보고) | 같다. 카드가 "답 없음" 보고를 대신한다 |
 
 - 카드의 답은 다음 tick에 `decision-answered`로 온다. 답을 따라 일하고(예: "예로 답하기"면 그 답을 영어 INFO로 보낸다) `decision ack tower <DC-xxxx>`.
+- 판정 카드가 열린 채 그 CLEARANCE가 닫히면(뒤늦은 READBACK, 취소) `decision withdraw tower <DC-xxxx>`로 거둔다(카드에 PR이 없어 저절로 닫히지 않는다).
 - 판정을 고치거나 같은 일로 다시 묻지 않는다. 틀린 판정은 SUPERVISOR가 설정 창에서 표시한다.
 
 ## SUPERVISOR의 결정은 카드로 (ATC-352)
