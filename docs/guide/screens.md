@@ -75,7 +75,7 @@ SUPERVISOR의 위치를 가운데 둔 읽기 전용 지구본이다(설계: `doc
 
 ## 설정 창의 MIGRATE(마이그레이션 리허설)
 
-설정 창 AUTOMATION → OPERATIONS의 **FRESH START** 블록(ATC-560)은 열린 AIRPORT마다 줄 하나다(SUPERVISOR 전용, 세션은 못 바꿈, `fresh-start.json`): `off`(승인된 카드의 FRESH START… 버튼만), `always`(배포 값: OCC가 승인된 카드를 보내려 할 때 받을 AIRCRAFT의 세션이 이미 FLIGHT를 날았으면 atc가 그 세션을 STOP하고 CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 LAUNCH), `over`(대화가 base + 50k를 넘을 때만). `off`에서 올릴 때는 경고와 확인 버튼이 한 번 더 나온다. 파일이 없거나 깨졌으면 모두 `off`로 읽히고 그렇다고 적힌다. 줄 밑에는 AIRPORT마다 최근 7일 오작동 수가 있다: 자동 재시작, 사유별 건너뜀, 단계별 실패(stop·launch·send), 그리고 다시 띄운 적 있는 AIRCRAFT의 다시 띄운 FLIGHT 대 그대로 보낸 FLIGHT의 BLOCKED·질문, FLIGHT당 토큰 중앙값, FIX·GO AROUND. 수는 보기만 하고 스위치를 스스로 끄지 않는다.
+설정 창 AUTOMATION → OPERATIONS의 **FRESH START** 블록(ATC-560)은 열린 AIRPORT마다 줄 하나다(SUPERVISOR 전용, 세션은 못 바꿈, `fresh-start.json`): `off`(승인된 카드의 FRESH START… 버튼만), `always`(배포 값: OCC가 승인된 카드를 보내려 할 때 받을 AIRCRAFT의 세션이 이미 FLIGHT를 날았으면 atc가 그 세션을 STOP하고 CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 LAUNCH), `over`(대화가 base + 50k를 넘을 때만). `off`에서 올릴 때는 경고와 확인 버튼이 한 번 더 나온다. 파일이 없거나 깨졌으면 모두 `off`로 읽히고 그렇다고 적힌다. 줄 밑에는 최근 7일에 자동 판정이 있었던 AIRPORT마다 오작동 수가 한 줄씩 있다(아무 일 없던 AIRPORT는 줄이 없다): 자동 재시작, 사유별 건너뜀, 단계별 실패(stop·launch·send), 그리고 다시 띄운 적 있는 AIRCRAFT의 다시 띄운 FLIGHT 대 그대로 보낸 FLIGHT의 BLOCKED·질문, FLIGHT당 토큰 중앙값, FIX·GO AROUND. 수는 보기만 하고 스위치를 스스로 끄지 않는다.
 
 설정 창 AUTOMATION의 **MIGRATE** 블록은 호스티드 DB가 있는 AIRPORT마다 스위치 하나다(SUPERVISOR 전용, 세션은 못 바꿈, 기본 꺼짐). 시험 DB(`hostedDb.testProjectRef`)와 `.env.local`의 `SUPABASE_MIGRATE_TOKEN`이 있어야 켤 수 있고, 없으면 이유가 적힌다.
 
