@@ -117,7 +117,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "BROWSER GATE", "브라우저(Playwright) 동시 실행 상한", "browser gate 브라우저 playwright chrome headless 동시 실행 줄 슬롯 CPU browserGate"],
     ["operations", "SCHEDULE·FLEET PLAN AUTO", "SCHEDULE·FLEET PLAN 자동 적용", "schedule fleet plan 자동 적용 사람 없이 off on misfire 오작동 scheduleAuto fleetPlanAuto schedule.auto fleet-plan.auto backlog"],
     ["operations", "REPOSITION", "소속 AIRPORT 옮기기", "base fleet plan approval auto fleet-plan.reposition"],
-    ["operations", "CONTROL RECYCLE", "관제 세션 자동 재시작", "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode"],
+    ["operations", "CONTROL RECYCLE", "관제 세션 자동 재시작", "cap 컨텍스트 context 재시작 auto alert controlRecycle.mode carry over 넘겨 줌 overdue CLEARANCE RESEND 답 없음 controlRecycleCarry"],
     ["operations", "DUTY", "DUTY 채팅(atc 안의 대화 상대)", "duty chat 채팅 서랍 drawer claude acct-2 duty.enabled 대화 shift charter 차터 duty.charter CHARTER REQUEST OCC empty duty.reviewEmpty DUTY REVIEW EMPTY skip duty.reviewSkip DUTY REVIEW SKIP 건너뛰기 l1 duty.l1 DUTY L1 stand linear"],
     ["operations", "JUDGES", "판정 계열", "jev typesafe replay shadow judges.jev"],
     ["operations", "LANDING GAP", "착륙 없음 막힘 규칙(HOME)", "landing gap 착륙 없음 막힘 p90 기준 landingGap"],

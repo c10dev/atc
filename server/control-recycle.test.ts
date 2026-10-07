@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type RecycleInput, DEFAULT_CAPS, DEFAULT_WAIT_ALERT_MIN, TOWER_EVENTS_MAX, contextTokensOf, controlRecycleOf, goneOf, jobIdle, parseRecycle, recycleAlertTextOf, safeBlocksOf, waitAlertTextOf, NO_FACTS, autoChangeLines, capChangeLines, waitMinutesOf, wouldWaitDue } from "./control-recycle.ts";
+import { type OverdueRef, type RecycleInput, DEFAULT_CAPS, DEFAULT_WAIT_ALERT_MIN, TOWER_EVENTS_MAX, contextTokensOf, controlRecycleOf, goneOf, jobIdle, parseRecycle, recycleAlertTextOf, safeBlocksOf, waitAlertTextOf, NO_FACTS, autoChangeLines, capChangeLines, waitMinutesOf, wouldWaitDue } from "./control-recycle.ts";
 import { restartSafetyOf } from "./occ-safe.ts";
 import { type ActDeps, performRecycle, projectDirName } from "./control-recycle-run.ts";
 import { supervisorAlertsOf } from "./supervisor-alerts.ts";
@@ -114,7 +114,7 @@ test("controlRecycleOf: 안전 자료를 못 읽으면 막는다(fail-closed)", 
   assert.equal(controlRecycleOf(input({ safe: null })).action, "wait");
 });
 
-const clean = { rtsBusy: null, tower: { events: 0, overdue: 0 }, occ: { blockers: [] as never[], crewChangeOpen: 0 }, mcc: { blocked: null } };
+const clean = { rtsBusy: null, tower: { events: 0, overdue: [] as OverdueRef[] }, occ: { blockers: [] as never[], crewChangeOpen: 0 }, mcc: { blocked: null } };
 
 test("safeBlocksOf: RTS는 모든 세션을 막는다", () => {
   for (const n of ["TOWER", "OCC", "MCC", "CROSSCHECK", "REVIEW"]) {
@@ -125,9 +125,9 @@ test("safeBlocksOf: RTS는 모든 세션을 막는다", () => {
 test("safeBlocksOf: 세션마다 다른 조건", () => {
   for (const n of ["TOWER", "OCC", "MCC", "CROSSCHECK", "REVIEW"]) assert.deepEqual(safeBlocksOf(n, clean), []);
   // TOWER(ATC-175): acked하지 않은 이벤트는 새 TOWER가 brief에서 다시 받는다(ATC-165 1.2). 문턱까지는 막지 않는다
-  assert.deepEqual(safeBlocksOf("TOWER", { ...clean, tower: { events: TOWER_EVENTS_MAX, overdue: 0 } }), []);
-  assert.equal(safeBlocksOf("TOWER", { ...clean, tower: { events: TOWER_EVENTS_MAX + 1, overdue: 0 } }).length, 1);
-  assert.equal(safeBlocksOf("TOWER", { ...clean, tower: { events: 0, overdue: 1 } }).length, 1);
+  assert.deepEqual(safeBlocksOf("TOWER", { ...clean, tower: { events: TOWER_EVENTS_MAX, overdue: [] } }), []);
+  assert.equal(safeBlocksOf("TOWER", { ...clean, tower: { events: TOWER_EVENTS_MAX + 1, overdue: [] } }).length, 1);
+  assert.equal(safeBlocksOf("TOWER", { ...clean, tower: { events: 0, overdue: [{ id: "C-0001", to: "TEAM_A" }] } }).length, 1);
   // 다른 세션의 조건은 TOWER를 막지 않는다
   const now = Date.parse("2026-09-30T12:00:00Z");
   const iso = (ms: number) => new Date(ms).toISOString();

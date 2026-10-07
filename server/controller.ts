@@ -6,6 +6,7 @@ import { awayOperations } from "./away.ts";
 import { allClearances, CLEARANCE_TYPES, isClearanceOverdue, isPending, issueClearance, markClearance, markClearanceHand } from "./clearances.ts";
 import { mootNow } from "./clearance-moot-run.ts";
 import { clearanceCalls } from "./stale-reply.ts";
+import { resendLinksOf, resendViewOf } from "./clearance-resend.ts";
 import { refuseStaleReply } from "./stale-reply-run.ts";
 import { clearanceHeadOf } from "./input-binding.ts";
 import { releaseOfFlightNow } from "./input-binding-run.ts";
@@ -77,6 +78,8 @@ export function buildBrief(
   const away = awayOperations(s);
 
   const pending = clearances.filter(isPending);
+  // RESEND 고리(ATC-565): 새 TOWER가 대화 없이 기록에서 두 번째 RESEND와 "답 없음"을 가린다
+  const resends = resendLinksOf(clearances);
   const clearanceView = (c: Clearance) => ({
     id: c.id,
     to: label(c.to),
@@ -87,6 +90,7 @@ export function buildBrief(
     response: responseOf("clearance", c.type), // 닫는 답(ATC-122): W/U는 READBACK·UNABLE, R은 ROGER
     standbyAt: c.standbyAt ?? null,
     ageMin: Math.round((now - Date.parse(c.at)) / 60_000),
+    ...resendViewOf(resends.get(c.id)),
   });
 
   // LANDING SEQUENCE: Draft가 아닌 열린 PR. CLEARED TO LAND가 readyAt 순으로 앞(seq 1, 2, …), 그 뒤 APPROACH.
@@ -255,7 +259,8 @@ export function buildBrief(
     clearances: {
       pending: pending.map(clearanceView),
       moot: moot.map(clearanceView),
-      overdue: pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS) && !handedLand.has(c.id)).map((c) => c.id), // 첫 STANDBY가 있으면 그때부터 다시 센다. AUTOLAND가 넘긴 PR의 LAND는 뺀다
+      // 첫 STANDBY가 있으면 그때부터 다시 센다. AUTOLAND가 넘긴 PR의 LAND와, 고리의 다른 CLEARANCE가 답을 받은 것(ATC-565)은 뺀다
+      overdue: pending.filter((c) => isClearanceOverdue(c, now, OVERDUE_MS) && !handedLand.has(c.id) && !resends.get(c.id)?.answeredVia).map((c) => c.id),
     },
     traffic,
   };
