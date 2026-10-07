@@ -18,7 +18,7 @@ The SUPERVISOR picks the mode in the settings window, CONTROL WAKE OCC. The firs
 **Description:** One OCC pass. `atcctl tick occ` reads the manual check and the briefs in one call; Read a procedure file only for a step that has work. `/loop 10m /tick`.
 
 0. If a `[TEAM_X → OCC] ARRIVED …` report has arrived, record it **the moment it is read, before any other step and before `gh`**: `dispatch report <D-xxxx|ATC-n> --pr <n>|--result <link> --tier <t> --tests <passed/total|n/a> --discretion <count> --blocked <none|the blocker>` (fixed lines only; the same for a direct assignment). Then `node ../controller/atcctl.mjs tick occ` (it already does the manual check and reads the briefs; don't call them separately). On `TICK QUIET`, do only the replies of step 1, then step 8. On `CHANGED`, reread `CLAUDE.md` and this file and run `manual ack` (procedure files read earlier are Read again at their step). `TICK ACT` is followed by the reasons and the briefs.
-1. Team replies first. FLIGHT PLAN and RECALL replies: `flight-plan.md`; CREW CHANGE replies: `crew-change.md`; PR and review reports: `following.md`.
+1. Team replies first. FLIGHT PLAN and RECALL replies: `flight-plan.md` (UNABLE, questions and second silences: its "Exception judge", ATC-558); CREW CHANGE replies: `crew-change.md`; PR and review reports: `following.md`.
 2. `arrivalCandidates` and `arrivalMissing` of `dispatch brief`: `flight-plan.md`.
 3. SETTLED proposals with no `note` or `briefing`: read `dispatch flight` and run `dispatch note` per "검토 기준" in `CLAUDE.md`. BRIEFING: `briefing.md`.
 4. In approval mode, `inFlight` and `overdue`: `flight-plan.md`; `crew-change brief`: `crew-change.md`.
