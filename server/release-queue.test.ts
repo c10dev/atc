@@ -149,6 +149,31 @@ test("순서 지도: 상위 이슈마다 한 줄, 기타에서는 밑에 이슈�
   assert.equal(q.map[1]!.total, 3);
 });
 
+test("화면 밖의 막는 이슈(ATC-488): 홀로 기다리는 이슈는 지도에 서고, 막힌 제안의 줄은 막는 이슈가 어디 있는지 가진다", () => {
+  const parkedBlocker = { key: "VOC-365", why: "parked" as const, text: "PARKED", href: "#release/parked" };
+  const g: TreeGroup<RowExtra>[] = [
+    {
+      key: null,
+      title: "기타",
+      done: 0,
+      total: 0,
+      next: null,
+      rows: [
+        row("VOC-366", wait("VOC-365"), null, { missing: [parkedBlocker] }),
+        row("ATC-249", wait("ATC-248"), null, { missing: [] }), // 막는 이슈가 화면에 있다(다른 줄): 지도에 따로 서지 않는다
+        row("ATC-9", wait("ATC-8"), "fire", { filed: { by: "DUTY REVIEW R-1", at: "2026-10-06T00:00:00Z" }, missing: [{ key: "ATC-8", why: "team", text: "TEAM 팀, 후보 아님", href: null }] }),
+      ],
+    },
+  ];
+  const q = releaseQueueOf(base({ groups: g, order: [] }));
+  assert.deepEqual(q.map.map((l) => l.id), ["chain-VOC-366"], "쏠 수 있는 줄(ATC-9)은 대기열에 있어 지도에 따로 서지 않는다");
+  assert.deepEqual(q.map[0]!.chains[0]![0]!.missing, [parkedBlocker]);
+  assert.equal(q.map[0]!.total, 1);
+  const r9 = q.rows.find((r) => r.key === "ATC-9")!;
+  assert.deepEqual(r9.missing.map((m) => [m.key, m.why]), [["ATC-8", "team"]]);
+  assert.deepEqual(q.rows.map((r) => r.key), ["ATC-9"]);
+});
+
 test("수: 발권 가능, AIRPORT마다, 쏘면 풀리는 이슈, 기다림, 비행 중(발권한 Todo 포함)", () => {
   const q = releaseQueueOf(base());
   assert.equal(q.counts.fire, 6);

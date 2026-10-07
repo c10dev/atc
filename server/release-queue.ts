@@ -59,6 +59,7 @@ export interface QueueRow {
   why: string | null;
   stale: boolean;
   waitingOn: string[]; // 막는 이슈가 남은 제안(제안은 막혀 있어도 쏠 수 있다)
+  missing: MissingBlocker[]; // 그 막는 이슈가 이 화면에 없을 때 어디 있나(ATC-488)
   kConfirm: { at: string; session: string | null; words: string | null } | null;
   proposal: { reason: string; status: string } | null;
 }
@@ -149,6 +150,7 @@ export function releaseQueueOf(inp: QueueInput): ReleaseQueue {
         why: r.why,
         stale: r.stale,
         waitingOn: r.state.kind === "waiting" ? r.state.on : [],
+        missing: r.missing,
         kConfirm: null,
         proposal: null,
       };
@@ -178,6 +180,7 @@ export function releaseQueueOf(inp: QueueInput): ReleaseQueue {
       why: null,
       stale: false,
       waitingOn: [],
+      missing: [],
       kConfirm: { at: k.at, session: k.session, words: k.words },
       proposal: null,
     };
@@ -210,12 +213,13 @@ export function releaseQueueOf(inp: QueueInput): ReleaseQueue {
       why: null,
       stale: false,
       waitingOn: [],
+      missing: [],
       kConfirm: null,
       proposal: { reason: p.reason, status: p.status },
     });
   }
 
-  // 지도: 상위 이슈마다 한 줄, 상위 이슈 없는 이슈는 밑에 이슈가 있는 사슬마다 한 줄. 홀로 있는 이슈는 대기열에만 있다
+  // 지도: 상위 이슈마다 한 줄, 상위 이슈 없는 이슈는 밑에 이슈가 있는 사슬마다 한 줄. 홀로 있는 이슈는 대기열에만 있다(막는 이슈가 화면 밖인 기다리는 이슈는 예외)
   const nodeOf = (r: TreeRow<RowExtra>): MapNode => {
     const kind: MapKind = r.fire ? "fire" : r.state.kind === "waiting" ? "waiting" : r.state.kind === "todo" ? "released" : "stage";
     const word = r.state.kind === "waiting" ? `대기 ${r.state.on.join(", ")}` : r.state.kind === "stage" ? r.state.word : r.state.kind === "todo" ? (r.released ? "발권됨" : "TODO") : "READY";
@@ -230,7 +234,10 @@ export function releaseQueueOf(inp: QueueInput): ReleaseQueue {
   const map: MapLane[] = [];
   for (const g of inp.groups) {
     if (g.key) map.push(lane(g.key, { key: g.key, title: g.title }, g.done, g.total, g.rows));
-    else for (const r of g.rows) if (r.children.length > 0) map.push(lane(`chain-${r.key}`, null, 0, 1 + flat(r.children).length, [r]));
+    // 기타: 밑에 이슈가 있는 사슬, 그리고 막는 이슈가 이 화면에 없는 홀로 기다리는 이슈(쏠 수 없어 대기열에 없으니 여기서 어디 있는지 보인다, ATC-488)
+    else
+      for (const r of g.rows)
+        if (r.children.length > 0 || (!r.fire && r.state.kind === "waiting" && r.missing.length > 0)) map.push(lane(`chain-${r.key}`, null, 0, 1 + flat(r.children).length, [r]));
   }
   // 쏠 것이 있는 줄이 먼저(그 줄의 첫 발권이 앞선 순), 그 뒤 키 순
   const firstFire = (l: MapLane) => Math.min(...l.chains.flat().filter((n) => n.kind === "fire").map((n) => rank.get(n.key) ?? 1e6), 1e7);

@@ -447,8 +447,12 @@
   white-space: nowrap;
 }
 .rls-recent-ch {
+  max-width: 14rem;
+  overflow: hidden;
   color: var(--muted);
   font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rls-recent-age {
   color: var(--muted);

@@ -51,6 +51,7 @@ interface QRow {
   why: string | null;
   stale: boolean;
   waitingOn: string[];
+  missing: MissingBlocker[];
   kConfirm: { at: string; session: string | null; words: string | null } | null;
   proposal: { reason: string; status: string } | null;
   parked?: { by: string | null; createdAt: string | null; duplicateOf: string | null };
@@ -229,6 +230,22 @@ function ActionButton({ r, acts }: { r: QRow; acts: Acts }) {
   }
 }
 
+// 막는 이슈가 이 화면의 줄이 아닐 때 그 이슈와 있는 곳(ATC-488). 대기열의 줄과 지도의 칩이 같이 쓴다
+function MissingLink({ m }: { m: MissingBlocker }) {
+  const body = (
+    <>
+      ← <span className="mono">{m.key}</span> {m.text}
+    </>
+  );
+  return m.href ? (
+    <a className="rls-missing" href={m.href} {...(m.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      {body}
+    </a>
+  ) : (
+    <span className="rls-missing">{body}</span>
+  );
+}
+
 // 줄의 둘째 줄: 풀리는 이슈, 상위 이슈, 순서, 같은 파일, 올린 곳, 기다리는 이슈. 전문은 펼침에
 function Meta({ r }: { r: QRow }) {
   const bits: ReactNode[] = [];
@@ -250,6 +267,8 @@ function Meta({ r }: { r: QRow }) {
       </span>,
     );
   if (r.waitingOn.length) bits.push(<span key="w">대기 {r.waitingOn.join(", ")}</span>);
+  // 막는 이슈가 이 화면에 없으면 어디 있는지(ATC-488): PARKED에 있으면 거기서 쏠 수 있다
+  for (const m of r.missing) bits.push(<MissingLink key={`m-${m.key}`} m={m} />);
   if (r.after)
     bits.push(
       <span key="a">
@@ -425,11 +444,11 @@ function OrderMap({ lanes, onPick }: { lanes: MapLane[]; onPick: (key: string) =
                     {l.parent.key}
                   </a>
                 ) : (
-                  <span className="rls-lane-chain">사슬</span>
+                  <span className="rls-lane-chain">{l.total > 1 ? "사슬" : "대기"}</span>
                 )}
                 {l.parent?.title !== l.parent?.key && (
                   <span className="rls-lane-title" title={l.parent?.title}>
-                    {l.parent ? l.parent.title : `${l.total}개`}
+                    {l.parent ? l.parent.title : l.total > 1 ? `${l.total}개` : "막는 이슈가 이 화면 밖"}
                   </span>
                 )}
                 {l.parent && (
@@ -461,17 +480,9 @@ function OrderMap({ lanes, onPick }: { lanes: MapLane[]; onPick: (key: string) =
                             </a>
                           )}
                           {/* 막는 이슈가 이 화면의 줄이 아니면 어디 있는지(ATC-488): PARKED에 있으면 거기서 쏠 수 있다 */}
-                          {n.missing.map((m) =>
-                            m.href ? (
-                              <a key={m.key} className="rls-missing" href={m.href} {...(m.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-                                ← <span className="mono">{m.key}</span> {m.text}
-                              </a>
-                            ) : (
-                              <span key={m.key} className="rls-missing">
-                                ← <span className="mono">{m.key}</span> {m.text}
-                              </span>
-                            ),
-                          )}
+                          {n.missing.map((m) => (
+                            <MissingLink key={m.key} m={m} />
+                          ))}
                         </li>
                       );
                     })}
@@ -504,6 +515,7 @@ function RecentSection({ data }: { data: ReleaseData }) {
       <span className="rls-recent-ch">
         {CHANNEL_LABEL[r.channel]}
         {r.via === "bulk" ? " · 일괄" : ""}
+        {r.session ? ` · ${r.session}` : ""}
       </span>
       <span className="mono rls-recent-age" title={clock(r.at)}>
         {timeAgo(r.at, now)}
@@ -718,6 +730,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
     why: null,
     stale: false,
     waitingOn: [],
+    missing: [],
     kConfirm: null,
     proposal: null,
     parked: { by: p.by, createdAt: p.createdAt, duplicateOf: p.duplicateOf ?? null },
