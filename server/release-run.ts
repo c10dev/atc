@@ -38,6 +38,7 @@ import { filesInFlight } from "./overlap-run.ts";
 import type { FilesInFlight } from "./dispatch.ts";
 import { appendReleaseLines, readReleaseLines } from "./release-store.ts";
 import { releaseTreeOf, type TreeRow } from "./release-tree.ts";
+import { releaseQueueOf } from "./release-queue.ts";
 import { parkedFireVerdict, parkedMisfiresOf, parkedOf } from "./release-parked.ts";
 import { possibleDuplicateOf, twinAlreadyFired } from "./title-dup.ts";
 import { duplicateCountsNow, duplicateTitleOn } from "./title-dup-run.ts";
@@ -201,6 +202,18 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
       }
     : { on: false, rows: [], fired: 0, misfires: [], duplicate: { on: false, refused: 0, overrides: 0, bothFired: 0 } };
   const released = cands.filter((t) => releaseStateOf(t.key, t.releaseHash, view) === "released").map((t) => ({ key: t.key, ...view.records[t.key]! }));
+  const proposals = d.proposals?.() ?? [];
+  // 발권 대기열과 순서 지도: 이 화면에서 할 일이 있는 줄을 한 순서로, 남은 이슈의 순서를 상위 이슈·사슬마다 한 줄로. 읽기만 한다
+  const queue = releaseQueueOf({
+    groups: tree.groups,
+    order: tree.order,
+    kPending: kPending.map((k) => ({ ...k, k3: ((t) => (t ? k3Of(t, view) : null))(ticketOf(k.key)) })),
+    proposals,
+    airportOf: (k) => ticketOf(k)?.airport ?? null,
+    priorityOf: (k) => ticketOf(k)?.priority ?? 0,
+    records,
+    now: d.now().getTime(),
+  });
   return {
     k3Hold: { mode: loadDispatchConfig().k3Hold ?? "on", ...((m) => ({ nuisance: m.nuisance, miss: m.miss, waits: m.waits ?? [] }))(d.k3Misfires ? d.k3Misfires(s) : k3MisfiresNow(s, loadDispatchConfig().teamPattern)) },
     k3Relaunch: { mode: loadDispatchConfig().k3Relaunch ?? "off", ...(d.k3RelaunchMisfires ? d.k3RelaunchMisfires() : k3RelaunchMisfiresNow(d.now().getTime())) },
@@ -209,13 +222,14 @@ export function releaseView(s: Snapshot, d: ReleaseDeps) {
     ready,
     filed,
     parked,
-    proposals: d.proposals?.() ?? [],
+    proposals,
     unreleased,
     kPending,
     released,
     recent,
     channels,
     attested: attestedCounts(lines),
+    queue,
   };
 }
 
