@@ -17,6 +17,57 @@ export function autoLandOf(x: { mode: MccMode; serverAuto: ServerAuto; tier: "au
   return { land: true, why: "auto 등급, 착륙 조건 모두 맞음" };
 }
 
+// ── 착륙 경합(ATC-563) ──
+// 서버 job이 "살아 있다": 이 서버 프로세스에서 mcc-auto job이 마지막 3분 안에 점검을 시작했다(30초마다 도니 6번). 재시작 직후 첫 점검 전(30초 안)은 살아 있지 않다
+export const AUTO_LIVE_MS = 3 * 60_000;
+export const autoLiveOf = (lastPassAt: number | null, now: number): boolean => lastPassAt !== null && now - lastPassAt >= 0 && now - lastPassAt <= AUTO_LIVE_MS;
+
+// 서버가 이 PR head에 마지막으로 남긴 land 기록이 거절·실패면 MCC 세션이 넘겨받는다. already-landed·ok는 넘겨받는 것이 아니다
+export function serverHandoverOf(records: readonly MccRecord[], pr: number, head: string): boolean {
+  const last = records.filter((r) => r.op === "land" && r.by === "server" && r.pr === pr && r.head === head).at(-1);
+  return last?.op === "land" && (last.result === "rejected" || last.result === "failed");
+}
+
+// MCC 세션의 `mcc land`가 이 PR을 착륙시켜도 되나. 서버가 착륙시킬 PR(autoLandOf와 같은 판정)이고 서버 job이 살아 있고 넘겨받은 head가 아니면 거절한다.
+// 스위치 off, 모드 rts, ESCALATE, flagged·user 등급, 막힌 조건은 autoLandOf가 이미 false라 그대로 세션 몫이다
+export function sessionLandOf(x: Parameters<typeof autoLandOf>[0] & { live: boolean; handover: boolean }): { refuse: boolean; why: string } {
+  if (!autoLandOf(x).land) return { refuse: false, why: "서버가 착륙시키지 않는 PR" };
+  if (!x.live) return { refuse: false, why: "서버 mcc-auto job이 3분 넘게 돌지 않음 — 세션이 착륙" };
+  if (x.handover) return { refuse: false, why: "서버가 이 head에서 거절·실패 — 세션이 넘겨받음" };
+  return { refuse: true, why: "MCC SERVER AUTO on — 이 auto 등급 PR은 서버가 착륙시킨다(서버가 거절·실패하면 이 세션이 넘겨받는다)" };
+}
+
+// 머지 결과. already-landed는 다른 쪽(서버 또는 MCC 세션)이 같은 PR을 같은 때 머지한 것: 실패도 오작동도 아니다
+export type LandOutcome = { result: "ok" } | { result: "rejected" | "failed" | "already-landed"; detail: string };
+// GitHub이 "머지가 이미 진행 중"이라고 답한 405
+export const inProgressOf = (stderr: string): boolean => /already in progress/i.test(stderr) && /\b405\b/.test(stderr);
+export const stderrOf = (e: unknown): string => {
+  const err = e as { stderr?: string; message?: string };
+  return err.stderr?.trim() || err.message || String(e);
+};
+// 정확한 head를 머지한다. 실패하면 405 "already in progress"는 already-landed, 아니면 PR을 다시 읽어 같은 head로 이미 머지됐으면 already-landed,
+// 그 밖은 classify(writeResultOf: head가 움직임은 rejected, 나머지 failed) 그대로. 다시 읽지 못하면 classify 그대로
+export async function landOutcomeOf(x: {
+  head: string;
+  merge: () => Promise<unknown>;
+  reread: () => Promise<{ merged: boolean; head: string }>;
+  classify: (stderr: string) => { result: "rejected" | "failed"; detail: string };
+}): Promise<LandOutcome> {
+  try {
+    await x.merge();
+    return { result: "ok" };
+  } catch (e) {
+    const text = stderrOf(e);
+    const r = x.classify(text);
+    if (inProgressOf(text)) return { result: "already-landed", detail: r.detail };
+    try {
+      const p = await x.reread();
+      if (p.merged && p.head === x.head) return { result: "already-landed", detail: `${r.detail} — 다시 읽으니 같은 head로 이미 머지됨` };
+    } catch {}
+    return r;
+  }
+}
+
 // 서버가 착륙시킨 PR 번호(mcc.jsonl의 land ok, by server)
 export const serverLandedOf = (records: readonly MccRecord[]): Set<number> => {
   const out = new Set<number>();
@@ -74,16 +125,18 @@ export interface AutoCounts {
   rechecks: number;
   misfires: number;
   refused: number;
+  alreadyLanded: number; // 다른 쪽이 먼저 머지한 착륙 시도(ATC-563). refused·misfires에 넣지 않는다
   rts: number;
   rtsFailed: number;
 }
 export function autoCountsOf(lines: readonly RecordLine[], now: number, days = 7): AutoCounts {
   const since = now - days * 86_400_000;
-  const c: AutoCounts = { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 };
+  const c: AutoCounts = { lands: 0, rechecks: 0, misfires: 0, refused: 0, alreadyLanded: 0, rts: 0, rtsFailed: 0 };
   for (const l of lines) {
     if (l.kind !== "mcc-auto" || Date.parse(l.t) < since || testWriteOf(l)) continue;
     if (l.op === "land") c.lands++;
     else if (l.op === "refused") c.refused++;
+    else if (l.op === "already-landed") c.alreadyLanded++;
     else if (l.op === "recheck") {
       c.rechecks++;
       if (l.misfire.length) c.misfires++;

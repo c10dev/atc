@@ -335,6 +335,9 @@ test("mcc 응답 한 줄: LAND는 막힌 조건·would·LANDED(flagged면 바뀐
   assert.equal(mccText("land", { landed: false, blocks: [{ code: "L6", text: "INSPECTION 없음" }, { code: "L4", text: "CI 진행 중" }] }), "LAND 안 함 — L6 INSPECTION 없음 · L4 CI 진행 중");
   assert.equal(mccText("land", { landed: false, would: true, tier: "auto" }), "WOULD LAND (shadow) · auto");
   assert.equal(mccText("land", { landed: true, tier: "flagged", flagged: ["controller/CLAUDE.md"] }), "LANDED · flagged · 바뀐 관제 규칙: controller/CLAUDE.md");
+  // ATC-563: 서버가 착륙시키는 auto 등급 PR은 거절, 서버가 먼저 머지했으면 already landed(오류 아님)
+  assert.equal(mccText("land", { landed: false, serverLands: "MCC SERVER AUTO on — 서버가 착륙", tier: "auto" }), "LAND 안 함 — MCC SERVER AUTO on — 서버가 착륙");
+  assert.equal(mccText("land", { landed: false, alreadyLanded: true, tier: "auto", detail: "Merge already in progress (HTTP 405)" }), "already landed · auto · Merge already in progress (HTTP 405)");
   assert.equal(mccText("rts", { started: false, why: "서비스가 최신" }), "RTS 안 함 — 서비스가 최신");
   assert.equal(mccText("rts", { started: false, would: true, why: "a → b" }), "WOULD RTS · a → b");
   assert.equal(

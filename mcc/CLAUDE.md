@@ -24,7 +24,7 @@
 | Agent `subagent_type: inspector` | INSPECTION을 새 컨텍스트에서 한다(아래 "INSPECTION하는 법"). PR 번호와 head를 프롬프트에 준다 |
 | `node ../controller/atcctl.mjs mcc inspect <PR> --head <sha> --verdict pass\|findings -- '<INSPECTION>'` | 그 head에 INSPECTION. findings는 서버가 PR 댓글로도 남긴다 |
 | `node ../controller/atcctl.mjs mcc escalate <PR> -- '<사유>'` | user 등급으로 올린다 |
-| `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | 착륙. 막히면 `LAND 안 함 — L… …`, shadow면 `WOULD LAND` |
+| `node ../controller/atcctl.mjs mcc land <PR> --head <sha>` | 착륙. 막히면 `LAND 안 함 — L… …`, 서버가 착륙시킬 auto 등급 PR이면 `LAND 안 함 — MCC SERVER AUTO on …`, 서버가 같은 때 먼저 머지했으면 `already landed`(오류 아님), shadow면 `WOULD LAND` |
 | `node ../controller/atcctl.mjs mcc rts` | RETURN TO SERVICE. 할 때가 아니면 `RTS 안 함 — …`(서버가 이미 시작했으면 그 사유), land+rts·rts가 아니면 `WOULD RTS` |
 | `gh pr view\|diff\|checks <PR> --repo chaehy5665/atc` | 필요할 때 PR 사실 확인 |
 | Read·Grep | 규칙(`../CLAUDE.md`), 설계 문서(`../docs/`). diff 주변 코드는 `inspector`가 읽는다 |
@@ -61,7 +61,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 ## 착륙과 RTS
 
-- 서버 자동(ATC-556): `mcc queue`의 `serverAuto.switch`가 `on`이면 서버가 `auto` 등급 PR을 스스로 착륙시키고(그 PR의 `mcc land`는 이미 닫혔으면 `LAND 안 함`이다) 그 PR만 쌓인 main은 스스로 RTS한다. `serverAuto.recent`에 서버가 거절·실패한 줄이 있으면 그 PR은 이 세션이 이어받고 LOG에 적는다. INSPECTION·ESCALATE와 `flagged`·`user` 등급 착륙은 그대로 이 세션 몫이다.
+- 서버 자동(ATC-556, ATC-563): `mcc queue`의 `serverAuto.switch`가 `on`이면 서버가 `auto` 등급 PR을 스스로 착륙시키고 그 PR만 쌓인 main은 스스로 RTS한다. **스위치가 `on`인 동안 이 세션은 `auto` 등급 PR을 착륙시키지 않는다**(서버가 `mcc land`를 `LAND 안 함 — MCC SERVER AUTO on …`으로 거절한다). 이어받는 것은 둘뿐이다: `serverAuto.recent`에 그 PR head의 `refused` 줄(서버가 거절·실패)이 있으면 그 head를, `serverAuto.live`가 false면(서버 job이 3분 넘게 점검하지 않음) 그동안의 `auto` 등급 PR을 이 세션이 `mcc land`하고 LOG에 적는다. `already-landed` 줄은 다른 쪽이 먼저 머지한 것이라 이어받을 일이 없다. INSPECTION·ESCALATE와 `flagged`·`user` 등급 착륙은 그대로 이 세션 몫이다.
 - `mcc queue`에서 `blocks`가 빈 PR만 `mcc land <PR> --head <queue의 head>`. 서버가 조건을 다시 보고 막으면 그 조건을 LOG에 적고 넘어간다. 같은 바퀴에 다시 시도하지 않는다.
 - `user` 등급 PR이 `kApproval.ok`라 착륙했으면 LOG에 `LANDED · user · K 승인 <release id>`(큐의 `kApproval.release`)와 선언한 K 효과를 한 줄로 적는다. `kApproval.ok`가 아닌 `user` PR은 LOG에 `kApproval.why`를 적고 넘어간다(INSPECTION은 그대로 한다).
 - `flagged` PR을 착륙시키면 LOG에 바뀐 관제 규칙(파일)과 바뀐 외부 부작용 파일(`deploy/landing-tier.mjs`의 `SIDE_EFFECT`)을 한 줄씩 따로 적는다(`LANDED · flagged · 바뀐 관제 규칙: …` · `바뀐 외부 부작용: …`).
