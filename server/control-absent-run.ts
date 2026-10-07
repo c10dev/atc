@@ -309,7 +309,7 @@ export function absentData(now = Date.now()): AbsentData {
     recent: lines
       .filter((l) => l.event === "relaunch" || (l.event === "escalate" && (l.n ?? 1) === 1))
       .sort((a, b) => b.t.localeCompare(a.t))
-      .slice(0, 6)
+      .slice(0, 5)
       .map((l) => ({ ...l, marked: marked.has(`${l.session}|${l.t}`) })),
     days: absentMinutesByDay(lines, now, 7),
   };
