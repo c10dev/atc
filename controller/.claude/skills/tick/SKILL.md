@@ -16,6 +16,7 @@ SUPERVISOR가 설정 창 CONTROL WAKE TOWER로 고른다. 어느 모드인지는
   - ATC에게 답하지 않는다(세션이 아니라 서버다). 턴의 마지막 줄은 `WAKE RESULT: acted`(무엇이든 내거나 기록하거나 보내거나 보고함) 또는 `WAKE RESULT: nothing`(할 일이 없었음) 하나다. atc가 이 줄로 오작동을 센다.
   - 팀의 답(READBACK·UNABLE·질문 …)은 전처럼 세션 이름으로 와서 이 세션을 깨운다. 1단계대로 기록·보고하고 턴을 끝낸다. 그 밖의 일은 서버가 따로 깨운다.
   - `/loop`가 남은 세션의 `/tick`에서 0단계가 `TICK WAKE-MODE tower — …`를 찍으면 아무것도 하지 않고 곧장 턴을 끝낸다(ATC LOG 줄도 없다). atc가 안전한 순간에 이 세션을 `/loop` 없이 한 번 다시 띄운다.
+  - 글의 둘째 줄이 `Daily review turn (ATC-557)`이면 하루 한 번 점검 턴이다(매일 01:00Z, CLAUDE.md "깨우는 방식"): 0단계부터 그대로 한 뒤, 글이 말하는 대로 지난 24시간을 돌아보고 CLAUDE.md대로 적는다. 마지막 줄은 같은 `WAKE RESULT`다.
 - **`/loop` 모드(`loop`).** 오늘처럼 `/loop 3m /tick`으로 돈다. 0단계는 `--wake` 없이 `node atcctl.mjs tick tower`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다). BREAKER가 멈추면 atc가 이 세션을 `/loop`로 한 번 다시 띄우고, 다시 켜지면 깨움 모드로 돌린다.
 
 ## 서버가 보내는 CLEARANCE (SERVER CLEARANCE, ATC-557 b)
