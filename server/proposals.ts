@@ -115,7 +115,7 @@ import {
 //   CAPTAIN이 끝났다고 보고하면 OCC가 `dispatch arrived`로 ARRIVED를 적는다. 그때까지 AIRCRAFT·FLIGHT를 잡아 두고
 //   만료·SUPERSEDED 하지 않는다. STAND가 없으니 RECALL할 수 있다.
 
-const FILE = join(config.stateDir, "proposals.jsonl");
+const FILE = () => join(config.stateDir, "proposals.jsonl"); // 쓸 때마다 읽는다(ATC-564)
 const DAY = 86_400_000;
 export const PROPOSAL_TTL_MS = DAY;
 // SUPERVISOR 판정 없이 24시간이 지나 닫는 사유(ATC-152). DISPATCH 탭의 닫힌 목록이 그대로 보인다
@@ -1242,14 +1242,14 @@ export function selfCheck2b(atcctlSource: string | null, now = Date.now()) {
 
 // 자라기만 한 파일은 새 줄만 읽는다(jsonl-cache.ts, ATC-537). 돌려준 배열은 읽기 전용으로 쓴다
 const opsCache = new JsonlCache<Op>();
-export function readOps(file = FILE): Op[] {
+export function readOps(file = FILE()): Op[] {
   return opsCache.read(file).lines as Op[];
 }
 
 export function append(ops: Op[]) {
   if (!ops.length) return;
-  mkdirSync(dirname(FILE), { recursive: true });
-  appendFileSync(FILE, ops.map((o) => JSON.stringify(o)).join("\n") + "\n");
+  mkdirSync(dirname(FILE()), { recursive: true });
+  appendFileSync(FILE(), ops.map((o) => JSON.stringify(o)).join("\n") + "\n");
   for (const o of ops) record({ t: o.at, kind: "dispatch", op: o.op, id: o.id, ...(o.op === "send" && o.via ? { via: o.via } : {}), ...(o.op === "approve" && o.via === "auto" ? { by: "auto" } : {}) });
 }
 
@@ -1279,7 +1279,7 @@ export function proposalsOfFlight<T extends Pick<Proposal, "flight" | "at">>(all
 // 기록이 바뀌지 않았으면 접은 결과를 그대로 쓴다(tick마다 부르는 곳이 여럿이다, ATC-537). 배열은 복사해 주고 항목은 읽기 전용으로 쓴다(fold 밖에서 바꾸는 곳은 없다)
 let folded: { gen: number; proposals: Proposal[] } | null = null;
 export function allProposals(): Proposal[] {
-  const { lines, gen } = opsCache.read(FILE);
+  const { lines, gen } = opsCache.read(FILE());
   if (gen === 0) return fold([]);
   if (folded?.gen !== gen) folded = { gen, proposals: fold(lines as Op[]) };
   return folded.proposals.slice();

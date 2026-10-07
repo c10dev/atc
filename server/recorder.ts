@@ -134,15 +134,17 @@ export type RecordLine =
   | { t: string; kind: "launch-model"; by: string; scope: "default" | "airport" | "aircraft"; key?: string; from: string | null; to: string | null }
   | { t: string; kind: "atfm"; op: string; id?: string; airport?: string; data?: Record<string, unknown> };
 
-const DIR = join(config.stateDir, "flight-recorder");
+// 쓸 때마다 config.stateDir에서 정한다(ATC-564: import 때 고정하면 import 뒤에 상태 폴더를 바꾼 시험이 운영 기록에 쓴다)
+const recorderDir = () => join(config.stateDir, "flight-recorder");
 export const SAMPLE_MS = 5 * 60_000;
 const RETENTION_DAYS = 30;
 
 const dayOf = (iso: string) => iso.slice(0, 10);
 
 export function record(line: RecordLine) {
-  mkdirSync(DIR, { recursive: true });
-  appendFileSync(join(DIR, `${dayOf(line.t)}.jsonl`), JSON.stringify(line) + "\n");
+  const dir = recorderDir();
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, `${dayOf(line.t)}.jsonl`), JSON.stringify(line) + "\n");
 }
 
 export function sampleOf(s: Snapshot): Sample {
@@ -166,7 +168,7 @@ const dayCache = new JsonlCache<{ ms: number; r: RecordLine }>((raw) => {
 });
 
 // sinceMs 이후 기록. 해당 날짜 파일만 읽는다.
-export function readRecords(sinceMs: number, dir = DIR): RecordLine[] {
+export function readRecords(sinceMs: number, dir = recorderDir()): RecordLine[] {
   const firstDay = dayOf(new Date(sinceMs).toISOString());
   let files: string[] = [];
   try {
@@ -181,7 +183,7 @@ export function readRecords(sinceMs: number, dir = DIR): RecordLine[] {
   return out;
 }
 
-export function pruneRecords(now = Date.now(), dir = DIR) {
+export function pruneRecords(now = Date.now(), dir = recorderDir()) {
   const cutoff = dayOf(new Date(now - RETENTION_DAYS * 86_400_000).toISOString());
   try {
     for (const f of readdirSync(dir)) if (/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f) && f.slice(0, 10) < cutoff) rmSync(join(dir, f));
