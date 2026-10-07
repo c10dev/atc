@@ -316,7 +316,7 @@ async function transitionPass(s: Snapshot, sw: Record<WakeRole, WakeMode>, rows:
       .filter((l) => l.op === "transition" && l.role === role)
       .map((l) => Date.parse(l.t))
       .at(-1);
-    const tw = transitionWhy({ want: sw[role], launched, single: true, idle: jobIdle(settleJob(readJob(row.id)) ?? null), blocks: safeBlocksOf(name, facts), auto: cfg.auto[name] ?? false, lastTryAt: lastTry ?? null, uptimeMs: now - startedAt, now, recycling: recyclingNow() });
+    const tw = transitionWhy({ want: sw[role], launched, single: true, idle: jobIdle(settleJob(readJob(row.id)) ?? null), blocks: safeBlocksOf(name, facts), auto: cfg.auto[name] ?? false, recycleOff: cfg.mode === "off", lastTryAt: lastTry ?? null, uptimeMs: now - startedAt, now, recycling: recyclingNow() });
     if (!tw.go) {
       waiting[role] = tw.why;
       continue;

@@ -413,9 +413,10 @@ export function launchedModeOf(lines: readonly Line[], jobId: string): WakeMode 
 }
 export const TRANSITION_COOLDOWN_MS = 3 * 3_600_000; // CONTROL RECYCLE cooldown과 같다
 export const TRANSITION_UPTIME_MS = 5 * 60_000; // 서버가 뜬 직후(RTS가 세션 수를 세는 2분)에는 하지 않는다
-export function transitionWhy(x: { want: WakeMode; launched: WakeMode; single: boolean; idle: boolean; blocks: readonly string[]; auto: boolean; lastTryAt: number | null; uptimeMs: number; now: number; recycling: string | null }): { go: true } | { go: false; why: string } {
+export function transitionWhy(x: { want: WakeMode; launched: WakeMode; single: boolean; idle: boolean; blocks: readonly string[]; auto: boolean; recycleOff?: boolean; lastTryAt: number | null; uptimeMs: number; now: number; recycling: string | null }): { go: true } | { go: false; why: string } {
   if (x.want === x.launched) return { go: false, why: "같은 모드" };
   if (!x.single) return { go: false, why: "claude --bg 세션 하나가 아님" };
+  if (x.recycleOff) return { go: false, why: "CONTROL RECYCLE mode off — 자동으로 다시 띄우지 않는다(세션은 깨움을 받는다)" };
   if (!x.auto) return { go: false, why: "CONTROL RECYCLE auto가 꺼짐 — 다시 띄우지 않는다(세션은 깨움을 받는다)" };
   if (x.uptimeMs < TRANSITION_UPTIME_MS) return { go: false, why: "서버가 뜬 지 5분이 안 됨" };
   if (x.lastTryAt !== null && x.now - x.lastTryAt < TRANSITION_COOLDOWN_MS) return { go: false, why: "3시간 안에 시도함" };

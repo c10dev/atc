@@ -239,6 +239,7 @@ test("/loop ↔ wake 옮기기: LAUNCH 줄의 wake로 지금 모드를 알고(�
   assert.equal(transitionWhy({ ...ok, idle: false }).go, false);
   assert.equal(transitionWhy({ ...ok, blocks: ["RTS: 진행 중"] }).go, false);
   assert.equal(transitionWhy({ ...ok, auto: false }).go, false);
+  assert.equal(transitionWhy({ ...ok, recycleOff: true }).go, false); // CONTROL RECYCLE mode off면 스스로 다시 띄우지 않는다
   assert.equal(transitionWhy({ ...ok, uptimeMs: 60_000 }).go, false);
   assert.equal(transitionWhy({ ...ok, lastTryAt: T0 - 60 * 60_000 }).go, false);
   assert.equal(transitionWhy({ ...ok, recycling: "OCC" }).go, false);
