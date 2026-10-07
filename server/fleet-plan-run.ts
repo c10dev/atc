@@ -27,6 +27,7 @@ import {
   fleetPlanGateOf,
   fleetPlanOf,
   fuelExpiryOf,
+  bindFleetPlanOps,
   foldFleetPlan,
   isManual,
   persistOf,
@@ -77,8 +78,10 @@ function readOps(): FleetPlanOp[] {
 
 function append(ops: FleetPlanOp[]) {
   if (!ops.length) return;
+  let cache: ReturnType<typeof foldFleetPlan> | null = null;
+  const lines = bindFleetPlanOps(ops, (id) => (cache ??= foldFleetPlan(readOps())).find((p) => p.id === id)); // 입력 묶기(ATC-555)
   mkdirSync(dirname(file()), { recursive: true });
-  appendFileSync(file(), ops.map((o) => JSON.stringify(o) + "\n").join(""));
+  appendFileSync(file(), lines.map((o) => JSON.stringify(o) + "\n").join(""));
 }
 
 export const allFleetPlan = () => foldFleetPlan(readOps());

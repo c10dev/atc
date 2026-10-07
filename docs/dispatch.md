@@ -201,14 +201,14 @@ SUPERVISOR: marks "I would approve / reject (reason)" in the DISPATCH tab
 ```
 SUPERVISOR approves → atc: APPROVED
 DISPATCH session: SendMessage the FLIGHT PLAN to the CAPTAIN
-  [DISPATCH D-0003] FLIGHT PLAN · BRAVO (TEAM_B)
+  [DISPATCH D-0003] FLIGHT PLAN @a1b2c3 · BRAVO (TEAM_B)   (@a1b2c3: work-order hash, ATC-555)
   BRIEF: DIRECT
   FLIGHT VOC193 · AIRPORT VCDO · PRIORITY High
   <ticket title and URL, Goal · Done when · Constraints from the issue, DISPATCH note>
   <PILOT'S DISCRETION line>
-  — If you take it, reply "READBACK D-0003"; if you can't, "UNABLE D-0003 — reason"; if you need time, "STANDBY D-0003" (ATC-122).
+  — If you take it, reply "READBACK D-0003 @a1b2c3", exactly like that; if you can't, "UNABLE D-0003 — reason"; if you need time, "STANDBY D-0003" (ATC-122; the hash, ATC-555).
   Carry the work through to the end. Stop and ask only for what needs a SUPERVISOR decision. (see "DIRECT briefs")
-CAPTAIN: READBACK → Linear In Progress, prepares the STAND (same rules as today)
+CAPTAIN: READBACK D-0003 @a1b2c3 (atc refuses it without the hash, autonomy.md "WO-23 as built") → Linear In Progress, prepares the STAND (same rules as today)
 atc: DEPARTED once that FLIGHT gets a STAND; if not, rechecks after 30 minutes like TOWER does
      STAND-free FLIGHT (SURVEY, CHECK): DEPARTED at the READBACK itself (no STAND to wait for)
 CAPTAIN (STAND-free only): reports it done → OCC: atcctl dispatch arrived D-0003 -- '<result link or one line>' → atc: ARRIVED

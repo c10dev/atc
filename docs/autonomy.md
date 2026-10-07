@@ -497,6 +497,32 @@ Gates L1, L2, L3 and L4 become delegable on AIRPORT A **when both lanes pass the
 
 No step leaves a window with neither a gate nor its control: step 2 requires C1, C2, C3, C6 v0 and C7 live with their counters; step 3 precedes the removal of the manual GROUND STOP clear; steps 5 to 7 need steps 3 and 4.
 
+### WO-23 as built (ATC-555)
+
+[ATC-555](https://linear.app/vocado/issue/ATC-555) folds control-plane W5 ([control-plane.md](control-plane.md), the hash READBACK) into WO-23. Pure functions are in `server/input-binding.ts` (no state reads, so the OCC send-guard and ATC-562's shared check can import it); files, switch and counter in `server/input-binding-run.ts`.
+
+- **FLIGHT PLAN work-order hash.** `formatFlightPlan` (`server/proposals.ts`) builds the text with a slot and seals it (`sealWorkOrder`): the hash is the first 6 hex characters of the SHA-256 of the stored text with each `@<hash>` written back as `@WOHASH`, so it is computed from, and checkable against, exactly the text atc stores and send-guard delivers. It appears in the header, `[DISPATCH D-0123] FLIGHT PLAN @a1b2c3 · GOLF (TEAM_G)` (the `[DISPATCH D-xxxx]` bracket the guards read is unchanged), and in the reply line: `— Reply to this message with "READBACK D-0123 @a1b2c3" if you take it, exactly like that (@a1b2c3 is this work order's hash; a reply without it is refused). …`. FRESH START sends the same text.
+- **Where the READBACK check lives.** On the server, in the route that records a CAPTAIN's READBACK, right after ATC-554's stale-reply check: `POST /api/dispatch/proposals/:id/accept`. OCC records the reply with `atcctl dispatch readback D-0123 @a1b2c3`, which posts `{hash}` with the hash exactly as the CAPTAIN wrote it. No guard reads replies and the team side has no guard, so the server is the one place every READBACK passes.
+- **Rule.** When the stored FLIGHT PLAN has a hash and the READBACK quotes none or a different one: 409 `READBACK D-0123 refused — quoted no work-order hash. quote the work-order hash @a1b2c3: the CAPTAIN's reply must be "READBACK D-0123 @a1b2c3"`. A FLIGHT PLAN stored before ATC-555 (no hash in its header) is read back as before, so plans in flight at deploy keep working. UNABLE, STANDBY, await-supervisor and the RECALL READBACK are not checked.
+- **What it catches.** The stored text is what the CAPTAIN received. A READBACK quoting another hash answers a different text: a FLIGHT PLAN rebuilt after the work order was edited (an undelivered plan is rebuilt from the current issue body at the next release, so is a FRESH START), or a stored text edited by hand. The "never edit an accepted work order" rule becomes checkable at the READBACK.
+- **send-guard (K3, refuses more only).** For a FLIGHT PLAN whose stored text has a hash, `occ/send-guard.mjs` recomputes it with the same function and refuses a text that no longer matches. Old texts without a hash pass as before. `|| exit 2` is unchanged; no other guard changed.
+- **Switch and counter.** `READBACK HASH` in the settings window (SUPERVISOR only, `readback-hash.json`, default on, no `atcctl` command). Off: READBACKs without the hash are accepted; the hash is still written in FLIGHT PLANs and records. Each refusal appends one line to `readback-hash-events.jsonl` (id, FLIGHT, `missing` or `mismatch`, quoted, expected); the settings block shows refusals over the last 7 days, and `GET /api/input-binding` shows the switch, the counts and the last 10.
+- **Record fields, additive.** Only new lines get them: no existing line is rewritten, and old lines fold exactly as before (the fold drops the new fields).
+
+| File | Line | New fields |
+|---|---|---|
+| `proposals.jsonl` | `create` | `hash` of the judged card (kind, flight, aircraft, aircraftName, registration, airport, score, factors, launch, resume, prHolder, supervisorConfirm, waitingFlights), `release` |
+| | `verdict`, `approve`, `reject` | `hash` of the card that was judged, `release` |
+| | `send` | `hash` = the work-order hash, `release` |
+| `schedule.jsonl` | `draft` | `hash` (kind, flight, payload, reason), `release` |
+| | `verdict`, `approve`, `reject`, `release` | `hash` of the draft that was judged or issued, `release` |
+| `judges.jsonl` | `judge` | `hash` of the input sent to the engine (schedule: title and sections; dispatch: title and state; report: the masked message, which is never stored), `release` for schedule and dispatch |
+| `fleet-plan.jsonl` | `create` | `hash` (key, kind, aircraft, airport, from, configuration, account, reasons) |
+| | `verdict`, `approve` | `hash` of the proposal that was judged |
+| `clearances.jsonl` | `issue` | `head`: the `head <sha>` in the text, else the one `#PR` it names, else the open PR in its STAND (the full sha from the snapshot when known), and `release` |
+
+Content hashes are 16 hex characters of SHA-256 over key-sorted JSON (`contentHashOf`). `release` is `releaseIdOf` from `server/release.ts` (`<FLIGHT>@<release time>`, the FLIGHT's latest release), absent when the FLIGHT has no release record. Lines that only move state (accept, expire, supersede …) carry no binding: they refer to a line that has it. FLEET PLAN proposals have no FLIGHT, so no release id.
+
 ## 9. Risks
 
 | Risk | What could happen | Mitigation |

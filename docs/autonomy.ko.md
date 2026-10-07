@@ -497,6 +497,32 @@ L1, L2, L3, L4가 AIRPORT A에서 **두 레인이 head를 통과시키고 분류
 
 게이트도 통제도 없는 틈을 두는 단계는 없다: 2단계는 C1, C2, C3, C6 v0, C7이 카운터와 함께 켜져 있기를 요구한다. 3단계는 수동 GROUND STOP 해제를 없애기 전에 선다. 5–7단계는 3·4단계가 필요하다.
 
+### WO-23, 만든 대로 (ATC-555)
+
+[ATC-555](https://linear.app/vocado/issue/ATC-555)는 control-plane W5([control-plane.md](control-plane.md)의 해시 READBACK)를 WO-23에 합쳤다. 순수 함수는 `server/input-binding.ts`(상태를 읽지 않아 OCC send-guard와 ATC-562의 공유 검사가 가져갈 수 있다), 파일·스위치·셈은 `server/input-binding-run.ts`.
+
+- **FLIGHT PLAN의 work-order 해시.** `formatFlightPlan`(`server/proposals.ts`)이 자리를 둔 글을 만들고 봉인한다(`sealWorkOrder`): 해시는 저장된 글에서 `@<해시>`를 `@WOHASH`로 되돌린 글의 SHA-256 앞 16진 6자다. 그래서 atc가 저장하고 send-guard가 바꿔 넣는 바로 그 글에서 계산하고 그 글로 확인한다. 머리 `[DISPATCH D-0123] FLIGHT PLAN @a1b2c3 · GOLF (TEAM_G)`(guard가 읽는 `[DISPATCH D-xxxx]` 괄호는 그대로)와 답 줄 `— Reply to this message with "READBACK D-0123 @a1b2c3" if you take it, exactly like that (@a1b2c3 is this work order's hash; a reply without it is refused). …`에 들어간다. FRESH START도 같은 글을 보낸다.
+- **READBACK 확인의 자리.** 서버에서, CAPTAIN의 READBACK을 기록하는 라우트 `POST /api/dispatch/proposals/:id/accept`의 ATC-554 옛 부름 확인 바로 뒤. OCC는 `atcctl dispatch readback D-0123 @a1b2c3`로 기록하고, 이 명령이 CAPTAIN이 쓴 그대로의 해시를 `{hash}`로 보낸다. 답을 읽는 guard는 없고 팀 쪽에도 guard가 없으니, 모든 READBACK이 지나는 곳은 서버 하나다.
+- **규칙.** 저장된 FLIGHT PLAN에 해시가 있는데 READBACK이 해시를 인용하지 않거나 다른 해시를 인용하면 409 `READBACK D-0123 refused — quoted no work-order hash. quote the work-order hash @a1b2c3: the CAPTAIN's reply must be "READBACK D-0123 @a1b2c3"`. ATC-555 전에 저장된 FLIGHT PLAN(머리에 해시 없음)은 전처럼 READBACK한다 — 배포 때 날고 있는 계획이 깨지지 않는다. UNABLE·STANDBY·await-supervisor와 RECALL의 READBACK은 확인하지 않는다.
+- **잡는 것.** 저장된 글이 CAPTAIN이 받은 글이다. 다른 해시를 인용한 READBACK은 다른 글에 답한 것이다: 지시서가 바뀐 뒤 다시 만든 FLIGHT PLAN(닿지 않은 계획은 다음 release에서 지금 이슈 본문으로 다시 만들고, FRESH START도 그렇다)이나 손으로 고친 저장 글. "받아들인 지시서는 고치지 않는다" 규칙을 READBACK에서 확인할 수 있게 된다.
+- **send-guard(K3, 막기만 더함).** 저장된 FLIGHT PLAN에 해시가 있으면 `occ/send-guard.mjs`가 같은 함수로 다시 계산하고 더는 맞지 않는 글을 막는다. 해시 없는 옛 글은 전처럼 보낸다. `|| exit 2`는 그대로이고 다른 guard는 바뀌지 않았다.
+- **스위치와 셈.** 설정 창의 `READBACK HASH`(SUPERVISOR 전용, `readback-hash.json`, 기본 on, `atcctl` 명령 없음). 끄면 해시 없는 READBACK도 받는다. 해시는 FLIGHT PLAN과 기록에 그대로 적힌다. 거절마다 `readback-hash-events.jsonl`에 한 줄(id, FLIGHT, `missing`·`mismatch`, 인용한 해시, 기대한 해시)을 더한다. 설정 블록은 최근 7일 거절 수를, `GET /api/input-binding`은 스위치·수·최근 10건을 보인다.
+- **기록 칸, 더하기만.** 새 줄에만 붙는다: 있는 줄은 고쳐 쓰지 않고, 옛 줄은 전과 똑같이 접힌다(접을 때 새 칸은 버린다).
+
+| 파일 | 줄 | 새 칸 |
+|---|---|---|
+| `proposals.jsonl` | `create` | 판정한 카드의 `hash`(kind, flight, aircraft, aircraftName, registration, airport, score, factors, launch, resume, prHolder, supervisorConfirm, waitingFlights), `release` |
+| | `verdict`·`approve`·`reject` | 판정한 카드의 `hash`, `release` |
+| | `send` | `hash` = work-order 해시, `release` |
+| `schedule.jsonl` | `draft` | `hash`(kind, flight, payload, reason), `release` |
+| | `verdict`·`approve`·`reject`·`release` | 판정하거나 발부한 초안의 `hash`, `release` |
+| `judges.jsonl` | `judge` | 엔진에 보낸 입력의 `hash`(schedule: 제목과 절, dispatch: 제목과 상태, report: 마스킹한 메시지 — 메시지는 남기지 않는다), schedule·dispatch는 `release` |
+| `fleet-plan.jsonl` | `create` | `hash`(key, kind, aircraft, airport, from, configuration, account, reasons) |
+| | `verdict`·`approve` | 판정한 제안의 `hash` |
+| `clearances.jsonl` | `issue` | `head`: 글의 `head <sha>`, 없으면 글이 가리킨 `#PR` 하나, 없으면 그 STAND의 열린 PR(스냅샷에 있으면 전체 sha), 그리고 `release` |
+
+내용 해시는 키를 정렬한 JSON의 SHA-256 앞 16진 16자(`contentHashOf`)다. `release`는 `server/release.ts`의 `releaseIdOf`(`<FLIGHT>@<발권 시각>`, 그 FLIGHT의 가장 나중 발권)이고, 발권 기록이 없으면 칸이 없다. 상태만 옮기는 줄(accept, expire, supersede …)에는 붙이지 않는다: 그 줄이 가리키는 줄에 있다. FLEET PLAN 제안에는 FLIGHT가 없어 발권 id도 없다.
+
 ## 9. 위험
 
 | 위험 | 일어날 수 있는 일 | 완화 |

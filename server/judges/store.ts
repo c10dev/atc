@@ -65,6 +65,8 @@ export interface JudgeLine {
   judgment: ClassifyJudgment;
   withheld: string | null; // 본문을 보내지 않은 이유(제목만 보냄). 보냈으면 null
   sent: string[]; // 보낸 칸(title, goal, allowed_scope, done_criteria)
+  hash?: string; // 판정한 입력의 해시(ATC-555, WO-23). 옛 줄에는 없다
+  release?: string; // 그 FLIGHT의 발권 id(ATC-555). 발권 기록이 없거나 옛 줄이면 없다
 }
 
 // DISPATCH 판정(ATC-88): 열린 ASSIGN 하나(D-0085)의 세 답. 제안 상태·점수는 바꾸지 않는다
@@ -82,6 +84,8 @@ export interface DispatchJudgeLine {
   withheld: string | null; // 본문을 보내지 않은 이유. 보냈으면 null
   recentWithheld: string | null; // 최근 FLIGHT 제목을 보내지 않은(Same area를 묻지 않은) 이유. 보냈으면 null
   sent: string[]; // 보낸 칸(title, goal, allowed_scope, done_criteria, recent_flights)
+  hash?: string; // 판정한 입력의 해시(ATC-555, WO-23). 옛 줄에는 없다
+  release?: string; // 그 FLIGHT의 발권 id(ATC-555). 발권 기록이 없거나 옛 줄이면 없다
 }
 
 // REPORT 판정(ATC-89): atc AIRCRAFT의 턴 하나(세션·시각)의 분류. 메시지 본문은 없다 — 보낸 글자 수만
@@ -100,6 +104,8 @@ export interface ReportJudgeLine {
   judgment: ReportJudgment;
   reason?: string; // engine이 "rule"일 때 어떤 규칙인가(limit-cut)
   sent: { chars: number };
+  hash?: string; // 판정한 입력의 해시(ATC-555, WO-23). 옛 줄에는 없다
+  release?: string; // 그 FLIGHT의 발권 id(ATC-555). 발권 기록이 없거나 옛 줄이면 없다
 }
 
 // SUPERVISOR가 분류를 맞다·틀리다고 표시(나중 줄이 앞의 것을 대신한다)
