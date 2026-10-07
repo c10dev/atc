@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseTeamKeys } from "./linear-keys.ts";
-import { stateDirBlock } from "./state-guard.ts";
+import { realHome, stateDirBlock, underNodeTest } from "./state-guard.ts";
 
 try {
   process.loadEnvFile(new URL("../.env.local", import.meta.url));
@@ -14,8 +14,12 @@ const env = process.env;
 // 시험은 import 뒤에 config.stateDir를 바꾸므로, 모듈은 이 값을 import 때 고정하지 않고 쓸 때마다 읽는다
 let stateDir = env.ATC_STATE_DIR || join(HOME, ".local/state/atc");
 let airportsFile: string | null = env.ATC_AIRPORTS_FILE || null;
+// 프로세스가 시험인지와 진짜 홈은 한 번만 본다(운영 서버는 읽을 때마다 불리언 하나만 본다)
+const UNDER_TEST = underNodeTest();
+const REAL_HOME = UNDER_TEST ? realHome() : "";
 function guarded(path: string): string {
-  const block = stateDirBlock(path);
+  if (!UNDER_TEST) return path;
+  const block = stateDirBlock(path, true, REAL_HOME);
   if (!block) return path;
   process.exitCode = 1; // 누가 오류를 삼켜도 시험 파일은 실패한다
   console.error(`[state-guard] ${block}`);
