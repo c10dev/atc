@@ -93,13 +93,12 @@ export interface QueueInput {
   order: readonly string[]; // 나무의 발권 순서(ATC-456: 우선순위, 풀어 주는 수, 기다린 시간, Sequence)
   kPending: readonly { key: string; title: string | null; hash: string; at: string; session: string | null; words: string | null; kEffects: string | null; k3?: K3Status | null }[];
   proposals: readonly { id: string; title: string; reason: string; status: string; kEffects: string | null; priority: number }[];
-  airportOf: (key: string) => string | null;
+  airportOf: (key: string) => string | null; // 스냅샷의 airport(airportOfTicket과 같은 규칙)
   priorityOf?: (key: string) => number; // K 확인 줄의 우선순위(없으면 0)
   records: readonly { flight: string; channel: ReleaseChannel; at: string }[];
   now: number;
 }
 
-const teamOf = (key: string) => key.split("-")[0] ?? key;
 const DAY = 86_400_000;
 
 function problemOf(r: { action: QueueAction; k3: K3Status | null; stale: boolean; why: string | null }): string | null {
@@ -113,7 +112,8 @@ function problemOf(r: { action: QueueAction; k3: K3Status | null; stale: boolean
 const flat = <X>(rows: readonly TreeRow<X>[]): TreeRow<X>[] => rows.flatMap((r) => [r, ...flat(r.children)]);
 
 export function releaseQueueOf(inp: QueueInput): ReleaseQueue {
-  const airport = (key: string) => inp.airportOf(key) ?? teamOf(key);
+  // AIRPORT가 없으면 ""(DISPATCH도 배정하지 않는 이슈, 화면은 "AIRPORT 없음"으로 묶는다)
+  const airport = (key: string) => inp.airportOf(key) ?? "";
   const rank = new Map(inp.order.map((k, i) => [k, i]));
   const rows: QueueRow[] = [];
   let waiting = 0;

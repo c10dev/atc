@@ -104,7 +104,7 @@ test("대기열: 쏠 수 있는 줄만, 출처·단추·문제를 줄마다 정�
   assert.equal(q.rows.find((r) => r.key === "ATC-431")!.kLevel, "K2");
   assert.equal(r480.kLevel, "none");
   assert.equal(q.rows.find((r) => r.key === "VOC-455")!.kLevel, "undeclared");
-  assert.equal(q.rows.find((r) => r.key === "VOC-455")!.airport, "VOC", "AIRPORT를 모르면 팀 key");
+  assert.equal(q.rows.find((r) => r.key === "VOC-455")!.airport, "", "AIRPORT가 없으면 빈 칸(DISPATCH도 배정하지 않는다)");
   assert.equal(r480.airport, "ATCC");
 });
 
@@ -154,7 +154,7 @@ test("수: 발권 가능, AIRPORT마다, 쏘면 풀리는 이슈, 기다림, 비
   assert.equal(q.counts.fire, 6);
   assert.deepEqual(q.counts.byAirport, [
     { airport: "ATCC", fire: 5 },
-    { airport: "VOC", fire: 1 },
+    { airport: "", fire: 1 },
   ]);
   assert.equal(q.counts.unlocks, 2);
   assert.equal(q.counts.waiting, 3);

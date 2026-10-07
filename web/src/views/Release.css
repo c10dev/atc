@@ -352,7 +352,7 @@
 }
 
 /* ── 최근 발권: 7일 막대(상태 페이지 모양). 화면은 무채색 면, DUTY 채팅은 진한 면, attested는 빗금(색만으로 가르지 않는다) ── */
-.rls-bars {
+.rls-days {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: var(--space-2);
@@ -360,12 +360,12 @@
   align-items: end;
   margin-top: var(--space-1);
 }
-.rls-bar {
+.rls-day {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
   height: 100%;
 }
-.rls-bar-stack {
+.rls-day-stack {
   display: flex;
   flex-direction: column;
   align-self: end;
@@ -373,37 +373,37 @@
   overflow: hidden;
   border-radius: var(--radius-sm);
 }
-.rls-bar-stack span,
+.rls-day-stack span,
 .rls-sw {
   display: block;
 }
-.rls-bar-stack .is-screen,
+.rls-day-stack .is-screen,
 .rls-sw.is-screen {
   color: var(--muted);
   background: currentColor;
 }
-.rls-bar-stack .is-duty,
+.rls-day-stack .is-duty,
 .rls-sw.is-duty {
   color: var(--muted);
   background: var(--panel-3);
   box-shadow: inset 0 0 0 1px currentColor;
 }
-.rls-bar-stack .is-attested,
+.rls-day-stack .is-attested,
 .rls-sw.is-attested {
   color: var(--faint);
   background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px);
   box-shadow: inset 0 0 0 1px currentColor;
 }
-.rls-bar-n,
-.rls-bar-day {
+.rls-day-n,
+.rls-day-label {
   justify-self: center;
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
 }
-.rls-bar-n {
+.rls-day-n {
   color: var(--muted);
 }
-.rls-bar-day {
+.rls-day-label {
   color: var(--faint);
 }
 .rls-legend {

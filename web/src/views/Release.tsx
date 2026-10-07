@@ -117,6 +117,8 @@ interface ReleaseData {
   attested: Record<string, number>;
 }
 
+// AIRPORT가 없는 이슈의 묶음 이름(DISPATCH도 배정하지 않는다)
+const NO_AIRPORT = "AIRPORT 없음";
 const CHANNEL_LABEL: Record<Channel, string> = { screen: "화면", "duty-chat": "DUTY 채팅", attested: "attested" };
 const CHANNELS = Object.keys(CHANNEL_LABEL) as Channel[];
 
@@ -243,7 +245,8 @@ function Meta({ r }: { r: QRow }) {
   if (r.parent)
     bits.push(
       <span key="p" className="rls-parent">
-        <span className="mono">{r.parent.key}</span> {r.parent.title}
+        <span className="mono">{r.parent.key}</span>
+        {r.parent.title !== r.parent.key && ` ${r.parent.title}`}
       </span>,
     );
   if (r.waitingOn.length) bits.push(<span key="w">대기 {r.waitingOn.join(", ")}</span>);
@@ -372,7 +375,7 @@ function Focal({ q, data, parked }: { q: Queue; data: ReleaseData; parked: numbe
         {n > 0 &&
           q.counts.byAirport.map((a) => (
             <span key={a.airport}>
-              <b className="mono">{a.airport}</b> {a.fire}
+              <b className={a.airport ? "mono" : undefined}>{a.airport || NO_AIRPORT}</b> {a.fire}
             </span>
           ))}
         {q.counts.unlocks > 0 && <span>쏘면 풀리는 이슈 {q.counts.unlocks}</span>}
@@ -416,7 +419,7 @@ function OrderMap({ lanes, onPick }: { lanes: MapLane[]; onPick: (key: string) =
           {lanes.map((l) => (
             <li key={l.id} className="rls-lane">
               <div className="rls-lane-label">
-                <span className="mono rls-lane-ap">{l.airport}</span>
+                {l.airport && <span className="mono rls-lane-ap">{l.airport}</span>}
                 {l.parent ? (
                   <a className="mono rls-lane-key" href={`#flight/${l.parent.key}`}>
                     {l.parent.key}
@@ -424,9 +427,11 @@ function OrderMap({ lanes, onPick }: { lanes: MapLane[]; onPick: (key: string) =
                 ) : (
                   <span className="rls-lane-chain">사슬</span>
                 )}
-                <span className="rls-lane-title" title={l.parent?.title}>
-                  {l.parent ? l.parent.title : `${l.total}개`}
-                </span>
+                {l.parent?.title !== l.parent?.key && (
+                  <span className="rls-lane-title" title={l.parent?.title}>
+                    {l.parent ? l.parent.title : `${l.total}개`}
+                  </span>
+                )}
                 {l.parent && (
                   <span className="rls-lane-prog" aria-label={`끝남 ${l.done}/${l.total}`}>
                     <span className="rls-prog-bar" aria-hidden="true">
@@ -508,16 +513,16 @@ function RecentSection({ data }: { data: ReleaseData }) {
   return (
     <section id="rls-recent" className="rls-section" aria-label="최근 발권">
       <SectionHead count={data.recent.length}>최근 발권</SectionHead>
-      <div className="rls-bars" role="img" aria-label={`7일 발권 ${total}: ${days.map((d) => `${d.day.slice(5)} ${sum(d)}`).join(", ")}`}>
+      <div className="rls-days" role="img" aria-label={`7일 발권 ${total}: ${days.map((d) => `${d.day.slice(5)} ${sum(d)}`).join(", ")}`}>
         {days.map((d) => (
-          <div key={d.day} className="rls-bar" title={`${d.day} · ${CHANNELS.map((c) => `${CHANNEL_LABEL[c]} ${d[c]}`).join(" · ")}`}>
-            <div className="rls-bar-stack" style={{ height: `${(sum(d) / max) * 100}%` }}>
+          <div key={d.day} className="rls-day" title={`${d.day} · ${CHANNELS.map((c) => `${CHANNEL_LABEL[c]} ${d[c]}`).join(" · ")}`}>
+            <div className="rls-day-stack" style={{ height: `${(sum(d) / max) * 100}%` }}>
               <span className="is-attested" style={{ flexGrow: d.attested }} />
               <span className="is-duty" style={{ flexGrow: d["duty-chat"] }} />
               <span className="is-screen" style={{ flexGrow: d.screen }} />
             </div>
-            <span className="mono rls-bar-n">{sum(d)}</span>
-            <span className="mono rls-bar-day">{d.day.slice(8)}</span>
+            <span className="mono rls-day-n">{sum(d)}</span>
+            <span className="mono rls-day-label">{d.day.slice(8)}</span>
           </div>
         ))}
       </div>
@@ -674,12 +679,13 @@ export function Release({ refreshKey }: { refreshKey: string }) {
   // 대기열을 AIRPORT마다 가른다(서버 순서 그대로). SCHEDULE NEW 제안은 아직 이슈가 아니라 AIRPORT가 없고 맨 뒤 묶음이다
   const groups: { name: string; rows: QRow[] }[] = [];
   for (const r of q.rows) {
-    const name = r.source === "proposal" ? "SCHEDULE NEW" : r.airport;
+    const name = r.source === "proposal" ? "SCHEDULE NEW" : r.airport || NO_AIRPORT;
     const g = groups.find((x) => x.name === name);
     if (g) g.rows.push(r);
     else groups.push({ name, rows: [r] });
   }
-  groups.sort((a, b) => (a.name === "SCHEDULE NEW" ? 1 : 0) - (b.name === "SCHEDULE NEW" ? 1 : 0));
+  const last = (n: string) => (n === "SCHEDULE NEW" ? 2 : n === NO_AIRPORT ? 1 : 0);
+  groups.sort((a, b) => last(a.name) - last(b.name));
   const toggle = (id: string) => () => setOpenKey(openKey === id ? null : id);
   // 지도의 ▶ 칩: 대기열의 그 줄을 열고 그리로 스크롤해 초점을 준다
   const pick = (key: string) => {
@@ -759,7 +765,7 @@ export function Release({ refreshKey }: { refreshKey: string }) {
           <div key={g.name} className="rls-group">
             {groups.length > 1 && (
               <h3 className="rls-group-head">
-                <span className="mono">{g.name}</span> <em>{g.rows.length}</em>
+                <span className={g.name === NO_AIRPORT ? undefined : "mono"}>{g.name}</span> <em>{g.rows.length}</em>
               </h3>
             )}
             <ul className="rls-rows" aria-label={`${g.name} 발권 대기`}>
