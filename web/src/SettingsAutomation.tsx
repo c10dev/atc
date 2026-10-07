@@ -454,6 +454,12 @@ const soloGuard = (to: string) =>
     : { line: "on: WAKE L·M FLIGHT PLAN에 SOLO 줄(CAPTAIN이 직접 구현, CREW 없이), WAKE H·여러 영역 FLIGHT에는 CREW 줄을 넣는다", warn: false };
 const medianText = (m: MedianN, f: (n: number) => string) => (m.median === null ? "—" : f(m.median));
 const minText = (n: number) => (n >= 120 ? `${(n / 60).toFixed(1)}h` : `${Math.round(n)}m`);
+// 값이 있는 WAKE만 적는다(모두 —인 칸은 줄을 길게만 한다)
+const soloFacts = (r: SoloMisfireRow) => {
+  const base = r.blockBaseline.filter((b) => b.before.median !== null).map((b) => `${b.wake} ${medianText(b.before, minText)}`);
+  const toks = r.tokens.filter((t) => t.before.median !== null || t.after.median !== null).map((t) => `${t.wake} ${medianText(t.before, mOf)} → ${medianText(t.after, mOf)}`);
+  return [base.length ? `기준 block time ${base.join(" · ")}` : null, toks.length ? `FLIGHT당 토큰 기준 → 최근 ${toks.join(" · ")}` : null].filter(Boolean).join(" · ");
+};
 function SoloRows({ sw, save }: { sw: SwitchView; save: Save }) {
   const d = sw.data as SoloView | undefined;
   if (!d) return null;
@@ -487,11 +493,7 @@ function SoloRows({ sw, save }: { sw: SwitchView; save: Save }) {
               {r.tookCrew.length > 0 && ` (${r.tookCrew.join(", ")})`} · block time이 같은 WAKE 기준보다 긺{" "}
               <b className={r.slow.over.length ? "is-warn" : undefined}>{ratio(r.slow.over.length, r.slow.judged)}</b>
               {r.slow.over.length > 0 && ` (${r.slow.over.join(", ")})`}
-              <span className="faint">
-                {" "}
-                · 기준 block time {r.blockBaseline.map((b) => `${b.wake} ${medianText(b.before, minText)}`).join(" · ")} · FLIGHT당 토큰 기준 → 최근{" "}
-                {r.tokens.map((t) => `${t.wake} ${medianText(t.before, mOf)} → ${medianText(t.after, mOf)}`).join(" · ")}
-              </span>
+              {soloFacts(r) && <span className="faint"> · {soloFacts(r)}</span>}
             </li>
           ))}
         </ul>
