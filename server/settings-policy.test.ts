@@ -106,6 +106,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "K3 HOLD", "K3 줄이 있는 FLIGHT는 allow 없이 보내지 않음", "k3 hold allow 발권 declaration 선언 release 화면 classifier nuisance miss 오작동 k3Hold"],
     ["operations", "K3 RELAUNCH", "K3 FLIGHT에 쉬는 AIRCRAFT를 멈추고 새로 띄우는 카드", "k3 relaunch stop launch fresh 새로 띄움 쉬는 AIRCRAFT fleet plan 카드 오작동 k3Relaunch"],
     ["operations", "ACCOUNT RELEASE", "ACCOUNT가 달라 닿지 않는 AIRCRAFT의 카드를 닫음", "account 불일치 mismatch cross 닿지 않는 occ release 풀기 카드 supersede wrong-aircraft crossAccountRelease"],
+    ["operations", "FRESH START", "새 FLIGHT마다 세션을 새로 띄우기", "fresh start 자동 새 세션 restart stop launch 대화 context always over off 오작동 freshStart fresh-start.json"],
     ["operations", "EFFECT CHECK", "배포 효과 확인(## Measure 평결)", "effect check measure 평결 improved not improved worse too little data 효과 측정 effect-check.json 틀림 misfire"],
     ["operations", "PARKED", "RELEASE 화면의 PARKED 절과 그 발권", "parked backlog 손으로 올린 hand-filed release 발권 접힌 releaseParked"],
     ["operations", "SCOPE MEMORY", "백그라운드 세션 scope의 메모리 상한(OOM이 scope 안에서 끝나게)", "scope memory 메모리 oom kill cgroup memoryhigh memorymax launch bgMemoryCap"],

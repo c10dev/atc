@@ -675,6 +675,10 @@ export function mccText(sub, r) {
   if (sub === "escalate") return `#${r.escalate.pr} ESCALATE → user 등급 · ${r.escalate.reason}`;
   if (sub === "land") {
     if (r.blocks) return `LAND 안 함 — ${r.blocks.map((b) => `${b.code} ${b.text}`).join(" · ")}`;
+    // 서버가 착륙시키는 auto 등급 PR(ATC-563, MCC SERVER AUTO on·서버 job 살아 있음)
+    if (r.serverLands) return `LAND 안 함 — ${r.serverLands}`;
+    // 서버가 같은 때 먼저 머지함: 오류가 아니다(ATC-563)
+    if (r.alreadyLanded) return `already landed · ${r.tier}${r.detail ? ` · ${r.detail}` : ""}`;
     if (r.would) return `WOULD LAND (shadow) · ${r.tier}`;
     if (r.landed) return `LANDED · ${r.tier}${r.flagged?.length ? ` · 바뀐 관제 규칙: ${r.flagged.join(", ")}` : ""}`;
     return `LAND 실패 — ${r.result ?? ""} ${r.detail ?? ""}`.trim();

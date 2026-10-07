@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { autoCountsOf, autoLandOf, autoRecentOf, RECHECK_AFTER_MS, recheckDueOf, recheckOf, rtsViaAutoOf, serverLandedOf, TEST_WRITE_2026_10_06, testWriteOf } from "./mcc-auto.ts";
+import { writeResultOf } from "./autoland.ts";
+import { AUTO_LIVE_MS, autoCountsOf, autoLandOf, autoLiveOf, autoRecentOf, inProgressOf, landOutcomeOf, RECHECK_AFTER_MS, recheckDueOf, recheckOf, rtsViaAutoOf, serverHandoverOf, serverLandedOf, sessionLandOf, TEST_WRITE_2026_10_06, testWriteOf } from "./mcc-auto.ts";
 import { autoRtsOf, DEFAULT_MCC, loadMcc, parseMcc } from "./mcc.ts";
 import type { MccRecord } from "./mcc.ts";
 import type { RecordLine } from "./recorder.ts";
@@ -67,12 +68,14 @@ test("autoCountsOf·autoRecentOf: 최근 7일 줄만 세고 0도 0으로 센다"
     { t: t(2), kind: "mcc-auto", op: "land", pr: 2, head: "b", tier: "auto" },
     { t: t(2), kind: "mcc-auto", op: "recheck", pr: 2, head: "b", misfire: [] },
     { t: t(3), kind: "mcc-auto", op: "refused", pr: 3, head: "c", why: "rejected" },
+    { t: t(1), kind: "mcc-auto", op: "already-landed", pr: 4, head: "d", why: "Merge already in progress (HTTP 405)" },
     { t: t(1), kind: "mcc-auto", op: "rts", from: "x", to: "y", result: "started", mode: "shadow+server-auto" },
     { t: t(1), kind: "mcc-auto", op: "rts", from: "y", to: "z", result: "failed", mode: "shadow+server-auto", detail: "systemctl" },
     { t: t(9), kind: "mcc-auto", op: "land", pr: 9, head: "old", tier: "auto" },
   ];
-  assert.deepEqual(autoCountsOf(lines, now), { lands: 2, rechecks: 2, misfires: 1, refused: 1, rts: 1, rtsFailed: 1 });
-  assert.deepEqual(autoCountsOf([], now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 });
+  // already-landed는 따로 센다: 거절·실패(refused)에도 오작동(misfires)에도 들지 않는다(ATC-563)
+  assert.deepEqual(autoCountsOf(lines, now), { lands: 2, rechecks: 2, misfires: 1, refused: 1, alreadyLanded: 1, rts: 1, rtsFailed: 1 });
+  assert.deepEqual(autoCountsOf([], now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, alreadyLanded: 0, rts: 0, rtsFailed: 0 });
   assert.equal(autoRecentOf(lines, 2).length, 2);
 });
 
@@ -92,8 +95,8 @@ test("ATC-564: 2026-10-06 06:59–07:00Z의 가짜 rts 20줄(from c0ca22e000…)
   ];
   assert.deepEqual(real.map(testWriteOf), [false, false, false, false]);
   const lines = [...fakes, ...real].sort((a, b) => a.t.localeCompare(b.t));
-  assert.deepEqual(autoCountsOf(lines, now), { lands: 0, rechecks: 0, misfires: 0, refused: 1, rts: 1, rtsFailed: 2 });
-  assert.deepEqual(autoCountsOf(fakes, now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 });
+  assert.deepEqual(autoCountsOf(lines, now), { lands: 0, rechecks: 0, misfires: 0, refused: 1, alreadyLanded: 0, rts: 1, rtsFailed: 2 });
+  assert.deepEqual(autoCountsOf(fakes, now), { lands: 0, rechecks: 0, misfires: 0, refused: 0, alreadyLanded: 0, rts: 0, rtsFailed: 0 });
   assert.ok(autoRecentOf(lines, 50).every((l) => !testWriteOf(l)));
   assert.equal(autoRecentOf(lines, 50).length, real.length);
   assert.equal(TEST_WRITE_2026_10_06.fromPrefix, "c0ca22e000");
@@ -116,4 +119,102 @@ test("설정: 깨진 mcc.json은 서버 자동 착륙을 끈다(읽을 수 없�
   writeFileSync(file, "{ 깨진");
   assert.equal(loadMcc(file).serverAuto, "off");
   assert.equal(loadMcc(join(dir, "none.json")).serverAuto, "on");
+});
+
+// ── 착륙 경합(ATC-563) ──
+const HEAD = "a".repeat(40);
+// gh가 실패할 때처럼 stderr를 단 오류
+const ghFail = (stderr: string) => Object.assign(new Error("Command failed: gh api"), { stderr });
+const outcome = async (merge: () => Promise<unknown>, reread: { merged: boolean; head: string } | "error" = { merged: false, head: HEAD }) => {
+  let rereads = 0;
+  const r = await landOutcomeOf({
+    head: HEAD,
+    merge,
+    reread: async () => {
+      rereads++;
+      if (reread === "error") throw new Error("gh: HTTP 502");
+      return reread;
+    },
+    classify: writeResultOf,
+  });
+  return { ...r, rereads };
+};
+
+test("landOutcomeOf: 200은 ok", async () => {
+  const r = await outcome(async () => "{}");
+  assert.equal(r.result, "ok");
+  assert.equal(r.rereads, 0);
+});
+
+test("landOutcomeOf: 405 already in progress는 already-landed(다시 읽지 않는다)", async () => {
+  const r = await outcome(async () => {
+    throw ghFail("gh: Merge already in progress (HTTP 405)");
+  });
+  assert.equal(r.result, "already-landed");
+  assert.equal(r.rereads, 0);
+  assert.equal(inProgressOf("gh: Merge already in progress (HTTP 405)"), true);
+  assert.equal(inProgressOf("gh: Merge already in progress (HTTP 500)"), false);
+});
+
+test("landOutcomeOf: 다시 읽으니 같은 head로 이미 머지된 PR은 already-landed", async () => {
+  const r = await outcome(
+    async () => {
+      throw ghFail("gh: Pull Request is not mergeable (HTTP 405)");
+    },
+    { merged: true, head: HEAD },
+  );
+  assert.equal(r.result, "already-landed");
+  assert.equal(r.rereads, 1);
+});
+
+test("landOutcomeOf: 다른 405는 failed(머지되지 않았거나 다른 head로 머지됨, 다시 읽기 실패)", async () => {
+  const notMergeable = async () => {
+    throw ghFail("gh: Pull Request is not mergeable (HTTP 405)");
+  };
+  assert.equal((await outcome(notMergeable)).result, "failed");
+  assert.equal((await outcome(notMergeable, { merged: true, head: "b".repeat(40) })).result, "failed");
+  assert.equal((await outcome(notMergeable, "error")).result, "failed");
+});
+
+test("landOutcomeOf: 409(head가 움직임)는 rejected 그대로", async () => {
+  const r = await outcome(async () => {
+    throw ghFail("gh: Head branch was modified. Review and try the merge again. (HTTP 409)");
+  });
+  assert.equal(r.result, "rejected");
+});
+
+test("autoLiveOf: 마지막 점검이 3분 안이면 살아 있음, 없거나 오래됐으면 아님", () => {
+  const now = Date.parse("2026-10-06T08:10:29.000Z");
+  assert.equal(autoLiveOf(now - 30_000, now), true);
+  assert.equal(autoLiveOf(now - AUTO_LIVE_MS, now), true);
+  assert.equal(autoLiveOf(now - AUTO_LIVE_MS - 1, now), false);
+  assert.equal(autoLiveOf(null, now), false);
+});
+
+test("serverHandoverOf: 서버가 이 head에 마지막으로 남긴 land가 거절·실패일 때만", () => {
+  const h = `h7`.padEnd(40, "0");
+  const at = "2026-10-06T00:00:00.000Z";
+  const row = (result: "ok" | "rejected" | "failed" | "already-landed", by?: "server", head = h): MccRecord => ({ op: "land", at, pr: 7, head, tier: "auto", result, ...(by ? { by } : {}) });
+  assert.equal(serverHandoverOf([row("failed", "server")], 7, h), true);
+  assert.equal(serverHandoverOf([row("rejected", "server")], 7, h), true);
+  assert.equal(serverHandoverOf([row("already-landed", "server")], 7, h), false);
+  assert.equal(serverHandoverOf([row("failed", "server"), row("already-landed", "server")], 7, h), false);
+  assert.equal(serverHandoverOf([row("failed")], 7, h), false); // 세션 자신의 실패는 넘겨받음이 아니다
+  assert.equal(serverHandoverOf([row("failed", "server", "b".repeat(40))], 7, h), false); // 다른 head
+  assert.equal(serverHandoverOf([], 7, h), false);
+});
+
+test("sessionLandOf: 스위치 on·job 살아 있음·auto 등급이면 거절, 나머지는 세션 몫", () => {
+  const x = { ...base, mode: "land" as const, live: true, handover: false };
+  assert.equal(sessionLandOf(x).refuse, true);
+  assert.match(sessionLandOf(x).why, /서버가 착륙/);
+  assert.equal(sessionLandOf({ ...x, serverAuto: "off" }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, live: false }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, handover: true }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, tier: "flagged" }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, tier: "user" }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, escalated: true }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, mode: "rts" }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, blocks: 1 }).refuse, false);
+  assert.equal(sessionLandOf({ ...x, mode: "shadow" }).refuse, true); // 서버는 shadow에서도 착륙시킨다
 });

@@ -425,6 +425,14 @@ An approved ASSIGN whose AIRCRAFT carries a large conversation can be sent as a 
 - **OCC never sends it again.** `dispatch release` on a `sent` card with `sentVia: "fresh-start"` answers 409 (`FRESH START가 새 세션의 첫 프롬프트로 이미 보냄`) instead of returning the text for a resend, so the overdue-resend rule in `occ/…/flight-plan.md` cannot deliver the same FLIGHT PLAN twice; OCC reports it to the SUPERVISOR. send-guard and the other guards are unchanged.
 - **A LAUNCH card is different.** A `launch` card (no live session) already LAUNCHes on approve and OCC sends after the session is up; FRESH START is not offered there.
 
+## Automatic FRESH START (ATC-560)
+
+Since ATC-560 the server runs FRESH START by itself for an approved ASSIGN whose AIRCRAFT's session already flew a FLIGHT, when the AIRPORT's FRESH START switch (`fresh-start.json`: `off`, `always`, `over`; ships `always`) says so. The switch, the "already flew" rule, the skip reasons, the record and the misfire counters are in [fleet.md](fleet.md) 8.6 "Automatic FRESH START as built (ATC-560)".
+
+- **Where.** In `dispatch release` for an `approved` card, after the ground-stop refusal and before the session checks (`DispatchLauncher.beforeRelease`, `autoFreshStartGate`). A card is decided at most once (`restart` or `skip`): `none` (switch off, `launch` card, no live session, the session's first FLIGHT) sends as before with no line; `skip` writes one `fresh-start-auto` line with the reason and sends as before; `restart` writes the line, starts STOP and LAUNCH in the background, and answers 409 `<AIRCRAFT>: RESTARTING — 자동 FRESH START(ATC-560) 중 …`.
+- **OCC.** No new rule: the text carries `RESTARTING`, so OCC does not send, keeps the approval and calls `release` again next pass. By then the card is `sent` with `sentVia: "fresh-start"`, which `release` already refuses (ATC-73), or, if the restart failed, it is sent as before (STOP failed) or waits for a session (LAUNCH failed).
+- **Busy.** While a restart (automatic or the button) is between STOP and LAUNCH, `release` keeps answering the RESTARTING text, the approved-card relaunch (ATC-388) skips the card, and `POST /api/dispatch/proposals/:id/fresh-start` answers 409. The mark is in server memory only.
+
 ## RECALL
 
 A FLIGHT PLAN that was sent (`sent`), read back (`accepted`), or read back as a STAND-free FLIGHT that has not ARRIVED (`departed` with `departedVia: "readback"`) can be pulled back by the SUPERVISOR. This is decision 4 of [atfm.md](atfm.md): it is built before any automatic assignment.

@@ -104,6 +104,7 @@ export type RecordLine =
   // recheck는 착륙 뒤 PR을 다시 읽은 결과이고 misfire에 다시 읽으면 막았을 조건이 있다. refused는 서버가 하려다 막힌 것(MCC 세션도 queue에서 본다)
   | { t: string; kind: "mcc-auto"; op: "land"; pr: number; head: string; tier: string }
   | { t: string; kind: "mcc-auto"; op: "refused"; pr: number; head: string; why: string }
+  | { t: string; kind: "mcc-auto"; op: "already-landed"; pr: number; head: string; why: string } // 다른 쪽이 먼저 머지함(ATC-563): 실패·오작동이 아니다
   | { t: string; kind: "mcc-auto"; op: "recheck"; pr: number; head: string; misfire: string[] }
   | { t: string; kind: "mcc-auto"; op: "rts"; from: string | null; to: string; result: "started" | "failed"; mode: string; detail?: string }
   | { t: string; kind: "policy"; op: "mcc-server-auto-mode"; by: string; from: string; to: string }

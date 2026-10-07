@@ -425,6 +425,14 @@ Claude Code 2.1.285에서 scratch job으로 쟀다(빈 폴더에서 `claude --bg
 - **OCC는 다시 보내지 않는다.** `sentVia: "fresh-start"`인 `sent` 카드에 `dispatch release`는 재송신 문구를 주는 대신 409(`FRESH START가 새 세션의 첫 프롬프트로 이미 보냄`)로 답한다. 그래서 `occ/…/flight-plan.md`의 overdue 재송신 규칙이 같은 FLIGHT PLAN을 두 번 넣을 수 없고, OCC는 SUPERVISOR에게 보고한다. send-guard와 다른 guard는 그대로다.
 - **launch 카드는 다르다.** 세션이 없는 `launch` 카드는 승인하면 이미 LAUNCH하고 새 세션이 뜬 뒤 OCC가 보낸다. FRESH START는 거기에 나오지 않는다.
 
+## 자동 FRESH START (ATC-560)
+
+ATC-560부터 AIRPORT의 FRESH START 스위치(`fresh-start.json`: `off`, `always`, `over`. 배포 값 `always`)가 그렇게 말하면, 서버는 AIRCRAFT의 세션이 이미 FLIGHT를 날은 승인된 ASSIGN에 FRESH START를 스스로 한다. 스위치, "이미 날았다" 규칙, 건너뛰는 사유, 기록과 오작동 수는 [fleet.ko.md](fleet.ko.md) 8.6 "자동 FRESH START 만든 것 (ATC-560)".
+
+- **어디서.** `approved` 카드의 `dispatch release`에서, 출발 중지 거절 뒤·세션 확인 앞(`DispatchLauncher.beforeRelease`, `autoFreshStartGate`). 한 카드는 많아야 한 번 판정한다(`restart`·`skip`): `none`(스위치 off, `launch` 카드, 살아 있는 세션 없음, 세션의 첫 FLIGHT)은 줄 없이 전처럼 보내고, `skip`은 사유를 담은 `fresh-start-auto` 줄을 하나 남기고 전처럼 보내며, `restart`는 줄을 남기고 STOP과 LAUNCH를 뒤에서 시작한 뒤 409 `<AIRCRAFT>: RESTARTING — 자동 FRESH START(ATC-560) 중 …`으로 답한다.
+- **OCC.** 새 규칙이 없다: 문구에 `RESTARTING`이 있어 OCC는 보내지 않고 승인을 그대로 두고 다음 바퀴에 다시 `release`한다. 그때 카드는 `sentVia: "fresh-start"`인 `sent`라 `release`가 이미 거절하고(ATC-73), 재시작이 실패했으면 전처럼 보내거나(STOP 실패) 세션을 기다린다(LAUNCH 실패).
+- **busy.** 재시작(자동이든 버튼이든)이 STOP과 LAUNCH 사이에 있는 동안 `release`는 RESTARTING 문구로 답하고, 승인 카드의 재LAUNCH(ATC-388)는 그 카드를 건너뛰며, `POST /api/dispatch/proposals/:id/fresh-start`는 409로 답한다. 표시는 서버 메모리에만 있다.
+
 ## RECALL
 
 보냈거나(`sent`) READBACK 받은(`accepted`) FLIGHT PLAN, 그리고 READBACK으로 DEPARTED했지만 아직 ARRIVED하지 않은 STAND 없는 FLIGHT(`departed`, `departedVia: "readback"`)를 SUPERVISOR가 거둬들인다. [atfm.ko.md](atfm.ko.md)의 결정 4에 따라 자동 배정보다 먼저 만들었다.

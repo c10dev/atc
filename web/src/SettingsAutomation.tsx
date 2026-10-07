@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import type { KDay } from "../../server/k-approval.ts";
 import type { AutoCounts } from "../../server/mcc-auto.ts";
+import type { AutoSkipCode, FreshStartMode, MisfireRow } from "../../server/fresh-start-auto.ts";
 import type { RemovalStats } from "../../server/removal-rule.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
@@ -365,6 +366,79 @@ function MigrateRows({ sw, save }: { sw: SwitchView; save: Save }) {
     </>
   );
 }
+// 자동 FRESH START(ATC-560): AIRPORT마다 off | always | over 줄 하나와, 그 아래 AIRPORT마다 최근 7일 오작동 수. 자료(data)는 스위치 선언이 준다
+interface FreshStartView {
+  source: "ok" | "missing" | "broken";
+  margin: number;
+  airports: { code: string; mode: FreshStartMode }[];
+  misfires: MisfireRow[];
+}
+const FRESH_LABELS: Record<FreshStartMode, string> = { off: "off (버튼만)", always: "always", over: "over (기준을 넘을 때)" };
+const SKIP_LABELS: Record<AutoSkipCode, string> = {
+  retired: "RETIRED·AOG",
+  "not-background": "백그라운드 아님",
+  "not-idle": "쉬는 중 아님",
+  stand: "STAND",
+  "open-pr": "열린 PR",
+  limit: "LIMIT",
+  "fuel-hold": "FUEL hold",
+  "context-unknown": "크기 모름",
+  "under-threshold": "기준 아래",
+};
+const mOf = (n: number | null) => (n === null ? "—" : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
+const ratio = (a: number, n: number) => (n ? `${a}/${n}` : "—");
+function FreshStartRows({ sw, save }: { sw: SwitchView; save: Save }) {
+  const d = sw.data as FreshStartView | undefined;
+  if (!d) return null;
+  const warn = (from: FreshStartMode) => (to: string) =>
+    to === "off"
+      ? { line: "off: 자동으로는 멈추지 않는다. FRESH START는 승인된 카드의 버튼으로만 한다", warn: false }
+      : { line: `⚠ ${to}: OCC가 이 AIRPORT의 승인된 카드를 보내려 할 때 그 AIRCRAFT의 세션이 이미 FLIGHT를 날았으면${to === "over" ? ` 그리고 대화가 base + ${mOf(d.margin)}를 넘으면` : ""} 서버가 그 세션을 STOP하고 CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 LAUNCH한다. 열린 PR·STAND·LIMIT·FUEL hold가 있거나 쉬는 백그라운드 세션이 아니면 하지 않고 사유를 남긴다`, warn: from === "off" };
+  // 지난 7일에 자동 판정이 있었거나 비교할 FLIGHT가 있는 AIRPORT만 줄이 있다(아무 일 없는 AIRPORT는 "괜찮음" 줄을 내지 않는다, design-language 원칙 1)
+  const busy = d.misfires.filter((r) => r.restarts + r.skipped + r.failed.stop + r.failed.launch + r.failed.send + r.restarted.flights + r.kept.flights > 0);
+  return (
+    <>
+      <p className="settings-hint">fresh-start.json · 이 화면에서만 바꾼다 — 관제 세션은 못 바꿈 · 없거나 깨진 파일은 모두 off · over 기준은 세션의 base + {mOf(d.margin)}</p>
+      {d.source === "broken" && <p className="settings-hint is-warn">fresh-start.json을 읽을 수 없음 — 모든 AIRPORT가 off로 읽힌다. 손으로 고친 뒤 다시 바꾼다</p>}
+      {d.airports.length === 0 && <p className="settings-hint">열린 AIRPORT 없음(airports.json)</p>}
+      {d.airports.map((a) => (
+        <EditRow
+          key={a.code}
+          label={a.code}
+          env={`freshStart.${a.code}`}
+          value={a.mode}
+          input={{ kind: "select", options: ["off", "always", "over"], labels: FRESH_LABELS }}
+          guard={warn(a.mode)}
+          onSave={(v) => save({ freshStart: { [a.code]: v } })}
+        />
+      ))}
+      {busy.length > 0 && (
+        <ul className="autoland-modes" aria-label="자동 FRESH START 오작동 수">
+          {busy.map((r) => {
+            const skips = Object.entries(r.skipCodes).map(([k, n]) => `${SKIP_LABELS[k as AutoSkipCode]} ${n}`);
+            const failed = r.failed.stop + r.failed.launch + r.failed.send;
+            return (
+              <li key={r.airport}>
+                <b>{r.airport}</b> 최근 {r.days}일 자동 재시작 <b>{r.restarts}</b> · 건너뜀 {r.skipped}
+                {skips.length > 0 && ` (${skips.join(", ")})`} · 실패 <b className={failed > 0 ? "is-warn" : undefined}>{failed}</b>
+                {failed > 0 && ` (stop ${r.failed.stop}, launch ${r.failed.launch}, send ${r.failed.send})`}
+                {r.restarted.flights + r.kept.flights > 0 && (
+                  <span className="faint">
+                    {" "}
+                    · 다시 띄움 대 그대로(같은 AIRCRAFT): BLOCKED·질문 {ratio(r.restarted.blocked, r.restarted.flights)} 대 {ratio(r.kept.blocked, r.kept.flights)}
+                    {r.worseAircraft.length > 0 && <span className="is-warn"> (더 잦음: {r.worseAircraft.join(", ")})</span>} · FLIGHT당 토큰 {mOf(r.restarted.tokensMedian)} 대 {mOf(r.kept.tokensMedian)} · FIX·GO AROUND{" "}
+                    {ratio(r.restarted.rework, r.restarted.flights)} 대 {ratio(r.kept.rework, r.kept.flights)}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
 // 기본 줄(EditRow 하나) 대신 자기 줄을 그리는 스위치. 키는 스위치 key
 // DUTY 컨텍스트 CAP(ATC-496, docs/duty.md): 머리줄의 `context 365k/…k`가 쓰는 CAP. 비우면(0) 모델로 정한다([1m]이면 1000k, 아니면 250k)
 type DutyCapData = { cap: number; source: "duty.json" | "model" | "default"; note: string | null; model: string | null; configured: number | null };
@@ -391,6 +465,7 @@ function DutyCapRow({ sw, save }: { sw: SwitchView; save: Save }) {
 const CUSTOM_ROWS: Record<string, (sw: SwitchView, save: Save) => ReactNode> = {
   migrateRehearsal: (sw, save) => <MigrateRows sw={sw} save={save} />,
   dutyCap: (sw, save) => <DutyCapRow sw={sw} save={save} />,
+  freshStart: (sw, save) => <FreshStartRows sw={sw} save={save} />,
 };
 
 // 스위치 줄 뒤에 붙는, 자기 데이터가 있는 화면. 키는 스위치 key
@@ -524,7 +599,8 @@ function ServerAutoStats({ d }: { d: AutoData }) {
     <ul className="dp-misfire" data-code="MCC-SERVER-AUTO">
       <li>
         최근 7일 서버 착륙 <b>{c.lands}</b> · 서버 RTS <b>{c.rts}</b>
-        {c.rtsFailed ? <span className="is-warn"> · RTS 실패 {c.rtsFailed}</span> : null} · 서버가 거절·실패 <b>{c.refused}</b>
+        {c.rtsFailed ? <span className="is-warn"> · RTS 실패 {c.rtsFailed}</span> : null} · 서버가 거절·실패 <b>{c.refused}</b> · 이미 착륙됨 <b>{c.alreadyLanded}</b>
+        <span className="faint"> — 다른 쪽이 먼저 머지(실패 아님)</span>
       </li>
       <li>
         오작동(착륙 뒤 다시 읽으면 막았을 조건이 있음) <b className={c.misfires ? "is-warn" : undefined}>{c.misfires}</b>

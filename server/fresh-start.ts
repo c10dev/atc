@@ -5,7 +5,7 @@ import { isBackground, type SessionOrigin } from "./session-origin.ts";
 
 // FRESH START(ATC-73, docs/fleet.md 8.6 · docs/dispatch.md): 승인된 ASSIGN을 받을 AIRCRAFT의 대화가 기준(ATC-69)을 넘었으면,
 // SUPERVISOR가 한 번 눌러 그 세션을 STOP하고 CREW BRIEFING + FLIGHT PLAN을 첫 프롬프트로 새로 LAUNCH한다. 여기는 순수 함수만.
-// 실행(STOP·LAUNCH·기록)은 fresh-start-run.ts
+// 자동으로 하는 판정(ATC-560, AIRPORT 스위치)은 fresh-start-auto.ts. 실행(STOP·LAUNCH·기록)은 둘 다 fresh-start-run.ts
 
 export interface FreshStartFacts {
   registration: string;

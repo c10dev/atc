@@ -7,7 +7,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { routePath } from "hono/route";
 import { streamSSE } from "hono/streaming";
-import { mountAirports } from "./airports.ts";
+import { loadRegistry, mountAirports } from "./airports.ts";
 import { mountAtfm } from "./atfm-run.ts";
 import { mountAutoland } from "./autoland-run.ts";
 import { mountJudges } from "./judges/run.ts";
@@ -25,7 +25,8 @@ import { mountFleet } from "./fleet.ts";
 import { addLogbookFuel, aircraftContexts, mountFuel } from "./fuel-run.ts";
 import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan } from "./fleet-plan-run.ts";
-import { mountFreshStart } from "./fresh-start-run.ts";
+import { autoFreshStartGate, mountFreshStart } from "./fresh-start-run.ts";
+import { migrateFreshStartOnce } from "./fresh-start-switch.ts";
 import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { createJobRunner, jobs, provideService, serviceOf } from "./job-registry.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
@@ -241,6 +242,7 @@ mountDispatch(app, getSnapshot, (s) => fuelWatch(s), {
   // ACCOUNT: RESUME은 끊긴 ACCOUNT를 이름으로 댄다. 다른 카드는 이름을 대지 않아 LAUNCH ACCOUNT가 먼저고, 마지막 ACCOUNT는 그다음이다(ATC-239)
   max: MAX_LAUNCHED,
   launch: (s, reg, proposal, resume, flight) => launchForCard(s, reg, proposal, resume, "SUPERVISOR", flight),
+  beforeRelease: autoFreshStartGate(getSnapshot), // 자동 FRESH START(ATC-560): 이미 FLIGHT를 날은 세션이면 보내기 전에 STOP·LAUNCH
 }, (s, now, inFlight) => {
   // ATC-169: 머지됐는데 도착 보고가 없는 FLIGHT와 OCC 재시작 안전 시점(읽기만)
   const arrivalMissing = arrivalMissingOf(followingNow(s, now, undefined, false), foldReports(readReports()), now);
@@ -316,6 +318,14 @@ try {
   else if (m === "unreadable") console.warn("[atc] squelch: squelch.json을 읽을 수 없음 — 올리지 않고 shadow·v1로 둔다");
 } catch (e) {
   console.warn(`[atc] squelch: 올리기 실패 — ${e instanceof Error ? e.message : e}`);
+}
+try {
+  // 자동 FRESH START ships always(ATC-560): 배포 뒤 첫 시작에 열린 AIRPORT마다 always로 한 번 올린다(기록이 있으면 아무것도 안 한다)
+  const m = migrateFreshStartOnce(loadRegistry().entries.filter((e) => !e.closed).map((e) => e.code));
+  if (m === "migrated") console.log("[atc] fresh start: ATC-560 — 열린 AIRPORT마다 always로 올림(fresh-start.json의 migrated)");
+  else if (m === "unreadable") console.warn("[atc] fresh start: fresh-start.json을 읽을 수 없음 — 올리지 않고 off로 둔다");
+} catch (e) {
+  console.warn(`[atc] fresh start: 올리기 실패 — ${e instanceof Error ? e.message : e}`);
 }
 mountSquelch(app); // SQUELCH(ATC-94): 판정 API. 기본은 on·v2(ATC-553)
 mountControlShare(app); // CONTROL SHARE(ATC-551): 관제 몫과 일을 한 turn당 토큰(읽기만)
