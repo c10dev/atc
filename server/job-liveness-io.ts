@@ -16,6 +16,16 @@ export function procAlive(pid: number, procStart?: string | null): boolean {
   }
 }
 
+// 호스트가 켜진 때(/proc/stat btime, ATC-532). 이보다 먼저 뜬 프로세스는 살아 있을 수 없다. 못 읽으면 null
+export function bootAtOf(file = "/proc/stat"): number | null {
+  try {
+    const m = /^btime (\d+)$/m.exec(readFileSync(file, "utf8"));
+    return m ? Number(m[1]) * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 const SWITCH_FILE = () => join(config.stateDir, "job-liveness.json");
 let switchHit: { at: number; v: LivenessSwitch } | null = null;
 // 스냅샷마다 부르므로 짧게 아낀다. 저장하면 바로 비운다

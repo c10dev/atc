@@ -30,6 +30,7 @@ import { sessionProcOf } from "./session-proc.ts";
 import { memoryArgsOf, type ScopeMemory, scopeOomTextOf } from "./scope-memory.ts";
 import { scopeOomViewNow } from "./scope-oom-run.ts";
 import { readJob, settleJob } from "./job-state.ts";
+import { bootAtOf } from "./job-liveness-io.ts";
 import { ttlCache } from "./agents-cache.ts";
 import { readSquelchLast, squelchOfName } from "./squelch-last.ts";
 import { capHoldersOf, capHoldersText, type OtherBackground, otherBackgroundOf } from "./other-background.ts";
@@ -95,8 +96,10 @@ export interface AgentRow {
 // (2026-09-30 TEAM_F 40bb5e74, TEAM_K 77803763). 살아 있는 blocked job은 pid와 status(idle)가 있으므로 이 검사에 오지 않는다
 export const STALE_JOB_STATES: ReadonlySet<string> = new Set(["done", "stopped", "failed", "blocked"]);
 export const STALE_MIN_AGE_MS = 2 * 60_000;
-export function isStaleRow(row: Pick<AgentRow, "kind" | "pid" | "status" | "startedAt">, jobState: string | null, now: number): boolean {
+// ATC-532: 호스트가 다시 켜지기(bootAt) 전에 시작한 줄은 job state가 무엇이든(재부팅에 끊긴 working 포함) STALE이다 — 그 프로세스는 살아 있을 수 없다
+export function isStaleRow(row: Pick<AgentRow, "kind" | "pid" | "status" | "startedAt">, jobState: string | null, now: number, bootAt: number | null = null): boolean {
   if (row.kind !== "background" || row.pid != null || row.status != null) return false;
+  if (bootAt !== null && typeof row.startedAt === "number" && row.startedAt < bootAt) return true;
   if (!jobState || !STALE_JOB_STATES.has(jobState)) return false;
   return typeof row.startedAt === "number" && now - row.startedAt >= STALE_MIN_AGE_MS;
 }
@@ -423,6 +426,7 @@ export async function agentRowsOf(folders: readonly AccountFolder[] = accountFol
   const rows: AgentRow[] = [];
   const failed: string[] = [];
   const now = Date.now();
+  const bootAt = bootAtOf();
   for (const f of folders) {
     const isDefault = f.dir === config.claudeDir;
     if (!isDefault && !daemonUpIn(f.dir)) continue;
@@ -440,7 +444,7 @@ export async function agentRowsOf(folders: readonly AccountFolder[] = accountFol
     }
     // STALE 표시(ATC-93): pid·status 없는 background 줄만 그 job 파일의 state 한 칸을 읽는다(쓰지 않는다)
     for (const row of list) {
-      if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id, [join(f.dir, "jobs")]), now);
+      if (row.kind === "background" && row.pid == null && row.status == null && row.id) row.stale = isStaleRow(row, jobStateOf(row.id, [join(f.dir, "jobs")]), now, bootAt);
       if (labeled) row.account = f.label;
       const attachDir = row.kind === "background" ? attachDirOf(f.dir, config.claudeDir, config.home) : undefined;
       if (attachDir) row.attachDir = attachDir;

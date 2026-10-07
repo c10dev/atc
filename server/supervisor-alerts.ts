@@ -20,6 +20,7 @@ import { type CapIdleHint, idleText } from "./other-background.ts";
 import type { HostMemory } from "./host-memory.ts";
 import { type CleanupStand, closedFlightStandsOf, standLineOf, standOf } from "./cleanup-stands.ts";
 import { type Duplicate, duplicateTextOf, type Unverified, unverifiedTextOf } from "./control-stop-check.ts";
+import { type AbsentEscalation, escalationKeyOf, escalationTextOf } from "./control-absent.ts";
 
 // SUPERVISOR alerts(ATC-87): 화면을 안 보는 SUPERVISOR에게 알릴 변화의 목록. 새 감지는 없다 — 이미 있는 것(ALERT, FLIGHT FOLLOWING, health, 제안, PR, RTS)의
 // 키를 모아 안정된 key로 세울 뿐이다. 서버는 key가 처음 생기거나 사라질 때 `alert` SSE 이벤트를 보내고, 알림·소리는 화면(브라우저)이 정한다.
@@ -52,6 +53,8 @@ export interface SupervisorAlert {
   // 이 항목이 가는 곳(ATC-197). 클라이언트는 A3·A4 전까지 이 칸을 무시한다. key는 그대로다
   dest: AlertDest;
   unserved?: { flight: string; why: string; airport: string }; // follow|stuck가 plan.unserved의 새 문구를 썼다(ATC-522). 센 수의 근거
+  // 조용한 시간에도 소리를 낸다(ATC-532 CONTROL ABSENT, SUPERVISOR 스위치 기본 on). 브라우저는 따른다. ANNUNCIATOR는 조용한 시간에도 배너는 띄우고, 소리는 앱이 이 칸을 읽을 때부터
+  passQuiet?: true;
 }
 
 // ── 목적지 규칙(ATC-197, docs/alerting.md 3.1) ──
@@ -223,6 +226,7 @@ export interface AlertsInput {
   k3Holds?: { flight: string; text: string; fix: string }[]; // DISPATCH가 K3 hold로 보내지 않는 FLIGHT(ATC-398). 줄을 고치거나 화면에서 발권하면 사라진다
   canceledPrs?: CanceledPr[]; // 취소된 FLIGHT에 아직 열린 PR(ATC-460). PR을 닫으면(또는 FLIGHT를 되살리면) 사라진다. atc는 PR을 닫지 않는다
   controlDown?: ControlDown[];
+  controlAbsent?: AbsentEscalation[]; // CONTROL ABSENT(ATC-532): 한도를 넘었는데 atc가 다시 띄우지 못한 관제 세션. 다시 보이거나 SUPERVISOR가 확인하면 사라진다
   // CONTROL STOP CHECK(ATC-521): claude stop은 성공했지만 job이 stopped가 아닌 채인 것(control|unverified)과 같은 이름의 살아 있는 job이 둘 이상인 것(control|duplicate). 둘 다 WARNING, 풀리면 저절로 사라진다
   controlChecks?: { unverified: Unverified[]; duplicates: readonly Duplicate[] };
   hostMemory?: HostMemory | null; // host|memory(ATC-203): 호스트 메모리 부족·OOM kill. 없으면 항목이 없다
@@ -613,6 +617,23 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",
       since: c.since,
+    });
+  }
+  // CONTROL ABSENT(ATC-532): 한도를 넘게 없는데 atc가 다시 띄우지 않았거나 못 띄운 관제 세션. 화면이 없어도 닿게 WARNING이고, 되풀이마다 key의 n이 바뀌어
+  // 브라우저·ANNUNCIATOR가 새 알림으로 받는다. control|down은 목록에 그대로 있다
+  for (const e of inp.controlAbsent ?? []) {
+    out.push({
+      key: escalationKeyOf(e),
+      group: "recycle",
+      level: "warning",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: escalationTextOf(e),
+      next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다. 되풀이를 멈추려면 설정 창 CONTROL ABSENT에서 확인(ACK), 틀린 알림이면 오탐으로 표시",
+      link: "#fleet/control",
+      since: e.since,
+      ...(e.passQuiet ? { passQuiet: true as const } : {}),
     });
   }
   // CONTROL WAKE fail safe(ATC-557): 깨움 BREAKER가 멈춰 그 역할을 /loop로 돌려야 하는데 지금 다시 띄울 수 없다. 그동안 그 역할에는 깨움도 /loop도 없다(CAUTION).
