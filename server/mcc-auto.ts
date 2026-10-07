@@ -58,6 +58,16 @@ export function recheckDueOf(records: readonly MccRecord[], lines: readonly Reco
   return out;
 }
 
+// 2026-10-06 06:59–07:00Z에 update-run.test.ts가 운영 FLIGHT RECORDER에 쓴 가짜 rts 줄 20개(ATC-564: from c0ca22e000…, 그중 failed 4).
+// 기록은 추가만 하므로 지우지 않고 숫자·최근 줄에서만 뺀다. 창 안이라도 from이 다르면 센다. 07:00:15Z 줄이 있어 끝은 07:01Z 미만이다.
+// 보관(RECORDER 30일)이 2026-10-06 파일을 지운 뒤(2026-11-06 이후) 이 상수와 testWriteOf를 지운다
+export const TEST_WRITE_2026_10_06 = { fromPrefix: "c0ca22e000", sinceMs: Date.parse("2026-10-06T06:59:00Z"), untilMs: Date.parse("2026-10-06T07:01:00Z") } as const;
+export function testWriteOf(l: RecordLine): boolean {
+  if (l.kind !== "mcc-auto" || l.op !== "rts" || typeof l.from !== "string" || !l.from.startsWith(TEST_WRITE_2026_10_06.fromPrefix)) return false;
+  const ms = Date.parse(l.t);
+  return ms >= TEST_WRITE_2026_10_06.sinceMs && ms < TEST_WRITE_2026_10_06.untilMs;
+}
+
 // SUPERVISOR 화면의 숫자(최근 days일). 0도 보여서 "한 번도 안 울렸다"와 구분한다
 export interface AutoCounts {
   lands: number;
@@ -71,7 +81,7 @@ export function autoCountsOf(lines: readonly RecordLine[], now: number, days = 7
   const since = now - days * 86_400_000;
   const c: AutoCounts = { lands: 0, rechecks: 0, misfires: 0, refused: 0, rts: 0, rtsFailed: 0 };
   for (const l of lines) {
-    if (l.kind !== "mcc-auto" || Date.parse(l.t) < since) continue;
+    if (l.kind !== "mcc-auto" || Date.parse(l.t) < since || testWriteOf(l)) continue;
     if (l.op === "land") c.lands++;
     else if (l.op === "refused") c.refused++;
     else if (l.op === "recheck") {
@@ -86,5 +96,5 @@ export function autoCountsOf(lines: readonly RecordLine[], now: number, days = 7
 }
 // 화면과 MCC queue가 보이는 최근 줄(최대 n, 새것 먼저)
 export function autoRecentOf(lines: readonly RecordLine[], n = 5): RecordLine[] {
-  return lines.filter((l) => l.kind === "mcc-auto").slice(-n).reverse();
+  return lines.filter((l) => l.kind === "mcc-auto" && !testWriteOf(l)).slice(-n).reverse();
 }

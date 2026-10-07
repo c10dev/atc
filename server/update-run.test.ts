@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -8,6 +8,7 @@ import { config } from "./config.ts";
 import { mountMcc, rtsGuard } from "./mcc-run.ts";
 import { RTS_FILE, rtsUnitGuard, saveMcc } from "./mcc.ts";
 import type { Snapshot } from "./model.ts";
+import { readRecords } from "./recorder.ts";
 import { loadPlanRts, mountUpdate, type UpdateDeps } from "./update-run.ts";
 
 // 시험은 임시 상태 폴더와 7702에서 돈다. 실제 atc-rts 유닛은 절대 시작하지 않는다(startUnit은 항상 스텁)
@@ -189,6 +190,9 @@ test("자동 RTS: 같은 main에 거절되면 멈추고, 유닛 시작 오류는
   const bad = setup({ startUnit: async () => { throw new Error("systemctl 실패"); } });
   assert.equal((await bad.pass()).started, false);
   assert.equal(mccLines()[0].result, "failed");
+  // ATC-564: FLIGHT RECORDER의 mcc-auto rts 줄도 이 시험의 임시 상태 폴더에 간다(2026-10-06에는 운영 기록에 갔다)
+  assert.ok(readRecords(0).some((l) => l.kind === "mcc-auto" && l.op === "rts" && l.result === "failed" && l.from === A));
+  assert.ok(readdirSync(join(config.stateDir, "flight-recorder")).length > 0);
   const retry = setup();
   assert.match((await retry.pass()).why, /5분/);
   assert.equal(retry.calls.start, 0);
