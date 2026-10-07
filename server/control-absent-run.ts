@@ -276,9 +276,9 @@ export function ackAbsent(session: string, by = "SUPERVISOR", now = Date.now()):
   note({ t: new Date(now).toISOString(), event: "ack", session, by, of: ep.escalation.line });
   return true;
 }
-// SUPERVISOR가 틀린 알림으로 표시(오작동 수). 그 없음이 아직 열려 있으면 확인과 같이 걷는다
-export function markAbsentFalse(t: string, by = "SUPERVISOR", now = Date.now()): boolean {
-  const l = absentLines(now - LOOKBACK_MS).find((x) => x.t === t && x.event === "escalate");
+// SUPERVISOR가 틀린 알림으로 표시(오작동 수). 그 없음이 아직 열려 있으면 확인과 같이 걷는다. 한 주기의 알림 줄은 t가 같으므로 세션까지 맞춘다
+export function markAbsentFalse(t: string, session: string, by = "SUPERVISOR", now = Date.now()): boolean {
+  const l = absentLines(now - LOOKBACK_MS).find((x) => x.t === t && x.session === session && x.event === "escalate");
   if (!l) return false;
   note({ t: new Date(now).toISOString(), event: "false", session: l.session, by, of: t });
   const ep = episodes.get(l.session);
@@ -298,7 +298,7 @@ export interface AbsentData {
 export function absentData(now = Date.now()): AbsentData {
   const lines = absentLines(now - LOOKBACK_MS);
   const others = readRecords(now - LOOKBACK_MS).filter((r) => r.kind === "control" && r.op === "stop-check") as unknown as { t: string; kind: string; op?: string; event?: string; session?: string }[];
-  const marked = new Set(lines.filter((l) => l.event === "false").map((l) => l.of));
+  const marked = new Set(lines.filter((l) => l.event === "false").map((l) => `${l.session}|${l.of}`));
   return {
     settings: loadAbsentSettings(),
     last7d: absentCountsOf(lines, others, now - 7 * DAY, now + 1),
@@ -310,7 +310,7 @@ export function absentData(now = Date.now()): AbsentData {
       .filter((l) => l.event === "relaunch" || (l.event === "escalate" && (l.n ?? 1) === 1))
       .sort((a, b) => b.t.localeCompare(a.t))
       .slice(0, 6)
-      .map((l) => ({ ...l, marked: marked.has(l.t) })),
+      .map((l) => ({ ...l, marked: marked.has(`${l.session}|${l.t}`) })),
     days: absentMinutesByDay(lines, now, 7),
   };
 }
@@ -326,8 +326,8 @@ export function mountControlAbsent(app: Hono) {
   });
   app.post("/api/control-absent/false", async (c) => {
     if (!fromThisApp(c)) return c.json({ error: "이 화면에서 보낸 요청만 받습니다" }, 403);
-    const body = (await c.req.json().catch(() => null)) as { t?: unknown } | null;
-    if (typeof body?.t !== "string" || !markAbsentFalse(body.t)) return c.json({ error: "그런 알림 줄이 없음" }, 404);
+    const body = (await c.req.json().catch(() => null)) as { t?: unknown; session?: unknown } | null;
+    if (typeof body?.t !== "string" || typeof body.session !== "string" || !markAbsentFalse(body.t, body.session.toUpperCase())) return c.json({ error: "그런 알림 줄이 없음" }, 404);
     return c.json({ ok: true });
   });
 }

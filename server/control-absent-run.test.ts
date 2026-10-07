@@ -266,8 +266,9 @@ test("서버를 다시 켜면 열린 없음을 FLIGHT RECORDER에서 되살리�
   await controlAbsentPass(S, deps(w));
   assert.deepEqual(w.launches, ["TOWER"]);
   // 오탐 표시
-  assert.equal(markAbsentFalse(esc.t, "SUPERVISOR", w.now), true);
-  assert.equal(markAbsentFalse("2020-01-01T00:00:00.000Z", "SUPERVISOR", w.now), false);
+  assert.equal(markAbsentFalse(esc.t, "MCC", "SUPERVISOR", w.now), false); // 같은 t라도 다른 세션의 줄은 아니다
+  assert.equal(markAbsentFalse(esc.t, "TOWER", "SUPERVISOR", w.now), true);
+  assert.equal(markAbsentFalse("2020-01-01T00:00:00.000Z", "TOWER", "SUPERVISOR", w.now), false);
   const d = absentData(w.now);
   assert.equal(d.last7d.falseEscalations, 1);
   assert.equal(d.last7d.relaunches, 1);

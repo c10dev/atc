@@ -1052,7 +1052,7 @@ function AbsentStats({ d, refresh }: { d: AbsentData; refresh: () => void }) {
         </li>
       ))}
       {d.recent.map((r) => (
-        <li key={r.t} className="faint">
+        <li key={`${r.session}|${r.t}|${r.event}`} className="faint">
           {timeAgo(r.t, Date.now())} · {r.event === "relaunch" ? (r.ok ? `다시 띄움(job ${r.jobId ?? "?"}) · ${r.proof ?? ""}` : `다시 띄우기 실패 · ${r.why ?? ""}`) : `알림 · ${r.why ?? ""}`} · {r.session}
           {r.event === "escalate" &&
             (r.marked ? (
@@ -1060,7 +1060,7 @@ function AbsentStats({ d, refresh }: { d: AbsentData; refresh: () => void }) {
             ) : (
               <>
                 {" · "}
-                <button type="button" className="btn" onClick={() => void send("/api/control-absent/false", { t: r.t })}>
+                <button type="button" className="btn" onClick={() => void send("/api/control-absent/false", { t: r.t, session: r.session })}>
                   오탐으로 표시
                 </button>
               </>
