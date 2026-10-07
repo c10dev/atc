@@ -17,7 +17,7 @@ export default defineSwitch({
   error: "off 또는 on",
   warn: {
     off: "off: 관제 세션이 오늘처럼 팀의 UNABLE·질문·두 번째 침묵을 스스로 판단한다(`atcctl exception`은 EXCEPTION OFF로 답한다). 아무것도 보내지 않는다.",
-    on: `⚠ 기본: 팀의 UNABLE·질문·두 번째 침묵을 고정 메뉴(RESEND·HOLD_UNTIL·REASSIGN·ANSWER·ESCALATE·ACCEPT_UNDONE)로 정한다. Jev(TypeSafe)가 먼저, 확신 0.8 아래·오류·키 없음이면 claude -p 한 번(${CLAUDE_MODEL}). 가린 CAPTAIN 글(경로·URL·코드·비밀을 가리고 최대 1,500자)·메뉴·정책이 나간다(K2 승인). ANSWER는 정책이 그 점을 정할 때만, 아니면 ESCALATE 카드. judges.jev와 따로 켜진다.`,
+    on: `⚠ 기본: 팀의 UNABLE·질문·두 번째 침묵을 고정 메뉴(RESEND, HOLD_UNTIL, REASSIGN, ANSWER, ESCALATE, ACCEPT_UNDONE)로 정한다. Jev(TypeSafe)가 먼저, 확신 0.8 아래·오류·키 없음이면 claude -p 한 번(${CLAUDE_MODEL}). 가린 CAPTAIN 글(경로·URL·코드·비밀을 가리고 최대 1,500자)·메뉴·정책이 나간다(K2 승인). ANSWER는 정책이 그 점을 정할 때만, 아니면 ESCALATE 카드. judges.jev와 따로 켜진다.`,
   },
   row: () => ({
     label: "EXCEPTIONS",
