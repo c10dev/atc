@@ -14,9 +14,9 @@ export default defineSwitch({
   error: "off 또는 on",
   warn: {
     off: "off: 서버는 아무것도 착륙시키지 않는다. MCC 세션이 `mcc land`·`mcc rts`로 다시 한다(모드 shadow는 would만).",
-    on: "⚠ 기본: MCC INSPECTION pass가 있는 auto 등급 PR을 CI·정확한 head 등 착륙 조건(L2–L8)이 맞으면 서버가 스스로 머지한다(모드가 shadow여도). flagged·user 등급과 ESCALATE·HOLD·GROUND STOP은 그대로 사람이다. 서버가 착륙시킨 PR만 쌓인 main은 서버가 스스로 RETURN TO SERVICE한다. 모드 rts에서는 착륙하지 않는다. 서버 job이 살아 있는 동안(마지막 점검 3분 안) MCC 세션의 `mcc land`는 그 auto 등급 PR을 착륙시키지 않는다(서버가 거절·실패한 head는 넘겨받는다).",
+    on: "⚠ 기본: MCC INSPECTION pass가 있는 auto 등급 PR을 CI·정확한 head 등 착륙 조건(L2–L8)이 맞으면 서버가 스스로 머지한다(모드가 shadow여도). flagged·user 등급과 ESCALATE·HOLD·GROUND STOP은 그대로 사람이다. 서버가 착륙시킨 PR만 쌓인 main은 서버가 스스로 RETURN TO SERVICE한다. 모드 rts에서는 착륙하지 않는다.",
   },
-  row: () => ({ label: "MCC SERVER AUTO", env: "mcc.serverAuto", note: "mcc.json · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈 · 오작동은 착륙 뒤 다시 읽었을 때 막았을 조건이 있던 서버 착륙의 수(FLIGHT RECORDER mcc-auto) · 이미 착륙됨은 같은 때 다른 쪽이 먼저 머지한 시도(실패·오작동 아님)" }),
+  row: () => ({ label: "MCC SERVER AUTO", env: "mcc.serverAuto", note: "mcc.json · 이 화면에서만 바꾼다 — MCC 세션은 못 바꿈 · 오작동은 착륙 뒤 다시 읽었을 때 막았을 조건이 있던 서버 착륙의 수(FLIGHT RECORDER mcc-auto)" }),
   data: () => autoData(),
   order: 31,
   lineOrder: 21,
