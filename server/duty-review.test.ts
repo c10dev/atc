@@ -2,7 +2,7 @@ import "./test-hermetic.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDutyConfig } from "./duty-config.ts";
-import { decideReview, emptyMisfiresOf, namedReadyOf, nextReviewId, openSimilarKey, PROPOSALS_MAX, REVIEW_DAILY_MAX, REVIEW_LEAK_SKIP_KINDS, reviewDaysOf, reviewKeyOf, reviewLeaksOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewMemo, type ReviewSignals, signalsOf } from "./duty-review.ts";
+import { decideReview, emptyMisfiresOf, heartbeatBoundary, heartbeatDue, lastRunOf, pendingSkipOf, reviewFactsOf, reviewMemosOf, skipCountsOf, skipVerdictOf, namedReadyOf, nextReviewId, openSimilarKey, PROPOSALS_MAX, REVIEW_DAILY_MAX, REVIEW_LEAK_SKIP_KINDS, reviewDaysOf, reviewKeyOf, reviewLeaksOf, reviewPromptOf, type ReviewConfig, type ReviewLine, type ReviewMemo, type ReviewSignals, signalsOf } from "./duty-review.ts";
 import type { Ticket } from "./model.ts";
 import { NOT_RELEASED_WHY } from "./release.ts";
 
@@ -298,4 +298,111 @@ test("설정: reviewEmpty는 기본 켜짐, 분은 범위 밖이면 기본(20·6
   assert.equal(parseDutyConfig({ reviewEmptyMin: 4, reviewEmptyGapMin: 9999 }).reviewEmptyMin, 20);
   assert.equal(parseDutyConfig({ reviewEmptyMin: 4, reviewEmptyGapMin: 9999 }).reviewEmptyGapMin, 60);
   assert.equal(parseDutyConfig({ reviewEmptyMin: 45, reviewEmptyGapMin: 90 }).reviewEmptyMin, 45);
+});
+
+// ── 같은 사실이면 건너뛰기(ATC-566) ──
+const factsIn = (over: Partial<Parameters<typeof reviewFactsOf>[0]> = {}) => ({
+  signals: { idleAircraft: ["TEAM_P"], waitingFlights: [] as string[] },
+  leakIds: ["LANDING|/repo#603"],
+  landing: ["PR #603 (VOC-427) CLEARED · landBy supervisor/escalate · holders 1"],
+  alerts: [
+    { level: "warning", key: "alert|health|CONTROL-BLOCKED|occ-1" },
+    { level: "advisory", key: "recycle|TOWER|2026-10-06T10:00:00Z" },
+  ],
+  effects: ["ATC-1 not improved: leak:PROPOSAL down 7d, 10 → 9"],
+  ...over,
+});
+
+test("reviewFactsOf: 시간만 바뀐 것(leak 분·알림 글의 분·컨텍스트·EFFECT 전후 수)은 지문을 바꾸지 않는다", () => {
+  const a = reviewFactsOf(factsIn());
+  // 알림 글과 분은 지문에 들어가지 않는다: key만 본다. EFFECT 줄은 콜론 앞(FLIGHT·평결)만
+  const b = reviewFactsOf(factsIn({ effects: ["ATC-1 not improved: leak:PROPOSAL down 7d, 12 → 11"] }));
+  assert.equal(a.fp, b.fp);
+  assert.deepEqual(a.facts, ["alert:alert|health|CONTROL-BLOCKED|occ-1", "effect:ATC-1 not improved", "idle:TEAM_P", "land:PR #603 (VOC-427) CLEARED · landBy supervisor/escalate · holders 1", "leak:LANDING|/repo#603"]);
+  // 순서가 달라도 같다
+  assert.equal(reviewFactsOf(factsIn({ alerts: [...factsIn().alerts].reverse() })).fp, a.fp);
+  // ADVISORY 알림은 점검이 싣지 않으니 지문에도 없다
+  assert.equal(reviewFactsOf(factsIn({ alerts: [factsIn().alerts[0]!, { level: "advisory", key: "following|x" }] })).fp, a.fp);
+  assert.match(a.fp, /^[0-9a-f]{16}$/);
+});
+
+test("reviewFactsOf: 새 leak·새 알림·막힘·기다리는 FLIGHT·평결이 바뀌면 지문이 바뀐다", () => {
+  const a = reviewFactsOf(factsIn()).fp;
+  for (const over of [
+    { leakIds: ["LANDING|/repo#603", "NEEDS_YOU|TEAM_A"] },
+    { alerts: [...factsIn().alerts, { level: "caution", key: "alert|orphan-flight|VOC-297" }] },
+    { landing: ["PR #603 (VOC-427) CLEARED · landBy supervisor/escalate · holders 1 · blocks no-checks"] },
+    { signals: { idleAircraft: ["TEAM_P"], waitingFlights: ["ATC-9"] } },
+    { signals: { idleAircraft: [], waitingFlights: [] } },
+    { effects: ["ATC-1 worse: leak:PROPOSAL down 7d, 10 → 12"] },
+  ]) assert.notEqual(reviewFactsOf(factsIn(over)).fp, a, JSON.stringify(over));
+});
+
+test("heartbeatDue: 마지막으로 돈 점검이 오늘 00:00Z 전이면 하루 한 번이 왔다", () => {
+  const at = (iso: string) => Date.parse(iso);
+  assert.equal(heartbeatBoundary(at("2026-10-07T13:00:00Z")), at("2026-10-07T00:00:00Z"));
+  assert.equal(heartbeatDue(at("2026-10-06T23:59:00Z"), at("2026-10-07T00:01:00Z")), true);
+  assert.equal(heartbeatDue(at("2026-10-07T00:00:30Z"), at("2026-10-07T23:59:00Z")), false);
+  assert.equal(heartbeatBoundary(at("2026-10-07T05:00:00Z"), 10), at("2026-10-06T10:00:00Z"));
+});
+
+const runLine = (id: string, minAgo: number, fp?: string, facts?: string[]): ReviewLine => ({ v: 1, ev: "review", id, at: new Date(NOW - minAgo * MIN).toISOString(), trigger: "leak", detail: "", ...(fp ? { fp } : {}), ...(facts ? { facts } : {}) });
+
+test("skipVerdictOf: 같은 지문이고 지난 점검이 아무것도 내지 않았을 때만 건너뛴다", () => {
+  const lines = [runLine("R-0001", 60, "abc")];
+  const last = lastRunOf(lines)!;
+  assert.deepEqual([last.id, last.fp, last.filed], ["R-0001", "abc", 0]);
+  assert.equal(skipVerdictOf({ on: true, fp: "abc", last, now: NOW }).skip, true);
+  assert.equal(skipVerdictOf({ on: false, fp: "abc", last, now: NOW }).why, "off");
+  assert.equal(skipVerdictOf({ on: true, fp: "xyz", last, now: NOW }).why, "changed");
+  assert.equal(skipVerdictOf({ on: true, fp: "abc", last: null, now: NOW }).why, "first");
+  assert.equal(skipVerdictOf({ on: true, fp: "abc", last: lastRunOf([runLine("R-0001", 60)]), now: NOW }).why, "no-fp", "ATC-566 전의 점검 줄에는 지문이 없다: 건너뛰지 않는다");
+  // 제안·댓글·고침 하나라도 냈으면 돈다
+  for (const out of [
+    { v: 1, ev: "proposal", at: new Date(NOW - 50 * MIN).toISOString(), review: "R-0001", key: "ATC-9", title: "x" },
+    { v: 1, ev: "write", at: new Date(NOW - 50 * MIN).toISOString(), review: "R-0001", key: "ATC-9", action: "comment" },
+    { v: 1, ev: "write", at: new Date(NOW - 50 * MIN).toISOString(), review: "R-0001", key: "ATC-9", action: "update" },
+  ] as ReviewLine[]) assert.equal(skipVerdictOf({ on: true, fp: "abc", last: lastRunOf([...lines, out]), now: NOW }).why, "filed");
+  // 하루 한 번: 마지막으로 돈 점검이 00:00Z 전이면 사실이 같아도 돈다
+  const yesterday = lastRunOf([{ ...runLine("R-0001", 0, "abc"), at: "2026-10-01T22:00:00Z" }]);
+  assert.equal(skipVerdictOf({ on: true, fp: "abc", last: yesterday, now: NOW }).why, "heartbeat");
+});
+
+test("pendingSkipOf·reviewMemosOf: 돈 점검 뒤의 skip이 밀린 점검이고, 건너뛴 점검은 하루 상한에 들지 않는다", () => {
+  const skip: ReviewLine = { v: 1, ev: "skip", at: new Date(NOW - 10 * MIN).toISOString(), trigger: "schedule", detail: "d", same: "R-0001", fp: "abc", facts: [], why: "w" };
+  assert.equal(pendingSkipOf([runLine("R-0001", 60, "abc"), skip])?.at, skip.at);
+  assert.equal(pendingSkipOf([skip, runLine("R-0002", 5, "abc")]), null);
+  const memos = reviewMemosOf([runLine("R-0001", 60, "abc"), skip]);
+  assert.deepEqual(memos.map((m) => m.skipped ?? false), [false, true]);
+  // 건너뛴 점검 12개가 있어도 상한(cap)이 막지 않는다
+  const many: ReviewMemo[] = Array.from({ length: REVIEW_DAILY_MAX }, (_, i) => ({ at: NOW - (40 + i) * MIN, trigger: "schedule" as const, key: "", skipped: true }));
+  assert.notEqual(decideReview({ ...base, lastAt: NOW - 300 * MIN, history: many }).why, "cap");
+});
+
+test("skipCountsOf: 건너뛴 점검 수와 오발 — 2시간 안 다음 점검이 새 사실 없이, 또는 건너뛴 사실의 키로 이슈를 냈다", () => {
+  const facts = ["idle:TEAM_P", "land:PR #603 (VOC-427) CLEARED · landBy supervisor/escalate · holders 1"];
+  const skip = (minAgo: number): ReviewLine => ({ v: 1, ev: "skip", at: new Date(NOW - minAgo * MIN).toISOString(), trigger: "empty", detail: "", same: "R-0001", fp: "aaa", facts, why: "same" });
+  const prop = (review: string, title: string): ReviewLine => ({ v: 1, ev: "proposal", at: new Date(NOW).toISOString(), review, key: "ATC-99", title });
+  // 1) 같은 지문(하루 한 번 점검)이 제안했다 → 오발
+  let c = skipCountsOf([runLine("R-0001", 300, "aaa", facts), skip(100), runLine("R-0002", 0, "aaa", facts), prop("R-0002", "Restart TOWER")]);
+  assert.deepEqual([c.skipped, c.misfires, c.misfireOf], [1, 1, ["R-0002"]]);
+  // 2) 사실이 바뀌었고(새 알림) 제안 제목이 새 사실만 부른다 → 오발 아님
+  const newer = [...facts, "alert:alert|orphan-flight|VOC-297"];
+  c = skipCountsOf([skip(100), runLine("R-0002", 0, "bbb", newer), prop("R-0002", "Reclaim VOC-297 STAND")]);
+  assert.equal(c.misfires, 0);
+  // 3) 사실이 바뀌었어도 제안 제목이 건너뛴 사실의 키(VOC-427)를 부른다 → 오발
+  c = skipCountsOf([skip(100), runLine("R-0002", 0, "bbb", newer), prop("R-0002", "Land VOC-427 without the holder")]);
+  assert.equal(c.misfires, 1);
+  // 4) 사실이 줄기만 했다(새 것 없음) → 오발
+  c = skipCountsOf([skip(100), runLine("R-0002", 0, "ccc", ["idle:TEAM_P"]), prop("R-0002", "Something")]);
+  assert.equal(c.misfires, 1);
+  // 5) 2시간 넘어서 나온 제안, 제안 없는 다음 점검 → 오발 아님
+  assert.equal(skipCountsOf([skip(121), runLine("R-0002", 0, "aaa", facts), prop("R-0002", "x")]).misfires, 0);
+  assert.equal(skipCountsOf([skip(100), runLine("R-0002", 0, "aaa", facts)]).misfires, 0);
+  assert.equal(skipCountsOf([skip(100)]).skipped, 1);
+});
+
+test("설정: reviewSkip은 기본 켜짐, false면 꺼짐", () => {
+  assert.equal(parseDutyConfig({}).reviewSkip, true);
+  assert.equal(parseDutyConfig({ reviewSkip: false }).reviewSkip, false);
 });

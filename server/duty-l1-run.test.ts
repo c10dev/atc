@@ -398,6 +398,24 @@ test("REVIEW 턴: 제안은 Backlog만(Todo는 만들기도 올리기도 403), �
   }
 });
 
+test("REVIEW 턴의 댓글·고침은 알린다(ATC-566: 그 점검이 무언가 냈다), REVIEW 턴이 아니면 알리지 않는다", async () => {
+  const s = scratch();
+  try {
+    for (const reviewing of [true, false]) {
+      const app = new Hono();
+      const { o } = fake();
+      const wrote: [string, string][] = [];
+      const { d } = deps(s.repo, { ...o, reviewTurn: () => reviewing, onWrite: (k, a) => void wrote.push([k, a]) });
+      mountDutyL1(app, d);
+      assert.equal((await post(app, "/api/duty/linear", { action: "comment", key: "ATC-7", body: "new evidence" })).status, 200);
+      assert.equal((await post(app, "/api/duty/linear", { action: "update", key: "ATC-7", priority: 2 })).status, 200);
+      assert.deepEqual(wrote, reviewing ? [["ATC-7", "comment"], ["ATC-7", "update"]] : [], String(reviewing));
+    }
+  } finally {
+    s.done();
+  }
+});
+
 test("REVIEW 턴이 아니면(SUPERVISOR의 글에 답하는 중) Todo도 만들 수 있고 중복 검사·제안 알림은 없다", async () => {
   const s = scratch();
   try {
