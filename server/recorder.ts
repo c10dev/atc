@@ -9,6 +9,7 @@ import type { Snapshot, TrafficEvent } from "./model.ts";
 import type { QrhNamedLine } from "./qrh.ts";
 import type { LinearCallLine } from "./linear-call.ts";
 import type { LivenessLine } from "./job-liveness.ts";
+import type { ServerSendLine } from "./server-send.ts";
 
 // FLIGHT RECORDER. 날짜(UTC)별 JSONL에 추가만 한다. 서버를 재시작해도 남아 지표 계산에 쓴다.
 // - event: 스냅샷 차이 이벤트(events.ts)
@@ -109,6 +110,9 @@ export type RecordLine =
   | { t: string; kind: "mcc-auto"; op: "recheck"; pr: number; head: string; misfire: string[] }
   | { t: string; kind: "mcc-auto"; op: "rts"; from: string | null; to: string; result: "started" | "failed"; mode: string; detail?: string }
   | { t: string; kind: "policy"; op: "mcc-server-auto-mode"; by: string; from: string; to: string }
+  // SERVER SEND(ATC-562): 서버가 AIRCRAFT 세션 소켓에 쓴 FLIGHT PLAN. 발송마다 입력(제안 id, 저장된 글의 해시, 세션 id, 검사 결과)을 싣는다. 글과 세션 키는 싣지 않는다
+  | ServerSendLine
+  | { t: string; kind: "policy"; op: "server-send-mode"; by: string; key: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "release-parked-mode"; by: string; from: string; to: string }
   // REPOSITION 스위치와 그림자(ATC-179): mode는 스위치 바꿈(auto가 flapping으로 approval이 되면 by auto), would는 shadow의 "옮겼을 것"
   | { t: string; kind: "reposition"; op: "mode"; by: string; from: string; to: string; reason?: string }

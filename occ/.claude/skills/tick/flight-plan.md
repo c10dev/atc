@@ -22,7 +22,7 @@
 
 | 상황 (브리핑 위치) | 할 일 |
 |---|---|
-| `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 출력의 `SEND TO` 세션에 `SEND:` 줄(머리 `[DISPATCH D-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용이니 다시 치지 않는다). 한 바퀴에 CAPTAIN마다 하나 |
+| `inFlight` 중 `approved` ASSIGN | `dispatch release <ID>` → 409 `atc 서버가 이 FLIGHT PLAN을 보낸다 …`(SERVER SEND, ATC-562)면 아래 서버 발송 줄. 아니면 출력의 `SEND TO` 세션에 `SEND:` 줄(머리 `[DISPATCH D-xxxx]`만)을 SendMessage. send-guard가 저장된 문구로 바꿔 넣는다(`---` 아래 전체 문구는 로그용이니 다시 치지 않는다). 한 바퀴에 CAPTAIN마다 하나 |
 | 그 ASSIGN의 AIRCRAFT가 `dispatch brief`의 `fuel.coldCache`에 있음(캐시가 식은 HOLDING CAPTAIN, ATC-56) | 그래도 위대로 보낸다 — 경고만 하고 막지 않는다. OCC LOG에 그 `text`를 적는다. 캐시를 데우려는 메시지는 따로 보내지 않는다 |
 | CAPTAIN 답장 "READBACK D-xxxx @xxxxxx" | `dispatch readback D-xxxx @xxxxxx`(답의 해시 그대로). 해시 없는 "READBACK D-xxxx"면 `dispatch readback D-xxxx`(해시 전의 옛 FLIGHT PLAN은 그대로 받는다) |
 | `dispatch readback`이 409 `READBACK D-xxxx refused — … quote the work-order hash @xxxxxx …`(ATC-555) | CAPTAIN이 FLIGHT PLAN의 해시를 인용하지 않았거나 다른 해시를 인용했다. 기록하지 않는다. 해시를 대신 채워 다시 부르지 않고, 이 일로 FLIGHT PLAN을 다시 보내지 않는다. OCC LOG에 인용한 해시(없으면 "없음")와 오류가 준 답 한 줄을 적는다. 다른 해시를 인용했으면 CAPTAIN이 다른 지시서를 받았다는 뜻이니 SUPERVISOR에게 보고한다. 카드는 sent로 남아 READBACK overdue가 SUPERVISOR에게 간다 |
@@ -35,7 +35,7 @@
 | CAPTAIN 답장 "READBACK D-xxxx RECALL" | `dispatch recalled D-xxxx`. FLIGHT는 다시 후보가 되고 같은 AIRCRAFT에는 24시간 제안되지 않는다. "RECALL" 없는 "READBACK D-xxxx"는 FLIGHT PLAN의 READBACK이니 헷갈리지 않는다 |
 | `overdue`에 든 recalling(RECALL 뒤 10분 넘게 READBACK 없음) | `dispatch recall-send <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
 | CAPTAIN 답장 "UNABLE D-xxxx — 사유", 또는 형식 없이 사유를 들어 거절 | `dispatch unable D-xxxx -- <사유 그대로>`. 다시 보내지 않고 SUPERVISOR 보고(FOLLOWING에도 하루 뜬다). RECALL에는 UNABLE이 없다 — RECALL은 "READBACK D-xxxx RECALL"로만 닫힌다 |
-| `overdue`에 든 sent(10분 넘게 READBACK 없음. 첫 STANDBY가 있으면 그때부터 10분) | `dispatch release <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고 |
+| `overdue`에 든 sent(10분 넘게 READBACK 없음. 첫 STANDBY가 있으면 그때부터 10분) | `dispatch release <ID>`로 같은 문구를 받아 한 번 더 보낸다. 그래도 없으면 SUPERVISOR 보고. 카드의 `sentVia`가 `server`면 release가 409로 답한다: 아래 서버 발송 줄 |
 | `overdue`에 든 accepted(READBACK 뒤 30분 넘게 STAND 없음), STAND 없는 departed(24시간 넘게 ARRIVED 보고 없음) | SUPERVISOR 보고만 |
 | **SendMessage 결과가 `success:false`**(FLIGHT PLAN 전송, ATC-183) | 바로 `dispatch undelivered D-xxxx -- <도구가 돌려준 메시지 그대로>`. **같은 tick에 다시 보내지 않는다.** OCC LOG에 "sent"라고 쓰지 않고 "undelivered"와 사유를 쓴다. 제안은 approved로 돌아가 세션이 돌아오면 다음 바퀴에 다시 나온다. 결과가 성공이면 아무것도 더하지 않는다(READBACK이 온 뒤에야 `dispatch readback`) |
 | RECALL을 보냈는데 `success:false` | 같은 tick에 다시 보내지 않는다. OCC LOG에 "sent"라고 쓰지 않고 SUPERVISOR 보고. `recall-send`는 상태를 바꾸지 않아 되돌릴 기록이 없다 — 다음 바퀴의 `overdue`(RECALL) 규칙이 한 번 다시 보낸다 |
@@ -44,6 +44,7 @@
 | `dispatch release`가 `AIRCRAFT 세션 없음 — 보내지 않음 (LAUNCH 필요)`로 거절(그 AIRCRAFT에 살아 있는 세션이 없고 launch 카드도 아님, ATC-183) | 보내지 않는다. 승인은 그대로다. OCC LOG에 적고 SUPERVISOR 보고(LAUNCH는 SUPERVISOR가 FLEET에서). 세션이 돌아오면 다음 바퀴에 다시 `dispatch release`한다. 이 거절이 오면 SendMessage하지 않으니 `undelivered`도 필요 없다 |
 | `dispatch release`가 `… LAUNCH 실패 …`로 거절, 또는 `following`에 `launch` 문제 | 보내지 않는다. SUPERVISOR 보고(다시 승인하거나 FLEET에서 LAUNCH하는 것은 SUPERVISOR 몫) |
 | `dispatch release`가 `FRESH START가 새 세션의 첫 프롬프트로 이미 보냄 …`으로 거절(그 카드는 SUPERVISOR가 FRESH START로 보냈다: FLIGHT PLAN이 새 세션의 첫 프롬프트였다, ATC-73) | **다시 보내지 않는다.** 같은 계획이 두 번 가면 안 된다. `overdue`에 든 sent라도 마찬가지다. SUPERVISOR 보고 한 줄(READBACK 없음)만 한다. 카드의 `sentVia`가 `fresh-start`이면 처음부터 `release`하지 않는다 |
+| **서버 발송**(ATC-562): `dispatch release`가 409 `atc 서버가 이 FLIGHT PLAN을 보낸다 …`(승인된 카드) 또는 `atc 서버가 보냄(sentVia server) …`(보낸 카드)로 답함 | **보내지 않는다.** 스위치가 켜져 있는 동안 서버가 첫 발송, READBACK 없이 10분 뒤의 재송신 한 번, 닿지 않은 것의 재시도 한 번을 send-guard와 같은 검사로 한다. OCC는 답(READBACK·UNABLE·STANDBY·사용자 go 대기)과 거절·사건만 다룬다: CAPTAIN의 답은 전처럼 OCC에 오니 위 줄대로 기록한다. 409가 "한 번 다시 보냄"이나 "resend가 off"라고 하고 `overdue`에 들었으면 SUPERVISOR 보고. 409는 SUPERVISOR 보고 거리가 아니다(OCC LOG에 한 줄). 서버가 두 번 닿지 못한 카드, 서버 job이 3분 넘게 멈춘 때, 데스크톱·터미널 세션, 서버 발송이 멈춘 때는 release가 409 없이 문구를 돌려준다 — 그러면 전처럼 보낸다. 닿지 않은 FLIGHT PLAN은 FOLLOWING `undelivered`로 온다(`following.md`) |
 
 RELEASE 제안은 승인돼도 보내지 않는다(SUPERVISOR가 Linear에서 정리).
 ## 도착 후보와 도착 보고 누락 (`dispatch brief`)

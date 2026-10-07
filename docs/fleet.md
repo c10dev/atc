@@ -1006,6 +1006,16 @@ A FLEET PLAN kind that stops an idle AIRCRAFT and launches it again for one K3 F
 - **Expiry.** The FUEL hold expiry applies as to LAUNCH. A card closes when its condition no longer holds (including the switch turned off).
 - **LAUNCH panel.** `POST /api/fleet/:registration/launch` with `flight` builds the K3 entries too (the same `k3OfFlight` as a launch card), so a K3 FLIGHT typed into the panel is launched with its allow when its release is on the screen or in DUTY chat.
 
+### Server send and the AIRCRAFT session, as built (ATC-562)
+
+The server can now write a FLIGHT PLAN into a running AIRCRAFT session. It writes one line pair to the session's messaging socket and does not restart or stop the session. Rules and evidence: [occ.md](occ.md) "8.5 Server send as built".
+
+- **Which process.** Only the production server (port 7700, the real state folder) writes. Test servers and tests never open a session socket. `ATC_SERVER_SEND_TEST=1` allows writing only to throwaway sessions whose cwd is under the OS temp folder.
+- **Which sessions.** Only background sessions (`claude --bg`, session file `kind: "bg"`) whose session file has `peerProtocol: 1` and a socket path `…/cc-socks/<pid>.sock`, in any registered ACCOUNT folder (the key file is read from the same folder). Desktop and terminal sessions are left to OCC. They expose the same fields, but delivery to them was not tested.
+- **Resolved at send time.** The recipient is the AIRCRAFT's live session by REGISTRATION (ATC-353). The writer rereads that session's file by session id just before writing, and does not write if the session's name changed or the file is gone.
+- **FRESH START first.** The automatic FRESH START gate (ATC-560) runs before a server first send, as before OCC's `release`. If it restarts the session, the FLIGHT PLAN is the new session's first prompt and the server does not also send it. A card whose FRESH START is running is skipped.
+- **ACCOUNT.** The socket is reachable across ACCOUNT folders, but the CAPTAIN's reply goes to "OCC" by name, and name lookup stays inside one folder (ATC-251). So the ACCOUNT mismatch block still applies, and the server does not send to an AIRCRAFT whose ACCOUNT differs from OCC's.
+
 ### 8.7 FLEET PLAN step 3: approval
 
 Status: built (2026-09-28), SUPERVISOR decisions recorded below. Section 8.6 built the shadow: atc proposes and the SUPERVISOR agrees or disagrees, and nothing moves. Step 3 lets the SUPERVISOR's approval run the proposal. Each proposal is still approved by a person, one at a time. Automatic STOP stays step 4, off by default.
