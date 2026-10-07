@@ -524,7 +524,8 @@ function ServerAutoStats({ d }: { d: AutoData }) {
     <ul className="dp-misfire" data-code="MCC-SERVER-AUTO">
       <li>
         최근 7일 서버 착륙 <b>{c.lands}</b> · 서버 RTS <b>{c.rts}</b>
-        {c.rtsFailed ? <span className="is-warn"> · RTS 실패 {c.rtsFailed}</span> : null} · 서버가 거절·실패 <b>{c.refused}</b>
+        {c.rtsFailed ? <span className="is-warn"> · RTS 실패 {c.rtsFailed}</span> : null} · 서버가 거절·실패 <b>{c.refused}</b> · 이미 착륙됨 <b>{c.alreadyLanded}</b>
+        <span className="faint"> — 다른 쪽이 먼저 머지(실패 아님)</span>
       </li>
       <li>
         오작동(착륙 뒤 다시 읽으면 막았을 조건이 있음) <b className={c.misfires ? "is-warn" : undefined}>{c.misfires}</b>

@@ -40,7 +40,7 @@ import {
   tierOfFiles,
 } from "./mcc.ts";
 import type { MccLandInfo } from "./land-by.ts";
-import { autoCountsOf, autoLandOf, autoRecentOf, recheckDueOf, recheckOf } from "./mcc-auto.ts";
+import { autoCountsOf, autoLandOf, autoLiveOf, autoRecentOf, landOutcomeOf, recheckDueOf, recheckOf, serverHandoverOf, sessionLandOf } from "./mcc-auto.ts";
 import { readRecords, record } from "./recorder.ts";
 import { loadLogbook, prEntries } from "./logbook.ts";
 import type { PullRequest, Snapshot } from "./model.ts";
@@ -82,6 +82,7 @@ interface RestPull {
   body: string | null;
   html_url: string;
   mergeable_state: string;
+  merged?: boolean;
   head: { sha: string; ref: string; repo: { full_name: string } | null };
   base: { ref: string; repo: { full_name: string } };
   user: { login: string } | null;
@@ -292,16 +293,23 @@ async function judge(s: Snapshot, number: number, head?: string) {
 }
 
 // 판단한 PR을 머지하고 mcc.jsonl에 land 줄을 남긴다(MCC 세션의 `mcc land`와 서버 자동이 같이 쓴다). 정확한 head만 머지한다(sha). atc는 merge 커밋을 쓴다. auto-merge를 켜지 않는다
+// 같은 PR을 다른 쪽이 같은 때 머지했으면(405 "already in progress", 또는 다시 읽으니 같은 head로 머지됨) already-landed로 남긴다(ATC-563)
 async function mergeJudged(j: Awaited<ReturnType<typeof judge>>, n: number, base: { at: string; pr: number; head: string; tier: string; model: string; by?: "supervisor" | "server" }) {
-  try {
-    await gh(["api", "-X", "PUT", `repos/${j.ap.slug}/pulls/${n}/merge`, "-f", `sha=${j.pr.head.sha}`, "-f", "merge_method=merge"]);
+  const r = await landOutcomeOf({
+    head: j.pr.head.sha,
+    merge: () => gh(["api", "-X", "PUT", `repos/${j.ap.slug}/pulls/${n}/merge`, "-f", `sha=${j.pr.head.sha}`, "-f", "merge_method=merge"]),
+    reread: async () => {
+      const p = await fetchPull(j.ap.slug, n);
+      return { merged: p.merged === true, head: p.head.sha };
+    },
+    classify: writeResultOf,
+  });
+  if (r.result === "ok") {
     appendMccRecord({ op: "land", ...base, result: "ok", ...(j.tier === "user" && j.kApproval?.ok ? { k: { release: j.kApproval.release, flight: j.kApproval.flight, channel: j.kApproval.channel } } : {}) });
     return { ok: true as const };
-  } catch (e) {
-    const r = writeResultOf(errText(e));
-    appendMccRecord({ op: "land", ...base, ...r });
-    return { ok: false as const, r };
   }
+  appendMccRecord({ op: "land", ...base, ...r });
+  return { ok: false as const, r };
 }
 
 // ── SHADOW GATE(docs/mcc.md 9장) ──
@@ -408,7 +416,7 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         recycle: { mode: loadRecycle().mode },
         gate,
         // 서버 자동(ATC-556): 스위치와 서버가 한 일. 서버가 거절·실패한 줄이 여기 보여 MCC 세션이 이어받는다
-        serverAuto: { switch: ap.cfg.serverAuto, ...autoData() },
+        serverAuto: { switch: ap.cfg.serverAuto, live: autoLiveOf(lastAutoPassAt, Date.now()), ...autoData() },
         repo: ap.slug,
         service: { head: deployed?.slice(0, 7) ?? null },
         main: { branch: ap.defaultBranch, head: ap.main?.slice(0, 7) ?? null, ci: ap.mainCi },
@@ -528,6 +536,17 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
       const n = prNumber(c.req.param("pr"));
       const j = await judge(s, n, head);
       if (j.blocks.length) return c.json({ landed: false, blocks: j.blocks }, 409);
+      // 서버가 착륙시키는 auto 등급 PR(ATC-563): 스위치 on이고 서버 job이 살아 있으면 세션은 착륙시키지 않는다. 서버가 이 head에서 거절·실패했으면 넘겨받는다
+      const side = sessionLandOf({
+        mode: j.ap.cfg.mode,
+        serverAuto: j.ap.cfg.serverAuto,
+        tier: j.tier,
+        blocks: j.blocks.length,
+        escalated: Boolean(j.escalated),
+        live: autoLiveOf(lastAutoPassAt, Date.now()),
+        handover: serverHandoverOf(readMccRecords(), n, j.pr.head.sha),
+      });
+      if (side.refuse) return c.json({ landed: false, serverLands: side.why, tier: j.tier }, 409);
       const at = new Date().toISOString();
       const base = { at, pr: n, head: j.pr.head.sha, tier: j.tier, model };
       if (!mccLands(j.ap.cfg.mode)) {
@@ -535,6 +554,8 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
         return c.json({ landed: false, would: true, tier: j.tier });
       }
       const merged = await mergeJudged(j, n, base);
+      // 다른 쪽(서버)이 같은 때 먼저 머지함: 오류가 아니다
+      if (!merged.ok && merged.r.result === "already-landed") return c.json({ landed: false, alreadyLanded: true, tier: j.tier, detail: merged.r.detail });
       if (!merged.ok) return c.json({ landed: false, ...merged.r }, 409);
       return c.json({ landed: true, tier: j.tier, ...(j.tier === "user" && j.kApproval?.ok ? { kApproval: { release: j.kApproval.release, flight: j.kApproval.flight } } : {}), flagged: j.tier === "flagged" ? j.reasons.filter((r) => r.tier === "flagged").map((r) => r.file) : [] });
     } catch (e) {
@@ -613,10 +634,13 @@ export function mountMcc(app: Hono, getSnapshot: () => Promise<Snapshot>, head: 
 // MCC 세션의 /tick을 기다리지 않고 서버가 auto 등급 PR을 착륙시킨다. 판정은 `mcc land`와 같은 judge·landBlocksOf, 한 번에 PR 하나만(머지마다 main이 바뀌므로).
 // INSPECTION은 아직 MCC 세션이 한다: 이 head에 pass가 있는 PR만 judge한다(GitHub을 읽지 않고 거르는 길). 착륙한 PR은 몇 분 뒤 다시 읽어 오작동을 센다
 let autoRunning = false;
+let lastAutoPassAt: number | null = null; // 마지막으로 점검을 시작한 때(ATC-563 "살아 있음"). 이 프로세스 안에서만
+
 const autoTried = new Set<string>(); // 이미 거절·실패한 pr@head: 같은 head로 30초마다 같은 줄을 남기지 않는다
 export async function autoPass(s: Snapshot): Promise<{ landed: number | null; rechecked: number }> {
   if (autoRunning) return { landed: null, rechecked: 0 };
   autoRunning = true;
+  lastAutoPassAt = Date.now();
   try {
     const cfg = loadMcc();
     if (cfg.serverAuto !== "on") return { landed: null, rechecked: 0 };
@@ -646,7 +670,9 @@ export async function autoPass(s: Snapshot): Promise<{ landed: number | null; re
         break;
       }
       autoTried.add(key);
-      record({ t: at, kind: "mcc-auto", op: "refused", pr: p.number, head, why: `${merged.r.result}${merged.r.detail ? `: ${merged.r.detail}` : ""}` });
+      // 다른 쪽이 같은 때 먼저 머지함(ATC-563): 거절·실패로 세지 않는다
+      if (merged.r.result === "already-landed") record({ t: at, kind: "mcc-auto", op: "already-landed", pr: p.number, head, why: merged.r.detail });
+      else record({ t: at, kind: "mcc-auto", op: "refused", pr: p.number, head, why: `${merged.r.result}${merged.r.detail ? `: ${merged.r.detail}` : ""}` });
       break;
     }
     return out;
