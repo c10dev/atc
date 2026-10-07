@@ -1,3 +1,4 @@
+import { bound, contentHashOf } from "./input-binding.ts";
 import { CONFIGURATIONS, type ConfigurationId, canFly, type CrewMember, DEFAULT_ACCOUNT, type FleetFile, type Rating } from "./crew.ts";
 import type { Plan, Unserved } from "./dispatch.ts";
 import { K3_FRESH_WHY } from "./k3-allow.ts";
@@ -729,7 +730,8 @@ export function persistOf(pending: Record<string, string>, candidates: FleetCand
 // ── 기록(fleet-plan.jsonl, 추가만) ──
 
 export type FleetPlanOp =
-  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; from?: string; configuration?: ConfigurationId; account?: string; reasons: PlanReason[]; at: string }
+  // hash(ATC-555, WO-23): fleet-plan-run의 append가 새 줄에 더한다(판정한 입력의 해시). 옛 줄에는 없다. 접은 제안에는 넣지 않는다
+  | { op: "create"; id: string; key: string; kind: FleetPlanKind; aircraft: string | null; airport: string | null; from?: string; configuration?: ConfigurationId; account?: string; reasons: PlanReason[]; at: string; hash?: string }
   | { op: "verdict"; id: string; verdict: "agree" | "disagree"; by: string; reason?: string; at: string }
   | { op: "expire"; id: string; reason?: string; at: string }
   | { op: "supersede"; id: string; by: string; at: string }
@@ -778,12 +780,28 @@ export interface FleetProposal {
   execution: { at: string; ok: boolean; steps: StepResult[] } | null;
 }
 
+// 판정한 입력(WO-23, ATC-555): 제안 카드가 보이는 내용. create 줄과 접은 제안에서 같은 칸을 고른다
+const FLEET_JUDGED = ["key", "kind", "aircraft", "airport", "from", "configuration", "account", "reasons"] as const;
+export const fleetInputHashOf = (x: Partial<Record<(typeof FLEET_JUDGED)[number], unknown>>): string => contentHashOf(Object.fromEntries(FLEET_JUDGED.map((k) => [k, x[k]])));
+// create는 그 입력의 해시, verdict·approve는 그 판정이 본 제안의 해시(새 줄에만 더한다). FLEET PLAN 제안에는 FLIGHT가 없어 발권 id는 없다
+export function bindFleetPlanOps(ops: readonly FleetPlanOp[], known: (id: string) => FleetProposal | undefined): FleetPlanOp[] {
+  const created = new Map(ops.flatMap((o) => (o.op === "create" ? [[o.id, o] as const] : [])));
+  return ops.map((o) => {
+    if (o.op === "create") return bound(o, fleetInputHashOf(o), null);
+    if (o.op === "verdict" || o.op === "approve") {
+      const p = known(o.id) ?? created.get(o.id);
+      return bound(o, p ? fleetInputHashOf(p) : null, null);
+    }
+    return o;
+  });
+}
+
 export function foldFleetPlan(ops: FleetPlanOp[]): FleetProposal[] {
   const byId = new Map<string, FleetProposal>();
   for (const o of ops) {
     if (o.op === "create") {
       if (byId.has(o.id)) continue;
-      const { op: _op, ...rest } = o;
+      const { op: _op, hash: _hash, ...rest } = o;
       byId.set(o.id, { ...rest, status: "open", closedAt: null, verdict: null, closeReason: null, approval: null, execution: null });
       continue;
     }

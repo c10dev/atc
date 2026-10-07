@@ -46,13 +46,16 @@ export function addressLine(kind: MessageKind): string {
 }
 
 // 메시지 끝줄: 어떤 답을 기다리는지 적는다. RECALL은 늘 READBACK <id> RECALL 하나. 바로 위에 답 주소 줄이 붙는다
-export function closingLine(kind: MessageKind, attr: ResponseAttr, id: string): string {
+// quote(ATC-555): FLIGHT PLAN의 work-order 해시 자리(@WOHASH, 봉인 때 @<해시>로 바뀐다). 주면 READBACK이 그 해시를 인용해야 한다고 적는다
+export function closingLine(kind: MessageKind, attr: ResponseAttr, id: string, quote?: string): string {
   const ask =
     kind === "recall"
       ? `— Reply to this message with "READBACK ${id} RECALL" when you receive it.`
       : attr === "R"
         ? `— Reply to this message with "ROGER ${id}" when you receive it.`
-        : `— Reply to this message with "READBACK ${id}" if you take it. Reply with "UNABLE ${id} — reason" if you cannot. Reply with "STANDBY ${id}" if you need time.`;
+        : quote
+          ? `— Reply to this message with "READBACK ${id} ${quote}" if you take it, exactly like that (${quote} is this work order's hash; a reply without it is refused). Reply with "UNABLE ${id} — reason" if you cannot. Reply with "STANDBY ${id}" if you need time.`
+          : `— Reply to this message with "READBACK ${id}" if you take it. Reply with "UNABLE ${id} — reason" if you cannot. Reply with "STANDBY ${id}" if you need time.`;
   return `${addressLine(kind)}\n${ask}`;
 }
 

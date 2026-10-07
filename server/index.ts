@@ -90,6 +90,7 @@ import { mountMisfire } from "./misfire-run.ts";
 import { mountOrphanFlight } from "./orphan-flight-run.ts";
 import { mountClearanceMoot } from "./clearance-moot-run.ts";
 import { mountStaleReply } from "./stale-reply-run.ts";
+import { mountInputBinding } from "./input-binding-run.ts";
 import { mountEventLoopLag } from "./event-loop-lag-run.ts";
 import { mountRedMain, runRedMain } from "./red-main-run.ts";
 import { mountJobTiming } from "./job-timing-run.ts";
@@ -357,6 +358,7 @@ mountRedMain(app); // RED MAIN(ATC-536): 스위치와 올림·스스로 닫힘 �
 mountEventLoopLag(app); // EVENT LOOP LAG(ATC-538): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountClearanceMoot(app); // 이유를 잃은 CLEARANCE(ATC-515): 스위치와 MISFIRE 수(읽기만)
 mountStaleReply(app); // 옛 부름에 온 답 거절(ATC-554): 스위치와 거절 수(읽기만)
+mountInputBinding(app); // READBACK의 work-order 해시(ATC-555): 스위치와 거절 수(읽기만)
 mountOrphanFlight(app); // ORPHAN FLIGHT(ATC-516): 스위치와 에피소드·MISFIRE 수(읽기만)
 mountHomeFlow(app, getSnapshot, () => update.status(), currentAlerts); // HOME 흐름판(ATC-499): 판정·칸·주체·묶은 할 일(읽기만, 새 GitHub·Linear 호출 없음)
 mountSinceLook(app, getSnapshot, currentAlerts); // SINCE YOU LAST LOOKED(ATC-383): 본 뒤 바뀐 것의 수(읽기)와 마지막 본 시각 옮기기(SUPERVISOR 화면만)

@@ -498,7 +498,7 @@ export function crewBriefing(a: AircraftView, repo: string | null, mode: "shadow
     "Assignments and messages",
     `- Issues labeled tail:${a.registration} in Linear are this team's. Only the CAPTAIN writes to Linear.`,
     "- When atc TOWER sends a CLEARANCE starting with [ATC C-xxxx], answer that message with READBACK C-xxxx.",
-    ...(mode === "approval" ? ["- When atc OCC sends a [DISPATCH D-xxxx] FLIGHT PLAN, answer READBACK D-xxxx if you take it, or UNABLE D-xxxx — reason if you cannot."] : []),
+    ...(mode === "approval" ? ["- When atc OCC sends a [DISPATCH D-xxxx] FLIGHT PLAN, answer with the exact READBACK line its last line gives if you take it (READBACK D-xxxx @xxxxxx: the @xxxxxx is the work-order hash in the FLIGHT PLAN, and a READBACK without it is refused), or UNABLE D-xxxx — reason if you cannot."] : []),
     '- Send every reply to OCC and TOWER to the session name ("OCC", "TOWER"), not to the from address of their message: the address changes when a control session restarts, and a reply to the old address fails (ENOENT).',
     "",
     `When ready, leave only the line \"${a.registration} IN SERVICE\" and wait for assignments.`,

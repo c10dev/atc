@@ -858,6 +858,14 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
       </p>
     ) : null;
   },
+  readbackHash: (s) => {
+    const d = switchOf(s, "readbackHash")?.data as { refused: number; missing: number; mismatch: number; days: number } | undefined;
+    return d ? (
+      <p className="settings-hint">
+        최근 {d.days}일 거절한 READBACK <b>{d.refused}</b> · 해시 없음 <b>{d.missing}</b> · 해시 틀림 <b>{d.mismatch}</b>
+      </p>
+    ) : null;
+  },
   staleReply: (s) => {
     const d = switchOf(s, "staleReply")?.data as { refused: number; clearance: number; flightPlan: number; crewChange: number; days: number } | undefined;
     return d ? (

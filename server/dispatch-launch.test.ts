@@ -336,7 +336,7 @@ test("RESUME: 한 FLIGHT(cut)에 한 번. 거절해도 다시 만들지 않고, 
   assert.deepEqual(brief(syncOps(rejected, plan, s, cfg, now + 600_000, 21)), []);
   // FLIGHT PLAN: 이어서, 처음부터 다시 하지 않는다
   const text = formatFlightPlan(p, inProgress, "TEAM_G", null, now);
-  assert.match(text, /^\[DISPATCH D-0021\] FLIGHT PLAN · /);
+  assert.match(text, /^\[DISPATCH D-0021\] FLIGHT PLAN @[0-9a-f]{6} · /); // work-order 해시(ATC-555)
   assert.match(text, /RESUME — This FLIGHT was cut by a usage LIMIT at 04:30Z\. Resume, don't restart — continue from the remaining work\./);
   assert.match(text, /STAND .*atc-200-x · branch worktree-atc-200-x · last commit abc1234 \(04:20Z\) — not on origin yet/);
   assert.match(text, /CAPTAIN's last report: WIP 커밋 abc1234 — 남은 것: docs/);

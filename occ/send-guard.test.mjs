@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { sealWorkOrder } from "../server/input-binding.ts";
 import { checkSend, hookOutputOf, resolveSend } from "./send-guard.mjs";
 
 const MSG = '[DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO · PRIORITY High\n권한 정리\n— Reply to this message with "READBACK D-0007" if you take it. Reply with "UNABLE D-0007 — reason" if you cannot. Reply with "STANDBY D-0007" if you need time.';
@@ -26,6 +27,19 @@ test("막는 경우: shadow 모드, 상태, 받는 사람, 문구, 형식, 없�
     [{ to: "TEAM_B", message: MSG }, async () => { throw new Error("ECONNREFUSED"); }, /연결할 수 없어/],
   ];
   for (const [input, fetcher, expected] of cases) assert.match(await checkSend(input, fetcher), expected);
+});
+
+// work-order 해시(ATC-555): 저장된 FLIGHT PLAN이 머리의 해시와 맞을 때만 보낸다. 해시 없는 옛 글(MSG)은 위처럼 그대로 통과
+const SEALED = sealWorkOrder('[DISPATCH D-0007] FLIGHT PLAN @WOHASH · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO · PRIORITY High\n권한 정리\n— Reply to this message with "READBACK D-0007 @WOHASH" if you take it, exactly like that.').text;
+test("work-order 해시: 맞는 해시는 머리만 보내도·전체 문구로도 통과, 저장된 글이 해시와 다르면 막는다", async () => {
+  const ok = with_({ proposal: { message: SEALED } });
+  assert.match(SEALED, /^\[DISPATCH D-0007\] FLIGHT PLAN @[0-9a-f]{6} · /);
+  assert.equal(await checkSend({ to: "TEAM_B", message: SEALED }, ok), null);
+  assert.deepEqual(await resolveSend({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, ok), { message: SEALED });
+  const tampered = SEALED.replace("권한 정리", "다른 일");
+  const bad = with_({ proposal: { message: tampered } });
+  assert.match(await checkSend({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, bad), /work-order 해시와 맞지 않음/);
+  assert.match(await checkSend({ to: "TEAM_B", message: tampered }, bad), /work-order 해시와 맞지 않음/);
 });
 
 const RECALL = '[DISPATCH D-0007] RECALL · BRAVO (TEAM_B)\nFLIGHT VOC193 · AIRPORT VCDO. This FLIGHT PLAN is withdrawn.\n권한 정리\nReason: 우선순위 바뀜\nStop work. Do not clean up the STAND (worktree). Leave it as it is. Then another AIRCRAFT can pick it up.\n— When received, reply to this message with "READBACK D-0007 RECALL".';
