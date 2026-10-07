@@ -338,8 +338,10 @@ test("REVIEW(--review, ATC-27): manual·landing queue·landing review만, gh 없
   const READ = "node ../controller/atcctl.mjs landing review vocado_nextjs#385";
   const WRITE = "node ../controller/atcctl.mjs landing review vocado_nextjs#385 --head abc1234 --verdict pass -- '완료 기준 충족, P2 없음'";
   const opts = { review: true };
-  for (const c of ["node ../controller/atcctl.mjs manual check", "node ../controller/atcctl.mjs landing queue", `${READ} | jq '.diffTruncated'`, READ, WRITE]) assert.equal(check(c, REVIEW, opts), null, c);
+  // tick review --wake: CONTROL WAKE(ATC-557 d)의 깨움을 받은 REVIEW가 부른다(guard는 그대로, 앞 두 단어 tick review)
+  for (const c of ["node ../controller/atcctl.mjs manual check", "node ../controller/atcctl.mjs landing queue", `${READ} | jq '.diffTruncated'`, READ, WRITE, "node ../controller/atcctl.mjs tick review --wake W-0001", "node ../controller/atcctl.mjs tick review --wake boot"]) assert.equal(check(c, REVIEW, opts), null, c);
   for (const c of [
+    "node ../controller/atcctl.mjs tick tower --wake W-0001",
     "node ../controller/atcctl.mjs crosscheck brief",
     "node ../controller/atcctl.mjs dispatch crosscheck D-0001 agree -- 'x'",
     "node ../controller/atcctl.mjs brief",
