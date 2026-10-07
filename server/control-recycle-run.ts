@@ -244,6 +244,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     const excluded: OverCap[] = [];
     const nowStuck: WaitStuck[] = [];
     const nowBlocked: CapBlocked[] = [];
+    const seen = new Set<string>(); // 이번 주기에 본 세션. 재시작 뒤 break로 못 본 세션의 카드는 지난 주기 것을 둔다(카드가 1분 사라졌다 돌아오지 않게)
     // 은퇴한 관제 세션(CROSSCHECK, ATC-371)이 아직 떠 있으면 스스로 멈춘다. 모드와 상관없이, SUPERVISOR 단계 없이
     for (const spec of CONTROL_SESSIONS) {
       if (!spec.retired || !controlRowsOf(spec, rows, controlDirOf(spec)).some((r) => !r.stale)) continue;
@@ -252,6 +253,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     }
     for (const spec of CONTROL_SESSIONS) {
       if (spec.launch !== "bg") continue;
+      seen.add(spec.name);
       const live = controlRowsOf(spec, rows, controlDirOf(spec)).filter((r) => !r.stale);
       const bg = live.find((r) => r.kind === "background" && r.id);
       const context = bg ? contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) : null;
@@ -323,8 +325,8 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       }
       break; // 한 주기에 한 세션만. 다음 세션은 다음 주기에(다른 세션이 재시작 중이 아닐 때)
     }
-    stuck = nowStuck;
-    capBlocked = nowBlocked;
+    stuck = [...nowStuck, ...stuck.filter((w) => !seen.has(w.session))];
+    capBlocked = [...nowBlocked, ...capBlocked.filter((b) => !seen.has(b.session))];
     overCap = excluded.map((e) => ({ ...e, since: overCap.find((o) => o.session === e.session)?.since ?? new Date(now).toISOString() }));
   } finally {
     busy = false;
