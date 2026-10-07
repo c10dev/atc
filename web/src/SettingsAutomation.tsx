@@ -962,6 +962,15 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
       </p>
     ) : null;
   },
+  // TOWER CARRY-OVER(ATC-565): 넘긴 재시작과 그 뒤 RESEND가 겹치거나 빠진 수. "답 없음" 보고는 ATC LOG에만 있어 세지 않는다
+  controlRecycleCarry: (s) => {
+    const d = switchOf(s, "controlRecycleCarry")?.data as { days: number; restarts: number; chains: number; repeated: number; lost: number; misfires: number } | undefined;
+    return d ? (
+      <p className="settings-hint">
+        최근 {d.days}일 overdue CLEARANCE를 넘긴 TOWER 재시작 <b>{d.restarts}</b> · 넘긴 CLEARANCE <b>{d.chains}</b> · 잘못 이어진 재시작 <b>{d.misfires}</b>(중복 RESEND <b>{d.repeated}</b> · 놓친 RESEND <b>{d.lost}</b>)
+      </p>
+    ) : null;
+  },
   mccKApproval: (s) => {
     const days = (switchOf(s, "mccKApproval")?.data as { days?: KDay[] } | undefined)?.days;
     return days ? <KApprovalDays days={days} /> : null;

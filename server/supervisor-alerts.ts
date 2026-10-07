@@ -12,7 +12,7 @@ import type { LandBy } from "./land-by.ts";
 import type { RtsRecord } from "./mcc.ts";
 import { compareRegistration } from "./registration.ts";
 import type { Proposal } from "./proposals.ts";
-import { type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
+import { type CapBlocked, capBlockedAlertTextOf, type OverCap, overCapAlertTextOf, recycleAlertTextOf, type RecycleRecord, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
 import { repositionAlertTextOf, type RepositionRecordLike, repositionFlapAlertText } from "./reposition.ts";
 import type { ScheduleMode, ScheduleOp } from "./schedule.ts";
 import { scheduleWaitsOnSupervisor } from "./schedule-waiting.ts";
@@ -76,7 +76,7 @@ export function destOf(item: Pick<SupervisorAlert, "key">, landBy?: ReadonlyMap<
     case "rts":
       return p[1] === "halted" ? "alerts" : "log"; // rts|halted는 조건, rts|<at>|<result>는 일어난 일
     case "recycle":
-      return p[1] === "over" || p[1] === "wait" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
+      return p[1] === "over" || p[1] === "wait" || p[1] === "blocked" ? "alerts" : "log"; // recycle|<session>|<t>는 결과
     case "cap":
       return "alerts";
     case "revert": // revert|stop|<airport>|<at>: breaker가 lane을 낮췄다(ATC-351). SUPERVISOR만 다시 올린다
@@ -211,6 +211,7 @@ export interface AlertsInput {
   // CONTROL RECYCLE(ATC-166): 최근 재시작 기록(shadow의 would는 알리지 않는다). 없으면 항목 없음
   recycles?: Pick<RecycleRecord, "t" | "session" | "contextBefore" | "result" | "ok" | "error" | "launch">[];
   waiting?: WaitStuck[]; // CAP을 넘고 waitAlertMin 넘게 재시작하지 못한 세션(ATC-175)
+  capBlocked?: CapBlocked[]; // CAP을 넘은 채 SUPERVISOR를 기다리며 blocked인 세션(ATC-565). 이 세션에는 recycle|wait·recycle|over를 따로 내지 않는다
   // REPOSITION(ATC-179): 최근 옮김 기록(자동이면 ADVISORY, 실패는 CAUTION)과 auto가 flapping 때문에 approval로 돌아온 기록
   repositions?: RepositionRecordLike[];
   repositionFlaps?: { t: string; reason: string }[];
@@ -499,8 +500,17 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     out.push({ key: `reposition|flap|${f.t}`, group: "reposition", level: "advisory", cue: null, aircraft: null, flight: null, text: w.text, next: w.next, link: "#automation", since: f.t });
   }
 
+  // 7a) CAP을 넘은 채 SUPERVISOR를 기다리는 관제 세션(ATC-565): CAUTION 카드 하나가 CAP을 넘었다는 것과 막는 것(묻는 내용)을 말한다.
+  // 답하면(blocked가 풀리면) 또는 CAP 밑으로 내려가면 사라진다(같은 key). 같은 세션의 wait·over 카드는 내지 않는다
+  const blockedSessions = new Set((inp.capBlocked ?? []).map((b) => b.session));
+  for (const b of inp.capBlocked ?? []) {
+    const w = capBlockedAlertTextOf(b);
+    out.push({ key: `recycle|blocked|${b.session}`, group: "recycle", level: "caution", cue: null, aircraft: null, flight: null, text: w.text, next: w.next, link: "#fleet/control", since: b.since });
+  }
+
   // 7b) CAP을 넘은 OCC: 재시작하지 않고 알린다(넘어 있는 동안 같은 key)
   for (const o of inp.overCap ?? []) {
+    if (blockedSessions.has(o.session)) continue;
     const w = overCapAlertTextOf(o);
     out.push({ key: `recycle|over|${o.session}`, group: "recycle", level: "advisory", cue: null, aircraft: null, flight: null, text: w.text, next: w.next, link: "#fleet/control", since: o.since });
   }
@@ -522,6 +532,7 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
     });
   }
   for (const w of inp.waiting ?? []) {
+    if (blockedSessions.has(w.session)) continue;
     const t = waitAlertTextOf(w);
     out.push({ key: `recycle|wait|${w.session}`, group: "recycle", level: "caution", cue: null, aircraft: null, flight: null, text: t.text, next: t.next, link: "#fleet/control", since: w.since });
   }

@@ -80,6 +80,7 @@ export type RecordLine =
   | { t: string; kind: "policy"; op: "warm-start-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "landing-gap-mode"; by: string; from: string; to: string }
   | { t: string; kind: "policy"; op: "control-stop-check-mode"; by: string; from: string; to: string }
+  | { t: string; kind: "policy"; op: "control-recycle-carry-mode"; by: string; from: string; to: string } // TOWER CARRY-OVER 스위치(ATC-565)
   | { t: string; kind: "policy"; op: "linear-retry-count"; by: string; from: string; to: string }
   | LinearCallLine // LINEAR CALL(ATC-561): Linear·atc 서버 호출의 실패한 시도·다시 시도·복구·포기. 구간·종류·원인만(글·제목·토큰 없음)
   | { t: string; kind: "policy"; op: "job-liveness-mode"; by: string; from: string; to: string }
@@ -119,7 +120,7 @@ export type RecordLine =
   // CONTROL STOP CHECK(ATC-521): stop의 unverified는 claude stop이 종료 코드 0이었지만 job state.json이 stopped가 되지 않아 ok를 막은 것. stop-check는 그 막음·같은 이름 job 중복 경고·그것이 틀렸다는 표시(contradicted 검사가 뒤늦게 틀렸다, dismissed SUPERVISOR가 오탐 표시)
   | { t: string; kind: "control"; op: "stop-check"; event: "blocked" | "duplicate" | "contradicted" | "dismissed"; session: string; by: string; jobIds: string[]; account?: string | null; state?: string | null; of?: string; detail?: string }
   // CONTROL RECYCLE(ATC-166): atc가 관제 세션을 안전한 순간에 STOP·LAUNCH한 결과(shadow면 result would). 스위치 바꿈은 recycle-mode
-  | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string; launch?: { ok: boolean; jobId?: string; error?: string }; blocks?: string[] }
+  | { t: string; kind: "control"; op: "recycle"; session: string; by: string; mode: "shadow" | "on"; ok: boolean; contextBefore: number; reason: string; result: "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed"; account?: string; jobId?: string; error?: string; launch?: { ok: boolean; jobId?: string; error?: string }; blocks?: string[]; carried?: string[] }
   | { t: string; kind: "control"; op: "recycle-mode"; by: string; from: string; to: string }
   // 캡·auto 바꿈(ATC-175): 세션마다 한 줄. from·to는 CAP 토큰(null이면 없음) 또는 auto true·false
   | { t: string; kind: "control"; op: "recycle-caps" | "recycle-auto"; by: string; session: string; from: number | boolean | null; to: number | boolean | null }

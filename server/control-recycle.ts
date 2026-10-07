@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { config } from "./config.ts";
 import type { Job } from "./job-state.ts";
 import type { RestartBlocker } from "./occ-safe.ts";
+import type { CapBlocked } from "./control-recycle-text.ts";
 
 // CONTROL RECYCLE(ATC-166, docs/control-recycle.md): 컨텍스트가 CAP을 넘은 관제 세션을 atc가 안전한 순간에 STOP하고 LAUNCH한다.
 // 이 파일은 설정 읽기·쓰기와 순수 계산. 실행(claude stop·--bg)은 control-recycle-run.ts가 session-control.ts의 stopControl·launchControl로 한다.
@@ -102,11 +103,39 @@ export function contextTokensOf(lines: readonly string[]): number | null {
 // 공통: RTS가 돌거나 곧 시작하지 않는다. RTS는 재시작 전에 살아 있는 백그라운드 세션을 세어 두고 2분 안에 하나라도 없어지면 실패(ROLLBACK)한다.
 export interface SafeFacts {
   rtsBusy: string | null; // RTS가 돌거나 곧 시작되면 그 사유(UPDATE 상태 starting·running, 또는 자동 배포 모드에서 available). 모르면 null이 아니라 사유 글로 막는다
-  tower: { events: number; overdue: number } | null; // brief에 아직 안 acked 이벤트 수, overdue CLEARANCE 수
+  tower: { events: number; overdue: readonly OverdueRef[]; carry?: boolean } | null; // brief에 아직 안 acked 이벤트 수, overdue CLEARANCE(ATC-565: id·받는 세션), carry: 넘겨 줌 스위치(on이면 overdue가 막지 않는다)
   occ: { blockers: readonly Pick<RestartBlocker, "code" | "id" | "text">[]; crewChangeOpen: number } | null; // OCC: dispatch brief의 restartSafety와 같은 함수(server/occ-safe.ts restartSafetyOf, ATC-169)의 blockers — 승인됐지만 아직 안 나간 FLIGHT PLAN, RECALL 중, 10분 안에 나간 것, 머지 30분 안인데 도착 보고가 없는 FLIGHT, 30분 안에 손댄 CHARTER REQUEST — 와 열린 CREW CHANGE 수
   mcc: { blocked: string | null } | null; // 지금 land·inspect를 하는 중이라 볼 근거
 }
 export const NO_FACTS: SafeFacts = { rtsBusy: null, tower: null, occ: null, mcc: null };
+
+// overdue CLEARANCE 하나(ATC-565). resendOf: 이것이 RESEND인 원래 CLEARANCE, resent: 이미 RESEND가 나갔다(clearance-resend.ts, 기록에서 잇는다)
+export interface OverdueRef {
+  id: string;
+  to: string; // 받는 세션 이름(보낼 때의 이름)
+  resendOf?: string;
+  resent?: boolean;
+}
+const NAMED_MAX = 5;
+// "C-1069→951f27c2, C-1070→951f27c2 외 3건": 알림이 막는 것의 이름을 댄다(ATC-565)
+export const overdueNamesOf = (xs: readonly OverdueRef[]) => {
+  const head = xs.slice(0, NAMED_MAX).map((x) => `${x.id}→${x.to}${x.resendOf ? `(${x.resendOf}의 RESEND)` : x.resent ? "(RESEND함)" : ""}`).join(", ");
+  return xs.length > NAMED_MAX ? `${head} 외 ${xs.length - NAMED_MAX}건` : head;
+};
+// OCC의 막는 것에 종류를 붙인다(ATC-565): 어느 상태가 막나
+const OCC_LABEL: Record<RestartBlocker["code"], string> = {
+  approved: "FLIGHT PLAN",
+  recalling: "RECALL",
+  "sent-fresh": "FLIGHT PLAN READBACK",
+  "arrival-fresh": "기록하지 않은 CAPTAIN 보고",
+  "wip-active": "CHARTER REQUEST 진행 중",
+};
+
+// TOWER의 overdue CLEARANCE를 새 세션에 넘기나(ATC-565, 넘겨 줌 스위치 on). 넘기는 id들, 아니면 빈 목록
+export function carriedOf(name: string, f: SafeFacts | null): string[] {
+  if (name.toUpperCase() !== "TOWER" || !f?.tower?.carry) return [];
+  return f.tower.overdue.map((x) => x.id);
+}
 
 // 순수: 이 세션을 지금 재시작하면 잃는 것이 있는 이유들. 비면 안전하다. 사실을 못 읽은 세션(null)은 막는다(fail-closed)
 export function safeBlocksOf(name: string, f: SafeFacts | null): string[] {
@@ -118,12 +147,13 @@ export function safeBlocksOf(name: string, f: SafeFacts | null): string[] {
     if (!f.tower) out.push("TOWER brief를 읽지 못함");
     else {
       if (f.tower.events > TOWER_EVENTS_MAX) out.push(`brief에 처리하지 않은 이벤트 ${f.tower.events}건(문턱 ${TOWER_EVENTS_MAX})`);
-      if (f.tower.overdue > 0) out.push(`overdue CLEARANCE ${f.tower.overdue}건`);
+      // 넘겨 줌(ATC-565)이 켜져 있으면 막지 않는다: RESEND와 "답 없음"은 새 세션이 기록(resentBy·resendOf)에서 가린다
+      if (f.tower.overdue.length > 0 && !f.tower.carry) out.push(`overdue CLEARANCE ${f.tower.overdue.length}건: ${overdueNamesOf(f.tower.overdue)}`);
     }
   } else if (n === "OCC") {
     if (!f.occ) out.push("dispatch brief를 읽지 못함");
     else {
-      for (const b of f.occ.blockers) out.push(b.text);
+      for (const b of f.occ.blockers) out.push(`${OCC_LABEL[b.code] ?? b.code}: ${b.text}`);
       if (f.occ.crewChangeOpen > 0) out.push(`열린 CREW CHANGE ${f.occ.crewChangeOpen}건`);
     }
   } else if (n === "MCC") {
@@ -145,7 +175,7 @@ export interface RecycleInput {
   auto: boolean; // 이 세션은 atc가 스스로 재시작해도 되나(OCC는 false: 측정·알림만)
   context: number | null;
   background: boolean; // atc가 띄운 `claude --bg` 세션이 살아 있다(tmux·interactive는 다시 띄울 수 없다)
-  job: Pick<Job, "state" | "tempo"> | null;
+  job: (Pick<Job, "state" | "tempo"> & Partial<Pick<Job, "needs" | "since">>) | null;
   safe: SafeFacts | null;
   lastRecycleAt: number | null; // 이 세션을 마지막으로 재시작(시도)한 시각
   otherRecycling: string | null; // 지금 다른 세션이 재시작 중이면 그 이름
@@ -153,7 +183,16 @@ export interface RecycleInput {
   now: number;
 }
 // skip: 할 일 없음(끔, 미만, CAP 없음 …). wait: CAP은 넘었지만 지금은 안전하지 않다. recycle: 지금 한다(shadow면 기록만)
-export type RecycleDecision = { action: "skip" | "wait" | "recycle"; reason: string; blocks: string[] };
+// carry: 재시작하면서 새 세션에 넘기는 overdue CLEARANCE(TOWER, ATC-565). 기록 줄의 carried가 된다
+export type RecycleDecision = { action: "skip" | "wait" | "recycle"; reason: string; blocks: string[]; carry?: string[] };
+
+// 턴 사이가 아닐 때 무엇을 하고 있나(ATC-565): blocked면 사람(SUPERVISOR)을 기다린다고, 무엇을 묻는지까지
+export function notIdleTextOf(job: RecycleInput["job"]): string {
+  if (!job) return "턴 사이가 아님(job을 읽지 못함)";
+  const shape = `job ${job.state}/${job.tempo ?? "?"}`;
+  if (job.state === "blocked") return `턴 사이가 아님 — SUPERVISOR를 기다림(${shape})${job.needs ? `: ${job.needs}` : ""}`;
+  return `턴 사이가 아님(${shape}, 턴 도중)`;
+}
 
 export function controlRecycleOf(i: RecycleInput): RecycleDecision {
   const skip = (reason: string): RecycleDecision => ({ action: "skip", reason, blocks: [] });
@@ -166,11 +205,13 @@ export function controlRecycleOf(i: RecycleInput): RecycleDecision {
   const k = (n: number) => `${Math.round(n / 1000)}k`;
   const over = `컨텍스트 ${k(i.context)} > CAP ${k(i.cap)}`;
   const blocks: string[] = [];
-  if (!jobIdle(i.job)) blocks.push(`턴 사이가 아님(job ${i.job ? `${i.job.state}/${i.job.tempo ?? "?"}` : "?"})`);
+  if (!jobIdle(i.job)) blocks.push(notIdleTextOf(i.job));
   if (i.lastRecycleAt !== null && i.now - i.lastRecycleAt < i.cooldownMs) blocks.push(`${Math.round(i.cooldownMs / 3_600_000 * 10) / 10}시간 안에 재시작함`);
   if (i.otherRecycling) blocks.push(`${i.otherRecycling}가 재시작 중`);
   blocks.push(...safeBlocksOf(i.name, i.safe));
   if (blocks.length) return { action: "wait", reason: `${over} — 기다림: ${blocks.join("; ")}`, blocks };
+  const carry = carriedOf(i.name, i.safe);
+  if (carry.length) return { action: "recycle", reason: `${over} — overdue CLEARANCE ${carry.length}건을 새 세션에 넘김`, blocks: [], carry };
   return { action: "recycle", reason: over, blocks: [] };
 }
 
@@ -181,6 +222,19 @@ export function waitMinutesOf(since: number | null | undefined, now: number, wai
   const m = Math.floor((now - since) / 60_000);
   return m >= waitAlertMin ? m : null;
 }
+// ── SUPERVISOR를 기다리느라 CAP을 넘긴 세션(ATC-565) ──
+// CAP을 넘었고 job이 blocked(사람을 기다림)인 채 waitAlertMin 이상이면 HOME 카드 하나. 모드·auto와 상관없이(자동 재시작이 꺼져 있어도 CAP은 넘었다).
+// 시각은 job 기록의 blocked 시작(since)이라 서버를 다시 띄워도 이어진다. others: 그 밖에 막는 것(턴 사이 줄은 뺀다)
+export function capBlockedOf(i: { session: string; context: number | null; cap: number | null; job: RecycleInput["job"]; others?: readonly string[]; waitAlertMin: number; now: number }): CapBlocked | null {
+  if (i.cap === null || i.context === null || i.context <= i.cap) return null;
+  if (i.job?.state !== "blocked" || !i.job.since) return null;
+  const since = Date.parse(i.job.since);
+  if (!Number.isFinite(since)) return null;
+  const minutes = Math.floor((i.now - since) / 60_000);
+  if (minutes < i.waitAlertMin) return null;
+  return { session: i.session, context: i.context, cap: i.cap, needs: i.job.needs ?? null, since: new Date(since).toISOString(), minutes, others: (i.others ?? []).filter((b) => !b.startsWith("턴 사이가 아님")) };
+}
+
 // shadow에서 would-wait를 남길 차례인가: shadow이고, 그 세션에 cooldown 안에 남긴 것이 없다
 export const wouldWaitDue = (mode: RecycleMode, lastAt: number | undefined, now: number, cooldownMs: number): boolean => mode === "shadow" && now - (lastAt ?? 0) >= cooldownMs;
 
@@ -210,4 +264,4 @@ export function goneOf(i: GoneInput): { gone: boolean; ghost: boolean } {
 
 // ── 기록·알림 입력 ──
 
-export { type OverCap, overCapAlertTextOf, type RecycleRecord, type RecycleResult, recycleAlertTextOf, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";
+export { type CapBlocked, capBlockedAlertTextOf, type OverCap, overCapAlertTextOf, type RecycleRecord, type RecycleResult, recycleAlertTextOf, type WaitStuck, waitAlertTextOf } from "./control-recycle-text.ts";

@@ -1,5 +1,5 @@
 import { canceledKeysOf, canceledPrsOf, standHoldersOf } from "./canceled-flight.ts";
-import { overCapNow, waitStuckNow } from "./control-recycle-run.ts";
+import { capBlockedNow, overCapNow, waitStuckNow } from "./control-recycle-run.ts";
 import { readRecords, record } from "./recorder.ts";
 import { k3HoldOf } from "./k3-allow.ts";
 import { type EndedKey, followingNow } from "./following.ts";
@@ -200,6 +200,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
     overCap: overCapNow(),
     ...repositionAlertInputs(rs, now),
     waiting: waitStuckNow(),
+    capBlocked: capBlockedNow(),
     follow: followAlertInput(s, now),
     pending: pendingInput(s, now, teamPattern),
   });

@@ -50,7 +50,8 @@ export const ALERT_CONTRACT: AlertContractRow[] = [
   { family: "control", ends: "the control session is back, the stop check is cleared, or the duplicate job is stopped", endsBy: "controlDownOf", action: "open", screenOnly: false },
   { family: "host", ends: "memory is back above the limit", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
   { family: "revert", ends: "the SUPERVISOR picks the lane and the AUTO REVERT switch again", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
-  { family: "recycle|wait", ends: "the session recycles", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
+  { family: "recycle|wait", ends: "the session recycles, or its context is no longer over the cap", endsBy: "supervisorAlertsOf", action: "open", screenOnly: false },
+  { family: "recycle|blocked", ends: "the session is no longer blocked on the SUPERVISOR (answered), it recycles, or its context is no longer over the cap", endsBy: "capBlockedOf", action: "open", screenOnly: false },
   { family: "reposition|stuck", ends: "a session exists for the aircraft again", endsBy: "repositionStuckOf", action: "open", screenOnly: false },
   { family: "rts|halted", ends: "the SUPERVISOR picks the MCC mode again (stop becomes null)", endsBy: "rtsHaltedOf", action: "open", screenOnly: false, gap: "알림의 link가 #home이라 HOME에서 누르면 제자리다(MCC 모드는 설정 창에서 고른다)" },
 ];
@@ -61,7 +62,7 @@ export const ALERT_NOT_ON_HOME: Record<string, string> = {
   land: "dest queue or log: LANDING row, or MCC/the team lands it",
   rts: "rts|<at>|<result> is an event (log); rts|halted is in ALERT_CONTRACT",
   cap: "advisory only (idle session hint): ALERTS list, never HOME",
-  recycle: "recycle|<session>|<t> is an event (log), recycle|over is advisory only; recycle|wait is in ALERT_CONTRACT",
+  recycle: "recycle|<session>|<t> is an event (log), recycle|over is advisory only; recycle|wait and recycle|blocked are in ALERT_CONTRACT",
   reposition: "reposition|<aircraft>|<t> and flap are events (log); stuck is in ALERT_CONTRACT",
   follow: "ready is a queue row, landed/deployed/arrived are log, stuck is the STUCK row; failed is in ALERT_CONTRACT",
 };

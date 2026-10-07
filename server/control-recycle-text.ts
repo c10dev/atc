@@ -28,6 +28,26 @@ export function waitAlertTextOf(w: WaitStuck): { text: string; next: string } {
   };
 }
 
+// CAP을 넘은 관제 세션이 SUPERVISOR를 기다리며(job blocked) waitAlertMin 넘게 멈춰 있다(ATC-565). HOME 카드 하나(recycle|blocked|<세션>)의 입력.
+// 이 카드가 있는 세션에는 recycle|wait·recycle|over 카드를 따로 내지 않는다(카드 하나)
+export interface CapBlocked {
+  session: string;
+  context: number;
+  cap: number;
+  needs: string | null; // job state.json의 needs: 세션이 사람에게 묻는 것
+  since: string; // blocked가 시작된 때(job 기록. 서버를 다시 띄워도 이어진다)
+  minutes: number;
+  others: string[]; // 그 밖에 재시작을 막는 것(wait의 blocks에서 턴 사이 줄을 뺀 것). 모르면 빈 목록
+}
+export function capBlockedAlertTextOf(b: CapBlocked): { text: string; next: string } {
+  const k = (n: number) => `${Math.round(n / 1000)}k`;
+  const rest = b.others.length ? ` · 그 밖에: ${b.others.join("; ")}` : "";
+  return {
+    text: `CONTROL RECYCLE — ${b.session} 컨텍스트 ${k(b.context)} > CAP ${k(b.cap)}, ${b.minutes}분째 SUPERVISOR를 기다리며 blocked라 재시작할 수 없음: ${b.needs ?? "(묻는 내용이 기록되지 않음)"}${rest}`,
+    next: `${b.session}이 묻는 것에 답한다. 턴이 끝나면 CONTROL RECYCLE이 재시작한다(자동 재시작이 꺼져 있으면 FLEET 탭 CONTROL SESSIONS에서 STOP·LAUNCH)`,
+  };
+}
+
 export type RecycleResult = "recycled" | "would" | "would-wait" | "stop-failed" | "stop-unverified" | "stop-unconfirmed" | "launch-failed";
 export interface RecycleRecord {
   t: string;
@@ -43,6 +63,7 @@ export interface RecycleRecord {
   // stop-unconfirmed(ATC-175): STOP을 확인하지 못했어도 LAUNCH를 시도한 결과. launchControl은 살아 있는 줄이 있으면 스스로 거절한다
   launch?: { ok: boolean; jobId?: string; error?: string };
   blocks?: string[]; // would-wait: 막고 있는 것
+  carried?: string[]; // TOWER(ATC-565): 넘겨 줌으로 새 세션에 넘긴 overdue CLEARANCE id
 }
 
 // 알림 한 줄(supervisor-alerts.ts가 쓴다): 성공이면 ADVISORY, 실패면 CAUTION. 실패가 세션을 멈춘 채 두는 경우(launch-failed)는 그렇게 말한다

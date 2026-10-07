@@ -39,7 +39,7 @@ Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197
 | `land\|…` | `land` | advisory | CLEARED TO LAND. It is a **decision** for `user`-tier PRs and an **event** for PRs that MCC lands |
 | `rts\|…` | `rts` | ok: done cue; refused: caution; failed or rollback: warning | **Events**. A ROLLBACK also leaves a **condition**: RTS stays stopped until the SUPERVISOR picks the MCC mode again |
 | `recycle\|<session>\|<t>` | `recycle` | ok: advisory; failed: caution | **Events**. A failed LAUNCH also leaves a **condition**: the control session is down |
-| `recycle\|over\|…`, `recycle\|wait\|…`, `cap\|other\|…` | `recycle` | advisory, caution, advisory | **Conditions** |
+| `recycle\|over\|…`, `recycle\|wait\|…`, `recycle\|blocked\|…`, `cap\|other\|…` | `recycle` | advisory, caution, caution, advisory | **Conditions**. `recycle\|blocked` (ATC-565): over the cap and `blocked` on the SUPERVISOR past `waitAlertMin`; it replaces `wait` and `over` for that session |
 | `reposition\|…` | `reposition` | auto: advisory; failure: caution; flap: advisory | **Events**. A failure can leave a condition (the base changed but LAUNCH failed) |
 
 **Other facts:**
@@ -92,7 +92,7 @@ Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197
 |---|---|---|---|
 | `alert\|…` (both groups) | alerts | as today | — |
 | `following\|…` except `await-supervisor` | alerts | as today | — |
-| `recycle\|over`, `recycle\|wait`, `cap\|other` | alerts | as today | — |
+| `recycle\|over`, `recycle\|wait`, `recycle\|blocked`, `cap\|other` | alerts | as today | — |
 | — | alerts | WARNING | **`rts\|halted`**: RTS stopped after a ROLLBACK, until the MCC mode is picked again |
 | — | alerts | CAUTION | **`control\|down\|<session>`**: a control session that a RECYCLE stopped and did not start again (A1b: any control session with no live row, for any cause) |
 | — | alerts | CAUTION or WARNING | **`host\|memory`** (A1b): host memory pressure, or an OOM kill in the last 30 minutes |
@@ -109,7 +109,7 @@ Status (2026-10-03): **superseded** by [layout.md](layout.md). Only A1 ([ATC-197
 
 ### A1 as built (ATC-197)
 
-- **`destOf(item, landBy?)`** in `server/supervisor-alerts.ts` (pure) and `dest` on every item of `supervisorAlertsOf` (so on `/api/supervisor-alerts` and the `alert` SSE event). The keys are unchanged. Clients ignore the field until A3/A4. The rule follows the table above by the first segment of the key (`DEST_PREFIXES`); the rest of the key splits `recycle|over|wait` (alerts) from `recycle|<session>|<t>` (log), `reposition|stuck|…` (alerts) from the other `reposition|…` (log), `rts|halted` (alerts) from `rts|<at>|<result>` (log), and `following|…|await-supervisor` (queue) from the other `following|…` (alerts). `follow|…` (FOLLOW, ATC-278, [follow.md](follow.md) 3.5): `ready` and `approve` queue, `landed` and `deployed` log, `stuck` and `failed` alerts. An unknown prefix falls back to `alerts` so nothing is hidden; a test reads the key shapes in `supervisor-alerts.ts` and fails when a prefix has no rule.
+- **`destOf(item, landBy?)`** in `server/supervisor-alerts.ts` (pure) and `dest` on every item of `supervisorAlertsOf` (so on `/api/supervisor-alerts` and the `alert` SSE event). The keys are unchanged. Clients ignore the field until A3/A4. The rule follows the table above by the first segment of the key (`DEST_PREFIXES`); the rest of the key splits `recycle|over|wait|blocked` (alerts) from `recycle|<session>|<t>` (log), `reposition|stuck|…` (alerts) from the other `reposition|…` (log), `rts|halted` (alerts) from `rts|<at>|<result>` (log), and `following|…|await-supervisor` (queue) from the other `following|…` (alerts). `follow|…` (FOLLOW, ATC-278, [follow.md](follow.md) 3.5): `ready` and `approve` queue, `landed` and `deployed` log, `stuck` and `failed` alerts. An unknown prefix falls back to `alerts` so nothing is hidden; a test reads the key shapes in `supervisor-alerts.ts` and fails when a prefix has no rule.
 - **`land|…`** goes to the queue when the SUPERVISOR has to land it and to the log when MCC or the team lands it. It reuses `landByOf` (`server/land-by.ts`, which uses the `deploy/landing-tier.mjs` tier that MCC already measures); there is no second tier rule. `mccLandInfoCached` (`server/mcc-run.ts`) builds the same `MccLandInfo` as the TOWER brief from the tiers already in the cache without calling GitHub, so it can run every 5 s. A PR whose tier is not cached yet is `supervisor` (queue) until the next brief or MCC pass measures it; with no data at all the item goes to the queue, so the SUPERVISOR is never left out.
 - **Three condition items**, built from the current state, not from events (pure `rtsHaltedOf`, `controlDownOf`, `repositionStuckOf`); each clears by itself:
   - `rts|halted` (WARNING, `rts`): while `rtsState().stop` is set (RTS stopped after a ROLLBACK), until the MCC mode is picked again.

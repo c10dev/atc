@@ -7,13 +7,16 @@ import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from 
 import { join } from "node:path";
 import { config } from "./config.ts";
 import {
+  type CapBlocked,
   type OverCap,
+  type OverdueRef,
   type WaitStuck,
   type RecycleConfig,
   type RecycleMode,
   type RecycleRecord,
   type SafeFacts,
   autoChangeLines,
+  capBlockedOf,
   capChangeLines,
   contextTokensOf,
   controlRecycleOf,
@@ -26,11 +29,13 @@ import {
   wouldWaitDue,
 } from "./control-recycle.ts";
 import { allClearances, isClearanceOverdue, isPending } from "./clearances.ts";
+import { resendLinksOf } from "./clearance-resend.ts";
+import { loadCarrySwitch } from "./recycle-carry-run.ts";
 import { allCrewChanges, isOpenCrewChange } from "./crew-change.ts";
 import { ttlCache } from "./agents-cache.ts";
 import type { ApplyControl } from "./apply-now.ts";
 import { readJob, settleJob } from "./job-state.ts";
-import type { Snapshot } from "./model.ts";
+import type { Clearance, Snapshot } from "./model.ts";
 import { allProposals, isInFlight, READBACK_OVERDUE_MS } from "./proposals.ts";
 import { readRecords, record } from "./recorder.ts";
 import {
@@ -116,13 +121,23 @@ export function occSafetyOf(s: Snapshot, now: number): RestartSafety {
   }
 }
 
+// TOWER의 overdue CLEARANCE(ATC-565): id·받는 세션과 RESEND 고리. 고리의 다른 CLEARANCE가 답을 받은 것은 brief처럼 뺀다
+export function overdueRefsOf(all: readonly Clearance[], now: number): OverdueRef[] {
+  const links = resendLinksOf(all);
+  return all
+    .filter((c) => isPending(c) && isClearanceOverdue(c, now, TEN_MIN) && !links.get(c.id)?.answeredVia)
+    .map((c) => {
+      const l = links.get(c.id);
+      return { id: c.id, to: c.toName || c.to.slice(0, 8), ...(l?.resendOf ? { resendOf: l.resendOf } : {}), ...(l?.resentBy.length ? { resent: true } : {}) };
+    });
+}
+
 export async function safeFactsOf(s: Snapshot, d: FactDeps): Promise<SafeFacts> {
   const now = d.now();
   const rtsBusy = await d.rtsBusy(s).catch((e) => `UPDATE 상태를 읽지 못함(${e instanceof Error ? e.message : String(e)})`);
-  const pendingC = allClearances().filter(isPending);
   return {
     rtsBusy,
-    tower: { events: d.towerEvents(), overdue: pendingC.filter((c) => isClearanceOverdue(c, now, TEN_MIN)).length },
+    tower: { events: d.towerEvents(), overdue: overdueRefsOf(allClearances(), now), carry: loadCarrySwitch() === "on" },
     occ: { blockers: occSafetyOf(s, now).blockers, crewChangeOpen: allCrewChanges().filter(isOpenCrewChange).length },
     // MCC: INSPECTION·LAND 중인지는 atc가 보지 못한다(ATC-165 1.3). 턴 사이(job idle)와 RTS 조건이 그 근사다
     mcc: { blocked: null },
@@ -149,8 +164,8 @@ export const pidAliveOf = (pid: number): boolean => {
 };
 
 // stopControl → job이 사라졌음을 확인 → 같은 ACCOUNT로 launchControl. 실패하면 어디까지 갔는지(result)를 돌려준다. 기록은 부르는 쪽이 한다
-export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid" | "account">, name: string, contextBefore: number, reason: string): Promise<RecycleRecord> {
-  const base = { t: new Date().toISOString(), session: name, contextBefore, reason, mode: "on" as const, ...(row.account ? { account: row.account } : {}) };
+export async function performRecycle(d: ActDeps, row: Pick<AgentRow, "id" | "pid" | "account">, name: string, contextBefore: number, reason: string, carried: readonly string[] = []): Promise<RecycleRecord> {
+  const base = { t: new Date().toISOString(), session: name, contextBefore, reason, mode: "on" as const, ...(row.account ? { account: row.account } : {}), ...(carried.length ? { carried: [...carried] } : {}) };
   const st = await d.stop(name);
   // ATC-521: claude stop은 성공했지만 job이 stopped가 되지 않았다. 종료 코드만 믿고 새 세션을 띄우지 않는다(옛 세션이 계속 돌 수 있다)
   if (!st.ok) return { ...base, ok: false, result: st.unverified ? "stop-unverified" : "stop-failed", error: st.error };
@@ -198,6 +213,10 @@ export const waitStuckNow = () => stuck;
 let overCap: (OverCap & { since: string })[] = [];
 export const overCapNow = () => overCap;
 
+// CAP을 넘은 채 SUPERVISOR를 기다리며(job blocked) waitAlertMin 넘게 멈춘 세션(ATC-565). HOME 카드 recycle|blocked
+let capBlocked: CapBlocked[] = [];
+export const capBlockedNow = () => capBlocked;
+
 export function lastRecycleAtOf(name: string, sinceMs: number): number | null {
   let last: number | null = null;
   for (const r of readRecords(sinceMs)) {
@@ -224,6 +243,8 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     let facts: SafeFacts | null | undefined;
     const excluded: OverCap[] = [];
     const nowStuck: WaitStuck[] = [];
+    const nowBlocked: CapBlocked[] = [];
+    const seen = new Set<string>(); // 이번 주기에 본 세션. 재시작 뒤 break로 못 본 세션의 카드는 지난 주기 것을 둔다(카드가 1분 사라졌다 돌아오지 않게)
     // 은퇴한 관제 세션(CROSSCHECK, ATC-371)이 아직 떠 있으면 스스로 멈춘다. 모드와 상관없이, SUPERVISOR 단계 없이
     for (const spec of CONTROL_SESSIONS) {
       if (!spec.retired || !controlRowsOf(spec, rows, controlDirOf(spec)).some((r) => !r.stale)) continue;
@@ -232,6 +253,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
     }
     for (const spec of CONTROL_SESSIONS) {
       if (spec.launch !== "bg") continue;
+      seen.add(spec.name);
       const live = controlRowsOf(spec, rows, controlDirOf(spec)).filter((r) => !r.stale);
       const bg = live.find((r) => r.kind === "background" && r.id);
       const context = bg ? contextOfRow(bg, config.claudeDir, configDirOfRow(bg)) : null;
@@ -242,6 +264,9 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       const auto = cfg.auto[spec.name] ?? false;
       // 자동 재시작 대상이 아닌 세션은 모드와 상관없이 재고 알린다(OCC, SUPERVISOR 결정 2026-09-30)
       if (over && !auto) excluded.push({ session: spec.name, context: context!, cap: cap! });
+      // SUPERVISOR를 기다리느라 CAP을 넘긴 채 멈춤(ATC-565): 모드·auto와 상관없이. 그 밖에 막는 것은 아래 결정이 wait면 채운다
+      const blockedCard = bg ? capBlockedOf({ session: spec.name, context, cap, job, waitAlertMin: cfg.waitAlertMin, now }) : null;
+      if (blockedCard) nowBlocked.push(blockedCard);
       if (cfg.mode === "off") {
         waitSince.delete(spec.name);
         continue;
@@ -266,6 +291,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       if (dec.action !== "recycle" || !bg || context === null) {
         if (dec.action === "wait") {
           out.push({ name: spec.name, action: "wait", reason: dec.reason });
+          if (blockedCard) blockedCard.others = dec.blocks.filter((b) => !b.startsWith("턴 사이가 아님"));
           const since = waitSince.get(spec.name) ?? now;
           waitSince.set(spec.name, since);
           const minutes = waitMinutesOf(since, now, cfg.waitAlertMin);
@@ -291,7 +317,7 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       }
       recycling = spec.name;
       try {
-        const r = await performRecycle(d.act, bg, spec.name, context, dec.reason);
+        const r = await performRecycle(d.act, bg, spec.name, context, dec.reason, dec.carry ?? []);
         record(toLine(r));
         out.push({ name: spec.name, action: r.result, reason: dec.reason });
       } finally {
@@ -299,7 +325,8 @@ export async function runControlRecycle(s: Snapshot, d: RunDeps, cfg: RecycleCon
       }
       break; // 한 주기에 한 세션만. 다음 세션은 다음 주기에(다른 세션이 재시작 중이 아닐 때)
     }
-    stuck = nowStuck;
+    stuck = [...nowStuck, ...stuck.filter((w) => !seen.has(w.session))];
+    capBlocked = [...nowBlocked, ...capBlocked.filter((b) => !seen.has(b.session))];
     overCap = excluded.map((e) => ({ ...e, since: overCap.find((o) => o.session === e.session)?.since ?? new Date(now).toISOString() }));
   } finally {
     busy = false;
