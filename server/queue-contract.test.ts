@@ -21,6 +21,7 @@ const alertsIn = (): AlertsInput => ({
   sessions: [], alerts: [], workspaces: [], tickets: [], following: [{ flight: "ATC-2", aircraft: "TEAM_G", issues: [{ code: "no-pr", kind: "delay", severity: "warn", text: "PR 없음", since: T, key: "ATC-2|no-pr" }] }],
   proposals: [], pulls: [], rts: null,
   waiting: [{ session: "OCC", context: 300_000, cap: 250_000, blocks: ["x"], since: T, minutes: 70 }],
+  capBlocked: [{ session: "MCC", context: 300_000, cap: 150_000, needs: "x", since: T, minutes: 70, others: [] }],
   overCap: [{ session: "MCC", context: 200_000, cap: 150_000, since: T }],
   capIdle: [{ id: "j1", name: "TEAM_X", idleMin: 130, refused: "TEAM_G" } as never],
   rtsHalted: { since: T, reason: "ROLLBACK 뒤 멈춤" },
