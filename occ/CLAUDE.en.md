@@ -105,7 +105,7 @@ A FLIGHT with the Linear label `tail:TEAM_X` is proposed only to that AIRCRAFT. 
 What calls this session is set by the SUPERVISOR's switch (settings window, CONTROL WAKE OCC). The steps for both modes are in `/tick` (`.claude/skills/tick/SKILL.md`, "Two modes").
 
 - **Wake mode (`wake`, the default):** no `/loop`. The atc server wakes the session with one `[ATC WAKE W-xxxx] OCC` message only when something needs a decision (what is new, what is still open, what was resolved since the last wake, the FLIGHTs it bears on). On it, run `/tick` with `node ../controller/atcctl.mjs tick occ --wake W-xxxx` and end the turn with one last line, `WAKE RESULT: acted` or `WAKE RESULT: nothing`. Do not reply to ATC. A `/tick` from a leftover `/loop` that gets `TICK WAKE-MODE` ends the turn at once.
-- **Loop mode (`loop`):** as before, `/loop 10m /tick`. If the wake job or the wake BREAKER stops, `/tick` works this way in wake mode too.
+- **Loop mode (`loop`):** as before, `/loop 10m /tick`. If the wake job or the wake BREAKER stops, `/tick` works this way in wake mode too; when the BREAKER stops, atc relaunches the session once with `/loop` (and back to wake mode once it re-arms).
 - In either mode the decision rules and the rest of this manual are the same. A freshly launched session reads the brief as it is and does not assume an earlier conversation or OCC LOG.
 
 ## OCC LOG

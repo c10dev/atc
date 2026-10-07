@@ -22,6 +22,7 @@ const alertsIn = (): AlertsInput => ({
   proposals: [], pulls: [], rts: null,
   waiting: [{ session: "OCC", context: 300_000, cap: 250_000, blocks: ["x"], since: T, minutes: 70 }],
   capBlocked: [{ session: "MCC", context: 300_000, cap: 150_000, needs: "x", since: T, minutes: 70, others: [] }],
+  wakeFallback: [{ role: "TOWER", why: "턴 사이가 아님", since: T }],
   overCap: [{ session: "MCC", context: 200_000, cap: 150_000, since: T }],
   capIdle: [{ id: "j1", name: "TEAM_X", idleMin: 130, refused: "TEAM_G" } as never],
   rtsHalted: { since: T, reason: "ROLLBACK 뒤 멈춤" },

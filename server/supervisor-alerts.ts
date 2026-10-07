@@ -211,6 +211,7 @@ export interface AlertsInput {
   // CONTROL RECYCLE(ATC-166): 최근 재시작 기록(shadow의 would는 알리지 않는다). 없으면 항목 없음
   recycles?: Pick<RecycleRecord, "t" | "session" | "contextBefore" | "result" | "ok" | "error" | "launch">[];
   waiting?: WaitStuck[]; // CAP을 넘고 waitAlertMin 넘게 재시작하지 못한 세션(ATC-175)
+  wakeFallback?: { role: string; why: string; since: string }[]; // CONTROL WAKE(ATC-557): 깨움 BREAKER가 멈췄는데 /loop로 다시 띄우지 못한 관제 역할
   capBlocked?: CapBlocked[]; // CAP을 넘은 채 SUPERVISOR를 기다리며 blocked인 세션(ATC-565). 이 세션에는 recycle|wait·recycle|over를 따로 내지 않는다
   // REPOSITION(ATC-179): 최근 옮김 기록(자동이면 ADVISORY, 실패는 CAUTION)과 auto가 flapping 때문에 approval로 돌아온 기록
   repositions?: RepositionRecordLike[];
@@ -612,6 +613,22 @@ export function supervisorAlertsOf(inp: AlertsInput): SupervisorAlert[] {
       next: "FLEET 탭 CONTROL SESSIONS에서 LAUNCH한다",
       link: "#fleet/control",
       since: c.since,
+    });
+  }
+  // CONTROL WAKE fail safe(ATC-557): 깨움 BREAKER가 멈춰 그 역할을 /loop로 돌려야 하는데 지금 다시 띄울 수 없다. 그동안 그 역할에는 깨움도 /loop도 없다(CAUTION).
+  // /loop로 다시 뜨거나 BREAKER가 다시 켜지면 사라진다
+  for (const w of inp.wakeFallback ?? []) {
+    out.push({
+      key: `control|wake|${w.role}`,
+      group: "recycle",
+      level: "caution",
+      cue: null,
+      aircraft: null,
+      flight: null,
+      text: `CONTROL WAKE — ${w.role} 깨움이 받는 세션에 보이지 않아 멈췄고, /loop로 다시 띄우지 못함: ${w.why}. 그동안 ${w.role}에는 깨움도 /loop도 없다`,
+      next: `막는 것이 풀리면 서버가 ${w.role}를 /loop로 다시 띄운다. 급하면 FLEET 탭 CONTROL SESSIONS에서 ${w.role}를 STOP·LAUNCH한다(지금 LAUNCH하면 /loop로 뜬다)`,
+      link: "#fleet/control",
+      since: w.since,
     });
   }
   for (const u of inp.controlChecks?.unverified ?? []) {

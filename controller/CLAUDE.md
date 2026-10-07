@@ -88,7 +88,7 @@ SQUELCH(`UserPromptSubmit` hook, `docs/squelch.md`)가 평범한 `/tick`을 버�
 이 세션을 무엇이 부르는지는 SUPERVISOR의 스위치(설정 창 CONTROL WAKE TOWER)가 정한다. 두 모드의 단계는 `/tick`(`.claude/skills/tick/SKILL.md` "두 가지 모드")에 있다.
 
 - **깨움 모드(`wake`, 기본):** `/loop`가 없다. atc 서버가 판단할 일이 생길 때만 `[ATC WAKE W-xxxx] TOWER` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 받으면 `node atcctl.mjs tick tower --wake W-xxxx`로 `/tick`을 하고, 턴의 마지막 줄을 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. ATC에게는 답하지 않는다. `/loop`가 남은 세션의 `/tick`이 `TICK WAKE-MODE`를 받으면 곧장 턴을 끝낸다.
-- **`/loop` 모드(`loop`):** 오늘처럼 `/loop 3m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일한다.
+- **`/loop` 모드(`loop`):** 오늘처럼 `/loop 3m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일하고, BREAKER가 멈추면 atc가 `/loop`로 한 번 다시 띄운다(다시 켜지면 깨움 모드로 돌린다).
 - 어느 모드든 판단 기준과 이 문서의 규칙은 같다. 새로 뜬 세션은 브리핑을 그대로 읽고, 앞 대화나 ATC LOG가 있다고 가정하지 않는다.
 
 ## ATC LOG

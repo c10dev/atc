@@ -243,4 +243,10 @@ test("/loop ↔ wake 옮기기: LAUNCH 줄의 wake로 지금 모드를 알고(�
   assert.equal(transitionWhy({ ...ok, uptimeMs: 60_000 }).go, false);
   assert.equal(transitionWhy({ ...ok, lastTryAt: T0 - 60 * 60_000 }).go, false);
   assert.equal(transitionWhy({ ...ok, recycling: "OCC" }).go, false);
+  // BREAKER가 멈춰 loop로 돌리는 것(urgent)은 업타임·3시간 cooldown을 기다리지 않는다(10분 안 재시도만 막는다). 안전 조건은 그대로
+  const fb = { ...ok, want: "loop" as const, launched: "wake" as const, urgent: true, uptimeMs: 0, lastTryAt: T0 - 60 * 60_000 };
+  assert.deepEqual(transitionWhy(fb), { go: true });
+  assert.equal(transitionWhy({ ...fb, lastTryAt: T0 - 5 * 60_000 }).go, false);
+  assert.equal(transitionWhy({ ...fb, idle: false }).go, false);
+  assert.equal(transitionWhy({ ...fb, blocks: ["RTS: 진행 중"] }).go, false);
 });

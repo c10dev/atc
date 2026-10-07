@@ -776,12 +776,14 @@ interface WakeCounts {
   unseen: number;
   trips: number;
   transitions: number;
+  fallbacks: number;
+  returns: number;
 }
 type WakeRoleKey = "tower" | "occ" | "mcc";
 interface WakeData {
   days: number;
   total: WakeCounts;
-  roles: Record<WakeRoleKey, WakeCounts & { mode: "loop" | "wake"; launched: "loop" | "wake" | null; breaker: "armed" | "tripped" | "probe" | "probe-pending"; breakerWhy: string | null; waiting: string | null }>;
+  roles: Record<WakeRoleKey, WakeCounts & { mode: "loop" | "wake"; effective: "loop" | "wake"; fallbackStuck: string | null; launched: "loop" | "wake" | null; breaker: "armed" | "tripped" | "probe" | "probe-pending"; breakerWhy: string | null; waiting: string | null }>;
   live: boolean;
   writer: string | null;
 }
@@ -803,8 +805,9 @@ function ControlWakeStats({ d }: { d: WakeData }) {
         return (
           <li key={k} className={off ? "is-warn" : undefined}>
             <span className="mono">{name}</span> {r.mode}
-            {r.launched && r.launched !== r.mode ? <span className="faint"> (지금 세션은 {r.launched}로 뜸{r.waiting ? ` — 다시 띄우기 기다림: ${r.waiting}` : ""})</span> : null} · 깨움 <b>{r.wakes}</b> · 일함 <b>{r.acted}</b> · 할 일 없음 <b>{r.nothing}</b> · 메뉴 <b>{r.menu}</b> · 못 깨움 <b>{r.missed}</b> · 결과 모름 <b>{r.unknown}</b> · 실패 <b>{r.failed}</b> · 막음 <b>{r.refused}</b> · 안 보임 <b>{r.unseen}</b> · 다시 띄움 <b>{r.transitions}</b>
-            {off ? <span className="faint"> — 깨움 멈춤({r.breaker}){r.breakerWhy ? `: ${r.breakerWhy}` : ""}</span> : null}
+            {r.launched && r.launched !== r.mode ? <span className="faint"> (지금 세션은 {r.launched}로 뜸{r.waiting ? ` — 다시 띄우기 기다림: ${r.waiting}` : ""})</span> : null} · 깨움 <b>{r.wakes}</b> · 일함 <b>{r.acted}</b> · 할 일 없음 <b>{r.nothing}</b> · 메뉴 <b>{r.menu}</b> · 못 깨움 <b>{r.missed}</b> · 결과 모름 <b>{r.unknown}</b> · 실패 <b>{r.failed}</b> · 막음 <b>{r.refused}</b> · 안 보임 <b>{r.unseen}</b> · 다시 띄움 <b>{r.transitions}</b> · loop로 돌림 <b>{r.fallbacks}</b> · wake로 돌아옴 <b>{r.returns}</b>
+            {off ? <span className="faint"> — 깨움 멈춤({r.breaker}){r.mode === "wake" && r.effective === "loop" ? ", 그동안 loop" : ""}{r.breakerWhy ? `: ${r.breakerWhy}` : ""}</span> : null}
+            {r.fallbackStuck ? <span> — /loop로 다시 띄우지 못함: {r.fallbackStuck}</span> : null}
           </li>
         );
       })}

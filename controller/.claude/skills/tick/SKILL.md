@@ -16,7 +16,7 @@ SUPERVISOR가 설정 창 CONTROL WAKE TOWER로 고른다. 어느 모드인지는
   - ATC에게 답하지 않는다(세션이 아니라 서버다). 턴의 마지막 줄은 `WAKE RESULT: acted`(무엇이든 내거나 기록하거나 보내거나 보고함) 또는 `WAKE RESULT: nothing`(할 일이 없었음) 하나다. atc가 이 줄로 오작동을 센다.
   - 팀의 답(READBACK·UNABLE·질문 …)은 전처럼 세션 이름으로 와서 이 세션을 깨운다. 1단계대로 기록·보고하고 턴을 끝낸다. 그 밖의 일은 서버가 따로 깨운다.
   - `/loop`가 남은 세션의 `/tick`에서 0단계가 `TICK WAKE-MODE tower — …`를 찍으면 아무것도 하지 않고 곧장 턴을 끝낸다(ATC LOG 줄도 없다). atc가 안전한 순간에 이 세션을 `/loop` 없이 한 번 다시 띄운다.
-- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 3m /tick`으로 돈다. 0단계는 `--wake` 없이 `node atcctl.mjs tick tower`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다).
+- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 3m /tick`으로 돈다. 0단계는 `--wake` 없이 `node atcctl.mjs tick tower`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다). BREAKER가 멈추면 atc가 이 세션을 `/loop`로 한 번 다시 띄우고, 다시 켜지면 깨움 모드로 돌린다.
 
 0. `node atcctl.mjs tick tower`. 규정 확인(`manual check`), 브리핑, 할 일이 없을 때의 `ack`을 한 번에 한다. 출력이 정한다:
    - `TICK QUIET tower — …`: 브리핑에 할 일이 없고 이미 ack까지 됐다. 브리핑을 다시 부르지 않는다. 그래도 1단계(이번 바퀴 전에 팀 세션에서 온 READBACK·ROGER·UNABLE·STANDBY 답을 기록)는 하고, 그다음 5단계(ATC LOG "특이 사항 없음")로 간다.

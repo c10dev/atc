@@ -24,14 +24,14 @@ import {
   wakeResultOf,
   type WakeRole,
 } from "./control-wake.ts";
-import { loadWakeSwitch } from "./control-wake-switch.ts";
+import { effectiveWakeOf, loadWakeSwitch, wakeScope } from "./control-wake-switch.ts";
 import { allDecisions } from "./decision-card-run.ts";
 import { answerLineOf, unackedAnswers } from "./decision-card.ts";
 import { readJob, settleJob } from "./job-state.ts";
 import type { Snapshot } from "./model.ts";
 import { readRecords, record } from "./recorder.ts";
 import { checkControlWake } from "./send-checks.ts";
-import { type Breaker, type BreakerScope, breakerEventOf, breakerOf, confirmOf, priorDeliveriesOf, serverLiveOf, unconfirmedOf } from "./server-send.ts";
+import { type Breaker, breakerEventOf, breakerOf, confirmOf, priorDeliveriesOf, serverLiveOf, unconfirmedOf } from "./server-send.ts";
 import { type AgentRow, cachedAgentRows, configDirOfRow, controlDirOf, controlRowsOf, controlSpecOf } from "./session-control.ts";
 import { deliverChecked, findSessionRecord, transcriptOf, type WriterMode, writerModeOf, writerPlaceNow } from "./session-socket.ts";
 import { type Fetcher, gatherInputs } from "./squelch-run.ts";
@@ -65,14 +65,21 @@ function saveWakeState(st: StateFile, file = STATE_FILE()) {
   renameSync(tmp, file);
 }
 
-// 역할마다 깨움 BREAKER(ATC-562 BREAKER와 같은 규칙, 범위만 다르다): 그 역할의 깨움이 대화 기록에 보이지 않으면 그 역할만 멈춘다. 팀 FLIGHT PLAN은 상관없다
-export const wakeScope = (role: WakeRole): BreakerScope => ({ kind: "control-wake", policyOp: "control-wake-mode", of: (l) => l.role === role, handTo: `${ROLE_NAME[role]} 깨움을 멈춤`, probe: "깨움 하나로" });
+export { wakeScope } from "./control-wake-switch.ts";
 
 let lastPassAt: number | null = null;
 const startedAt = Date.now();
 const lastRoleRun: Partial<Record<WakeRole, number>> = {};
 export const CADENCE_MS: Record<WakeRole, number> = { tower: 30_000, occ: 60_000, mcc: 120_000 }; // MCC queue는 PR마다 GitHub를 읽는다(mcc-auto와 같은 값)
 const waiting: Partial<Record<WakeRole, string>> = {}; // 옮기기를 기다리는 이유(화면)
+// 깨움 BREAKER가 멈췄는데 /loop로 다시 띄우지 못한 역할(CAUTION 카드, supervisor-alerts-run.ts가 읽는다)
+export interface WakeFallbackStuck {
+  role: string;
+  why: string;
+  since: string;
+}
+const fallbackStuck: Partial<Record<WakeRole, WakeFallbackStuck>> = {};
+export const wakeFallbackStuckNow = (): WakeFallbackStuck[] => Object.values(fallbackStuck).filter((x): x is WakeFallbackStuck => Boolean(x));
 
 const configDirs = () => accountFolders().map((f) => f.dir);
 
@@ -150,7 +157,9 @@ function confirmPass(lines: readonly AnyLine[], now: number) {
     const event = breakerEventOf(before, after);
     if (event) {
       record({ t: iso(now), kind: "control-wake", op: "breaker", role, event, id: d.id, why: event === "trip" ? after.why : null });
-      if (event === "trip") console.error(`[atc] CONTROL WAKE breaker trip (${ROLE_NAME[role]}): ${after.why}`);
+      // fail safe: 멈추면 그 역할은 loop로(LAUNCH는 /loop, /loop 없이 뜬 세션은 다시 띄움), 다시 켜지면 wake로 돌아간다. 스위치가 wake일 때만 의미가 있다
+      if (loadWakeSwitch()[role] === "wake") record({ t: iso(now), kind: "control-wake", op: "fallback", role, to: event === "trip" ? "loop" : "wake", why: event === "trip" ? after.why : null });
+      if (event === "trip") console.error(`[atc] CONTROL WAKE breaker trip (${ROLE_NAME[role]}) — loop로 돌린다: ${after.why}`);
     }
   }
   const all = wakeLines(lines);
@@ -299,14 +308,18 @@ export async function controlWakePass(s: Snapshot, deps: WakeDeps): Promise<Wake
 async function transitionPass(s: Snapshot, sw: Record<WakeRole, WakeMode>, rows: readonly AgentRow[], launches: readonly AnyLine[], d: { facts: FactDeps; act: ActDeps }, now: number): Promise<{ role: WakeRole; result: string } | null> {
   let facts: SafeFacts | null | undefined;
   const cfg = loadRecycle();
+  const { eff } = effectiveWakeOf(sw, launches, now); // 깨움 BREAKER가 멈춘 역할은 loop(fail safe)
   for (const role of WAKE_ROLES) {
     const row = roleRowOf(role, rows, "production");
-    if (!row?.id) {
+    const launched = row?.id ? launchedModeOf(launches, row.id) : null;
+    const urgent = sw[role] === "wake" && eff[role] === "loop" && launched === "wake";
+    if (!urgent) delete fallbackStuck[role];
+    if (!row?.id || launched === null) {
       delete waiting[role];
       continue;
     }
-    const launched = launchedModeOf(launches, row.id);
-    if (launched === sw[role]) {
+    const want = eff[role];
+    if (launched === want) {
       delete waiting[role];
       continue;
     }
@@ -316,20 +329,27 @@ async function transitionPass(s: Snapshot, sw: Record<WakeRole, WakeMode>, rows:
       .filter((l) => l.op === "transition" && l.role === role)
       .map((l) => Date.parse(l.t))
       .at(-1);
-    const tw = transitionWhy({ want: sw[role], launched, single: true, idle: jobIdle(settleJob(readJob(row.id)) ?? null), blocks: safeBlocksOf(name, facts), auto: cfg.auto[name] ?? false, recycleOff: cfg.mode === "off", lastTryAt: lastTry ?? null, uptimeMs: now - startedAt, now, recycling: recyclingNow() });
+    const tw = transitionWhy({ want, launched, single: true, idle: jobIdle(settleJob(readJob(row.id)) ?? null), blocks: safeBlocksOf(name, facts), auto: cfg.auto[name] ?? false, recycleOff: cfg.mode === "off", urgent, lastTryAt: lastTry ?? null, uptimeMs: now - startedAt, now, recycling: recyclingNow() });
     if (!tw.go) {
       waiting[role] = tw.why;
+      // fail safe가 지금 되지 않으면 SUPERVISOR가 보게 CAUTION 카드 하나(그 역할에는 깨움도 /loop도 없다)
+      if (urgent) fallbackStuck[role] = { role: name, why: tw.why, since: fallbackStuck[role]?.since ?? iso(now) };
       continue;
     }
     delete waiting[role];
     const context = contextOfRow(row, config.claudeDir, configDirOfRow(row)) ?? 0;
-    const r = await recycleOnce(d.act, { id: row.id, pid: row.pid, account: row.account }, name, context, `CONTROL WAKE: ${launched} → ${sw[role]} (ATC-557)`, "WAKE");
+    const r = await recycleOnce(d.act, { id: row.id, pid: row.pid, account: row.account }, name, context, urgent ? `CONTROL WAKE: 깨움 BREAKER 멈춤 — wake → loop (ATC-557)` : `CONTROL WAKE: ${launched} → ${want} (ATC-557)`, "WAKE");
     const line = "busy" in r ? { ok: false, result: "busy", error: `${r.busy}가 재시작 중` } : { ok: r.ok, result: r.result, ...(r.jobId ? { jobId: r.jobId } : {}), ...(r.error ? { error: r.error } : {}) };
-    record({ t: iso(now), kind: "control-wake", op: "transition", role, from: launched, to: sw[role], ...line });
+    record({ t: iso(now), kind: "control-wake", op: "transition", role, from: launched, to: want, ...line, ...(urgent ? { cause: "breaker" as const } : {}) });
+    if (urgent && !line.ok) fallbackStuck[role] = { role: name, why: line.error ?? line.result, since: fallbackStuck[role]?.since ?? iso(now) };
+    else if (urgent) delete fallbackStuck[role];
     return { role, result: line.result };
   }
   return null;
 }
+
+// 시험: 옮기기 한 번(운영 서버만 부르는 길을 가짜 행동으로)
+export const transitionPassForTest = transitionPass;
 
 // tick-run.ts가 `atcctl tick <역할> --wake <id>`를 받으면 한 줄(깨움을 세션이 집어 든 때)
 export function notePickup(role: WakeRole, id: string, now = Date.now()) {
@@ -346,7 +366,7 @@ export function controlWakeData(now = Date.now()) {
     WAKE_ROLES.map((role) => {
       const b = breakerOf(lines, now, wakeScope(role));
       const lastJob = lines.filter((l) => l.kind === "control" && l.op === "launch" && l.session === ROLE_NAME[role] && l.ok === true).at(-1);
-      return [role, { ...counts.roles[role], mode: sw[role], launched: lastJob ? (lastJob.wake === true ? "wake" : "loop") : null, breaker: b.state, breakerWhy: b.why, waiting: waiting[role] ?? null }];
+      return [role, { ...counts.roles[role], mode: sw[role], effective: sw[role] === "wake" && b.state === "armed" ? "wake" : "loop", launched: lastJob ? (lastJob.wake === true ? "wake" : "loop") : null, breaker: b.state, breakerWhy: b.why, waiting: waiting[role] ?? null, fallbackStuck: fallbackStuck[role]?.why ?? null }];
     }),
   );
   return { days: counts.days, total: counts.total, roles, live: serverLiveOf(lastPassAt, now), writer: writerModeOf(writerPlaceNow()) };

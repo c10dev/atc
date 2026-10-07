@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { Hono } from "hono";
 import { config } from "./config.ts";
-import { controlWakeData, controlWakePass, pendingWakeOf, wakeModeLive, wakeScope, type WakeDeps } from "./control-wake-run.ts";
+import { controlWakeData, controlWakePass, pendingWakeOf, transitionPassForTest, wakeFallbackStuckNow, wakeModeLive, wakeScope, type WakeDeps } from "./control-wake-run.ts";
+import { effectiveWakeOf } from "./control-wake-switch.ts";
 import { loadWakeSwitch, saveWakeMode } from "./control-wake-switch.ts";
+import type { ActDeps, FactDeps } from "./control-recycle-run.ts";
 import type { Snapshot } from "./model.ts";
 import { readRecords, record } from "./recorder.ts";
 import type { CheckedSend } from "./send-checks.ts";
@@ -158,6 +160,83 @@ test("GET /api/tick: 깨움이 살아 있으면 /loop의 tick은 wakeMode만(브
   assert.equal(((await (await app.request("/api/tick/review")).json()) as Record<string, unknown>).wakeMode, undefined);
   // 이 시험 프로세스의 job은 운영 job이 아니다: 패스가 돈 뒤라 살아 있지만 BREAKER·스위치를 본다
   assert.equal(typeof wakeModeLive("mcc").live, "boolean");
+});
+
+// fail safe(ATC-557 리뷰): 깨움 BREAKER가 멈추면 그 역할은 loop로 — LAUNCH는 /loop, /loop 없이 뜬 세션은 한 번 다시 띄움(안 되면 CAUTION 카드),
+// /loop의 tick은 TICK WAKE-MODE가 아니라 평소대로. 시험 깨움이 보여 다시 켜지면 wake로 돌아오고, 옮기기는 평소 규칙(cooldown)을 따른다
+test("깨움 BREAKER가 멈추면 loop로 돌리고(기록·수·카드), 다시 켜지면 wake로 돌아온다", async () => {
+  const sidM = "sess-wake-mcc";
+  writeFileSync(join(claude, "sessions", "5252.json"), JSON.stringify({ pid: 5252, sessionId: sidM, name: "WAKETEST_MCC", kind: "bg", cwd: W, messagingSocketPath: "/run/user/1000/cc-socks/5252.sock", peerProtocol: 1, status: "idle" }));
+  const tr = transcriptOf(claude, W, sidM);
+  writeFileSync(tr, "");
+  const base = clock + 6 * 3_600_000;
+  const at = (min: number) => new Date(base + min * 60_000).toISOString();
+  const deliver = (min: number, id: string, msgId: string) => record({ t: at(min), kind: "control-wake", op: "deliver", id, role: "mcc", sessionId: sidM, session: "WAKETEST_MCC", pid: 5252, msgId, transcript: tr, textHash: "h", text: "x", check: "pass", menu: false, events: [], fresh: [], still: [], resolved: [], flights: [] });
+  // 깨움 하나가 30분째 대화 기록에 보이지 않는다(받는 세션은 idle)
+  deliver(0, "W-0801", "mm-1");
+  clock = base + 30 * 60_000;
+  await controlWakePass(snap, deps({ rows: async () => [] }).d);
+  const lines = () => readRecords(T0 - 86_400_000) as unknown as Record<string, unknown>[];
+  assert.equal(lines().some((l) => l.op === "breaker" && l.role === "mcc" && l.event === "trip"), true);
+  assert.equal(lines().filter((l) => l.op === "fallback" && l.role === "mcc" && l.to === "loop").length, 1);
+  const eff = () => effectiveWakeOf(loadWakeSwitch(), lines() as never, clock).eff;
+  assert.equal(eff().mcc, "loop"); // 스위치는 wake 그대로, 실제 모드는 loop
+  assert.equal(eff().tower, "wake");
+  const spec = CONTROL_SESSIONS.find((x) => x.name === "MCC")!;
+  assert.equal(controlPromptOf(spec, eff()).prompt, "/loop 5m /tick"); // 지금 LAUNCH하면 /loop
+  // /loop tick은 평소대로(WAKE-MODE 아님)
+  const w = wakeModeLive("mcc", clock);
+  assert.equal(w.live, false);
+  assert.match(w.why, /BREAKER/);
+  const app = new Hono();
+  mountTick(app, { get: async () => ({ pulls: [] }), seenFile: () => join(config.stateDir, "tick-seen-mcc.json") });
+  assert.equal(((await (await app.request("/api/tick/mcc")).json()) as Record<string, unknown>).wakeMode, undefined);
+
+  // /loop 없이 뜬 MCC(jobM, wake: true)를 /loop로 다시 띄운다: CONTROL RECYCLE mode가 off면 못 하고 CAUTION 카드
+  record({ t: at(-60), kind: "control", op: "launch", session: "MCC", by: "WAKE", ok: true, jobId: "aaaa01", wake: true });
+  mkdirSync(join(claude, "jobs", "aaaa01"), { recursive: true });
+  writeFileSync(join(claude, "jobs", "aaaa01", "state.json"), JSON.stringify({ state: "done", tempo: "idle", updatedAt: at(29) }));
+  const row = { id: "aaaa01", sessionId: sidM, name: "MCC", kind: "background", cwd: "/w/mcc", pid: 999_999 };
+  const launched: string[] = [];
+  const act: ActDeps = { stop: async () => ({ ok: true }), rowsOf: async () => [], pidAlive: () => false, launch: async (name) => (launched.push(name), { ok: true, jobId: "bbbb02" }), sleep: async () => {} };
+  const facts: FactDeps = { rtsBusy: async () => null, towerEvents: () => 0, now: () => clock };
+  let r = await transitionPassForTest(snap, loadWakeSwitch(), [row], lines() as never, { facts, act }, clock);
+  assert.equal(r, null);
+  const stuck = wakeFallbackStuckNow();
+  assert.deepEqual(stuck.map((x) => x.role), ["MCC"]);
+  assert.match(stuck[0]!.why, /mode off/);
+  // 카드(control|wake|MCC, CAUTION)를 그리는 것은 queue-contract.test.ts의 고정 자료가 본다
+  // mode on이면 곧장(업타임·3시간 cooldown 없이) 한 번 다시 띄운다
+  writeFileSync(join(config.stateDir, "control-recycle.json"), JSON.stringify({ mode: "on" }));
+  r = await transitionPassForTest(snap, loadWakeSwitch(), [row], lines() as never, { facts, act }, clock);
+  assert.deepEqual([r?.role, r?.result, launched], ["mcc", "recycled", ["MCC"]]);
+  const tl = lines().filter((l) => l.op === "transition" && l.role === "mcc").at(-1)!;
+  assert.deepEqual([tl.from, tl.to, tl.cause, tl.ok], ["wake", "loop", "breaker", true]);
+  assert.deepEqual(wakeFallbackStuckNow(), []);
+
+  // 30분 뒤 시험 깨움이 보인다 → 다시 켜짐 → return 줄, 실제 모드 wake
+  record({ t: at(1), kind: "control", op: "launch", session: "MCC", by: "WAKE", ok: true, jobId: "bbbb02", wake: false });
+  deliver(61, "W-0802", "mm-2");
+  appendFileSync(tr, JSON.stringify({ type: "user", origin: { kind: "peer", msg_id: "mm-2" } }) + "\n");
+  clock = base + 62 * 60_000;
+  await controlWakePass(snap, deps({ rows: async () => [] }).d);
+  assert.equal(lines().some((l) => l.op === "breaker" && l.role === "mcc" && l.event === "rearm"), true);
+  assert.equal(lines().filter((l) => l.op === "fallback" && l.role === "mcc" && l.to === "wake").length, 1);
+  assert.equal(eff().mcc, "wake");
+  const d = controlWakeData(clock);
+  assert.deepEqual([d.roles.mcc!.fallbacks, d.roles.mcc!.returns, d.roles.mcc!.effective], [1, 1, "wake"]);
+  // 평소의 옮기기(loop → wake)는 평소 규칙: 방금 시도해서 3시간 cooldown
+  const row2 = { ...row, id: "bbbb02" };
+  writeFileSync(join(claude, "jobs", "aaaa01", "state.json"), JSON.stringify({ state: "done", tempo: "idle", updatedAt: at(60) }));
+  mkdirSync(join(claude, "jobs", "bbbb02"), { recursive: true });
+  writeFileSync(join(claude, "jobs", "bbbb02", "state.json"), JSON.stringify({ state: "done", tempo: "idle", updatedAt: at(60) }));
+  r = await transitionPassForTest(snap, loadWakeSwitch(), [row2], lines() as never, { facts, act }, clock);
+  assert.equal(r, null);
+  assert.match(String(controlWakeData(clock).roles.mcc!.waiting), /3시간/);
+  r = await transitionPassForTest(snap, loadWakeSwitch(), [row2], lines() as never, { facts, act }, clock + 3 * 3_600_000 + 1000);
+  assert.deepEqual([r?.role, launched.length], ["mcc", 2]);
+  assert.equal(lines().filter((l) => l.op === "transition" && l.role === "mcc").at(-1)!.to, "wake");
+  writeFileSync(join(config.stateDir, "control-recycle.json"), JSON.stringify({ mode: "off" }));
 });
 
 test("운영 서버도 opt-in도 아니면 아무것도 하지 않는다(시험 서버)", async () => {

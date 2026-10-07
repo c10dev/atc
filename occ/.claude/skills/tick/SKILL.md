@@ -16,7 +16,7 @@ SUPERVISOR가 설정 창 CONTROL WAKE OCC로 고른다. 어느 모드인지는 �
   - ATC에게 답하지 않는다(세션이 아니라 서버다). 턴의 마지막 줄은 `WAKE RESULT: acted`(무엇이든 내거나 기록하거나 보내거나 보고함) 또는 `WAKE RESULT: nothing`(할 일이 없었음) 하나다. atc가 이 줄로 오작동을 센다.
   - 팀의 답(READBACK·UNABLE·질문 …)은 전처럼 세션 이름으로 와서 이 세션을 깨운다. 1단계대로 기록·보고하고 턴을 끝낸다. 그 밖의 일은 서버가 따로 깨운다.
   - `/loop`가 남은 세션의 `/tick`에서 0단계가 `TICK WAKE-MODE occ — …`를 찍으면 아무것도 하지 않고 곧장 턴을 끝낸다(OCC LOG 줄도 없다). atc가 안전한 순간에 이 세션을 `/loop` 없이 한 번 다시 띄운다.
-- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 10m /tick`으로 돈다. 0단계는 `--wake` 없이 `node ../controller/atcctl.mjs tick occ`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다).
+- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 10m /tick`으로 돈다. 0단계는 `--wake` 없이 `node ../controller/atcctl.mjs tick occ`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다). BREAKER가 멈추면 atc가 이 세션을 `/loop`로 한 번 다시 띄우고, 다시 켜지면 깨움 모드로 돌린다.
 
 0. `[TEAM_X → OCC] ARRIVED …`가 와 있으면 **읽는 즉시, 다른 어떤 단계·`gh`보다 먼저** `dispatch report <D-xxxx|ATC-n> --pr <n>|--result <링크> --tier <t> --tests <통과/전체|n/a> --discretion <수> --blocked <none|막힌 점>`(고정 줄만, 직접 배정도 같다). 그다음 `node ../controller/atcctl.mjs tick occ`(규정 확인과 브리핑을 이미 한다. 따로 부르지 않는다). `TICK QUIET`면 1단계 답장만 하고 8단계로. `CHANGED`면 `CLAUDE.md`와 이 파일을 다시 읽고 `manual ack`(전에 읽은 절차 파일도 그 단계에서 다시 Read). `TICK ACT`는 이유와 브리핑이 따른다.
 1. 팀 답장 먼저. FLIGHT PLAN·RECALL 답은 `flight-plan.md`, CREW CHANGE 답은 `crew-change.md`, PR·리뷰 보고는 `following.md`.

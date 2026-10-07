@@ -375,8 +375,10 @@ export interface WakeCounts {
   unseen: number;
   trips: number;
   transitions: number; // /loop ↔ wake로 다시 띄운 수
+  fallbacks: number; // 깨움 BREAKER가 멈춰 loop로 돌린 수(fail safe)
+  returns: number; // BREAKER가 다시 켜져 wake로 돌아간 수
 }
-const blankCounts = (): WakeCounts => ({ wakes: 0, menu: 0, nothing: 0, missed: 0, acted: 0, unknown: 0, failed: 0, refused: 0, unseen: 0, trips: 0, transitions: 0 });
+const blankCounts = (): WakeCounts => ({ wakes: 0, menu: 0, nothing: 0, missed: 0, acted: 0, unknown: 0, failed: 0, refused: 0, unseen: 0, trips: 0, transitions: 0, fallbacks: 0, returns: 0 });
 export function wakeCountsOf(lines: readonly Line[], now: number, days = 7): { days: number; total: WakeCounts; roles: Record<WakeRole, WakeCounts> } {
   const since = now - days * 86_400_000;
   const roles = { tower: blankCounts(), occ: blankCounts(), mcc: blankCounts() } as Record<WakeRole, WakeCounts>;
@@ -398,6 +400,7 @@ export function wakeCountsOf(lines: readonly Line[], now: number, days = 7): { d
     else if (l.op === "confirm" && l.seen === false && l.why !== "gone") bump("unseen");
     else if (l.op === "breaker" && l.event === "trip") bump("trips");
     else if (l.op === "transition" && l.ok === true) bump("transitions");
+    else if (l.op === "fallback") bump(l.to === "loop" ? "fallbacks" : "returns");
   }
   return { days, total, roles };
 }
@@ -413,13 +416,15 @@ export function launchedModeOf(lines: readonly Line[], jobId: string): WakeMode 
 }
 export const TRANSITION_COOLDOWN_MS = 3 * 3_600_000; // CONTROL RECYCLE cooldown과 같다
 export const TRANSITION_UPTIME_MS = 5 * 60_000; // 서버가 뜬 직후(RTS가 세션 수를 세는 2분)에는 하지 않는다
-export function transitionWhy(x: { want: WakeMode; launched: WakeMode; single: boolean; idle: boolean; blocks: readonly string[]; auto: boolean; recycleOff?: boolean; lastTryAt: number | null; uptimeMs: number; now: number; recycling: string | null }): { go: true } | { go: false; why: string } {
+// urgent: 깨움 BREAKER가 멈춰 /loop로 돌리는 것(fail safe). 업타임을 기다리지 않고 cooldown은 10분이다(실패하면 10분 뒤 다시). 안전 조건은 그대로
+export const FALLBACK_RETRY_MS = 10 * 60_000;
+export function transitionWhy(x: { want: WakeMode; launched: WakeMode; single: boolean; idle: boolean; blocks: readonly string[]; auto: boolean; recycleOff?: boolean; urgent?: boolean; lastTryAt: number | null; uptimeMs: number; now: number; recycling: string | null }): { go: true } | { go: false; why: string } {
   if (x.want === x.launched) return { go: false, why: "같은 모드" };
   if (!x.single) return { go: false, why: "claude --bg 세션 하나가 아님" };
   if (x.recycleOff) return { go: false, why: "CONTROL RECYCLE mode off — 자동으로 다시 띄우지 않는다(세션은 깨움을 받는다)" };
   if (!x.auto) return { go: false, why: "CONTROL RECYCLE auto가 꺼짐 — 다시 띄우지 않는다(세션은 깨움을 받는다)" };
-  if (x.uptimeMs < TRANSITION_UPTIME_MS) return { go: false, why: "서버가 뜬 지 5분이 안 됨" };
-  if (x.lastTryAt !== null && x.now - x.lastTryAt < TRANSITION_COOLDOWN_MS) return { go: false, why: "3시간 안에 시도함" };
+  if (!x.urgent && x.uptimeMs < TRANSITION_UPTIME_MS) return { go: false, why: "서버가 뜬 지 5분이 안 됨" };
+  if (x.lastTryAt !== null && x.now - x.lastTryAt < (x.urgent ? FALLBACK_RETRY_MS : TRANSITION_COOLDOWN_MS)) return { go: false, why: x.urgent ? "10분 안에 시도함" : "3시간 안에 시도함" };
   if (x.recycling) return { go: false, why: `${x.recycling}가 재시작 중` };
   if (!x.idle) return { go: false, why: "턴 사이가 아님" };
   if (x.blocks.length) return { go: false, why: x.blocks.join("; ") };
@@ -437,5 +442,6 @@ export type ControlWakeLine =
   | { t: string; kind: "control-wake"; op: "missed"; role: R; key: string; event: string; first: string; menu: boolean }
   | { t: string; kind: "control-wake"; op: "pickup"; role: R; id: string }
   | { t: string; kind: "control-wake"; op: "breaker"; role: R; event: "trip" | "rearm"; id: string; why: string | null }
-  | { t: string; kind: "control-wake"; op: "transition"; role: R; from: WakeMode; to: WakeMode; ok: boolean; result: string; jobId?: string; error?: string }
+  | { t: string; kind: "control-wake"; op: "transition"; role: R; from: WakeMode; to: WakeMode; ok: boolean; result: string; jobId?: string; error?: string; cause?: "breaker" }
+  | { t: string; kind: "control-wake"; op: "fallback"; role: R; to: WakeMode; why: string | null }
   | { t: string; kind: "control-wake"; op: "ack"; role: "tower"; cursor: string };

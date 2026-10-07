@@ -13,7 +13,7 @@ The SUPERVISOR picks the mode in the settings window, CONTROL WAKE TOWER. The fi
   - Do not reply to ATC (it is the server, not a session). The last line of the turn is one of `WAKE RESULT: acted` (anything was issued, recorded, sent or reported) or `WAKE RESULT: nothing` (there was nothing to do). atc counts misfires from this line.
   - Team replies (READBACK, UNABLE, questions …) still arrive by session name and wake this session. Record and report them as step 1 says and end the turn; the server wakes the session separately for anything else.
   - If step 0 of a `/tick` from a leftover `/loop` prints `TICK WAKE-MODE tower — …`, do nothing and end the turn at once (no ATC LOG line). atc relaunches the session once, without `/loop`, at a safe moment.
-- **Loop mode (`loop`).** As before: `/loop 3m /tick`. Step 0 is `node atcctl.mjs tick tower` without `--wake`. If the wake job or the wake BREAKER has stopped, `/tick` also works this way in wake mode (no `TICK WAKE-MODE` is printed).
+- **Loop mode (`loop`).** As before: `/loop 3m /tick`. Step 0 is `node atcctl.mjs tick tower` without `--wake`. If the wake job or the wake BREAKER has stopped, `/tick` also works this way in wake mode (no `TICK WAKE-MODE` is printed). When the BREAKER stops, atc relaunches the session once with `/loop`, and moves it back to wake mode once the BREAKER re-arms.
 
 **Description:** One ATC pass — read the atc brief, issue CLEARANCEs and reports according to the decision rules in CLAUDE.md, then advance the cursor. In wake mode (the default) the server's `[ATC WAKE …]` message calls it; in loop mode `/loop 3m /tick` does.
 
