@@ -772,7 +772,7 @@ DISPATCH가 `plan.unserved`에 올린 Todo FLIGHT는 `follow|stuck`가 `제안 �
 |---|---|
 | **VECTORS** | 지금까지의 지시서. 관제가 방향을 하나씩 준다: 번호 붙은 구현 단계, 전체 템플릿, "구현 전에 묻기" |
 | **DIRECT** | 새 지시서. 목표로 "cleared direct". 목표, 완료 기준, 이 작업만의 제약, "끝까지 한 번에"만 담는다. 경로는 팀이 정한다 |
-| **SOLO** | CAPTAIN이 FLIGHT를 구현했고 서브에이전트는 도움(조사, 리뷰, 문서)만 했다. 2026-09-28부터 vocado `CLAUDE.md`는 리더가 직접 구현하고 WAKE H나 여러 영역에 걸친 일만 나눈다 |
+| **SOLO** | CAPTAIN이 FLIGHT를 구현했고 서브에이전트는 도움(조사, 리뷰, 문서)만 했다. 2026-09-28부터 vocado `CLAUDE.md`는 리더가 직접 구현하고 WAKE H나 여러 영역에 걸친 일만 나눈다. ATC-559부터는 모든 AIRPORT의 FLIGHT PLAN이 같은 것을 말한다(아래 "SOLO 기본 as built") |
 | **CREW** | 구현을 나눴다: 팀원(서브에이전트)이 하나 이상 FLIGHT의 STAND에 코드를 썼다 |
 | **PILOT'S DISCRETION** | DIRECT FLIGHT 안에서 흔한 애매함은 팀이 스스로 푼다. 합리적인 기본값을 고르고 PR에 적고 계속 간다. 정말 SUPERVISOR가 정할 일(guard, 기록 형식, 승인 게이트, SUPERVISOR 몫인 것)만 멈춰서 묻는다 |
 
@@ -807,6 +807,22 @@ atc는 대화 기록에서 필요한 줄만 읽고(받은 메시지, SendMessage
 **비교.** DISPATCH 탭의 FLIGHT FOLLOWING 아래 **VECTORS · DIRECT** 판이 지시서별, SOLO·CREW별, 둘을 겹친 2×2로 묶어 14·30·90일 동안의 FLIGHT 수, FLIGHT당 중간 질문, 질문 없이 끝낸 비율, READBACK → PR 중앙값, FLIGHT당 P0–P2 지적, FLIGHT당 PR 뒤 수정 커밋을 나란히 보여 주고, FLIGHT별 행을 아래에 접어 둔다. `GET /api/logbook/briefs?days=30`은 `{days, rows, stats: {VECTORS, DIRECT}, crewStats: {SOLO, CREW}, grid: {"VECTORS·SOLO", …}, unmeasured, crewUnknown}`를 돌려준다. 행에는 `crew`가 있고, `crew: null`인 행은 SOLO·CREW 묶음에서 빠진다. 보여 주기만 하고 점수나 배정에 쓰지 않는다. 한쪽이라도 5건 미만이면 표본 부족이라고 적는다.
 
 Not built yet: vocado 쪽 템플릿(vocado `CLAUDE.md`의 네 칸 규칙, Linear `Codex Engineering Task` 템플릿)은 SUPERVISOR가 고친다. 맞춰 고칠 문구는 ATC-32 PR에 제안했다.
+
+## SOLO 기본 as built (ATC-559)
+
+vocado의 SOLO 규칙(위 표의 SOLO 줄)을 모든 AIRPORT로 넓힌다. 지시서 글로 한다: 다른 AIRPORT는 자기 규칙 파일이 아니라 FLIGHT PLAN에서 안다. DISPATCH는 여전히 여러 AIRCRAFT에 FLIGHT를 나란히 보내고, 바뀌는 것은 FLIGHT 하나 안의 나눔뿐이다. 설계: [control-plane.md](control-plane.md) 원칙 5와 W7.
+
+- **규칙**(`server/solo-default.ts` `crewPlanOf`, 순수). WAKE는 다른 곳과 같이 FLIGHT 라벨에서 읽는다(`classOf`, WAKE 라벨이 없으면 M). WAKE **L**·**M** → **SOLO**. WAKE **H**·**J** → **CREW**. **여러 영역(multi-area)** FLIGHT는 WAKE와 상관없이 **CREW**: 라벨에 Linear `Area` 라벨 그룹의 서로 다른 라벨이 둘 이상(`Area:Web`, `Area:Database`) 있거나, DOCS가 아닌 TYPE RATING이 둘 이상(`rating:UI`, `rating:DATA`, `rating:SEC`, `Risk:*` 라벨은 SEC) 있을 때다. 두 가지를 섞어 세지 않는다(`Area:Web`과 `rating:UI`는 같은 영역일 수 있다).
+- **줄.** FLIGHT PLAN(`formatFlightPlan`)과 DIRECT 배정 문구(`formatAssignment`, FLEET LAUNCH with a FLIGHT와 K3 RELAUNCH의 첫 프롬프트도 이것)의 PILOT'S DISCRETION 줄 앞에 한 줄:
+  - SOLO: `SOLO (WAKE M): fly this FLIGHT as a solo CAPTAIN. Implement it yourself, with no CREW; subagents may search or review but do not write code. If it turns out to need CREW, add it and say why under Pilot's discretion in the PR.`
+  - CREW: `CREW (WAKE H): you may split the implementation across your CREW COMPLEMENT.` 또는 `CREW (multi-area: Database, Web): …`.
+  - 라벨은 스냅샷의 티켓에서, 티켓이 스냅샷에 없으면 이슈 상세에서 읽는다(상세 조회가 이제 라벨도 읽는다). AIRPORT는 카드의 것이고, DIRECT 문구는 이슈의 프로젝트·팀 매핑(`airportOfTicket`)이다. CREW BRIEFING과 CREW COMPLEMENT는 그대로다. 줄은 저장된 문구의 일부라 work-order 해시(ATC-555)가 함께 덮는다.
+- **스위치**(SUPERVISOR 전용): 설정 창 AUTOMATION → OPERATIONS → **SOLO**, 열린 AIRPORT마다 `on`/`off` 줄 하나, 상태 폴더의 `solo-default.json`(`{default, airports, migrated}`, 원자적으로 바꿔 쓴다. `PUT /api/settings {soloDefault: {CODE: "on"|"off"}}`, `fromThisApp`, `atcctl` 명령 없음). `off`면 FLIGHT PLAN이 ATC-559 전과 똑같다(줄이 아예 없다). **모든 AIRPORT on**으로 내놓는다: 배포 뒤 첫 서버 시작이 열린 AIRPORT마다 `on`과 `migrated: {id: "ATC-559", at}`를 한 번 쓴다. 파일이 없어도 `on`, 깨졌으면 `off`로 읽고 블록에 그렇게 적힌다. 파일에 없는 AIRPORT는 `default`를 따른다. 다시 보내는 FLIGHT PLAN은 저장된 문구 그대로라, 스위치를 바꾸면 그 뒤에 보내는 것만 달라진다.
+- **FLIGHT가 어느 쪽을 받았나**는 제안에 저장된 FLIGHT PLAN 문구(`message`)에서 읽는다: 새 기록이나 칸이 없다.
+- **오작동 수**: 스위치 밑에 AIRPORT마다 최근 7일(보여 주기만 하고 어느 것도 스위치를 끄지 않는다). 기준은 `migrated.at` 앞 7일, 같은 AIRPORT, 같은 WAKE다:
+  - (a) **CREW를 씀**: SOLO FLIGHT PLAN인데 그 FLIGHT가 나중에 `crew: CREW`로 재졌거나(ATC-33: 서브에이전트가 STAND에 문서 아닌 파일을 씀), 도착 보고의 BLOCKED 줄·UNABLE 사유·SUPERVISOR 질문(`await-supervisor`)에 CREW가 나온 것.
+  - (b) **느려짐**: block time(LOGBOOK `blockMin`, DEPARTED → PR 열림. PR 뒤 착륙 대기는 MCC 몫이라 뺀다)이 그 WAKE 기준 중앙값보다 긴 SOLO FLIGHT. 넘음 / 잰 수로 보인다. 기준 FLIGHT가 3개보다 적은 WAKE는 재지 않는다.
+  - (c) **WAKE별 착륙한 FLIGHT당 토큰**: 최근 7일에 도착한 FLIGHT의 CAPTAIN + CREW 토큰(LOGBOOK `fuel`, FUEL F4의 FLIGHT 연료) 중앙값 대 기준, L·M·H마다. ATC-551의 관제 몫은 관제 역할별이지 FLIGHT별이 아니라서 따로 작게 읽는다(`server/solo-default-run.ts`).
 
 ## 2b 켜는 법
 

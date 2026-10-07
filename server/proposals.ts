@@ -71,6 +71,8 @@ import { readLinearProjects } from "./sources/linear-projects.ts";
 import { flightPlanNotesOf, type IssueComment } from "./issue-notes.ts";
 import { fetchIssueDetail } from "./sources/linear.ts";
 import { DIRECT_LINE, directLines, directSectionsOf, DISCRETION_LINE, FINISH_LINE, formatAssignment } from "./briefs.ts";
+import { type CrewPlan, crewLineOf, crewPlanOf, detailLabelsOf } from "./solo-default.ts";
+import { soloOnAt } from "./solo-default-switch.ts";
 import { type Delivery, deliveryOf } from "./session-origin.ts";
 import { fromThisApp } from "./origin.ts";
 import { causeOf, resolveRecipient } from "./address.ts";
@@ -982,7 +984,8 @@ export const descriptionOf = (d: Record<string, unknown>): string | null => (typ
 // CAPTAIN에게 보낼 FLIGHT PLAN. send-guard는 DISPATCH가 이 문구를 그대로 보내는지 확인한다.
 // DIRECT 지시서(ATC-32): 이슈 본문(description)에서 목표·완료 기준·이 작업만의 제약만 옮기고, 끝까지 한 번에 날게 한다.
 // 본문을 못 읽었으면(null) 완료 기준은 링크의 이슈 본문을 따르라고 적는다.
-export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now(), notes: readonly string[] = []): string {
+// crew(ATC-559): SOLO·CREW 줄. null이면(AIRPORT 스위치 off) 줄이 없다 — 오늘과 같은 문구
+export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "url" | "priority"> | undefined, sessionName: string, description: string | null = null, now = Date.now(), notes: readonly string[] = [], crew: CrewPlan | null = null): string {
   const sign = callsign({ name: sessionName });
   const who = sign === sessionName ? sessionName : `${sign} (${sessionName})`;
   const note = p.note ? `DISPATCH note: ${p.caution ? "CAUTION · " : ""}${p.note}` : p.caution ? "DISPATCH note: CAUTION" : null;
@@ -1006,6 +1009,7 @@ export function formatFlightPlan(p: Proposal, ticket: Pick<Ticket, "title" | "ur
     note,
     hold,
     waiting,
+    crewLineOf(crew),
     DISCRETION_LINE,
     closingLine("flight-plan", responseOf("flight-plan"), p.id, WO_SLOT),
     FINISH_LINE,
@@ -1287,15 +1291,23 @@ export async function flightPlanMessageOf(p: Proposal, s: Pick<Snapshot, "ticket
   const detail = (await fetchIssueDetail(p.flight).catch(() => null)) as Record<string, unknown> & { comments: unknown[] } | null;
   const description = detail ? descriptionOf(detail) : null;
   const notes = detail ? flightPlanNotesOf(detail.comments as IssueComment[], loadDispatchConfig().issueNotes, typeof detail.url === "string" ? detail.url : null) : [];
-  return formatFlightPlan(p, s.tickets.find((t) => t.key === p.flight), p.aircraftName ?? "", description, Date.now(), notes);
+  const ticket = s.tickets.find((t) => t.key === p.flight);
+  // SOLO 기본(ATC-559): 스냅샷의 라벨, 없으면 이슈 상세의 라벨로 WAKE·영역을 읽는다. AIRPORT 스위치가 off면 줄이 없다
+  const crew = crewPlanOf(ticket?.labels ?? (detail ? detailLabelsOf(detail) : []), soloOnAt(p.airport));
+  return formatFlightPlan(p, ticket, p.aircraftName ?? "", description, Date.now(), notes, crew);
 }
 
 // DIRECT 지시서(GET /api/dispatch/flight/:key/brief?to=). FLEET 카드의 LAUNCH with a FLIGHT(ATC-73)도 첫 프롬프트에 이것을 쓴다
 export async function directBriefOf(key: string, to: string | null): Promise<string> {
   const d = (await fetchIssueDetail(key)) as Record<string, unknown>;
   const url = typeof d.url === "string" ? d.url : null;
-  const notes = flightPlanNotesOf(d.comments as IssueComment[], loadDispatchConfig().issueNotes, url);
-  return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes);
+  const cfg = loadDispatchConfig();
+  const notes = flightPlanNotesOf(d.comments as IssueComment[], cfg.issueNotes, url);
+  // SOLO 기본(ATC-559): FLEET LAUNCH with a FLIGHT·K3 RELAUNCH의 첫 프롬프트도 같은 줄을 싣는다. AIRPORT는 이슈의 팀·프로젝트로
+  const project = (d.project as { name?: unknown } | null | undefined)?.name;
+  const airport = airportOfTicket({ key, project: typeof project === "string" ? project : null }, cfg);
+  const crew = crewPlanOf(detailLabelsOf(d), soloOnAt(airport));
+  return formatAssignment({ key, title: typeof d.title === "string" ? d.title : null, url }, descriptionOf(d), to, notes, crew);
 }
 
 // 한 FLIGHT의 제안 기록: 최근 것이 먼저, limit건까지(ATC-377)

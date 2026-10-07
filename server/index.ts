@@ -27,6 +27,7 @@ import { fuelWatch } from "./fuel-watch.ts";
 import { mountFleetPlan } from "./fleet-plan-run.ts";
 import { autoFreshStartGate, mountFreshStart } from "./fresh-start-run.ts";
 import { migrateFreshStartOnce } from "./fresh-start-switch.ts";
+import { migrateSoloOnce } from "./solo-default-switch.ts";
 import { launchForCard, MAX_LAUNCHED, mountSessionControl } from "./session-control.ts";
 import { createJobRunner, jobs, provideService, serviceOf } from "./job-registry.ts";
 import { mountApplyNow } from "./apply-now-run.ts";
@@ -327,6 +328,14 @@ try {
   else if (m === "unreadable") console.warn("[atc] fresh start: fresh-start.json을 읽을 수 없음 — 올리지 않고 off로 둔다");
 } catch (e) {
   console.warn(`[atc] fresh start: 올리기 실패 — ${e instanceof Error ? e.message : e}`);
+}
+try {
+  // SOLO 기본 ships on(ATC-559): 배포 뒤 첫 시작에 열린 AIRPORT마다 on을 적고 그 시각(오작동 수의 기준)을 남긴다(기록이 있으면 아무것도 안 한다)
+  const m = migrateSoloOnce(loadRegistry().entries.filter((e) => !e.closed).map((e) => e.code));
+  if (m === "migrated") console.log("[atc] solo default: ATC-559 — 열린 AIRPORT마다 on으로 적음(solo-default.json의 migrated)");
+  else if (m === "unreadable") console.warn("[atc] solo default: solo-default.json을 읽을 수 없음 — 적지 않고 off로 둔다");
+} catch (e) {
+  console.warn(`[atc] solo default: 적기 실패 — ${e instanceof Error ? e.message : e}`);
 }
 mountSquelch(app); // SQUELCH(ATC-94): 판정 API. 기본은 on·v2(ATC-553)
 mountControlShare(app); // CONTROL SHARE(ATC-551): 관제 몫과 일을 한 turn당 토큰(읽기만)
