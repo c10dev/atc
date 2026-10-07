@@ -1,11 +1,22 @@
 ---
 name: tick
-description: ATC 한 바퀴 — atc 브리핑을 읽고 CLAUDE.md 판단 기준대로 CLEARANCE·보고를 낸 뒤 커서를 넘긴다. `/loop 3m /tick`으로 돌린다.
+description: ATC 한 바퀴 — atc 브리핑을 읽고 CLAUDE.md 판단 기준대로 CLEARANCE·보고를 낸 뒤 커서를 넘긴다. 깨움 모드(기본)에서는 서버의 `[ATC WAKE …]` 글이, `/loop` 모드에서는 `/loop 3m /tick`이 부른다.
 ---
 
 # ATC 한 바퀴
 
 **한국어** · [English](SKILL.en.md)
+
+## 두 가지 모드 (CONTROL WAKE, ATC-557)
+
+SUPERVISOR가 설정 창 CONTROL WAKE TOWER로 고른다. 어느 모드인지는 첫 프롬프트와 `node atcctl.mjs tick tower`의 출력이 알려 준다.
+
+- **깨움 모드(`wake`, 기본).** `/loop`가 없다. atc 서버가 판단할 일을 보면 `[ATC WAKE W-xxxx] TOWER` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 처음 뜰 때는 `[ATC WAKE BOOT] TOWER`가 온다.
+  - 그 글을 받으면 0단계를 `node atcctl.mjs tick tower --wake W-xxxx`(BOOT는 `--wake boot`)로 하고 아래 단계를 그대로 한다. 글에 적힌 일만 보지 않고 출력 전체를 본다.
+  - ATC에게 답하지 않는다(세션이 아니라 서버다). 턴의 마지막 줄은 `WAKE RESULT: acted`(무엇이든 내거나 기록하거나 보내거나 보고함) 또는 `WAKE RESULT: nothing`(할 일이 없었음) 하나다. atc가 이 줄로 오작동을 센다.
+  - 팀의 답(READBACK·UNABLE·질문 …)은 전처럼 세션 이름으로 와서 이 세션을 깨운다. 1단계대로 기록·보고하고 턴을 끝낸다. 그 밖의 일은 서버가 따로 깨운다.
+  - `/loop`가 남은 세션의 `/tick`에서 0단계가 `TICK WAKE-MODE tower — …`를 찍으면 아무것도 하지 않고 곧장 턴을 끝낸다(ATC LOG 줄도 없다). atc가 안전한 순간에 이 세션을 `/loop` 없이 한 번 다시 띄운다.
+- **`/loop` 모드(`loop`).** 오늘처럼 `/loop 3m /tick`으로 돈다. 0단계는 `--wake` 없이 `node atcctl.mjs tick tower`이다. 깨움 job이 멈췄거나 깨움 BREAKER가 멈추면 깨움 모드여도 `/tick`이 이렇게 일한다(`TICK WAKE-MODE`가 나오지 않는다).
 
 0. `node atcctl.mjs tick tower`. 규정 확인(`manual check`), 브리핑, 할 일이 없을 때의 `ack`을 한 번에 한다. 출력이 정한다:
    - `TICK QUIET tower — …`: 브리핑에 할 일이 없고 이미 ack까지 됐다. 브리핑을 다시 부르지 않는다. 그래도 1단계(이번 바퀴 전에 팀 세션에서 온 READBACK·ROGER·UNABLE·STANDBY 답을 기록)는 하고, 그다음 5단계(ATC LOG "특이 사항 없음")로 간다.

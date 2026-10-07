@@ -17,7 +17,7 @@ The user is the SUPERVISOR. When a call is unclear, don't issue a CLEARANCE — 
 
 | Command | What it does |
 |---|---|
-| `node atcctl.mjs tick tower` | First step of `/tick` (ATC-297): `manual check` + the brief + the `ack` when there is nothing to do, in one call. `TICK QUIET tower — …` (done) · `TICK ACT tower` + `REASONS:` + the brief · `CHANGED …` first when the manual changed (no ack) |
+| `node atcctl.mjs tick tower [--wake <W-xxxx>]` | First step of `/tick` (ATC-297; in wake mode pass the wake message's id with `--wake`, ATC-557): `manual check` + the brief + the `ack` when there is nothing to do, in one call. `TICK QUIET tower — …` (done) · `TICK ACT tower` + `REASONS:` + the brief · `CHANGED …` first when the manual changed (no ack) |
 | `node atcctl.mjs brief` | Changes since the last ack (`events`) and the current state (`open`, `landingQueue`, `github`, `clearances`, `traffic`) |
 | `node atcctl.mjs ack <cursor>` | Marks the brief as handled. The next brief only gives changes after that |
 | `node atcctl.mjs issue <session> <TYPE> [--stand <STAND>] [--flight <FLIGHT>] -- <text>` | Records a CLEARANCE and returns the recipient and the message to send |
@@ -85,6 +85,14 @@ Response attributes (ATC-122): atc decides which answer the closing line asks fo
 - If SendMessage says a session name is ambiguous, add the `[ref]` from ListAgents.
 - **Text sent to teams and to other control sessions is English** (ATC-126), including the CLEARANCE body (`--text`). The `[DISPATCH D-xxxx]`, `[OCC CC-xxxx]` and `[ATC C-xxxx]` headers and `READBACK …`, `UNABLE …`, `STANDBY …`, `ROGER …` are read by guards and don't change. Text left for the SUPERVISOR, such as the ATC LOG, stays Korean.
 
+## How this session is woken (CONTROL WAKE, ATC-557)
+
+What calls this session is set by the SUPERVISOR's switch (settings window, CONTROL WAKE TOWER). The steps for both modes are in `/tick` (`.claude/skills/tick/SKILL.md`, "Two modes").
+
+- **Wake mode (`wake`, the default):** no `/loop`. The atc server wakes the session with one `[ATC WAKE W-xxxx] TOWER` message only when something needs a decision (what is new, what is still open, what was resolved since the last wake, the FLIGHTs it bears on). On it, run `/tick` with `node atcctl.mjs tick tower --wake W-xxxx` and end the turn with one last line, `WAKE RESULT: acted` or `WAKE RESULT: nothing`. Do not reply to ATC. A `/tick` from a leftover `/loop` that gets `TICK WAKE-MODE` ends the turn at once.
+- **Loop mode (`loop`):** as before, `/loop 3m /tick`. If the wake job or the wake BREAKER stops, `/tick` works this way in wake mode too.
+- In either mode the decision rules and the rest of this manual are the same. A freshly launched session reads the brief as it is and does not assume an earlier conversation or ATC LOG.
+
 ## ATC LOG
 
-At the end of every pass, leave the SUPERVISOR a line or two: CLEARANCEs sent (ID, recipient, type), things to report, READBACKs received. If nothing happened, one line: "특이 사항 없음" ("nothing to report").
+At the end of every pass (in wake mode, every wake; then the last line is `WAKE RESULT`), leave the SUPERVISOR a line or two: CLEARANCEs sent (ID, recipient, type), things to report, READBACKs received. If nothing happened, one line: "특이 사항 없음" ("nothing to report").

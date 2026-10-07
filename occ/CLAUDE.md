@@ -36,7 +36,7 @@
 | `node ../controller/atcctl.mjs dispatch note <D-0003> [--caution] [--hold [<FLIGHT>]]… -- <메모>` | 제안에 검토 메모. 같은 제안에 다시 달면 덮어쓴다. `--hold <FLIGHT>`는 선행 FLIGHT를 지정해 제안을 HELD로 돌린다. 값 없는 `--hold`는 선행 FLIGHT 없는 HOLD(사유는 메모) |
 | `node ../controller/atcctl.mjs crew-change brief` | (2b) CREW CHANGE: 보낼 것(`approved`), 앞 건의 READBACK을 기다리는 것(`waiting`, `waitingFor`), READBACK 대기(`sent`), 늦은 것(`overdue`), 최근 UNABLE(`unable`, 사유와 함께), SUPERVISOR 승인 대기(`pending`, 참고만) |
 | `node ../controller/atcctl.mjs schedule brief` | `mode`(shadow), 열린 초안(`open`)과 바뀔 것(`changes`), 최근 닫힌 초안(`recent`), S2 점검(`gate`), 한도(`limit`), 후보(`candidates.classify`, `candidates.prioritize`, `candidates.close`, `candidates.tail`, `candidates.waypoint`), CLOSE 후보의 PR·머지 시각·Fixes 여부(`close`), FLIGHT 요약(`flights`), 보정용 최근 SUPERVISOR 판정(`examples`: OCC가 냈던 분류 `proposed`, 근거 `draft`, 판정·사유), WAYPOINT gap(`waypointGaps`), 지나지 않은 WAYPOINT의 ETA(`waypointEtas`), 지연 경고(`slips`, `fresh`는 아직 보고 안 한 것), WAYPOINT 없는 ROUTE(`routesWithoutWaypoints`, `fresh`는 아직 알리지 않은 것), 진행 중인 CHARTER REQUEST(`wip`: `id`, `text`, `idleMin`), DUTY의 CHARTER REQUEST(`duty`: `mode`, `shadow`, `charters[]`. `duty.charter`가 off면 구역이 없다) |
-| `node ../controller/atcctl.mjs tick occ` | `/tick`의 첫 단계(ATC-297): `manual check` + 네 브리핑(`dispatch`·`crew-change`·`schedule`·`following`) 읽기를 한 번에. `TICK QUIET occ — …`(할 일 없음) · `TICK ACT occ` + `REASONS:` + 브리핑 · 규정이 바뀌었으면 `CHANGED …`를 먼저(이때는 ack하지 않는다) |
+| `node ../controller/atcctl.mjs tick occ [--wake <W-xxxx>]` | `/tick`의 첫 단계(ATC-297, 깨움 모드에서는 깨운 글의 id를 `--wake`로, ATC-557): `manual check` + 네 브리핑(`dispatch`·`crew-change`·`schedule`·`following`) 읽기를 한 번에. `TICK QUIET occ — …`(할 일 없음) · `TICK ACT occ` + `REASONS:` + 브리핑 · 규정이 바뀌었으면 `CHANGED …`를 먼저(이때는 ack하지 않는다) |
 | `node ../controller/atcctl.mjs manual check` / `manual ack` | 이 규정(CLAUDE.md, /tick과 그 절차 파일)이 바뀌었는지 / 다시 읽었음 |
 
 ## 절차 파일
@@ -98,6 +98,14 @@ Linear 라벨 `tail:TEAM_X`가 붙은 FLIGHT는 planner가 그 AIRCRAFT에만 �
 - SUPERVISOR의 답은 다음 tick 브리핑에 `DECISION DC-xxxx … ANSWERED by SUPERVISOR` 줄로 온다(`TICK ACT`의 REASONS `decision-answered`). 답을 따라 일한 뒤 `node ../controller/atcctl.mjs decision ack occ <DC-xxxx>`로 읽었다고 표시한다. 더 필요 없어진 결정은 `decision withdraw occ <DC-xxxx>`로 거둔다. 열린 카드와 읽지 않은 답은 `decision list occ`.
 - 도구 승인 프롬프트(permission_prompt)는 이 규칙의 대상이 아니다.
 
+## 깨우는 방식 (CONTROL WAKE, ATC-557)
+
+이 세션을 무엇이 부르는지는 SUPERVISOR의 스위치(설정 창 CONTROL WAKE OCC)가 정한다. 두 모드의 단계는 `/tick`(`.claude/skills/tick/SKILL.md` "두 가지 모드")에 있다.
+
+- **깨움 모드(`wake`, 기본):** `/loop`가 없다. atc 서버가 판단할 일이 생길 때만 `[ATC WAKE W-xxxx] OCC` 글 하나로 깨운다(새 일, 아직 열린 일, 지난 깨움 뒤 풀린 일, 관련 FLIGHT). 받으면 `node ../controller/atcctl.mjs tick occ --wake W-xxxx`로 `/tick`을 하고, 턴의 마지막 줄을 `WAKE RESULT: acted` 또는 `WAKE RESULT: nothing`으로 끝낸다. ATC에게는 답하지 않는다. `/loop`가 남은 세션의 `/tick`이 `TICK WAKE-MODE`를 받으면 곧장 턴을 끝낸다.
+- **`/loop` 모드(`loop`):** 오늘처럼 `/loop 10m /tick`. 깨움 job이나 깨움 BREAKER가 멈추면 깨움 모드에서도 `/tick`이 이렇게 일한다.
+- 어느 모드든 판단 기준과 이 문서의 규칙은 같다. 새로 뜬 세션은 브리핑을 그대로 읽고, 앞 대화나 OCC LOG가 있다고 가정하지 않는다.
+
 ## OCC LOG
 
-매 바퀴 끝에 한두 줄: 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), TARGET·ROUTE 초안 ID, WAYPOINT 초안 ID와 건너뛴 FLIGHT, 보고한 WAYPOINT 지연과 WAYPOINT 없는 ROUTE, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
+매 바퀴(깨움 모드에서는 깨움마다) 끝에 한두 줄(깨움이면 그 뒤 마지막 줄이 `WAKE RESULT`): 메모를 단 제안 ID와 CAUTION 이유, HOLD를 건 제안과 선행 FLIGHT, 쓴 SCHEDULE 초안 ID(LIMIT이면 그렇다고), CHARTER DESK에서 쓴 AD HOC FLIGHT 초안 ID, WAYPOINT gap으로 쓴 초안 ID와 건너뛴 기준(사람 결정·비슷한 FLIGHT), TARGET·ROUTE 초안 ID, WAYPOINT 초안 ID와 건너뛴 FLIGHT, 보고한 WAYPOINT 지연과 WAYPOINT 없는 ROUTE, 운항 추적에서 찾은 차이, (2b) 보낸 FLIGHT PLAN·받은 READBACK·거절, 보낸 CREW CHANGE와 그 READBACK. 아무 일 없으면 "특이 사항 없음".
