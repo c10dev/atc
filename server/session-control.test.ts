@@ -220,6 +220,10 @@ test("STALE: pid·status 없는 background이고 job state가 끝났고 2분이 
   assert.equal(isStaleRow({ ...ghost, startedAt: NOW - STALE_MIN_AGE_MS + 1 }, "done", NOW), false);
   // ATC-213: 사람을 기다리다 idle로 끝난 job(state blocked, 프로세스 없음)도 STALE이다. TEAM_F 40bb5e74·TEAM_K 77803763
   assert.equal(isStaleRow(ghost, "blocked", NOW), true);
+  // ATC-532: 호스트가 다시 켜지기 전에 시작한 pid·status 없는 줄은 state가 working이어도 STALE(재부팅에 끊긴 job). 부팅 뒤에 시작한 줄은 지금 규칙
+  assert.equal(isStaleRow(ghost, "working", NOW, (ghost.startedAt as number) + 1), true);
+  assert.equal(isStaleRow(ghost, "working", NOW, (ghost.startedAt as number) - 1), false);
+  assert.equal(isStaleRow(liveBusy, "working", NOW, NOW), false); // pid가 있으면 이 검사에 오지 않는다
   // 살아 있는 blocked job은 pid와 status(idle)가 있어 STALE이 아니다(scratch job에서 확인: pid 있음·status idle·state blocked)
   assert.equal(isStaleRow({ ...liveIdle }, "blocked", NOW), false);
   // 막 띄운 job과 2분이 안 된 줄은 blocked여도 STALE이 아니다(ATC-93 guard)

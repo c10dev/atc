@@ -46,6 +46,23 @@ TOWER·OCC·MCC는 `/loop` 없이 쉬는 백그라운드 세션이 되고, 판�
 - **FLIGHT RECORDER.** 깨움마다 `control-wake deliver` 줄에 입력 전체(사건 key·종류·메뉴, 새·열림·풀림, FLIGHT, 글과 해시, 세션·pid·msg_id). 이어서 `confirm`·`result`·`pickup`·`failed`·`refused`·`missed`·`breaker`·`transition`·`ack`.
 - **이 PR에 없는 것.** `fresh` 모드, 하루 한 번 검토 턴, REVIEW·CROSSCHECK 깨움, 서버가 짓는 CLEARANCE, 빠진 역할 다시 띄우기, 판단 로직(ATC-558).
 
+# 없는 관제 세션 다시 띄우기와 알림 (ATC-532)
+
+2026-10-03/04에 TOWER가 약 5.5시간, MCC가 약 4시간 없었고(ATC-531) `control|down` WARNING은 밤새 목록에만 있었다. 2026-10-07 03:23Z 호스트 재부팅 뒤에는 TOWER·MCC·OCC·REVIEW가 SUPERVISOR가 손으로 띄울 때까지 없었다. 이제 관제 세션이 없는 것은 조용한 목록 한 줄로 끝나지 않는다. 자세한 것은 영어판 8절.
+
+- **역할.** atc가 띄우는 관제 세션 모두: TOWER·OCC·MCC·REVIEW. CROSSCHECK는 은퇴했고(ATC-371) `launchControl`이 거절하므로 보지 않는다. 다시 쓰려면 은퇴를 푸는 결정이 먼저다.
+- **없음.** 스냅샷에 그 역할의 살아 있는 세션이 없고(`control|down`과 같은 판정) `claude agents`에 살아 있는(STALE 아닌) 줄도 없다. 마지막 기록이 SUPERVISOR의 STOP(FLEET STOP·STOP ALL, ok와 상관없이)이거나, 2분 안의 LAUNCH·STOP이거나, CONTROL RECYCLE·CONTROL WAKE 옮기기의 STOP → LAUNCH 사이면 없음으로 치지 않는다.
+- **언제.** 한도(기본 20분, 10·15·20·30·45·60 중 하나)가 지난 뒤. **서버가 (다시) 뜬 뒤** 첫 판단 때 이미 없거나 FLIGHT RECORDER에 열린 없음이 있던 역할은 20분이 아니라 첫 판단 2분 뒤에 판단한다. 2분인 까닭: `control|down`의 유예와 STALE 나이가 2분이다. 그 사이 `claude agents` 목록과 세션 파일이 자리를 잡고, 같은 때 SUPERVISOR나 RTS가 띄운 세션이 보인다.
+- **증거가 있을 때만 다시 띄운다.** 살아 있다는 증거가 이긴다: 살아 있는 agents 줄, cwd가 관제 폴더인 프로세스, 믿을 수 있는 daemon roster(ATC-534)에 마지막 job의 살아 있는 worker. 사라졌다는 증거는 셋 중 하나: 마지막 job이 호스트 부팅(`/proc/stat` btime) 전에 떴다, 그 job의 `state.json`이 `stopped`·`failed`다, daemon이 떠 있는데 그 job의 worker가 없다. 마지막 job은 14일 안의 마지막 성공한 `control launch` 줄이다. 그 줄이 없으면(일부러 내려 둔 것일 수 있다) 증거가 없고, 재부팅 없이 daemon만 없어도 증거가 없다. ATC-531의 증거("daemon이 killed로 정리", pty-host 확인)는 코드에 없어 재부팅·`state.json` 두 갈래가 대신한다.
+- **띄우는 길.** FLEET LAUNCH 버튼과 같은 `launchControl(이름, "ABSENT")`. 그래서 CONTROL WAKE가 `wake`인 역할은 `/loop` 없이, `loop`인 역할은 `/loop`로 뜬다. 다른 띄우는 길은 없다. 기존 거절(살아 있는 줄, ACCOUNT 로그인·FUEL hold, 폴더 trust, 세션 목록을 못 읽음)은 그대로다. 운영 서버(7700, 운영 상태 폴더, `node --test` 아님)만 띄우고, `ATC_SERVER_SEND_TEST`도 띄우지 않는다. 없음 하나에 한 번, 역할마다 한 시간에 한 번(서버가 뜬 직후는 예외). OCC는 `control-recycle.json`의 `auto.OCC`가 true일 때만 띄운다(기본 false: 알림만). 다른 역할도 `auto`를 같은 식으로 따른다(기본 true).
+- **알림.** 다시 띄우지 않았거나(스위치 off, auto false, 증거 없음·살아 있음, 운영 서버 아님, 한 시간 규칙) 띄우기가 거절·실패했거나 띄운 세션이 유예 뒤에도 보이지 않으면 WARNING `control|absent|<세션>|<n>` 하나: `관제 세션 TOWER 25분째 없음 — 마지막 job a1b2c3d4 · atc가 다시 띄우지 않은 이유: …`. 30분마다 `n`을 올려 다시 올린다. 브라우저와 ANNUNCIATOR는 새 key에 알리므로 되풀이마다 새 알림이고 앞 key는 사라진다. 세션이 다시 보이거나, 설정 블록에서 `확인(ACK)`·`오탐으로 표시`를 누르거나, 알림 스위치를 끄면 그친다. `control|down` 줄은 그대로다.
+- **어떻게 닿나.** atc에는 따로 보내는 서비스가 없다. WARNING은 `/api/events`(`alert`)와 `/api/supervisor-alerts`로 ANNUNCIATOR에 닿고, 앱은 새 WARNING key마다 배너를 띄운다(앱의 조용한 시간에도 배너는 뜨고 소리·음성만 꺼진다). 브라우저는 WARNING 소리를 낸다.
+- **조용한 시간.** 보이는 SUPERVISOR 설정 `CONTROL ABSENT QUIET PASS`, 기본 **on**(live first). on이면 알림 항목에 `passQuiet: true`가 붙고 브라우저는 자기 조용한 시간에도 이 알림만 소리를 낸다. ANNUNCIATOR는 아직 `passQuiet`를 읽지 않는다: 앱의 조용한 시간에 소리를 내는 것은 atc-app 변경이다.
+- **스위치, SUPERVISOR만.** `control-absent.json`, 설정 창 OPERATIONS의 CONTROL ABSENT 블록: `controlAbsentRelaunch`(기본 on, 서버가 스스로 관제 세션을 띄우므로 ⚠), `controlAbsentEscalate`(기본 on), `controlAbsentQuietPass`(기본 on), `controlAbsentLimit`(분, 기본 20). atcctl 명령은 없고 관제 세션은 못 바꾼다. 바꾸면 `policy control-absent-mode` 한 줄.
+- **FLIGHT RECORDER**(`control absent`, 새 상태 파일 없음): `start`·`end`(짝, `end.minutes`가 없던 분), `relaunch`(ok, 새 jobId, lastJobId, 쓴 증거 `proof`, 거절 `why`), `escalate`(n, minutes, why), `ack`, `false`. 서버가 뜬 직후 규칙의 결정에는 `startup: true`. 서버를 다시 켜면 열린 없음을 이 줄에서 되살린다.
+- **측정과 오작동 수.** `GET /api/control-absent`가 날마다(UTC) 역할별 없던 분(최근 7일), 7일·30일 수, 열린 없음, 최근 결정을 싣는다. 오작동: 다시 띄운 뒤 한 시간 안에 같은 이름 job 중복 경고(ATC-521)가 뜬 것, SUPERVISOR가 틀린 알림으로 표시한 것. 다시 띄움·실패·알림·되풀이·없던 분은 역할마다.
+- **재부팅 뒤 STALE.** `pid`·`status`가 없고 호스트 부팅 전에 시작한 백그라운드 줄은 job state가 무엇이든 STALE이다(`isStaleRow`의 `bootAt`). 재부팅에 `working`으로 끊긴 job이 살아 있는 줄로 보여 이 다시 띄우기와 FLEET LAUNCH를 함께 막을 수 있었다.
+
 # 서버가 짓는 CLEARANCE (ATC-557 b)
 
 브리핑이 글을 이미 정한 CLEARANCE는 TOWER의 턴이 아니라 서버가 짓고 보낸다. 근거: 2026-10-06에 TOWER가 보낸 CLEARANCE 70개(INFO 42, FIX 12, GO AROUND 10, LAND 6)가 모두 브리핑 칸을 옮긴 것이었다. ATC-557의 (b) 부분이다(빠진 관제 세션 다시 띄우기, REVIEW·CROSSCHECK 깨움, 판단(ATC-558)은 다른 부분).

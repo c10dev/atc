@@ -4,6 +4,7 @@ import type { AutoCounts } from "../../server/mcc-auto.ts";
 import type { AutoSkipCode, FreshStartMode, MisfireRow } from "../../server/fresh-start-auto.ts";
 import type { MedianN, SoloMisfireRow, SoloMode } from "../../server/solo-default.ts";
 import type { RemovalStats } from "../../server/removal-rule.ts";
+import type { AbsentData } from "../../server/control-absent-run.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf } from "../../server/settings-policy.ts";
@@ -1068,6 +1069,74 @@ function StopCheckStats({ d, refresh }: { d: StopCheckData; refresh: () => void 
     </ul>
   );
 }
+// CONTROL ABSENT(ATC-532): 다시 띄운 수·알림 수·오작동(중복 job·오탐 표시)·역할별 없던 분, 열린 없음(확인 단추)과 최근 결정(오탐 표시 단추). 서버가 센 것을 그대로 그린다
+function AbsentStats({ d, refresh }: { d: AbsentData; refresh: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const send = async (path: string, body: unknown) => {
+    setError(null);
+    try {
+      await apiSend("POST", path, body);
+      refresh();
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    }
+  };
+  const row = (label: string, c: AbsentData["last7d"]) => (
+    <li>
+      {label} 다시 띄움 <b>{c.relaunches}</b> · 띄우기 거절·실패 <b>{c.relaunchFailed}</b> · 알림 <b>{c.escalations}</b>(되풀이 {c.repeats}) · 오작동: 띄운 뒤 같은 이름 job 중복 <b>{c.duplicates}</b>, 오탐 표시 <b>{c.falseEscalations}</b> · 없던 시간 <b>{c.absentMin}</b>분
+      {Object.keys(c.bySession).length > 0 && (
+        <span className="faint">
+          {" "}
+          ({Object.entries(c.bySession)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => `${k} 띄움 ${v.relaunches} · 알림 ${v.escalations} · ${v.absentMin}분`)
+            .join(" / ")}
+          )
+        </span>
+      )}
+    </li>
+  );
+  return (
+    <ul className="dp-misfire" data-code="CONTROL-ABSENT">
+      {row("최근 7일", d.last7d)}
+      {row("최근 30일", d.last30d)}
+      {d.open.map((o) => (
+        <li key={o.session}>
+          지금 없음: <b>{o.session}</b> · {o.minutes}분 · 마지막 job {o.lastJobId ?? "—"}
+          {o.why && ` · ${o.why}`}
+          {o.escalated > 0 &&
+            (o.acked ? (
+              " · 확인함"
+            ) : (
+              <>
+                {" · "}
+                <button type="button" className="btn" onClick={() => void send("/api/control-absent/ack", { session: o.session })}>
+                  확인(ACK)
+                </button>
+              </>
+            ))}
+        </li>
+      ))}
+      {d.recent.map((r) => (
+        <li key={`${r.session}|${r.t}|${r.event}`} className="faint">
+          {timeAgo(r.t, Date.now())} · {r.event === "relaunch" ? (r.ok ? `다시 띄움(job ${r.jobId ?? "?"}) · ${r.proof ?? ""}` : `다시 띄우기 실패 · ${r.why ?? ""}`) : `알림 · ${r.why ?? ""}`} · {r.session}
+          {r.event === "escalate" &&
+            (r.marked ? (
+              " · 오탐 표시됨"
+            ) : (
+              <>
+                {" · "}
+                <button type="button" className="btn" onClick={() => void send("/api/control-absent/false", { t: r.t, session: r.session })}>
+                  오탐으로 표시
+                </button>
+              </>
+            ))}
+        </li>
+      ))}
+      {error && <li className="is-warn">{error}</li>}
+    </ul>
+  );
+}
 // CHAT RELEASE 세기(ATC-471): 최근 7일에 `create --release`로 발권한 수와, 그 가운데 첫 LAUNCH 전에 SUPERVISOR가 버렸거나 Backlog로 되돌렸거나 거둔 수(오작동). 0도 보인다
 interface ChatCreateData {
   on: boolean;
@@ -1194,6 +1263,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   autolandHandoff: (s) => {
     const d = switchOf(s, "autolandHandoff")?.data as HandoffData | undefined;
     return d ? <HandoffStats d={d} /> : null;
+  },
+  controlAbsentLimit: (s, save) => {
+    const d = switchOf(s, "controlAbsentRelaunch")?.data as AbsentData | undefined;
+    return d ? <AbsentStats d={d} refresh={() => save({})} /> : null;
   },
   controlStopCheck: (s, save) => {
     const d = switchOf(s, "controlStopCheck")?.data as StopCheckData | undefined;

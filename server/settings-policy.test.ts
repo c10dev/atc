@@ -125,6 +125,7 @@ test("설정 색인: 선언에서 만든 정책 블록이 옛 손으로 적은 �
     ["operations", "CONTROL STOP CHECK", "관제 세션 STOP 확인·중복 경고", "control stop check 관제 세션 멈춤 확인 state.json stopped 중복 job 경고 controlStopCheck"],
     ["operations", "ORPHAN FLIGHT", "주인 잃은 FLIGHT 감지", "orphan flight 주인 잃은 세션 끊김 한도 limit resume 새 세션 orphanFlight"],
     ["operations", "STUCK UNSERVED", "받을 AIRCRAFT가 없는 Todo의 막힘 알림 문구", "stuck unserved 막힘 알림 문구 no-aircraft unqualified no-tail 받을 AIRCRAFT 없음 LAUNCH stuckUnserved"],
+    ["operations", "CONTROL ABSENT", "없는 관제 세션 다시 띄우기·알림", "control absent 관제 세션 없음 다시 띄움 relaunch 재부팅 reboot job gone 증거 controlAbsentRelaunch escalate 알림 warning annunciator 되풀이 ack 확인 오탐 controlAbsentEscalate quiet 조용한 시간 방해 금지 소리 passQuiet controlAbsentQuietPass limit 한도 분 minutes controlAbsentLimit control-absent.json"],
     ["operations", "CONTEST GUARD", "자리 잡은 DISPATCH 카드를 더 나은 배정이 밀어내지 않음", "contest guard 경합 보호 더 나은 배정 밀어냄 displaced supersede settled settle 카드 나이 contestGuard"],
     ["operations", "JOB LIVENESS", "백그라운드 job 프로세스 확인", "job liveness 백그라운드 job 프로세스 사라짐 job gone absent roster pid init 죽음 approved 카드 jobLiveness"],
     ["operations", "JOB TIMING", "서버 일별 시간 측정", "job timing 잡 시간 측정 cpu 서버 부하 steady jobTiming"],

@@ -657,6 +657,7 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
     - A just-spawned job shows for about 0.4 s with no `pid` or `status`, but its state isn't terminal (checked 2026-09-29).
     - A live job's state is `done` after each turn, so the state alone doesn't decide.
     - An unreadable job file counts as not stale.
+  - **After a reboot** (ATC-532): a `background` row with no `pid` and no `status` whose `startedAt` is before the host boot (`/proc/stat` `btime`) is STALE whatever its job state, because no process survives a reboot.
   - **Effect**: a STALE row is not a live session anywhere.
     - `controlRowsOf` / `refuseLive`, team `launchPlanOf` and the `ATC_MAX_LAUNCHED` count skip it.
     - So do FLEET PLAN inputs and the RESTART wait (`liveRowsOf`).
@@ -668,6 +669,10 @@ The same LAUNCH and STOP work for atc's own control sessions, from the FLEET tab
 ##### CONTROL STOP is verified (ATC-521)
 
 A STOP of a background control session is recorded `ok: true` only when the job's `state.json` reads `stopped` within about 20 s of `claude stop` exiting 0; otherwise the record is `ok: false` with its own reason, a WARNING `control|unverified|…` is raised, and RECYCLE launches no replacement. A second WARNING, `control|duplicate|<session>`, fires when two live jobs carry one control name (the text names the job ids and ACCOUNTs; STALE rows are not counted). One switch, default on, in the settings window (OPERATIONS, CONTROL STOP CHECK, SUPERVISOR only), with its misfire counter. Details: [control-recycle.md](control-recycle.md) 5.
+
+##### An absent control session is relaunched or escalated (ATC-532)
+
+When TOWER, OCC, MCC or REVIEW has no live session for longer than a limit (default 20 minutes; 2 minutes after a server start), atc relaunches it through `launchControl` (the FLEET LAUNCH path, so the CONTROL WAKE mode is kept) if the previous job is proven gone and the role's `auto` is on, on the production server only. Otherwise, or when the relaunch is refused, a WARNING `control|absent|<session>|<n>` goes up and repeats every 30 minutes until the session is back or the SUPERVISOR acknowledges it. A SUPERVISOR STOP is never relaunched. Four switches in the settings window (OPERATIONS, CONTROL ABSENT, SUPERVISOR only). Details: [control-recycle.md](control-recycle.md) 8.
 
 **SQUELCH switch (ATC-552).** The settings window's CONTROL block also holds the SQUELCH switch: per control role (TOWER, MCC, OCC, CROSSCHECK, REVIEW) a mode (`off`, `shadow`, `on`; a role without its own follows the global one), `heartbeatMin` (1–720 minutes) and `fingerprint` (`v1`, `v2`), the last change of each, the changes of the last 7 days, and an **off** button that puts every role back to `shadow` and `v1`. SUPERVISOR only (the settings window's Origin; `atcctl` gets 403). Every change is a line with who, when, role, field, old and new value in `squelch-changes.jsonl`. A missing or bad stored value reads as `shadow`, 50 and `v1`, so a tick still runs. Details: [squelch.md](squelch.md) "Switch as built (ATC-552)".
 

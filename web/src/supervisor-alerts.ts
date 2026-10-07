@@ -158,9 +158,12 @@ export interface SoundDecision {
 const NONE: SoundDecision = { sound: null, repeat: false, interrupt: false, keys: [], voiceKey: null };
 
 // changes: 2초 안에 함께 온 알림들(이미 한 번만 알림을 통과한 것). 소리 하나만 고른다
+// 조용한 시간에는 passQuiet 항목(ATC-532 CONTROL ABSENT, SUPERVISOR 스위치)만 울린다
 export function soundFor(changes: readonly SupervisorAlert[], prefs: AlertPrefs, now: number, ctx: SoundContext): SoundDecision {
-  if (!prefs.sound || inQuiet(prefs.quiet, new Date(now))) return NONE;
+  if (!prefs.sound) return NONE;
+  const quiet = inQuiet(prefs.quiet, new Date(now));
   const eligible = changes
+    .filter((a) => !quiet || a.passQuiet)
     .filter((a) => now - (ctx.lastSounded[a.key] ?? -Infinity) >= FLAP_MS)
     .map((a) => ({ a, s: soundOfAlert(a) }))
     .filter((x): x is { a: SupervisorAlert; s: SoundName } => x.s !== null && prefs.sounds[x.s]);

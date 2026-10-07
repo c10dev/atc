@@ -720,6 +720,7 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
     - 막 띄운 job은 0.4초쯤 `pid`·`status` 없이 보이지만 그때 state는 끝난 값이 아니다(2026-09-29 확인).
     - 살아 있는 job도 턴을 마칠 때마다 state가 `done`이라 state만으로는 가르지 않는다.
     - job 파일을 못 읽으면 STALE이 아니다.
+  - **재부팅 뒤**(ATC-532): `background`이고 `pid`·`status`가 없는 줄의 `startedAt`이 호스트 부팅(`/proc/stat` btime)보다 앞이면 job state와 상관없이 STALE이다. 재부팅을 넘어 사는 프로세스는 없다.
   - **효과**: STALE 줄은 어디서도 살아 있는 세션이 아니다.
     - `controlRowsOf`·`refuseLive`, 팀 `launchPlanOf`, `ATC_MAX_LAUNCHED` 계산이 뺀다.
     - FLEET PLAN 입력과 RESTART 대기도 뺀다(`liveRowsOf`).
@@ -731,6 +732,10 @@ atc에 닿지 않거나, 모르는 id거나, 하나라도 다르면 exit 2로 �
 ##### CONTROL STOP을 확인한다 (ATC-521)
 
 백그라운드 관제 세션의 STOP은 `claude stop`이 종료 코드 0으로 돌아온 뒤 약 20초 안에 그 job의 `state.json`이 `stopped`가 될 때만 `ok: true`로 기록된다. 아니면 따로 적은 사유와 함께 `ok: false`이고, WARNING `control|unverified|…`이 뜨고, RECYCLE은 새 세션을 띄우지 않는다. 같은 관제 이름의 살아 있는 job이 둘이면 WARNING `control|duplicate|<세션>`이 뜬다(글에 job id와 ACCOUNT가 든다. STALE 줄은 세지 않는다). 스위치는 하나, 기본 on, 설정 창 OPERATIONS의 CONTROL STOP CHECK(SUPERVISOR만), 오작동 수가 같은 블록에 보인다. 자세히는 [control-recycle.ko.md](control-recycle.ko.md).
+
+##### 없는 관제 세션을 다시 띄우거나 알린다 (ATC-532)
+
+TOWER·OCC·MCC·REVIEW에 살아 있는 세션이 한도(기본 20분, 서버가 뜬 직후는 2분)보다 오래 없으면, 이전 job이 사라졌다는 증거가 있고 그 역할의 `auto`가 켜져 있을 때 atc가 `launchControl`(FLEET LAUNCH와 같은 길이라 CONTROL WAKE 모드를 지킨다)로 다시 띄운다. 운영 서버만 띄운다. 아니면, 또는 띄우기가 거절되면 WARNING `control|absent|<세션>|<n>`을 올리고 세션이 돌아오거나 SUPERVISOR가 확인할 때까지 30분마다 다시 올린다. SUPERVISOR의 STOP은 다시 띄우지 않는다. 스위치 넷은 설정 창 OPERATIONS의 CONTROL ABSENT(SUPERVISOR만). 자세한 것은 [control-recycle.ko.md](control-recycle.ko.md)의 ATC-532 절.
 
 **SQUELCH 스위치(ATC-552).** 설정 창의 CONTROL 블록에는 SQUELCH 스위치도 있다. 관제 역할(TOWER, MCC, OCC, CROSSCHECK, REVIEW)마다 모드(`off`, `shadow`, `on`. 자기 모드가 없는 역할은 전체 모드를 따른다), `heartbeatMin`(1–720분), `fingerprint`(`v1`, `v2`), 필드마다 마지막 바뀜, 최근 7일 바뀐 횟수, 모든 역할을 `shadow`·`v1`로 되돌리는 **끄기** 단추가 있다. SUPERVISOR만(설정 창의 Origin. `atcctl`은 403). 바꿀 때마다 누가·언제·역할·필드·이전 값·이후 값을 `squelch-changes.jsonl`에 한 줄로 적는다. 저장된 값이 없거나 틀리면 `shadow`, 50, `v1`로 읽어 tick은 늘 돈다. 자세히는 [squelch.md](squelch.md) "Switch as built (ATC-552)".
 

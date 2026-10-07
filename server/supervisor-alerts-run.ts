@@ -30,6 +30,7 @@ import { CONTROL_SESSIONS, controlDirOf, jobStateOf, MAX_LAUNCHED } from "./sess
 import { capIdleNow } from "./dispatch-launch.ts";
 import { stoppedAirports } from "./auto-revert-run.ts";
 import { duplicatesNow } from "./control-stop-check-run.ts";
+import { absentEscalationsNow } from "./control-absent-run.ts";
 import { type StopCheckLine, unverifiedOf } from "./control-stop-check.ts";
 import { type AlertEvent, alertKeyOf, type ControlOp, controlDownOf, controlGoneOf, controlPresentOf, diffAlerts, mergeControlDown, repositionStuckOf, rtsHaltedOf, type SupervisorAlert, DUPLICATED, supervisorAlertsOf, UNOWNED_KINDS } from "./supervisor-alerts.ts";
 import { hostMemoryNow } from "./host-memory-run.ts";
@@ -190,6 +191,7 @@ function collectItems(s: Snapshot, now: number, following: ReturnType<typeof fol
       controlDownOf(recyclesAll, running.control),
       controlGoneOf({ sessions: CONTROL_SESSIONS.filter((c) => c.launch === "bg" && !c.retired).map((c) => c.name), running: running.control, last: controlOpsNow(now), now }),
     ),
+    controlAbsent: absentEscalationsNow(), // CONTROL ABSENT(ATC-532): 다시 띄우지 못한 관제 세션의 WARNING(되풀이마다 새 key)
     controlChecks: { unverified: unverifiedOf(rs.flatMap((r) => (r.kind === "control" && r.op === "stop-check" ? [r as unknown as StopCheckLine] : [])), (id) => jobStateOf(id), now), duplicates: duplicatesNow() },
     hostMemory: hostMemoryNow(now),
     repositionStuck: repositionStuckOf(repositionsAll, running.aircraft),
