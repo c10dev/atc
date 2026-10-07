@@ -7,6 +7,7 @@ import { type ClassifyJudgment, JUDGE_FAMILIES, type JudgeFamily } from "./class
 import type { DispatchJudgment } from "./dispatch.ts";
 import { DECISION_MIN, type ReportClass, type ReportJudgment, reportRateOf } from "./report.ts";
 import type { EngineName } from "./engines.ts";
+import type { ExceptionAction, ExceptionKind, ExceptionMark, ExceptionRole, ExceptionSource, ProposedAction } from "./exceptions.ts";
 
 // 판정 계열의 스위치와 기록(ATC-36).
 // - 스위치 ~/.local/state/atc/judges.json {"jev": "off"|"replay"|"shadow"} — 원자적으로 바꿔 쓴다. 기본 off.
@@ -126,7 +127,50 @@ export interface JudgeModeLine {
   to: JudgeMode;
 }
 
-export type JudgesLogLine = JudgeLine | DispatchJudgeLine | ReportJudgeLine | ReportMarkLine | JudgeModeLine;
+// 예외 판정(ATC-558): CAPTAIN의 UNABLE·질문·두 번째 침묵 하나의 판정. CAPTAIN 글은 남기지 않는다(가린 글의 해시와 보낸 글자 수만)
+export interface ExceptionJudgeLine {
+  op: "judge";
+  family: JudgeFamily; // 판정 계열 jev(이 판정의 스위치는 judges.json의 exceptions)
+  target: "exception";
+  id: string; // EX-<D-/C-id>-<해시 앞 8자>: 같은 입력이면 같은 id(다시 판정하지 않는다)
+  ref: string; // D-xxxx | C-xxxx
+  kind: ExceptionKind;
+  role: ExceptionRole; // 그 호출을 맡은 관제 세션
+  via: "atcctl" | "server"; // 관제 세션이 물었나, 서버가 스스로 봤나(두 번째 침묵)
+  flight: string | null;
+  at: string;
+  source: ExceptionSource; // 행동을 정한 판정: jev(확신 ≥ 0.8) | claude | none(둘 다 답하지 못함 → ESCALATE)
+  model: string | null;
+  confidence: number | null; // Jev의 확신(claude는 없음)
+  jev: { proposed: ProposedAction | null; confidence: number | null; error: string | null } | null; // Jev가 낸 것(문턱 아래여도). 키가 없으면 error
+  claude: { proposed: ProposedAction | null; error: string | null } | null; // 부르지 않았으면 null
+  proposed: ProposedAction | null; // 행동을 정한 판정이 고른 것
+  action: ExceptionAction; // 실행할 것
+  floor: string | null; // 판정과 다르게 정한 이유(ANSWER인데 정책이 덮지 않음 …)
+  covered: boolean | null;
+  point: string | null; // 정책 점(P1 …)
+  waitFor: string | null;
+  answerYes: boolean | null;
+  answer: string | null; // 팀에 보낼 답(판정이 지은 글, CAPTAIN 글이 아니다)
+  reason: string;
+  card: string | null; // ESCALATE면 DECISION 카드 id
+  hash: string; // 판정한 입력(가린 글·상황·후보)의 해시(principle 7)
+  policy: string; // 정책 해시
+  policyVersion: string;
+  sent: { chars: number }; // 내보낸 가린 글의 글자 수
+  release?: string;
+}
+
+// SUPERVISOR가 예외 판정을 표시: 맞음 | 틀림(행동) | 필요 없음(ESCALATE). 나중 줄이 앞의 것을 대신한다
+export interface ExceptionMarkLine {
+  op: "mark";
+  target: "exception";
+  id: string;
+  verdict: ExceptionMark;
+  at: string;
+}
+
+export type JudgesLogLine = JudgeLine | DispatchJudgeLine | ReportJudgeLine | ReportMarkLine | JudgeModeLine | ExceptionJudgeLine | ExceptionMarkLine;
 
 export function readJudgeLines(file = RECORD_FILE()): JudgesLogLine[] {
   let text = "";
@@ -142,6 +186,7 @@ export function readJudgeLines(file = RECORD_FILE()): JudgesLogLine[] {
       const l = JSON.parse(line);
       if (l && (l.op === "judge" || l.op === "mode") && JUDGE_FAMILIES.includes(l.family)) out.push(l);
       else if (l && l.op === "mark" && l.target === "report" && (l.verdict === "right" || l.verdict === "wrong") && typeof l.id === "string") out.push(l);
+      else if (l && l.op === "mark" && l.target === "exception" && (l.verdict === "right" || l.verdict === "wrong" || l.verdict === "unnecessary") && typeof l.id === "string") out.push(l);
     } catch {}
   }
   return out;
@@ -270,7 +315,7 @@ export function reportViewsOf(lines: JudgesLogLine[]): { bySession: Map<string, 
   const marks = new Map<string, "right" | "wrong">();
   const judged: ReportJudgeLine[] = [];
   for (const l of lines) {
-    if (l.op === "mark") marks.set(l.id, l.verdict);
+    if (l.op === "mark" && l.target === "report") marks.set(l.id, l.verdict);
     else if (l.op === "judge" && l.target === "report") judged.push(l);
   }
   const all = judged.map<ReportView>((l) => ({
@@ -311,6 +356,39 @@ export function markReport(id: string, verdict: "right" | "wrong", at = new Date
   if (!readJudgeLines(file).some((l) => l.op === "judge" && l.target === "report" && l.id === id)) return false;
   appendJudgeLines([{ op: "mark", target: "report", id, verdict, at }], file);
   return true;
+}
+
+// ---- 예외 판정(ATC-558)의 스위치: judges.json의 exceptions(on|off, 기본 on, shadow 없음). judges.jev와 따로다 ----
+export type ExceptionsMode = "on" | "off";
+export const EXCEPTIONS_MODES: readonly ExceptionsMode[] = ["off", "on"];
+export const DEFAULT_EXCEPTIONS: ExceptionsMode = "on"; // SUPERVISOR 결정(2026-10-07): K2 반출 승인, live first
+export function loadExceptionsMode(file = CONFIG_FILE()): ExceptionsMode {
+  try {
+    const v = JSON.parse(readFileSync(file, "utf8")).exceptions;
+    return v === "on" || v === "off" ? v : DEFAULT_EXCEPTIONS;
+  } catch {
+    return DEFAULT_EXCEPTIONS;
+  }
+}
+// 다른 칸(jev, reportDecisionMin …)은 그대로 두고 exceptions만 바꾼다. 바뀌었으면 true
+export function saveExceptionsMode(v: ExceptionsMode, file = CONFIG_FILE()): boolean {
+  let cur: Record<string, unknown> = {};
+  try {
+    cur = JSON.parse(readFileSync(file, "utf8"));
+  } catch {}
+  if (loadExceptionsMode(file) === v && cur.exceptions === v) return false;
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ...cur, exceptions: v }, null, 2) + "\n");
+  renameSync(tmp, file);
+  return true;
+}
+
+export const exceptionLinesOf = (lines: readonly JudgesLogLine[]) => lines.filter((l): l is ExceptionJudgeLine => l.op === "judge" && l.target === "exception");
+export function exceptionMarksOf(lines: readonly JudgesLogLine[]): Map<string, ExceptionMark> {
+  const out = new Map<string, ExceptionMark>();
+  for (const l of lines) if (l.op === "mark" && l.target === "exception") out.set(l.id, l.verdict);
+  return out;
 }
 
 // "결정이 필요함" 문턱: judges.json의 reportDecisionMin(0~1), 없거나 틀리면 기본값

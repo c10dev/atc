@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { cleanEnv } from "../clean-env.ts";
+import { config } from "../config.ts";
 import { type ClassifyInput, classifyQuestions } from "./classify.ts";
 
 // 판정 엔진(ATC-36). stub: 녹화한 응답을 돌려준다(네트워크 없음, 테스트·시험 서버용). jev: TypeSafe System One.
@@ -16,7 +20,7 @@ export interface EngineResult {
 
 // 한 번의 판정 요청: state는 허용 목록으로 만든 입력, questions는 TypeSafe 질문 맵. title은 stub의 녹화 응답 키
 export interface JudgeCall {
-  target: "schedule" | "dispatch" | "report";
+  target: "schedule" | "dispatch" | "report" | "exception";
   title: string;
   state: Record<string, unknown>;
   questions: Record<string, unknown>;
@@ -52,7 +56,7 @@ export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unk
     calls,
     async ask(call: JudgeCall) {
       calls.push(call);
-      return { model: "stub", answers: structuredClone(recorded[call.title] ?? (call.target === "dispatch" ? dispatchFallback : call.target === "report" ? STUB_REPORT_FALLBACK : fallback)) };
+      return { model: "stub", answers: structuredClone(recorded[call.title] ?? (call.target === "dispatch" ? dispatchFallback : call.target === "report" ? STUB_REPORT_FALLBACK : call.target === "exception" ? STUB_EXCEPTION_FALLBACK : fallback)) };
     },
     async judge(input: ClassifyInput) {
       inputs.push(input);
@@ -65,6 +69,13 @@ export function stubEngine(recorded: Record<string, unknown> = {}, fallback: unk
 // REPORT 기본 응답: reported done
 export const STUB_REPORT_FALLBACK = {
   report_class: { type: "choice", choice: "done", probabilities: { done: 0.7, decision: 0.1, stopped: 0.05, ready: 0.1, unknown: 0.05 }, confidence: 0.6 },
+};
+
+// 예외 판정(ATC-558) 기본 응답: 조심스럽게 ESCALATE(정책이 덮지 않음). 시험 서버가 무엇도 "행동"하지 않게
+export const STUB_EXCEPTION_FALLBACK = {
+  action: { type: "choice", choice: "ESCALATE", probabilities: { ESCALATE: 0.9, NONE: 0.1 }, confidence: 0.9 },
+  policy_covers: { type: "noul", noul: 0.1 },
+  policy_point: { type: "choice", choice: "NONE", probabilities: { NONE: 0.9 }, confidence: 0.9 },
 };
 
 // DISPATCH 기본 응답: Ready yes, Prerequisite no, Same area는 5단계 중 3(같은 모양의 score 답)
@@ -116,3 +127,52 @@ export function jevEngine(apiKey: string, fetchImpl: Fetch = fetch): JudgeEngine
     },
   };
 }
+
+// ---- claude -p 한 번(예외 판정 ATC-558이 Jev 다음에 묻는 판정). 묻기만 한다: 도구 없음, hook 끔, 세션 저장 없음 ----
+export const CLAUDE_MODEL = "claude-sonnet-5-5"; // claude -p 한 번. Claude 모델만(출력의 modelUsage가 claude-로 시작하지 않으면 버린다)
+const CLAUDE_TIMEOUT_MS = 60_000; // Jev 20초 + 이것이 관제 세션 Bash 기본 120초 안에 끝나게
+const CLAUDE_ARGS = ["-p", "--model", CLAUDE_MODEL, "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--settings", JSON.stringify({ disableAllHooks: true })];
+
+// 프롬프트는 stdin으로 준다(명령줄에 남지 않게). 실패·시간 초과는 빈 글("답하지 않음")
+export type ClaudeRunner = (prompt: string) => Promise<string>;
+// 한 번에 하나만 띄운다(프로세스 하나가 수백 MB: account-usage-run.ts처럼 줄 세운다)
+let claudeChain: Promise<unknown> = Promise.resolve();
+export const claudeRunner: ClaudeRunner = (prompt) => {
+  const run = claudeChain.then(() => claudeOnce(prompt));
+  claudeChain = run.catch(() => "");
+  return run;
+};
+const claudeOnce = (prompt: string): Promise<string> =>
+  new Promise((resolve) => {
+    let out = "";
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(out);
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(config.claudeBin, CLAUDE_ARGS, { env: cleanEnv(null), cwd: tmpdir(), stdio: ["pipe", "pipe", "ignore"] });
+    } catch {
+      resolve("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      out = "";
+      finish();
+    }, CLAUDE_TIMEOUT_MS);
+    child.stdout?.on("data", (b: Buffer) => {
+      if (out.length < 1 << 20) out += b.toString("utf8");
+    });
+    child.on("error", () => {
+      out = "";
+      finish();
+    });
+    child.on("close", finish);
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(prompt);
+  });
+

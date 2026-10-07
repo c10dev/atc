@@ -112,7 +112,7 @@ atc가 사람의 결정을 요구하거나 제안하는 모든 곳을 영역별�
 | L19 | 모드 전환: AUTOLAND `off/update/merge`, `reviewedSecurity`, MCC 모드, `teamsMerge`, `hostedDb`, `externalReview.security`(설정 창) | 동의 없이 머지를 위임함 | 전환 1건(delegate) | 올리는 것은 **keep**(K3), 방향을 계산하는 풀기(원칙 3). 내리는 것은 brake(원칙 9) | C6, C12 |
 | L20 | SUPERVISOR가 거는 PR의 HOLD(AUTOLAND와 MCC), CANCEL, RECALL, 세션 STOP | 잘못된 것을 멈춤 | HOLD 2줄 | **brake**(원칙 9). TOWER의 clearance cancel 같은 레인 자신의 보류는 원칙 3의 항목 보류이지 brake가 아니다 | 필요 없음 |
 | L21 | 공개 저장소의 공개: push한 브랜치, PR 본문, 댓글은 곧바로 공개된다 | 비공개 AIRPORT 내용이나 비밀이 공개됨. revert는 공개를 되돌리지 못한다 | not logged | push와 PR 생성 때 **floor**. 걸리면 K2(D14) | C17 공개 전 검사기 |
-| L22 | AIRPORT 데이터의 새 외부 전송처(리뷰 레인, judge)나 더 넓은 필드 허용 목록 | atc 통제를 벗어나는 데이터 | 오늘은 `judges.jev`가 그런 스위치 | **keep**(K2), 내보낼 때 선언(D14) | C9, C12 |
+| L22 | AIRPORT 데이터의 새 외부 전송처(리뷰 레인, judge)나 더 넓은 필드 허용 목록 | atc 통제를 벗어나는 데이터 | 오늘은 `judges.jev`가 그런 스위치. `judges.exceptions`(ATC-558)는 가린 CAPTAIN 글을 TypeSafe와 `claude -p`로 보낸다(K2, SUPERVISOR 승인 2026-10-07) | **keep**(K2), 내보낼 때 선언(D14) | C9, C12 |
 | L23 | 에이전트가 다시 만들 수 없는 것을 지움(이슈, 기록, 머지 안 된 작업이 있는 브랜치) | 되돌릴 수 없는 손실 | not logged | **floor**: 어느 에이전트도 지우지 않는다. DUTY는 이미 지우거나 닫지 못한다 | C12 |
 
 ### 4.2 배포

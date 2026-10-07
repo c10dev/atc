@@ -36,19 +36,27 @@ function append(op: DecisionOp, file = FILE()) {
 
 export const allDecisions = (): Decision[] => foldDecisions(readDecisionOps());
 
+// 카드 하나를 올린다(라우트와 서버 안의 예외 판정 ATC-558이 같은 길). 같은 role·key의 카드가 있으면 새로 만들지 않고 그것을 돌려준다
+// by: FLIGHT RECORDER에 적을 올린 이(기본은 role, 서버의 예외 판정은 "judge")
+export function createDecision(body: unknown, by?: string): { decision: Decision; duplicate: boolean } | { error: string } {
+  const input = decisionInputOf(body);
+  if ("error" in input) return input;
+  const ops = readDecisionOps();
+  const dup = duplicateOf(foldDecisions(ops), input.role, input.key);
+  if (dup) return { decision: dup, duplicate: true };
+  const at = new Date().toISOString();
+  const id = nextDecisionId(ops);
+  append({ op: "create", id, at, ...input });
+  record({ t: at, kind: "decision", op: "create", id, by: by ?? input.role, key: input.key, pr: input.pr?.number ?? null });
+  return { decision: allDecisions().find((d) => d.id === id)!, duplicate: false };
+}
+
 export function mountDecisionCards(app: Hono) {
   // 관제 세션이 올린다. 같은 role·key의 카드가 있으면 새로 만들지 않고 그것을 돌려준다
   app.post("/api/decisions", async (c) => {
-    const input = decisionInputOf(await c.req.json().catch(() => null));
-    if ("error" in input) return c.json(input, 400);
-    const ops = readDecisionOps();
-    const dup = duplicateOf(foldDecisions(ops), input.role, input.key);
-    if (dup) return c.json({ decision: dup, duplicate: true });
-    const at = new Date().toISOString();
-    const id = nextDecisionId(ops);
-    append({ op: "create", id, at, ...input });
-    record({ t: at, kind: "decision", op: "create", id, by: input.role, key: input.key, pr: input.pr?.number ?? null });
-    return c.json({ decision: allDecisions().find((d) => d.id === id), duplicate: false });
+    const r = createDecision(await c.req.json().catch(() => null));
+    if ("error" in r) return c.json(r, 400);
+    return c.json(r);
   });
 
   // K1–K3가 아닌 결정을 기본값으로 진행했다는 기록: 카드를 만들지 않고 FLIGHT RECORDER에만 적는다

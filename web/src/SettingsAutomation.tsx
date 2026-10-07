@@ -5,6 +5,7 @@ import type { AutoSkipCode, FreshStartMode, MisfireRow } from "../../server/fres
 import type { MedianN, SoloMisfireRow, SoloMode } from "../../server/solo-default.ts";
 import type { RemovalStats } from "../../server/removal-rule.ts";
 import type { AbsentData } from "../../server/control-absent-run.ts";
+import type { ExceptionsData } from "../../server/judges/exceptions-run.ts";
 import type { MccGate } from "../../server/mcc.ts";
 import type { ServerSettings } from "../../server/settings.ts";
 import { modeLine, modeSegments, needsConfirm, recycleAutoGuardOf } from "../../server/settings-policy.ts";
@@ -1160,6 +1161,65 @@ function AbsentStats({ d, refresh }: { d: AbsentData; refresh: () => void }) {
     </ul>
   );
 }
+// 예외 판정(ATC-558): 7일·30일 수(관제 세션 판단 없이 정한 몫, Jev·Claude, ESCALATE, 오작동)와 최근 판정(표시 단추). 서버가 센 것을 그대로 그린다
+const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+const EX_MARK_LABEL = { right: "맞음", wrong: "틀림", unnecessary: "필요 없음" } as const;
+function ExceptionStats({ d, refresh }: { d: ExceptionsData; refresh: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const mark = async (id: string, verdict: keyof typeof EX_MARK_LABEL) => {
+    setError(null);
+    try {
+      await apiSend("POST", `/api/judges/exceptions/${encodeURIComponent(id)}/mark`, { verdict });
+      refresh();
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    }
+  };
+  const row = (label: string, c: ExceptionsData["last7d"]) => (
+    <li>
+      {label} 판정 <b>{c.judged}</b> · 관제 세션 판단 없이 정함 <b>{c.handled}</b>({pct(c.handledShare)}) · Jev <b>{c.jev}</b> / Claude <b>{c.claude}</b> / 판정 없음 <b>{c.none}</b> · ESCALATE <b>{c.escalated}</b> · 오작동: 틀린 행동 <b>{c.wrong}</b>, 필요 없던 ESCALATE <b>{c.unnecessary}</b> · 틀린 행동 비율 <b>{pct(c.wrongRate)}</b>
+    </li>
+  );
+  return (
+    <ul className="dp-misfire" data-code="EXCEPTIONS">
+      {row("최근 7일", d.last7d)}
+      {row("최근 30일", d.last30d)}
+      <li className="faint">
+        정책 {d.policyVersion} · 해시 {d.policyHash} · claude -p {d.claudeModel}
+      </li>
+      {d.recent.map((r) => (
+        <li key={r.id} className="faint">
+          {timeAgo(r.at, Date.now())} · {r.ref} {r.kind} · <b>{r.action}</b>
+          {r.waitFor && ` until ${r.waitFor}`} · {r.source}
+          {r.confidence !== null && ` ${pct(r.confidence)}`}
+          {r.via === "server" && " · 서버가 봄"}
+          {r.card && ` · 카드 ${r.card}`}
+          {r.floor && ` · ${r.floor}`}
+          {r.mark ? (
+            ` · 표시: ${EX_MARK_LABEL[r.mark]}`
+          ) : (
+            <>
+              {" · "}
+              <button type="button" className="btn" onClick={() => void mark(r.id, "right")}>
+                맞음
+              </button>{" "}
+              {r.action === "ESCALATE" ? (
+                <button type="button" className="btn" onClick={() => void mark(r.id, "unnecessary")}>
+                  필요 없던 ESCALATE
+                </button>
+              ) : (
+                <button type="button" className="btn" onClick={() => void mark(r.id, "wrong")}>
+                  틀린 행동
+                </button>
+              )}
+            </>
+          )}
+        </li>
+      ))}
+      {error && <li className="is-warn">{error}</li>}
+    </ul>
+  );
+}
 // CHAT RELEASE 세기(ATC-471): 최근 7일에 `create --release`로 발권한 수와, 그 가운데 첫 LAUNCH 전에 SUPERVISOR가 버렸거나 Backlog로 되돌렸거나 거둔 수(오작동). 0도 보인다
 interface ChatCreateData {
   on: boolean;
@@ -1300,6 +1360,10 @@ const EXTRAS: Record<string, (s: ServerSettings, save: Save) => ReactNode> = {
   dutyReviewEmpty: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <EmptyReviewRecord on={switchOf(s, "dutyReviewEmpty")?.value === "on"} /> : null),
   dutyReviewSkip: (s) => (switchOf(s, "dutyEnabled")?.value === "on" ? <SkipReviewRecord on={switchOf(s, "dutyReviewSkip")?.value === "on"} /> : null),
   dutyCharter: (s) => (s.duty.charter !== "off" ? <CharterShadowRecord mode={s.duty.charter} /> : null),
+  judgesExceptions: (s, save) => {
+    const d = switchOf(s, "judgesExceptions")?.data as ExceptionsData | undefined;
+    return d ? <ExceptionStats d={d} refresh={() => save({})} /> : null;
+  },
   judgesJev: (s) =>
     s.judges.jev.lastRunAt || s.judges.jev.lastError ? (
       <p className="settings-hint">

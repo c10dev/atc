@@ -93,6 +93,10 @@ const USAGE = `사용법:
   node atcctl.mjs unable <C-0007> -- <사유>  팀이 UNABLE함(닫힌다. 다시 보내지 않고 SUPERVISOR에게 보고)
   node atcctl.mjs standby <C-0007>          팀이 STANDBY함(W/U만. 열린 채 overdue 10분을 한 번 다시 센다)
   node atcctl.mjs cancel <C-0007>           CLEARANCE 취소
+  node atcctl.mjs exception <D-0003|C-0007> --kind unable|question|silence [-- <CAPTAIN의 글 그대로>]
+                                            예외 판정(ATC-558): 팀의 UNABLE·질문·두 번째 침묵을 고정 메뉴(RESEND HOLD_UNTIL REASSIGN ANSWER ESCALATE ACCEPT_UNDONE)로 정한다.
+                                            첫 줄 EXCEPTION <id> · <행동>, 그 아래 WAIT FOR·ANSWER·CARD·WHY. ESCALATE면 서버가 SUPERVISOR 카드를 이미 올렸다.
+                                            같은 글이면 다시 판정하지 않는다(cached). 스위치가 off면 EXCEPTION OFF — 매뉴얼대로 스스로 판단. silence는 글 없이(서버가 마지막 메시지를 읽는다)
   node atcctl.mjs decision file <역할> <key> --ask '<글>' --option '<a>' --option '<b>' [--pr <번호> [--head <sha>]]
                                             사람의 결정 하나를 SUPERVISOR QUEUE 카드 한 장으로 올린다(같은 key는 한 번만). 올린 뒤 턴을 끝낸다
   node atcctl.mjs decision default <역할> <key> --what '<글>' --chose '<글>'   K1–K3가 아닌 결정을 기본값으로 진행한 기록(카드 없음, FLIGHT RECORDER)
@@ -778,6 +782,21 @@ export function parseDutyNote(args) {
   return until ? { text, until } : { text };
 }
 
+// exception <D-/C-id> --kind unable|question|silence [-- <글>] (ATC-558). 글은 서버가 가려서 판정에 보내고 기록하지 않는다. 여기서는 되찍지 않는다
+export const EXCEPTION_KINDS = ["unable", "question", "silence"];
+export function parseExceptionArgs(args) {
+  const sep = args.indexOf("--");
+  const head = sep < 0 ? args : args.slice(0, sep);
+  const text = sep < 0 ? "" : args.slice(sep + 1).join(" ").trim();
+  const [rawRef, ...rest] = head;
+  const ref = String(rawRef ?? "").toUpperCase();
+  if (!/^(D|C)-\d{4,}$/.test(ref)) throw new Error("exception <D-0003|C-0007> --kind unable|question|silence [-- <글>]");
+  if (rest.length !== 2 || rest[0] !== "--kind" || !EXCEPTION_KINDS.includes(rest[1])) throw new Error(`--kind는 ${EXCEPTION_KINDS.join("|")} 중 하나`);
+  const kind = rest[1];
+  if (kind !== "silence" && !text) throw new Error("unable·question에는 -- 뒤에 CAPTAIN의 글이 필요함");
+  return { ref, kind, text };
+}
+
 // decision file <role> <key> --ask '<글>' --option '<a>' --option '<b>' [--pr <번호> [--head <sha>]] · ack|withdraw <role> <DC-id> · list <role> (ATC-352)
 // 관제 세션이 사람의 결정을 QUEUE 카드 한 장으로 올린다. 카드를 올릴 뿐 승인·전송·머지를 하지 않는다. 모양 검사는 서버가 한다
 export const DECISION_ROLES = ["tower", "occ", "mcc", "crosscheck", "duty"];
@@ -1271,6 +1290,10 @@ if (isMain) {
       const r = parseDecisionArgs(args);
       const out = r.sub === "file" ? await call("POST", "/api/decisions", r.body) : r.sub === "default" ? await call("POST", "/api/decisions/default", r.body) : r.sub === "list" ? await call("GET", `/api/decisions?role=${r.role}`) : await call("POST", `/api/decisions/${encodeURIComponent(r.id)}/${r.sub}`, { role: r.role });
       console.log(decisionText(r, out));
+    } else if (cmd === "exception") {
+      const r = parseExceptionArgs(args);
+      const out = await call("POST", "/api/exceptions", { ref: r.ref, kind: r.kind, text: r.text, role: r.ref.startsWith("D-") ? "occ" : "tower" });
+      console.log(out.line);
     } else if (cmd === "relay") {
       const r = parseRelayArgs(args);
       const out = await call("POST", `/api/relay/${encodeURIComponent(r.id)}/${r.action}`, r.action === "issued" ? { clearance: r.clearance } : { reason: r.reason });

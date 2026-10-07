@@ -359,6 +359,22 @@ DISPATCH는 날고 있는 FLIGHT가 바꾼 파일과 Todo FLIGHT가 고칠 파�
 | `JEV Prerequisite = yes → 선행 대기` | 판정했거나 HELD였던 제안 중 Prerequisite = yes mark 가운데 `waiting-on-prior` 칩이 달렸거나 OCC HOLD였던 것(선행 FLIGHT가 있는 HOLD, 또는 PREFLIGHT mark 없이 건 HOLD. SUPERVISOR가 대기열로 돌린 HOLD는 OCC의 것으로 더 알아볼 수 없다) |
 | `JEV Same area 가까움 → 승인` | 판정한 제안 중 `same_area` level이 50% 이상인 mark 가운데 승인(agree, approve)이었던 것 |
 
+### 예외 판정 구현 (ATC-558)
+
+판정 계열에 스위치가 따로 있는 두 번째 판정이 더해졌다. **예외**를 고정 메뉴로 정하고, 첫 배포부터 행동이 된다(`shadow`·`replay` 없음, [control-plane.md](control-plane.md) W4).
+
+- **메뉴.** `RESEND`, `HOLD_UNTIL`, `REASSIGN`, `ANSWER`, `ESCALATE`, `ACCEPT_UNDONE`. 판정이 `NONE`("메뉴에 없음")을 고르면 첫날부터 `ESCALATE`다.
+- **예외.** FLIGHT PLAN(`D-`, OCC)이나 CLEARANCE(`C-`, TOWER)에 대한 CAPTAIN의 UNABLE, 정한 형식이 아닌 질문이나 거부, 두 번째 침묵(호출과 한 번의 재송신에 모두 답 없음).
+- **붙는 곳.** OCC와 TOWER는 `atcctl exception <D-|C-id> --kind unable|question|silence [-- '<글>']`(`POST /api/exceptions`, 에이전트 길)을 부르고 매뉴얼의 표대로 행동만 실행한다. 이것들을 스스로 판단하지 않는다. 서버가 스스로 본 두 번째 침묵(ATC-557·562의 `second-silence` 깨움 사건)은 관제 세션을 깨우기 전에 서버가 판정한다: 카드를 올린 ESCALATE는 아무도 깨우지 않고, 다른 행동은 깨우는 글의 그 줄에 적는다.
+- **싼 판정부터.** Jev에 타입 있는 질문: `action`(메뉴와 `NONE`의 Choice), `wait_for`(가린 글에서 찾은 FLIGHT key·PR 번호와 `NONE`의 Choice. TypeSafe에는 뽑아내는 기본형이 없다), `answer_yes`(Noul, 질문일 때만), `policy_covers`(Noul: 글로 된 정책이 바로 이 점을 정하나?), `policy_point`(정책 점 P1–P15와 `NONE`의 Choice). 확신이 0.8 이상이면 Jev의 답을 쓴다: `action`의 확신과, 쓰는 갈래에서만 Noul의 `max(p, 1-p)`와 `policy_point`·`wait_for`의 확신. 그 아래이거나 Jev 오류, `TYPESAFE_API_KEY`가 없으면 `claude -p` 한 번이 정한다(`claude-sonnet-5-5`, JSON 답, 도구 없음, hook 끔, 세션 저장 없음. `modelUsage`가 `claude-`로 시작하지 않는 모델을 말하면 버린다). 둘 다 답하지 못하면 `ESCALATE`다.
+- **바닥.** `ANSWER`는 `policy_covers`가 맞고 정책 점과 예·아니오 답이 있을 때만 행동이다. 아니면 `ESCALATE`. `HOLD_UNTIL`은 기다릴 FLIGHT·PR이 있어야 한다. 호출은 한 번만 다시 보낸다. 그 역할이 실행할 수 있는 행동만 남는다: OCC는 팀에 글을 보낼 수 없어(send-guard) FLIGHT PLAN의 `ANSWER`는 제안한 답을 실은 ESCALATE 카드가 된다. 나머지는 모두 `ESCALATE`다.
+- **ESCALATE**는 그 호출을 맡은 역할(`D-`는 `occ`, `C-`는 `tower`)로 DECISION 카드(ATC-352)를 올린다. 가린 글의 앞부분, 판정이 고른 것과 근거, 질문이면 제안한 답이 실린다. SUPERVISOR의 답은 그 역할에 `decision-answered`로 돌아간다.
+- **정책.** `server/judges/exception-policy.ts`: 루트 CLAUDE.md, `docs/rules.ko.md`, `server/fleet.ts`의 CREW BRIEFING, OCC·TOWER 매뉴얼에서 모은 짧은 영어 글 하나(번호 붙은 점 15개, 약 3,800자). 버전이 있고 판정마다 해시가 남는다.
+- **나가는 것(K2, SUPERVISOR 승인 2026-10-07).** TypeSafe(`POST https://api.typesafe.ai/v1/systemone`)와 `claude -p`에: 가린 CAPTAIN 글(최대 1,500자), 메뉴, 정책, 정해진 말로 지은 상황 한 문장(예외 종류, `CLEARANCE GO AROUND` 같은 호출 종류, 다시 보냈나, 침묵이면 세션이 idle·busy·gone인지). 가림은 REPORT의 가림(경로·URL·이메일·토큰)에 더해 코드 블록과 긴 인라인 코드(`<code>`), key·token·secret·password·auth 같은 이름의 값(`<secret>`), Bearer·Basic 자격, 개인 키 블록, 긴 16진·base64 줄이다. 호출의 FLIGHT key, REGISTRATION, 파일 내용, 경로는 나가지 않는다. 침묵이면 글은 그 세션의 CAPTAIN 마지막 메시지다(REPORT와 같은 읽기).
+- **스위치.** `judges.json`의 `judges.exceptions`: `on`(기본) 또는 `off`, SUPERVISOR만(설정 창 OPERATIONS → JUDGES → EXCEPTIONS, 또는 이 화면의 `PUT /api/settings {judgesExceptions}`). `judges.jev`와 따로다: `judges.jev`가 `off`여도 판정한다. `off`면 `atcctl exception`이 `EXCEPTION OFF`로 답하고 관제 세션이 전처럼 판단한다. 아무것도 나가지 않는다. 바꾸면 FLIGHT RECORDER에 남는다(`policy` `judges-exceptions-mode`).
+- **기록.** `judges.jsonl`에 `target: "exception"`인 `judge` 줄: id(`EX-<호출>-<해시>`, 같은 입력은 한 번만 판정), 호출, 종류, 역할, `via`(`atcctl`·`server`), FLIGHT와 그 발권, 입력 해시, 정책 해시·버전, `source`(`jev`·`claude`·`none`), 모델, 확신, Jev가 낸 것(문턱 아래여도)과 Claude의 답, 행동, 그것을 바꾼 바닥, 덮음, 정책 점, `waitFor`, 답 글, 근거, 카드 id. CAPTAIN의 글은 남기지 않고 보낸 글자 수만 남는다.
+- **표시와 수.** 설정 창 JUDGES에 7일·30일의 판정 수, 관제 세션의 판단 없이 정한 몫(ESCALATE가 아닌 행동), Jev·Claude·없음의 나뉨, ESCALATE 수, 오작동(SUPERVISOR가 틀렸다고 표시한 행동과 필요 없었다고 표시한 ESCALATE)과 표시한 행동 가운데 틀린 비율이 보인다. 최근 판정 8개에 표시 단추가 있다(`POST /api/judges/exceptions/:id/mark`, 이 화면 Origin만).
+
 ## 7. TARGETS
 
 AIRCRAFT마다 SUPERVISOR가 FLEET 탭에서 정한다. 보여 주기만 하고 점수에 넣지 않는다. atc는 이것으로 AIRCRAFT 순위를 매기지 않고, planner도 읽지 않는다.

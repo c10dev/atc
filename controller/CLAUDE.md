@@ -22,6 +22,7 @@
 | `node atcctl.mjs readback <C-0007>` / `roger <C-0007>` | 팀의 READBACK / ROGER 기록(닫힌다) |
 | `node atcctl.mjs unable <C-0007> -- <사유>` / `standby <C-0007>` | 팀의 UNABLE 기록(닫힌다) / STANDBY 기록(열린 채 overdue를 한 번 다시 센다) |
 | `node atcctl.mjs cancel <C-0007>` | CLEARANCE 취소 |
+| `node atcctl.mjs exception <C-0007> --kind unable\|question\|silence [-- '<팀의 글 그대로>']` | 예외 판정(ATC-558): 팀의 UNABLE·질문·두 번째 침묵에 할 행동 하나를 서버가 정한다(아래 "예외 판정") |
 | `node atcctl.mjs undeliverable <C-0007> -- <사유>` | SendMessage가 닿지 못해 CLEARANCE를 닫는다(취소와 달리 SUPERVISOR QUEUE에 손으로 전하는 카드가 뜬다) |
 | `node atcctl.mjs relay issued <R-0001> <C-0301>` / `relay undeliverable <R-0001> -- <사유>` | SUPERVISOR RELAY를 CLEARANCE로 보낸 뒤 표시 / 닿지 못했다고 표시. relay를 만드는 명령은 없다 |
 | ListAgents, SendMessage | 팀 세션에 메시지. 주소는 세션 이름(`TEAM_B`) |
@@ -65,13 +66,34 @@ SUPERVISOR의 스위치(설정 창 SERVER CLEARANCE, 종류마다, 기본 on)가
 | FUEL LEAK·COLD CACHE (`open.fuelLeaks`, `open.coldCache`) | FUEL 경고(docs/fuel.md 8.6, ATC-56). 경고만 하고 아무것도 막지 않는다. `open.fuelLeaks`(24시간 안 LEAK이 큰 팀 AIRCRAFT)에 새 `key`가 보이면 SUPERVISOR에게 INFO로 한 번 알리고(`text` 그대로) `key`를 ATC LOG에 적는다. 같은 `key`는 다시 알리지 않는다. `open.coldCache`(캐시가 식은 HOLDING CAPTAIN)의 AIRCRAFT에 낼 CLEARANCE가 있으면 그대로 내고 `text`를 ATC LOG에 적는다. 캐시를 데우려고 미리 메시지를 보내거나 CLEARANCE를 미루지 않는다. FUEL 때문에 팀에 메시지를 보내지 않는다. `open.fuelError`가 있으면 대화 기록을 읽지 못한 것이니 ATC LOG에만 적는다 |
 | NORDO STAND (`open.orphans`), `session.lost` | 받을 세션이 없다. ATC LOG로 SUPERVISOR에게 보고(멈출 이유가 아니다) |
 | UNIDENTIFIED (`open.unattended`), NO CONTACT (`open.noContact`) | ATC LOG로 SUPERVISOR에게 보고. `events`에 새로 뜬 것만 보고하고 이미 보고한 것은 반복하지 않는다 |
-| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | `answeredVia`가 있는 CLEARANCE는 답을 받은 것이니 아무것도 하지 않는다. `resentBy`도 `resendOf`도 없으면 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 서버가 하는 첫 RESEND는 `clearances.overdue`에서 빠지고 `serverSends.resend`에 있다 — RESEND하지 않는다(ATC-557 b). `resentBy`가 있거나 그 자신이 RESEND(`resendOf`)이면 다시 보내지 않고 "답 없음"을 ATC LOG로 SUPERVISOR에게 보고하고 턴을 평소처럼 끝낸다(`blocked`로 두지 않는다). 새로 뜬 세션도 대화가 아니라 이 기록(`clearances.pending[]`, ATC-565)으로 가린다. 답은 다음 tick에 온다 |
+| NO READBACK (`clearances.overdue`, 10분. 첫 STANDBY가 있으면 그때부터 10분) | `answeredVia`가 있는 CLEARANCE는 답을 받은 것이니 아무것도 하지 않는다. `resentBy`도 `resendOf`도 없으면 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞에 "RESEND"). 서버가 하는 첫 RESEND는 `clearances.overdue`에서 빠지고 `serverSends.resend`에 있다 — RESEND하지 않는다(ATC-557 b). `resentBy`가 있거나 그 자신이 RESEND(`resendOf`)이면 다시 보내지 않는다(두 번째 침묵). 예외 판정이 켜져 있으면 `exception C-xxxx --kind silence`의 답대로 한다(아래 "예외 판정"). `EXCEPTION OFF`면 "답 없음"을 ATC LOG로 SUPERVISOR에게 보고하고 턴을 평소처럼 끝낸다(`blocked`로 두지 않는다. 판정을 따를 때도 같다). 새로 뜬 세션도 대화가 아니라 이 기록(`clearances.pending[]`, ATC-565)으로 가린다. 답은 다음 tick에 온다 |
 | 팀 답장 "READBACK C-xxxx" / "ROGER C-xxxx" | `node atcctl.mjs readback C-xxxx` / `node atcctl.mjs roger C-xxxx` |
-| 팀 답장 "UNABLE C-xxxx — 사유" | `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 ATC LOG로 SUPERVISOR에게 보고한다 |
+| 팀 답장 "UNABLE C-xxxx — 사유" | 먼저 `node atcctl.mjs exception C-xxxx --kind unable -- '<사유 그대로>'`를 부르고 답대로 한다(아래 "예외 판정"). `EXCEPTION OFF`면 `node atcctl.mjs unable C-xxxx -- <사유 그대로>`. 다시 보내지 않고, 사유를 ATC LOG로 SUPERVISOR에게 보고한다. 이 문서의 다른 줄(GO AROUND·FIX·RELAY)이 팀의 UNABLE을 SUPERVISOR에게 보고하라고 할 때도 이 줄대로 한다 |
 | 팀 답장 "STANDBY C-xxxx" | `node atcctl.mjs standby C-xxxx`. 다시 보내지 않고 기다린다(`clearances.overdue`가 첫 STANDBY부터 10분을 다시 센다. 두 번째 STANDBY는 기록만 된다) |
-| 팀이 정한 형식 없이 거부하거나 질문 | SUPERVISOR에게 전한다(결정이 필요하면 카드로 올리고 턴을 끝낸다. 기다리며 멈추지 않는다) |
+| 팀이 정한 형식 없이 거부하거나 질문 | 어느 CLEARANCE에 대한 것인지 알면 `node atcctl.mjs exception C-xxxx --kind question -- '<글 그대로>'`(거부면 `--kind unable`)를 부르고 답대로 한다(아래 "예외 판정"). `EXCEPTION OFF`이거나 어느 CLEARANCE인지 모르면 SUPERVISOR에게 전한다(결정이 필요하면 카드로 올리고 턴을 끝낸다. 기다리며 멈추지 않는다) |
 | 상황이 풀림 (`alert.cleared`) | 그 건의 READBACK 대기 CLEARANCE가 남아 있으면 `cancel` |
 | 이유를 잃은 CLEARANCE (`clearances.moot`, ATC-515) | 열려 있는데(READBACK·ROGER·UNABLE·취소 없음) 그 FLIGHT의 PR이 모두 머지됐거나 닫혔다. 서버가 고르기만 하니 항목마다 `node atcctl.mjs cancel <id>`를 직접 내고 ATC LOG에 id를 적는다(위 `alert.cleared` 줄과 같은 취소다. 새로 보내지 않는다). 목록이 비면 아무것도 하지 않는다. SUPERVISOR가 설정 창의 CLEARANCE MOOT를 끄면 목록이 늘 비어 이 길로는 취소하지 않는다 |
+
+## 예외 판정 (EXCEPTION JUDGE, ATC-558)
+
+SUPERVISOR의 스위치(설정 창 JUDGES → EXCEPTIONS, 기본 on)가 켜져 있으면 팀의 UNABLE, 정한 형식이 아닌 거부나 질문, 두 번째 침묵을 이 세션이 스스로 판단하지 않는다. `node atcctl.mjs exception <C-xxxx> --kind unable|question|silence [-- '<팀의 글 그대로>']`를 부르면 서버가 고정 메뉴(`RESEND` `HOLD_UNTIL` `REASSIGN` `ANSWER` `ESCALATE` `ACCEPT_UNDONE`)에서 행동 하나를 정해 첫 줄 `EXCEPTION EX-… · <행동> · <출처>`로 답한다(Jev가 먼저, 확신 0.8 아래면 claude -p 한 번). 이 세션은 그 행동을 아래 표대로 실행만 한다.
+
+- 출력이 `EXCEPTION OFF`이거나 명령이 오류로 끝나면(서버가 못 받음 등) 위 판단 기준 표의 옛 방법대로 한다.
+- 팀의 글은 받은 그대로 작은따옴표 안에 넣는다(글 안의 작은따옴표는 뺀다). 서버가 경로·코드·비밀을 가리고 1,500자로 줄여 판정에 보낸다. 같은 글로 다시 부르면 다시 판정하지 않고 같은 답(`cached`)이다.
+- 서버가 두 번째 침묵을 먼저 보면 깨우기 전에 판정한다. ESCALATE면 카드가 이미 올라가 깨우지 않는다. 다른 행동이면 깨운 글의 그 줄에 `exception judge <행동> (EX-…)`가 붙어 온다. 그때도 `exception C-xxxx --kind silence`(글 없이)로 답을 읽고 실행한다.
+
+| 행동 | UNABLE (`--kind unable`) | 질문 (`--kind question`) | 두 번째 침묵 (`--kind silence`) |
+|---|---|---|---|
+| `RESEND` | `unable`을 기록하지 않고 NO READBACK 줄처럼 같은 CLEARANCE를 한 번 더 보낸다(문구 맨 앞 "RESEND") | 같다 | 나오지 않는다(한 번만 다시 보낸다) |
+| `HOLD_UNTIL` | `unable C-xxxx -- '<사유 그대로>'`. ATC LOG에 `WAIT FOR`의 FLIGHT·PR. SUPERVISOR 보고는 없다 | W/U면 `standby C-xxxx`, R이면 기록 없이. ATC LOG에 `WAIT FOR` | ATC LOG에 `WAIT FOR`. 보고 없음 |
+| `REASSIGN` | `unable C-xxxx -- '<사유 그대로>'`. ATC LOG에 REASSIGN. 보고 없음(누가 맡을지는 DISPATCH 몫) | 나오지 않는다 | 나오지 않는다 |
+| `ANSWER` | 나오지 않는다 | `ANSWER (…)` 줄의 `:` 뒤 글을 `issue <그 팀 세션> INFO [--stand <STAND>] [--flight <FLIGHT>] -- '<그 글 그대로>'`로 내고 보낸다. 원래 CLEARANCE는 열린 채 둔다 | 나오지 않는다 |
+| `ACCEPT_UNDONE` | `unable C-xxxx -- '<사유 그대로>'`. ATC LOG. 보고 없음 | `cancel C-xxxx`. ATC LOG | `cancel C-xxxx`. ATC LOG |
+| `ESCALATE` | `unable C-xxxx -- '<사유 그대로>'`. `CARD: DC-xxxx`면 SUPERVISOR 카드가 이미 올라갔다: ATC LOG에 카드 id만 적고 따로 보고하지 않는다. `CARD: not filed`면 옛 방법대로 SUPERVISOR 보고 | 기록 없이 ATC LOG에 카드 id(없으면 SUPERVISOR 보고) | 같다. 카드가 "답 없음" 보고를 대신한다 |
+
+- 카드의 답은 다음 tick에 `decision-answered`로 온다. 답을 따라 일하고(예: "예로 답하기"면 그 답을 영어 INFO로 보낸다) `decision ack tower <DC-xxxx>`.
+- 판정 카드가 열린 채 그 CLEARANCE가 닫히면(뒤늦은 READBACK, 취소) `decision withdraw tower <DC-xxxx>`로 거둔다(카드에 PR이 없어 저절로 닫히지 않는다).
+- 판정을 고치거나 같은 일로 다시 묻지 않는다. 틀린 판정은 SUPERVISOR가 설정 창에서 표시한다.
 
 ## SUPERVISOR의 결정은 카드로 (ATC-352)
 

@@ -11,6 +11,7 @@ import { loadRegistry, mountAirports } from "./airports.ts";
 import { mountAtfm } from "./atfm-run.ts";
 import { mountAutoland } from "./autoland-run.ts";
 import { mountJudges } from "./judges/run.ts";
+import { mountExceptions } from "./judges/exceptions-run.ts";
 import { config } from "./config.ts";
 import { mountController } from "./controller.ts";
 import { mountRelay } from "./relay-run.ts";
@@ -336,6 +337,7 @@ mountSettings(app);
 mountPolicy(app, getSnapshot); // AIRCRAFT policy hook(ATC-369): PENDING 수와 거절을 class별로(읽기만)
 mountAccounts(app, getSnapshot);
 mountJudges(app);
+mountExceptions(app, getSnapshot);
 try {
   // SQUELCH ships on(ATC-553): 배포 뒤 첫 시작에 모든 역할을 on·v2로 한 번 올린다(기록이 있으면 아무것도 안 한다)
   const m = migrateOnce();

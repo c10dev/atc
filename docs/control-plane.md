@@ -81,6 +81,14 @@ Suggested sequence: W8 and W9, W1, then W2 and W6, then W5, then W3 and W4, W7 l
 - **Switch.** Per AIRPORT, SUPERVISOR only, settings AUTOMATION → OPERATIONS → SOLO (`solo-default.json`). Shipped on for every AIRPORT (SUPERVISOR decision, 2026-10-06: no measure-first gate); off leaves the FLIGHT PLAN as before.
 - **Misfire counters.** Per AIRPORT, last 7 days, against the 7 days before the first start after deploy: SOLO FLIGHTs that took CREW or were blocked for lack of one, SOLO FLIGHTs whose block time is above the same-WAKE baseline median, and tokens per landed FLIGHT by WAKE (LOGBOOK `fuel`). Shown only.
 
+### W4 as built (ATC-558)
+
+- **Judge.** A fixed menu (`RESEND`, `HOLD_UNTIL`, `REASSIGN`, `ANSWER`, `ESCALATE`, `ACCEPT_UNDONE`; "none of these" is `ESCALATE`). Jev answers typed questions first (`action`, `wait_for`, `answer_yes`, `policy_covers`, plus `policy_point` so "covers that exact point" names the point); at confidence 0.8 or more its answer is used, otherwise one `claude -p` call decides. Details in [fleet.md](fleet.md) "Exception judge as built".
+- **Where it plugs in.** Team replies reach OCC and TOWER by SendMessage, so the control session runs `atcctl exception <D-|C-id> --kind unable|question|silence` and carries out the returned action from a table in its manual. The server judges the second silences it sees (ATC-562 FLIGHT PLAN resends, ATC-557 b CLEARANCE resends) in the wake pass before waking the role: an ESCALATE card replaces the wake, any other action rides in the wake line. No guard change was needed: `controller/guard.mjs` has no atcctl allow-set for TOWER and OCC.
+- **Executed from the first release.** The switch `judges.exceptions` has `on` (default) and `off` only. `off` leaves the old manual paths.
+- **Misfire counter.** Actions the SUPERVISOR marks wrong and ESCALATEs marked unnecessary, with the wrong-action rate, on Settings → JUDGES next to the share decided without a control session's own judgment and the Jev / Claude split.
+- **K2.** The masked CAPTAIN message (REPORT masking plus code, secret values and key-like strings, at most 1,500 characters), the menu and the policy go to TypeSafe and `claude -p`; approved by the SUPERVISOR on 2026-10-07.
+
 ## 5. Risks
 
 | Risk | Guard |

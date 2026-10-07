@@ -109,6 +109,7 @@ const AGENT_WRITE: readonly RegExp[] = [
   new RegExp(`^/api/landing/review/${S}/\\d+$`),
   new RegExp(`^/api/relay/${S}/(issued|undeliverable)$`),
   new RegExp(`^/api/squelch/${S}$`),
+  /^\/api\/exceptions$/, // 예외 판정(ATC-558): 관제 세션이 팀의 UNABLE·질문·침묵을 판정에 묻는다. 표시(/api/judges/exceptions/:id/mark)는 SUPERVISOR 자격
 ];
 
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
