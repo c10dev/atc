@@ -167,6 +167,18 @@ test("같은 저장소가 두 번 등록돼도 예전처럼 두 번 나오고 gi
   assert.equal(g.gitSpawns() - s0, 0);
 });
 
+test("셸 하나가 여러 워크트리의 status를 돌아도 워크트리마다 git status와 같은 수다", async () => {
+  g.resetWorkspaceCache();
+  const many = Array.from({ length: 9 }, (_, i) => join(root, `wt-m${i}`));
+  many.forEach((p, i) => {
+    git(repo, "worktree", "add", "-q", "-b", `m${i}`, p);
+    for (let k = 0; k < i % 4; k++) writeFileSync(join(p, `n${k}.txt`), "x\n");
+  });
+  const { ws } = await tick();
+  for (const p of many) assert.equal(byPath(ws, p)!.dirty, git(p, "status", "--porcelain").split("\n").filter(Boolean).length, p);
+  for (const p of many) git(repo, "worktree", "remove", "--force", p);
+});
+
 test("parseStatusBatch: 워크트리마다 변경 수, 실패는 null, 못 간 것은 undefined", () => {
   const out = " M a.txt\n?? b.txt\n\x000\n\x00128\nA  c.txt\n\x000\n";
   assert.deepEqual(g.parseStatusBatch(out, 4), [2, null, 1, undefined]);

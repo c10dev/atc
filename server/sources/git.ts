@@ -251,8 +251,9 @@ async function repoView(repo: string, now: number): Promise<RepoView> {
   return p;
 }
 
-// git status를 셸 하나로 여러 워크트리에 돌린다. 워크트리마다 끝에 NUL과 종료 코드 한 줄(porcelain 출력에는 NUL이 없다)
-const STATUS_SCRIPT = 'for d; do git -C "$d" status --porcelain; printf "\\0%s\\n" "$?"; done';
+// git status를 셸 하나로 여러 워크트리에 돌린다. 워크트리마다 끝에 NUL과 종료 코드 한 줄(porcelain 출력에는 NUL이 없다).
+// 하나가 멈춰도 나머지가 밀리지 않게 워크트리마다 예전처럼 10초에서 끊는다(timeout이 없는 곳은 셸 전체 시간 한도만)
+const STATUS_SCRIPT = 't=; command -v timeout >/dev/null 2>&1 && t="timeout 10"; for d; do $t git -C "$d" status --porcelain; printf "\\0%s\\n" "$?"; done';
 
 // 워크트리마다 변경 파일 수. git status가 실패했으면 null, 셸이 거기까지 못 갔으면 undefined
 export function parseStatusBatch(out: string, n: number): (number | null | undefined)[] {
