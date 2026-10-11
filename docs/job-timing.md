@@ -44,14 +44,14 @@ JOB TIMING counts what each source costs; EVENT LOOP LAG tells the SUPERVISOR th
 
 Two `performance.now()` calls and one map update per run; the file is written once per window. Nothing waits for the timing, and nothing reads it on the request path.
 
-## Worktree reads (ATC-XXX)
+## Worktree reads (ATC-572)
 
 JOB TIMING's first finding was that `readWorkspaces` (`server/sources/git.ts`) spent most of the server's time spawning `git`: one `git worktree list` per AIRPORT every 2 s tick, and four `git` runs per worktree every 30 s. Now:
 
 - **List, HEAD, last commit, `pushed`, `unpushed`** come from refs and HEAD files only. Each tick takes a stat-only signature of the repo: `HEAD`, `logs/HEAD`, `packed-refs`, the mtime of every directory under `refs/` (git replaces a loose ref by renaming a lock file, so its directory mtime moves), and each linked worktree's `HEAD`, `logs/HEAD` and `gitdir` target. Same signature → the last answer is reused and no `git` runs. A changed signature → the list and three repo-wide calls (`for-each-ref refs/remotes/origin`, `log --no-walk` for all heads, `rev-list --parents <heads> --not --remotes`) run in that tick, so these values are fresher than before. Every 5 min the repo is read again anyway. Repos the signature cannot cover (reftable, unreadable `.git`) are read every tick as before; a registered path that is not a repo is not re-run until a `.git` appears.
 - **`dirty`** has no cheap signal (an edit to a tracked file touches no git file), so `git status --porcelain` still runs for every worktree every 30 s. It runs through at most six `sh` processes that loop over the worktrees, each `git status` capped at 10 s, instead of one spawn per worktree.
 
-Measured on a test server (`ATC_GITHUB=off`, the same 62 worktrees, two 10-minute windows): spawns per tick 26.3 → 0.27, server CPU 11.6% → 7.5% of a core (system time 39.5 s → 15.7 s), the reaped children's CPU 8.3% → 2.8%, `tick:buildSnapshot` wall 32.7 s → 8.8 s (worst 6.9 s → 0.47 s). The stat signature adds about 1 ms of synchronous time per tick.
+Measured on a test server (`ATC_GITHUB=off`, 61–62 worktrees, two 10-minute windows run one after the other): processes forked by the server per tick 26.3 → 0.27 (the shells still run about two `git status` a second at this count), server CPU 11.6% → 7.5% of a core (system time 39.5 s → 15.7 s), the reaped children's CPU 8.3% → 2.8%, `tick:buildSnapshot` wall 32.7 s → 8.8 s (worst 6.9 s → 0.47 s). The stat signature adds about 1 ms of synchronous time per tick.
 
 ## Limits
 

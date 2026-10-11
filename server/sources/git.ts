@@ -213,7 +213,7 @@ async function readRefs(repo: string, heads: readonly string[]): Promise<RepoRef
 }
 
 interface RepoView {
-  sig: string | null; // 이 목록·ref를 읽기 직전의 서명. null이면 다음 틱에 다시 읽는다
+  sig: string | null; // 이 목록·ref를 읽기 직전의 서명. null이면 다음 틱에 다시 읽는다(서명을 못 만드는 저장소)
   at: number;
   entries: ListEntry[];
   refs: RepoRefs | null; // 못 읽었으면 null
@@ -228,7 +228,8 @@ const inflight = new Map<string, Promise<RepoView>>();
 async function repoView(repo: string, now: number): Promise<RepoView> {
   const sig = repoSignature(repo); // git보다 먼저 잰다: 읽는 사이에 바뀌면 다음 틱에 다시 읽는다
   const c = repoViews.get(repo);
-  if (c && sig !== null && c.sig === sig && now - c.at < REPO_RECHECK_MS) return c;
+  // ref를 못 읽었으면(refs null) 30초 뒤에 다시 해 본다: 실패가 이어져도 매 틱 git 넷을 띄우지 않는다
+  if (c && sig !== null && c.sig === sig && now - c.at < REPO_RECHECK_MS && (c.refs || now - c.refsAt < DETAIL_TTL_MS)) return c;
   let p = inflight.get(repo);
   if (!p) {
     p = (async () => {
@@ -237,7 +238,8 @@ async function repoView(repo: string, now: number): Promise<RepoView> {
       // 서명을 못 만드는 저장소: 목록은 매 틱, ref는 head가 그대로면 30초마다(예전과 같은 신선도)
       const keep = sig === null && c?.refs && now - c.refsAt < DETAIL_TTL_MS && entries.every((e) => !isCommitSha(e.head) || c.refs!.commitAt.has(e.head));
       const refs = keep ? c.refs : entries.length ? await readRefs(repo, entries.map((e) => e.head)).catch(() => null) : { commitAt: new Map(), origin: [], unpushed: new Map() };
-      const v: RepoView = { sig: refs ? sig : null, at: now, entries, refs, refsAt: keep ? c.refsAt : now };
+      // 5분 다시 읽기가 모든 저장소에서 한 틱에 몰리지 않게 시작을 1분 안에서 흩는다
+      const v: RepoView = { sig, at: now - Math.random() * 60_000, entries, refs, refsAt: keep ? c.refsAt : now };
       repoViews.set(repo, v);
       return v;
     })()

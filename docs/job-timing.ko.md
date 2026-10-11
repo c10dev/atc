@@ -44,14 +44,14 @@ JOB TIMING이 일마다의 비용을 센다면, EVENT LOOP LAG는 서버 전체�
 
 실행 한 번에 `performance.now()` 두 번과 맵 갱신 한 번이고, 파일은 구간마다 한 번 쓴다. 어느 것도 시간을 기다리지 않고, 요청 길에서 읽지 않는다.
 
-## 워크트리 읽기(ATC-XXX)
+## 워크트리 읽기(ATC-572)
 
 JOB TIMING이 처음 찾은 것은 `readWorkspaces`(`server/sources/git.ts`)가 서버 시간의 대부분을 `git`을 띄우는 데 쓴다는 것이었다: 2초 틱마다 AIRPORT마다 `git worktree list` 하나, 30초마다 워크트리마다 `git` 넷. 이제는:
 
 - **목록, HEAD, 마지막 커밋, `pushed`, `unpushed`**는 ref·HEAD 파일에서만 나온다. 틱마다 저장소의 서명을 stat으로만 만든다: `HEAD`, `logs/HEAD`, `packed-refs`, `refs/` 아래 모든 디렉터리의 mtime(git은 loose ref를 lock 파일 rename으로 바꾸므로 그 디렉터리의 mtime이 움직인다), 연결된 워크트리마다 `HEAD`·`logs/HEAD`·`gitdir`이 가리키는 곳. 서명이 같으면 지난 답을 쓰고 `git`을 띄우지 않는다. 바뀌면 그 틱에 목록과 저장소 단위 명령 셋(`for-each-ref refs/remotes/origin`, 모든 head의 `log --no-walk`, `rev-list --parents <heads> --not --remotes`)을 돌리므로 이 값들은 예전보다 빨리 바뀐다. 5분마다는 서명과 상관없이 다시 읽는다. 서명으로 덮지 못하는 저장소(reftable, `.git`을 못 읽음)는 예전처럼 매 틱 읽고, 저장소가 아닌 등록 경로는 `.git`이 생길 때까지 다시 돌리지 않는다.
 - **`dirty`**는 싼 신호가 없어서(추적 파일을 고쳐도 git 파일은 그대로다) 지금처럼 30초마다 모든 워크트리에 `git status --porcelain`을 돌린다. 워크트리마다 띄우는 대신 많아야 여섯 개의 `sh`가 워크트리를 돌고, `git status` 하나는 10초에서 끊는다.
 
-시험 서버에서 잰 값(`ATC_GITHUB=off`, 같은 워크트리 62개, 10분 창 두 번): 틱당 spawn 26.3 → 0.27, 서버 CPU 한 코어의 11.6% → 7.5%(system 39.5초 → 15.7초), 거둔 자식의 CPU 8.3% → 2.8%, `tick:buildSnapshot` wall 32.7초 → 8.8초(최악 6.9초 → 0.47초). stat 서명은 틱마다 동기 시간 약 1ms를 더한다.
+시험 서버에서 잰 값(`ATC_GITHUB=off`, 워크트리 61–62개, 10분 창 두 번을 차례로): 서버가 틱마다 fork한 프로세스 26.3 → 0.27(셸은 이 수에서 여전히 초당 `git status` 두 번쯤을 돌린다), 서버 CPU 한 코어의 11.6% → 7.5%(system 39.5초 → 15.7초), 거둔 자식의 CPU 8.3% → 2.8%, `tick:buildSnapshot` wall 32.7초 → 8.8초(최악 6.9초 → 0.47초). stat 서명은 틱마다 동기 시간 약 1ms를 더한다.
 
 ## 한계
 
