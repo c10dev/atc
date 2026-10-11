@@ -1,0 +1,2 @@
+### 변경
+- 서버가 워크트리 상태를 워크트리마다 `git`을 띄우지 않고 읽는다(ATC-XXX, [docs/job-timing.ko.md](docs/job-timing.ko.md) "워크트리 읽기"): 저장소마다 ref·HEAD 파일을 stat으로만 잰 서명이 바뀔 때만 `git worktree list`와 커밋·`pushed`·`unpushed` 읽기(저장소 단위 명령 셋)를 돌린다. `git status`는 지금처럼 30초마다, 많아야 셸 여섯 개로 묶어 돈다. 화면의 값은 같고, 워크트리 62개 시험 서버에서 틱당 spawn 26.3 → 0.27.
