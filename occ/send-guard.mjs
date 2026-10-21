@@ -15,7 +15,7 @@
 // 이 hook은 OCC의 SendMessage이므로 caller "occ"로 부른다: 서버가 이미 보낸(sentVia server) FLIGHT PLAN은 막는다(막기만 더한다)
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { checkSend as sharedCheck, resolveSend as sharedResolve } from "../server/send-checks.ts";
+import { headerOnlyOf, checkSend as sharedCheck, resolveSend as sharedResolve } from "../server/send-checks.ts";
 
 const BASE = process.env.ATC_URL || "http://127.0.0.1:7700";
 
@@ -42,14 +42,15 @@ export function hookOutputOf(toolInput, message) {
   if (message === toolInput.message) return null;
   const updated = { ...toolInput, message };
   if (typeof toolInput.content === "string") updated.content = message; // 하네스가 붙이는 사본
+  const header = headerOnlyOf(toolInput.message) ?? toolInput.message.trim();
   return {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "allow",
       permissionDecisionReason: "send-guard: 머리를 atc에 저장된 문구로 바꿔 넣음",
       updatedInput: updated,
-      // 보낸 세션의 대화 기록에 실제로 나간 문구가 남는다(도구 결과는 머리만 되풀이한다)
-      additionalContext: `send-guard가 머리를 저장된 문구로 바꿔 보냈다. 실제로 나간 문구:\n${message}`,
+      // 보낸 세션에는 바꾼 머리와 저장된 문구의 첫 줄(work-order 해시 포함)만 알린다. 전체 문구는 atcctl 출력의 `---` 아래에 이미 있다
+      additionalContext: `send-guard가 머리 ${header}를 atc에 저장된 문구로 바꿔 보냈다. 저장된 문구의 머리: ${message.split("\n")[0]}`,
     },
   };
 }
