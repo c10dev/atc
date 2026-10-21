@@ -1,0 +1,2 @@
+### Changed
+- When OCC sends a header only and `occ/send-guard.mjs` puts in the stored text, the note it adds to OCC's transcript now names the replaced header and the stored text's first line (with the work-order hash, if any). Before, it repeated the whole delivered text, which was already in the `atcctl` output under `---`. What the AIRCRAFT receives and what the guard blocks don't change ([docs/occ.md](docs/occ.md) 8.3).

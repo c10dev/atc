@@ -162,11 +162,17 @@ test("전체 문구는 예전처럼 정확히 같을 때만: 바꿔 넣지 않�
   assert.match(await checkSend({ to: "TEAM_B", message: MSG.replace("권한 정리", "다른 일") }, async () => sent), /FLIGHT PLAN과 다름/);
 });
 
-test("hook 출력: 머리만이면 allow + updatedInput(message와 하네스 사본 content)과 실제로 나간 문구", () => {
+test("hook 출력: 머리만이면 allow + updatedInput(message와 하네스 사본 content), 알림은 바꾼 머리와 저장된 문구의 첫 줄만", () => {
   const out = hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007]", content: "[DISPATCH D-0007]", type: "message" }, MSG);
   assert.equal(out.hookSpecificOutput.permissionDecision, "allow");
   assert.deepEqual(out.hookSpecificOutput.updatedInput, { to: "TEAM_B", message: MSG, content: MSG, type: "message" });
-  assert.match(out.hookSpecificOutput.additionalContext, /권한 정리/);
+  const ctx = out.hookSpecificOutput.additionalContext;
+  assert.equal(ctx, "send-guard가 머리 [DISPATCH D-0007]를 atc에 저장된 문구로 바꿔 보냈다. 저장된 문구의 머리: [DISPATCH D-0007] FLIGHT PLAN · BRAVO (TEAM_B)");
+  assert.doesNotMatch(ctx, /권한 정리|READBACK/); // 본문은 되풀이하지 않는다
+  // work-order 해시가 있는 FLIGHT PLAN은 첫 줄에 해시가 실린다. RECALL·CREW CHANGE도 머리를 그대로 알린다
+  assert.match(hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007] " }, SEALED).hookSpecificOutput.additionalContext, /머리 \[DISPATCH D-0007\]를 .* 머리: \[DISPATCH D-0007\] FLIGHT PLAN @[0-9a-f]{6} · BRAVO \(TEAM_B\)$/);
+  assert.match(hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007] RECALL" }, "[DISPATCH D-0007] RECALL · BRAVO\nStop work.").hookSpecificOutput.additionalContext, /머리 \[DISPATCH D-0007\] RECALL를 .* 머리: \[DISPATCH D-0007\] RECALL · BRAVO$/);
+  assert.match(hookOutputOf({ to: "TEAM_B", message: "[OCC CC-0003]" }, "[OCC CC-0003] CREW CHANGE · TEAM_B\nSwap.").hookSpecificOutput.additionalContext, /머리 \[OCC CC-0003\]를 .* 머리: \[OCC CC-0003\] CREW CHANGE · TEAM_B$/);
   assert.equal("content" in hookOutputOf({ to: "TEAM_B", message: "[DISPATCH D-0007]" }, MSG).hookSpecificOutput.updatedInput, false);
 });
 
@@ -193,6 +199,7 @@ test("hook 프로세스: 머리만이면 updatedInput JSON을 내고, 틀리거�
     const ok = await run({ to: "TEAM_B", message: "[DISPATCH D-0007]", content: "[DISPATCH D-0007]" }, url);
     assert.equal(ok.code, 0);
     assert.equal(JSON.parse(ok.out).hookSpecificOutput.updatedInput.message, MSG.trim());
+    assert.doesNotMatch(JSON.parse(ok.out).hookSpecificOutput.additionalContext, /권한 정리/);
     const full = await run({ to: "TEAM_B", message: MSG }, url);
     assert.deepEqual([full.code, full.out], [0, ""]);
     assert.equal((await run({ to: "TEAM_C", message: "[DISPATCH D-0007]" }, url)).code, 2);
