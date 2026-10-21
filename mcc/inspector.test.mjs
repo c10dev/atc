@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { checkAgent } from "./agent-guard.mjs";
-import { CAP, capNotice, contextTokensOf } from "./context-cap.mjs";
+import { CAP, STEP, capNotice, contextTokensOf, lastNoticeTokensOf } from "./context-cap.mjs";
 import { checkInspector } from "./inspector-guard.mjs";
 import { lastInspected, summarize, tokensOf } from "./packet-size.mjs";
 
@@ -84,6 +86,47 @@ test("컨텍스트 CAP: 마지막 요청의 input+cache read+cache write, 넘으
   assert.equal(capNotice(CAP), null);
   assert.match(capNotice(CAP + 1000), /recycle\.mode/);
   assert.match(capNotice(200_000), /200k/);
+});
+
+// hook 출력은 대화 기록에 attachment(hook_success) 줄로 남는다
+const noticeLine = (tokens) => JSON.stringify({ type: "attachment", attachment: { type: "hook_success", hookEvent: "UserPromptSubmit", stdout: `${capNotice(tokens)}\n`, content: capNotice(tokens) } });
+
+test("컨텍스트 CAP: 한 세션에 한 번, 그 뒤로는 지난 안내보다 50k 더 커졌을 때만", () => {
+  assert.equal(STEP, 50_000);
+  assert.equal(lastNoticeTokensOf([]), null);
+  assert.equal(lastNoticeTokensOf([noticeLine(154_321)]), 154_000);
+  assert.equal(lastNoticeTokensOf([noticeLine(151_000), line({ input_tokens: 1 }), noticeLine(203_000)]), 203_000);
+  // 매뉴얼·프롬프트에 든 같은 글자는 안내가 아니다
+  const manual = JSON.stringify({ type: "attachment", attachment: { type: "instructions", files: [{ content: "`[MCC CONTEXT CAP] …` 안내" }] } });
+  const prompt = JSON.stringify({ type: "user", message: { content: capNotice(190_000) } });
+  assert.equal(lastNoticeTokensOf([manual, prompt, "not json [MCC CONTEXT CAP]"]), null);
+  // 첫 안내는 CAP을 넘을 때, 다음은 50k 더 커졌을 때
+  assert.match(capNotice(151_000, null), /151k/);
+  assert.equal(capNotice(170_000, 151_000), null);
+  assert.equal(capNotice(200_999, 151_000), null);
+  assert.match(capNotice(201_000, 151_000), /201k/);
+  assert.equal(capNotice(140_000, 151_000), null); // CAP 아래면 지난 안내와 상관없이 없음
+});
+
+test("컨텍스트 CAP hook: 지난 안내가 대화 기록에 있으면 50k 더 커질 때까지 조용하다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "context-cap-"));
+  try {
+    const run = (lines) => {
+      const path = join(dir, "t.jsonl");
+      writeFileSync(path, lines.join("\n") + "\n");
+      const r = spawnSync("node", [`${HERE}/context-cap.mjs`], { input: JSON.stringify({ transcript_path: path }) });
+      return [r.status, r.stdout.toString()];
+    };
+    const ctx = (n) => line({ input_tokens: 1, cache_read_input_tokens: n - 1 });
+    assert.deepEqual(run([ctx(100_000)]), [0, ""]);
+    const [first, out] = run([ctx(160_000)]);
+    assert.equal(first, 0);
+    assert.match(out, /^\[MCC CONTEXT CAP\] 이 세션의 컨텍스트가 160k 토큰으로/);
+    assert.deepEqual(run([ctx(160_000), noticeLine(160_000), ctx(209_000)]), [0, ""]);
+    assert.match(run([ctx(160_000), noticeLine(160_000), ctx(210_000)])[1], /210k/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("컨텍스트 CAP hook: 기록이 크면 안내를 찍고, 어떤 경우에도 exit 0", () => {

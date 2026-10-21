@@ -70,7 +70,7 @@ inspector가 보는 기준(`../CLAUDE.md`, 이 절과 `inspector.md`를 함께 �
 
 ## 컨텍스트 CAP
 
-이 세션의 컨텍스트가 150k 토큰을 넘으면(마지막 요청의 input + cache read + cache write, statusline 기록과 같은 값) `context-cap.mjs`(`UserPromptSubmit` hook)가 프롬프트에 `[MCC CONTEXT CAP] …` 안내를 붙인다. 그 바퀴를 마치고 `mcc queue`의 `recycle.mode`를 본다(ATC-166).
+이 세션의 컨텍스트가 150k 토큰을 넘으면(마지막 요청의 input + cache read + cache write, statusline 기록과 같은 값) `context-cap.mjs`(`UserPromptSubmit` hook)가 프롬프트에 `[MCC CONTEXT CAP] …` 안내를 붙인다. 안내는 한 세션에 한 번 오고, 그 뒤로는 컨텍스트가 지난 안내보다 50k 토큰 더 커졌을 때만 다시 온다. 안내가 없는 바퀴에는 CAP 줄을 적지 않는다. 안내가 오면 그 바퀴를 마치고 `mcc queue`의 `recycle.mode`를 본다(ATC-166).
 
 - `on`: atc가 컨텍스트가 CAP을 넘고 턴 사이이며 안전한 순간에 이 세션을 스스로 STOP하고 같은 ACCOUNT로 LAUNCH한다. 아무것도 청하지 않는다. SUPERVISOR에게 STOP·LAUNCH를 청하지 않고, 이것 때문에 BLOCKED로 두지 않는다.
 - `off`·`shadow`(기본): atc는 이 세션을 다시 시작하지 않는다(`shadow`는 "재시작했을 것"을 FLIGHT RECORDER에만 남긴다). MCC LOG에 "컨텍스트 <n>k — CAP 초과"만 적는다.
