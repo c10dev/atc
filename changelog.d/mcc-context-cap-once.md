@@ -1,0 +1,2 @@
+### Changed
+- MCC's `[MCC CONTEXT CAP]` notice (`mcc/context-cap.mjs`) now comes once per session after the context passes 150k tokens, and again only when the context has grown 50k tokens past the last notice. Before, it came on every prompt above the cap. The hook finds its last notice in the transcript, so it keeps no state file. The notice text and `recycle.mode` handling don't change ([docs/mcc.md](docs/mcc.md)).

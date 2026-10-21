@@ -70,7 +70,7 @@ Grades: P0 (must not merge), P1 (fix before merging), P2 (can wait). No P0 or P1
 
 ## Context cap
 
-When this session's context passes 150k tokens (the last request's input + cache read + cache write, the same value as the statusline record), `context-cap.mjs` (a `UserPromptSubmit` hook) adds a `[MCC CONTEXT CAP] …` notice to the prompt. Finish the pass and read `recycle.mode` in `mcc queue` (ATC-166).
+When this session's context passes 150k tokens (the last request's input + cache read + cache write, the same value as the statusline record), `context-cap.mjs` (a `UserPromptSubmit` hook) adds a `[MCC CONTEXT CAP] …` notice to the prompt. The notice comes once per session, and again only when the context has grown 50k tokens past the last notice. In a pass without the notice, write no cap line. When the notice comes, finish the pass and read `recycle.mode` in `mcc queue` (ATC-166).
 
 - `on`: when the context is over the cap, the job is between turns and the moment is safe, atc itself STOPs this session and LAUNCHes it again with the same ACCOUNT. Ask for nothing: do not ask the SUPERVISOR to STOP and LAUNCH, and do not mark yourself BLOCKED for it.
 - `off` or `shadow` (default): atc does not restart this session (`shadow` only records "would recycle" in the FLIGHT RECORDER). Write only "context <n>k — CAP 초과" in the MCC LOG.
